@@ -204,7 +204,7 @@ for cluster in conn.cce.clusters():
 
 ## Service Coverage
 
-Currently ~13 services are covered by OTC Extensions, meaning **most OTC services are not covered** — hence the motivation for auto-generation.
+Currently ~40 services are covered by OTC Extensions.
 
 **Covered services** (approximate list):
 - CCE (Cloud Container Engine)
@@ -217,7 +217,7 @@ Currently ~13 services are covered by OTC Extensions, meaning **most OTC service
 - ELB (Elastic Load Balancer)
 - and others...
 
-**Not covered:** Price API, VPCEP, many new services.
+**Not covered:** many new services.
 
 ---
 
