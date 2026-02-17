@@ -26,7 +26,9 @@ class GitHubDocProvider(DocProvider):
 
     def fetch_content(self, repo: str, path: str) -> str:
         try:
-            resp = self.session.get(f"{self.api_url}/...", timeout=30)
+            resp = self.session.get(
+                f"{self.api_url}/repos/{repo}/contents/{path}",
+                timeout=30)
             resp.raise_for_status()
             return base64.b64decode(resp.json()["content"]).decode("utf-8")
         except requests.exceptions.HTTPError as e:
