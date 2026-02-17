@@ -34,3 +34,6 @@ select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[project.scripts]
+gen-sdk-scan = "gen_sdk_tooling.main:main"

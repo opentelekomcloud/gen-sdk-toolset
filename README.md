@@ -38,7 +38,7 @@ GITHUB_TOKEN=ghp_your_token_here
 Scan a repository to classify RST files (endpoint vs non-endpoint):
 
 ```bash
-python -m gen_sdk_tooling.parsers.scanner opentelekomcloud-docs/cloud-container-engine
+python -m gen_sdk_tooling.main
 ```
 
 ## Development
