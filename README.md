@@ -6,8 +6,8 @@ Automated Python SDK generation from OTC API documentation.
 
 ```bash
 # Clone
-git clone git@github.com:opentelekomcloud/gen_sdk_tooling.git
-cd gen_sdk_tooling
+git clone git@github.com:opentelekomcloud/gen-sdk-toolset.git
+cd gen-sdk-toolset
 
 # Create virtual environment
 python -m venv .venv
@@ -38,7 +38,7 @@ GITHUB_TOKEN=ghp_your_token_here
 Scan a repository to classify RST files (endpoint vs non-endpoint):
 
 ```bash
-python -m gen_sdk_tooling.main
+python -m tools.main
 ```
 
 ## Development

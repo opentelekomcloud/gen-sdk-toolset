@@ -23,7 +23,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/gen_sdk_tooling"]
+packages = ["src/tools"]
 
 [tool.ruff]
 line-length = 88
@@ -36,4 +36,4 @@ select = ["E", "F", "I", "UP"]
 testpaths = ["tests"]
 
 [project.scripts]
-gen-sdk-scan = "gen_sdk_tooling.main:main"
+gen-sdk-scan = "tools.main:main"

@@ -8,8 +8,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """Scanner configuration."""
-    log_level: str = Field(default="INFO",
-                           description="Logging level (DEBUG, INFO, etc.)")
+
+    log_level: str = Field(
+        default="INFO", description="Logging level (DEBUG, INFO, etc.)"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

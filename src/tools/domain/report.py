@@ -1,10 +1,13 @@
 from pydantic import BaseModel, Field
+
 from .ir import Service
+
 
 class ParseError(BaseModel):
     file: str
     line: int | None = None
     message: str
+
 
 class ParseReport(BaseModel):
     service: Service
