@@ -1,7 +1,8 @@
-from gen_sdk_tooling.domain.interfaces.doc_provider import DocProvider
-from gen_sdk_tooling.domain.interfaces.parser import RstParser
-from gen_sdk_tooling.domain.ir import Service, URI_RE
 import logging
+
+from tools.domain.interfaces.doc_provider import DocProvider
+from tools.domain.interfaces.parser import RstParser
+from tools.domain.ir import URI_RE, Service
 
 logger = logging.getLogger(__name__)
 
