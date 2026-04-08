@@ -1,17 +1,14 @@
-from docutils.core import publish_doctree
 from docutils import nodes
+from docutils.core import publish_doctree
 
-from gen_sdk_tooling.domain.interfaces.parser import RstParser
-from gen_sdk_tooling.domain.ir.endpoint import Endpoint
-from gen_sdk_tooling.domain.ir.enums import HttpMethod, URI_RE
+from tools.domain.interfaces.parser import RstParser
+from tools.domain.ir.endpoint import Endpoint
+from tools.domain.ir.enums import URI_RE, HttpMethod
 
 
 class DocutilsParser(RstParser):
     def parse_endpoint(self, content: str, path: str) -> Endpoint:
-        doctree = publish_doctree(
-            content,
-            settings_overrides={'report_level': 5}
-        )
+        doctree = publish_doctree(content, settings_overrides={"report_level": 5})
 
         match = URI_RE.search(content)
         method = HttpMethod(match.group(1).upper()) if match else HttpMethod.GET
@@ -25,10 +22,7 @@ class DocutilsParser(RstParser):
                 break
 
         endpoint = Endpoint(
-            title=title,
-            method=method,
-            path=uri_path,
-            description=f"Source: {path}"
+            title=title, method=method, path=uri_path, description=f"Source: {path}"
         )
         # endpoint.path_parameters = self._parse_table(doctree, "Path Parameters")
         # endpoint.request_body = self._parse_table(doctree, "Request Parameters")

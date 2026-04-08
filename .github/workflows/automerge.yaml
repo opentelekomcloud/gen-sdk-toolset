@@ -1,0 +1,47 @@
+name: automerge
+
+on:
+  pull_request_target:
+    types:
+      - labeled
+      - unlabeled
+      - synchronize
+      - opened
+      - edited
+      - ready_for_review
+      - reopened
+  workflow_dispatch:
+    inputs:
+      pull-request:
+        description: Pull request number
+        required: false
+      review:
+        description: Review ID
+        required: false
+
+permissions:
+  pull-requests: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'gate')
+    steps:
+      - name: Create GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_KEY }}
+
+      - id: automerge
+        name: automerge
+        uses: reitermarkus/automerge@v2
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          merge-method: squash
+          required-labels: gate
+          pull-request: ${{ github.event.inputs.pull-request }}
+          review: ${{ github.event.inputs.review }}

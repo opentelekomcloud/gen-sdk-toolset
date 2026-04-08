@@ -8,8 +8,9 @@ class GenSdkError(Exception):
 class RepositoryError(GenSdkError):
     """Error accessing a documentation repository."""
 
-    def __init__(self, message: str, repo: str | None = None,
-                 cause: Exception | None = None):
+    def __init__(
+        self, message: str, repo: str | None = None, cause: Exception | None = None
+    ):
         super().__init__(message)
         self.repo = repo
         self.cause = cause

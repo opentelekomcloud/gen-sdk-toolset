@@ -18,8 +18,10 @@ URI_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+
 class ParameterType(str, Enum):
     """Types found in OTC docs parameter tables."""
+
     STRING = "String"
     INTEGER = "Integer"
     LONG = "Long"
