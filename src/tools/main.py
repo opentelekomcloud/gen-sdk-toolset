@@ -19,7 +19,7 @@ def main():
     settings = get_settings()
     setup_logging(settings.log_level)
 
-    logger = logging.getLogger("gen_sdk_tooling")
+    logger = logging.getLogger("gen-sdk-toolset")
     logger.info("Starting tool...")
 
     github_provider = GitHubDocProvider(
