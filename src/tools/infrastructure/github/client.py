@@ -102,14 +102,14 @@ class GitHubDocProvider(DocProvider):
             and item["path"].endswith(".rst")
         ]
 
-    def fetch_content(self, repo: str, path: str) -> str:
+    def fetch_content(self, repo: str, path: str, branch: str) -> str:
         url = f"{self.api_url}/repos/{repo}/contents/{path}"
         try:
-            resp = self.session.get(url, timeout=30)
+            resp = self.session.get(url, params={"ref": branch}, timeout=30)
             self._raise_for_status(resp, repo=repo, resource=path)
         except requests.RequestException as e:
             raise RepositoryError(
-                f"Failed to fetch {path} from {repo}: {e}",
+                f"Failed to fetch {path} from {repo}@{branch}: {e}",
                 repo=repo,
                 cause=e,
             ) from e

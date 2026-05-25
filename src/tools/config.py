@@ -1,41 +1,118 @@
-"""Application settings with validation."""
+"""Application settings with validation.
 
-from functools import lru_cache
+Configuration sources, in order of precedence (highest first):
+  1. Constructor kwargs (programmatic override)
+  2. Environment variables (e.g. ``GITHUB_TOKEN`` or nested ``GITHUB__ORG``)
+  3. ``.env`` file (env-var format)
+  4. ``scan-config.toml`` (or path provided to :func:`load_settings`)
+  5. Built-in defaults in this module
 
-from pydantic import Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+The GitHub token is intentionally kept *outside* the TOML config so it never
+gets committed accidentally — it must be supplied via the ``GITHUB_TOKEN``
+environment variable (typically through ``.env``).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from pydantic import BaseModel, Field, SecretStr
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    TomlConfigSettingsSource,
+)
+
+DEFAULT_CONFIG_PATH = "scan-config.toml"
+
+
+class GitHubSection(BaseModel):
+    org: str = "opentelekomcloud-docs"
+    branch: str = "main"
+    api_url: str = "https://api.github.com"
+
+
+class ScannerSection(BaseModel):
+    rst_source_prefix: str = "api-ref/source/"
+    api_ref_path: str = "api-ref/source"
+    excluded_segments: list[str] = Field(
+        default_factory=lambda: ["out-of-date_apis"],
+        description="Path segments that exclude files from processing.",
+    )
+    max_workers: int = Field(default=8, ge=1, le=64)
+
+
+class OutputSection(BaseModel):
+    path: str = "scan-output.json"
+    indent: int = 2
+
+
+class LoggingSection(BaseModel):
+    level: str = "INFO"
 
 
 class Settings(BaseSettings):
-    """Scanner configuration."""
-
-    log_level: str = Field(
-        default="INFO", description="Logging level (DEBUG, INFO, etc.)"
+    github_token: SecretStr = Field(
+        default=...,
+        description=(
+            "GitHub personal access token. Must come from env or .env — "
+            "never from the TOML config file."
+        ),
     )
+    github: GitHubSection = Field(default_factory=GitHubSection)
+    scanner: ScannerSection = Field(default_factory=ScannerSection)
+    output: OutputSection = Field(default_factory=OutputSection)
+    logging: LoggingSection = Field(default_factory=LoggingSection)
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         env_ignore_empty=True,
+        env_nested_delimiter="__",  # GITHUB__ORG=... overrides github.org
+        toml_file=DEFAULT_CONFIG_PATH,
         extra="ignore",
     )
 
-    # === GitHub ===
-    github_token: SecretStr = Field(
-        default=...,
-        description="GitHub personal access token for API rate limits",
-    )
-    github_api_url: str = Field(default="https://api.github.com")
-    github_default_org: str = Field(default="opentelekomcloud-docs")
-    github_default_branch: str = Field(default="main")
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # Order = precedence (earlier wins). env > .env > TOML > defaults.
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            TomlConfigSettingsSource(settings_cls),
+            file_secret_settings,
+        )
 
-    # === Scanner ===
-    rst_source_prefix: str = Field(
-        default="api-ref/source/",
-        description="Path prefix for RST files in docs repos",
-    )
 
+def load_settings(config_path: str | Path | None = None) -> Settings:
+    """Load :class:`Settings`, optionally from a custom TOML config path.
 
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
+    If ``config_path`` is ``None``, uses :data:`DEFAULT_CONFIG_PATH`
+    (``scan-config.toml`` in CWD). A missing default file is tolerated —
+    defaults + env are still applied. An explicitly-provided path that
+    doesn't exist raises :class:`FileNotFoundError`.
+    """
+    if config_path is None:
+        return Settings()
+
+    path = Path(config_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Config file not found: {path}")
+
+    # Subclass-with-overridden-config is the recommended pattern for changing
+    # toml_file at construction time (it is a class-level option in pydantic-settings).
+    class _ScopedSettings(Settings):
+        model_config = SettingsConfigDict(
+            **{**Settings.model_config, "toml_file": str(path)}
+        )
+
+    return _ScopedSettings()

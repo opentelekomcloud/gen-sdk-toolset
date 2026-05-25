@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 
 from tools.domain.exceptions import RepositoryError
@@ -9,15 +10,9 @@ from tools.domain.report import DocumentScanResult, OrgScanResult, RepoScanResul
 
 logger = logging.getLogger(__name__)
 
-# Default location of the API reference docs inside an OTC docs repo.
-API_REF_PATH = "api-ref/source"
-
-# Path segments whose presence in a file path marks the file as
-# excluded from processing (e.g. deprecated API docs).
-# Extend this set if new conventions are discovered (e.g. "deprecated").
-DEFAULT_EXCLUDED_SEGMENTS: frozenset[str] = frozenset({"out-of-date_apis"})
-
-# Bucket key used for documents whose api_version cannot be determined.
+# Bucket key used in `documents_by_version` for documents whose api_version
+# could not be determined. This is an internal output label, not configuration —
+# downstream consumers rely on the exact string to find unversioned docs.
 UNVERSIONED_KEY = "unversioned"
 
 
@@ -37,16 +32,16 @@ class ScannerService:
         doc_provider: DocProvider,
         parser: RstParser,
         max_workers: int = 8,
-        excluded_segments: set[str] | frozenset[str] | None = None,
+        excluded_segments: Iterable[str] = (),
     ):
         self.doc_provider = doc_provider
         self.parser = parser
         self.max_workers = max_workers
-        self.excluded_segments = (
-            frozenset(excluded_segments)
-            if excluded_segments is not None
-            else DEFAULT_EXCLUDED_SEGMENTS
-        )
+        # Always wrap in a fresh frozenset so each instance owns its own object.
+        # The empty default means "no exclusion" — OTC-specific values are
+        # supplied by the application (see [scanner].excluded_segments in
+        # scan-config.toml).
+        self.excluded_segments = frozenset(excluded_segments)
 
     # ------------------------------------------------------------------ #
     # Org-level scan
@@ -54,10 +49,16 @@ class ScannerService:
     def scan_organization(
         self,
         org: str,
+        api_ref_path: str,
         branch: str = "main",
-        api_ref_path: str = API_REF_PATH,
     ) -> OrgScanResult:
-        """Scan every eligible repo in `org` and aggregate per-document results."""
+        """Scan every eligible repo in `org` and aggregate per-document results.
+
+        `api_ref_path` is the directory whose presence makes a repo eligible
+        for scanning (e.g. ``"api-ref/source"`` for OTC docs). It is required
+        because the right value is application-specific; the scanner library
+        does not assume one.
+        """
         logger.info("Scanning organization %s (branch=%s)", org, branch)
         repos = self.doc_provider.list_repos(org)
         result = OrgScanResult(org=org, branch=branch, total_repos=len(repos))
@@ -121,7 +122,10 @@ class ScannerService:
         # Fetch + parse files concurrently to keep org-level scans tractable.
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             doc_results = list(
-                pool.map(lambda p: self._process_document(repo, p), included_paths)
+                pool.map(
+                    lambda p: self._process_document(repo, p, branch),
+                    included_paths,
+                )
             )
 
         for doc in doc_results:
@@ -142,10 +146,12 @@ class ScannerService:
     # ------------------------------------------------------------------ #
     # Per-document
     # ------------------------------------------------------------------ #
-    def _process_document(self, repo: str, path: str) -> DocumentScanResult | None:
+    def _process_document(
+        self, repo: str, path: str, branch: str
+    ) -> DocumentScanResult | None:
         """Fetch + classify + parse a document. Returns None for non-API files."""
         try:
-            content = self.doc_provider.fetch_content(repo, path)
+            content = self.doc_provider.fetch_content(repo, path, branch)
         except Exception as e:
             logger.warning("Fetch failed for %s/%s: %s", repo, path, e)
             return DocumentScanResult(

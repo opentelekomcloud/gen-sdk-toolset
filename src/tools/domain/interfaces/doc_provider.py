@@ -14,6 +14,6 @@ class DocProvider(Protocol):
         """Return paths to RST files in the repo (filtered by configured prefix)."""
         ...
 
-    def fetch_content(self, repo: str, path: str) -> str:
-        """Return the textual content of a file in the repository."""
+    def fetch_content(self, repo: str, path: str, branch: str) -> str:
+        """Return the textual content of a file in the repo at the given branch."""
         ...
