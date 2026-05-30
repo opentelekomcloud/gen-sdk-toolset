@@ -103,19 +103,41 @@ gen-sdk-scan -v
 
 ### Output
 
-The scan produces a single JSON file containing:
+The scan produces a single JSON file structured as a *quality report*:
 
-- per-document parse results (`document`, `method`, `uri`, `title`, `api_version`,
-  parsed/failed status, error if failed)
-- per-repo rollups (`total_documents`, `parsed_count`, `failed_count`,
-  `documents_by_version`)
-- an org-level `summary` block: total / eligible / skipped repo counts,
-  total / parsed / failed document counts, parsed-by-version distribution
+- **Per-document results** — for every endpoint doc encountered:
+  - `document`, `repo`, `service`, `method`, `uri`, `title`, `api_version`
+  - `failure_reason: Issue | null` — populated for gating failures (fetch
+    failed, no URI line found, unsupported doc style)
+  - `sections: dict[str, SectionResult]` — keyed by `path_params`,
+    `query_params`, `headers`, `body`, `response`, `example_request`,
+    `example_response`, `nested_objects`. Each section carries:
+    - `status` — `ok` / `partial` / `failed` / `missing` / `skipped`
+    - `issues` — structured `[{code, location, details}]` entries
+    - `parameters` — extracted `Parameter` objects
+    - `examples` — extracted `ExampleBlock` objects (raw text +
+      best-effort JSON parse)
+    - field-level metrics: `fields_total`, `fields_recognized`,
+      `fields_unknown_type`, `fields_failed`
+  - Computed fields: `overall_status` (`ok` / `partial` / `failed` /
+    `unsupported`), `completeness` (0.0–1.0), `all_issues` (flat list
+    aggregating gating + per-section issues)
+
+- **Per-repo rollups** (`RepoScanResult`):
+  - `documents`, `non_endpoint_documents`, `documents_by_version`,
+    `total_documents`, `status_counts`
+
+- **Org-level `quality_summary`** — the headline numbers:
+  - `by_overall_status` — `{"ok": N, "partial": N, "failed": N, "unsupported": N}`
+  - `by_section_status` — distribution per section
+  - `top_issues` — most frequent issue codes across the org
+  - plus `report_schema_version: 1`
 
 ## Development
 
 ```bash
-pytest                  # tests (incremental — currently bare framework)
+pytest                  # 66 tests covering style/section classifiers,
+                        # parser end-to-end on real OTC fixtures, scanner
 ruff check src/         # lint
 ruff format src/        # auto-format
 ```

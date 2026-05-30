@@ -158,22 +158,23 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("Scan aborted: %s", e)
         return EXIT_RUNTIME_ERROR
 
-    # Org-wide rollup of parsed documents by API version.
+    # Org-wide rollup of parsed/partial documents by API version.
     by_version: dict[str, int] = {}
     for repo in result.repos:
         for version, docs in repo.documents_by_version.items():
             by_version[version] = by_version.get(version, 0) + len(docs)
     by_version = dict(sorted(by_version.items(), key=lambda kv: kv[1], reverse=True))
 
-    # JSON-serialisable payload with a summary block at the top level.
+    # JSON-serialisable payload. The model already carries
+    # `quality_summary` (computed); add `by_version` next to it for
+    # at-a-glance reading.
     payload = result.model_dump(mode="json")
     payload["summary"] = {
         "total_repos": result.total_repos,
         "eligible_repos": result.eligible_repos,
         "skipped_repos": len(result.skipped_repos),
         "total_documents": result.total_documents,
-        "parsed": result.total_parsed,
-        "failed": result.total_failed,
+        "by_overall_status": result.quality_summary.by_overall_status,
         "by_version": by_version,
     }
 
@@ -189,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json_text)
 
     # Human-readable summary on stderr.
+    status_counts = result.quality_summary.by_overall_status
     logger.info("=" * 60)
     logger.info("Scan summary for org '%s'", result.org)
     logger.info("  Total repos discovered : %d", result.total_repos)
@@ -197,12 +199,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     logger.info("  Skipped repos          : %d", len(result.skipped_repos))
     logger.info("  Total API documents    : %d", result.total_documents)
-    logger.info("  Successfully parsed    : %d", result.total_parsed)
-    logger.info("  Failed to parse        : %d", result.total_failed)
+    for status_name in ("ok", "partial", "failed", "unsupported"):
+        if status_name in status_counts:
+            logger.info(
+                "  %-22s : %d",
+                status_name,
+                status_counts[status_name],
+            )
     if by_version:
         logger.info("  Parsed by version      :")
         for version, count in by_version.items():
             logger.info("    - %-12s : %d", version, count)
+    top_issues = result.quality_summary.top_issues[:5]
+    if top_issues:
+        logger.info("  Top issues             :")
+        for entry in top_issues:
+            logger.info("    - %-26s : %d", entry["code"], entry["count"])
     logger.info("=" * 60)
 
     return EXIT_OK
