@@ -16,6 +16,15 @@ from __future__ import annotations
 import re
 from enum import Enum
 
+from tools.domain.report import (
+    NESTED_STRUCT,
+    SECTION_BODY,
+    SECTION_HEADERS,
+    SECTION_PATH_PARAMS,
+    SECTION_QUERY_PARAMS,
+    SECTION_RESPONSE,
+)
+
 
 class SectionKind(str, Enum):
     """High-level role of a top-level section heading inside an RST doc."""
@@ -67,33 +76,47 @@ def classify_section_title(title: str) -> SectionKind:
 # --------------------------------------------------------------------------- #
 # Table title → canonical section key (used as DocumentScanResult.sections key)
 # --------------------------------------------------------------------------- #
+# Internal marker for status-code tables: recognised so we don't misfile
+# them, but they are not parameter tables, so the classifier returns None.
+_STATUS_CODES = "status_codes"
+
 # Order matters: more specific patterns first. The classifier walks the
 # list and returns the first match.
 _TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # Query parameters — must come before the generic path/URI catches so
+    # "Query Parameters" tables don't fall through into path_param.
+    (re.compile(r"\bquery\s+param", re.IGNORECASE), SECTION_QUERY_PARAMS),
+    (
+        re.compile(r"\bparameters?\s+in\s+the\s+query", re.IGNORECASE),
+        SECTION_QUERY_PARAMS,
+    ),
     # URI / path
-    (re.compile(r"\bpath\s+param", re.IGNORECASE), "path_params"),
-    (re.compile(r"\buri\s+param", re.IGNORECASE), "path_params"),
+    (re.compile(r"\bpath\s+param", re.IGNORECASE), SECTION_PATH_PARAMS),
+    (re.compile(r"\buri\s+param", re.IGNORECASE), SECTION_PATH_PARAMS),
     # Request header
-    (re.compile(r"\brequest\s+header", re.IGNORECASE), "headers"),
+    (re.compile(r"\brequest\s+header", re.IGNORECASE), SECTION_HEADERS),
     (
         re.compile(r"\bparameters?\s+in\s+the\s+request\s+header", re.IGNORECASE),
-        "headers",
+        SECTION_HEADERS,
     ),
-    (re.compile(r"\bheader\s+param", re.IGNORECASE), "headers"),
+    (re.compile(r"\bheader\s+param", re.IGNORECASE), SECTION_HEADERS),
     # Request body (must come after header patterns since "request" is
     # ambiguous on its own).
-    (re.compile(r"\brequest\s+body", re.IGNORECASE), "body"),
-    (re.compile(r"\bparameters?\s+in\s+the\s+request\s+body", re.IGNORECASE), "body"),
+    (re.compile(r"\brequest\s+body", re.IGNORECASE), SECTION_BODY),
+    (
+        re.compile(r"\bparameters?\s+in\s+the\s+request\s+body", re.IGNORECASE),
+        SECTION_BODY,
+    ),
     # Response body
-    (re.compile(r"\bresponse\s+body", re.IGNORECASE), "response"),
+    (re.compile(r"\bresponse\s+body", re.IGNORECASE), SECTION_RESPONSE),
     (
         re.compile(r"\bparameters?\s+in\s+the\s+response\s+body", re.IGNORECASE),
-        "response",
+        SECTION_RESPONSE,
     ),
-    (re.compile(r"\bresponse\s+param", re.IGNORECASE), "response"),
+    (re.compile(r"\bresponse\s+param", re.IGNORECASE), SECTION_RESPONSE),
     # Generic catches go last
-    (re.compile(r"\brequest\s+param", re.IGNORECASE), "body"),
-    (re.compile(r"\bstatus\s+code", re.IGNORECASE), "status_codes"),
+    (re.compile(r"\brequest\s+param", re.IGNORECASE), SECTION_BODY),
+    (re.compile(r"\bstatus\s+code", re.IGNORECASE), _STATUS_CODES),
 ]
 
 
@@ -103,10 +126,10 @@ def classify_table_title(title: str, *, in_section: SectionKind) -> str | None:
     Returns one of the strings in
     :data:`tools.domain.report.SECTION_NAMES` when the table is a
     primary section table (e.g. path / body / response). Returns
-    ``"nested_struct"`` when the title looks like a referenced object
-    definition (e.g. ``CreateFirewallOption`` or ``metadata``) — that's
-    a #6 concern, but classified here for completeness. Returns
-    ``None`` for non-parameter tables (status codes, etc.).
+    :data:`tools.domain.report.NESTED_STRUCT` when the title looks like a
+    referenced object definition (e.g. ``CreateFirewallOption`` or
+    ``metadata``).
+    Returns ``None`` for non-parameter tables (status codes, etc.).
 
     `in_section` provides context: a table in the URI section with a
     generic title defaults to path_params; a table in Response with a
@@ -114,24 +137,30 @@ def classify_table_title(title: str, *, in_section: SectionKind) -> str | None:
     """
     for pattern, key in _TABLE_TITLE_PATTERNS:
         if pattern.search(title):
-            if key == "status_codes":
+            if key == _STATUS_CODES:
                 return None  # status code tables are not parameter tables
             return key
 
-    # No pattern matched — fall back on enclosing section. A "Parameter
-    # description" table directly under URI is path_params; under Request
-    # it's request body; under Response it's response body.
+    # No pattern matched. A generic "Query Parameters"-ish title that
+    # somehow reached here must never default to path_params (review
+    # item 5); send it to query_params regardless of section.
+    if re.search(r"\bquery\b", title, re.IGNORECASE):
+        return SECTION_QUERY_PARAMS
+
+    # Fall back on enclosing section. A "Parameter description" table
+    # directly under URI is path_params; under Request it's request body;
+    # under Response it's response body.
     fallback: dict[SectionKind, str] = {
-        SectionKind.URI: "path_params",
-        SectionKind.REQUEST: "body",
-        SectionKind.RESPONSE: "response",
+        SectionKind.URI: SECTION_PATH_PARAMS,
+        SectionKind.REQUEST: SECTION_BODY,
+        SectionKind.RESPONSE: SECTION_RESPONSE,
     }
     if in_section in fallback:
         # But only if the title looks "parameter-ish" — bare object
         # names like "CreateFirewallOption" are nested struct definitions.
         if _looks_like_parameter_table(title):
             return fallback[in_section]
-        return "nested_struct"
+        return NESTED_STRUCT
 
     return None
 

@@ -34,13 +34,18 @@ class GitHubSection(BaseModel):
 
 
 class ScannerSection(BaseModel):
-    rst_source_prefix: str = "api-ref/source/"
     api_ref_path: str = "api-ref/source"
     excluded_segments: list[str] = Field(
         default_factory=lambda: ["out-of-date_apis"],
         description="Path segments that exclude files from processing.",
     )
+    # Single source of the worker default; ScannerService requires the value,
     max_workers: int = Field(default=8, ge=1, le=64)
+
+    @property
+    def rst_source_prefix(self) -> str:
+        """Path prefix for RST endpoint files."""
+        return self.api_ref_path.rstrip("/") + "/"
 
 
 class OutputSection(BaseModel):

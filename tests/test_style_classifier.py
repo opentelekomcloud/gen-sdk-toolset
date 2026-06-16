@@ -1,6 +1,7 @@
 """Tests for the doc-style classifier."""
 
-from tools.infrastructure.parsers.style import DocStyle, classify_doc_style
+from tools.infrastructure.parsers import classify_doc_style
+from tools.infrastructure.parsers.docutils.style import DocStyle
 
 
 def test_cce_is_style_a(cce_doc: str) -> None:

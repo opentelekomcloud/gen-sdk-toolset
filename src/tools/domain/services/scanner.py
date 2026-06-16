@@ -1,25 +1,22 @@
 import logging
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 
 from tools.domain.exceptions import RepositoryError
 from tools.domain.interfaces.doc_provider import DocProvider
-from tools.domain.interfaces.parser import RstParser
+from tools.domain.interfaces.parser import ParseFailure, RstParser
 from tools.domain.report import (
+    UNVERSIONED_KEY,
+    DocStyle,
     DocumentScanResult,
     Issue,
     IssueCode,
     OrgScanResult,
-    ParseFailure,
+    OverallStatus,
     RepoScanResult,
 )
-from tools.infrastructure.parsers.style import DocStyle, classify_doc_style
 
 logger = logging.getLogger(__name__)
-
-# Bucket key used in `documents_by_version` for documents whose api_version
-# could not be determined. Downstream consumers rely on this exact string.
-UNVERSIONED_KEY = "unversioned"
 
 
 class ScannerService:
@@ -35,11 +32,13 @@ class ScannerService:
         self,
         doc_provider: DocProvider,
         parser: RstParser,
-        max_workers: int = 8,
+        style_classifier: Callable[[str], DocStyle],
+        max_workers: int,
         excluded_segments: Iterable[str] = (),
     ):
         self.doc_provider = doc_provider
         self.parser = parser
+        self.style_classifier = style_classifier
         self.max_workers = max_workers
         # Always wrap in a fresh frozenset so each instance owns its own
         # object. Empty default = no exclusion (OTC-specific values come
@@ -101,19 +100,29 @@ class ScannerService:
         result = RepoScanResult(repo=repo, branch=branch, has_api_ref=True)
 
         try:
-            paths = self.doc_provider.list_files(repo, branch)
+            listing = self.doc_provider.list_files(repo, branch)
         except RepositoryError as e:
             logger.error("Failed to list files for %s: %s", repo, e)
             result.error = str(e)
             return result
 
-        # Drop files under excluded directories before any fetch happens.
-        included_paths = [p for p in paths if not self._is_excluded(p)]
-        excluded_count = len(paths) - len(included_paths)
-        if excluded_count:
+        # A truncated tree means we only saw part of the repo — record it so
+        # the result isn't mistaken for an authoritative clean scan (item 16).
+        if listing.truncated:
+            result.incomplete = True
+            result.incomplete_reason = (
+                listing.truncated_reason or "file tree truncated by provider"
+            )
+            logger.warning("File listing for %s is incomplete (truncated)", repo)
+
+        # Drop files under excluded directories before any fetch happens, but
+        # record which ones so the skip is visible in the report (item 17).
+        included_paths = [p for p in listing.paths if not self._is_excluded(p)]
+        result.excluded_documents = [p for p in listing.paths if self._is_excluded(p)]
+        if result.excluded_documents:
             logger.info(
                 "Skipped %d excluded doc(s) in %s (segments=%s)",
-                excluded_count,
+                len(result.excluded_documents),
                 repo,
                 sorted(self.excluded_segments),
             )
@@ -136,7 +145,7 @@ class ScannerService:
                 continue
 
             result.documents.append(outcome)
-            if outcome.overall_status in ("ok", "partial"):
+            if outcome.overall_status in (OverallStatus.OK, OverallStatus.PARTIAL):
                 key = outcome.api_version or UNVERSIONED_KEY
                 result.documents_by_version.setdefault(key, []).append(outcome)
 
@@ -171,7 +180,7 @@ class ScannerService:
                 ),
             )
 
-        style = classify_doc_style(content)
+        style = self.style_classifier(content)
 
         if style is DocStyle.NOT_ENDPOINT:
             return None
@@ -202,7 +211,7 @@ class ScannerService:
                 document=path,
                 repo=repo,
                 failure_reason=Issue(
-                    code=IssueCode.NO_URI_MATCH,
+                    code=IssueCode.PARSER_ERROR,
                     details=f"parser raised: {e}",
                 ),
             )

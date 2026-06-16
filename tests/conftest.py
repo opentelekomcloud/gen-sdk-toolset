@@ -42,3 +42,8 @@ def iam_doc() -> str:
 @pytest.fixture
 def obs_doc() -> str:
     return load_fixture("style_b_obs.rst")
+
+
+@pytest.fixture
+def elb_list_doc() -> str:
+    return load_fixture("style_a_elb_list_query.rst")

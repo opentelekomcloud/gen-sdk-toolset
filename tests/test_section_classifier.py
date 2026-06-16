@@ -2,7 +2,7 @@
 
 import pytest
 
-from tools.infrastructure.parsers.section import (
+from tools.infrastructure.parsers.docutils.section import (
     SectionKind,
     classify_section_title,
     classify_table_title,
@@ -126,4 +126,33 @@ def test_status_code_returns_none() -> None:
     """Status-code tables aren't parameter tables — caller should skip them."""
     assert (
         classify_table_title("Status code", in_section=SectionKind.STATUS_CODES) is None
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Query parameters
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Query Parameters",
+        "**Table 2** Query Parameters",
+        "Query parameter",
+        "Parameters in the query",
+    ],
+)
+def test_query_parameters_title(title: str) -> None:
+    assert classify_table_title(title, in_section=SectionKind.URI) == "query_params"
+
+
+def test_query_beats_path_under_uri() -> None:
+    """A query table under URI classifies as query_params, never path_params —
+    even though the URI-section fallback is path_params."""
+    assert (
+        classify_table_title("Query Parameters", in_section=SectionKind.URI)
+        == "query_params"
+    )
+    assert (
+        classify_table_title("Path Parameters", in_section=SectionKind.URI)
+        == "path_params"
     )

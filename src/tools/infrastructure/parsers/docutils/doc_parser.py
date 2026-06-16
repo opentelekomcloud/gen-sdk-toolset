@@ -26,21 +26,26 @@ from docutils import nodes
 from docutils.core import publish_doctree
 from docutils.parsers.rst import roles
 
-from tools.domain.interfaces.parser import RstParser
+from tools.domain.interfaces.parser import ParsedDocument, ParseFailure, RstParser
 from tools.domain.ir import HttpMethod
-from tools.domain.ir.enums import URI_RE
 from tools.domain.report import (
+    NESTED_STRUCT,
+    SECTION_EXAMPLE_REQUEST,
+    SECTION_EXAMPLE_RESPONSE,
+    SECTION_NESTED_OBJECTS,
     Issue,
     IssueCode,
-    ParsedDocument,
-    ParseFailure,
     SectionResult,
     SectionStatus,
 )
 
 from .example import extract_examples
+from .patterns import URI_RE
 from .section import SectionKind, classify_section_title, classify_table_title
 from .table import extract_parameter_table
+
+# Max length of free-text `details` we attach to diagnostic issues.
+_DETAILS_MAX = 80
 
 
 # OTC docs use Sphinx-specific roles like ``:ref:`Label <anchor>``` that
@@ -54,8 +59,18 @@ def _passthrough_role(name, rawtext, text, lineno, inliner, options=None, conten
     return [nodes.Text(label)], []
 
 
-for _role_name in ("ref", "doc", "term"):
-    roles.register_local_role(_role_name, _passthrough_role)
+_roles_registered = False
+
+
+def _ensure_roles() -> None:
+    """Register the passthrough roles once, idempotently."""
+    global _roles_registered
+    if _roles_registered:
+        return
+    for role_name in ("ref", "doc", "term"):
+        roles.register_local_role(role_name, _passthrough_role)
+    _roles_registered = True
+
 
 # Match "vN" or "vN.M" segments anywhere in a URI or file path. Used to
 # infer api_version when the doc itself doesn't declare one.
@@ -71,6 +86,9 @@ class DocutilsParser(RstParser):
         "report_level": 5,  # suppress everything but SEVERE
         "warning_stream": io.StringIO(),
     }
+
+    def __init__(self) -> None:
+        _ensure_roles()
 
     def parse(self, content: str, path: str) -> ParsedDocument:
         doctree = publish_doctree(
@@ -113,13 +131,17 @@ class DocutilsParser(RstParser):
 
     @staticmethod
     def _extract_api_version(uri: str, source_path: str) -> str | None:
-        """Best-effort: regex on the URI first, then the source file path."""
+        """Best-effort: regex on the URI first, then the source file path.
+
+        The captured version is lower-cased so ``V1.0`` and ``v1.0`` land
+        in the same bucket.
+        """
         match = _VERSION_RE.search(uri)
         if match:
-            return match.group(1)
+            return match.group(1).lower()
         match = _VERSION_RE.search("/" + source_path)
         if match:
-            return match.group(1)
+            return match.group(1).lower()
         return None
 
     # ------------------------------------------------------------------ #
@@ -166,11 +188,27 @@ class DocutilsParser(RstParser):
         for table in section_node.findall(nodes.table):
             table_title = _table_title(table)
             target_key = classify_table_title(table_title, in_section=kind)
-            if target_key is None or target_key == "nested_struct":
-                # Status-code tables or nested-struct tables — out of scope
-                # for this PR (#6 will handle nested structs).
+            if target_key is None:
+                # Status-code / non-parameter table — nothing to record.
+                continue
+            if target_key == NESTED_STRUCT:
+                # Until resolving the nested structures, record the
+                # deferral so the doc reports `partial`, not a false `ok`
+                self._record_skipped_nested(results, table_title)
                 continue
             self._merge_table_into_section(table, target_key, results)
+
+    @staticmethod
+    def _record_skipped_nested(
+        results: dict[str, SectionResult], table_title: str
+    ) -> None:
+        section = results.setdefault(
+            SECTION_NESTED_OBJECTS, SectionResult(status=SectionStatus.SKIPPED)
+        )
+        location = f"table '{table_title}'" if table_title else "nested struct table"
+        section.issues.append(
+            Issue(code=IssueCode.NESTED_TABLE_SKIPPED, location=location)
+        )
 
     def _merge_table_into_section(
         self,
@@ -184,7 +222,7 @@ class DocutilsParser(RstParser):
         existing = results.get(key)
         if existing is None:
             results[key] = SectionResult(
-                status=_status_from_metrics(extraction),
+                status=_status_from_counters(extraction),
                 issues=list(extraction.issues),
                 parameters=list(extraction.parameters),
                 fields_total=extraction.fields_total,
@@ -203,7 +241,7 @@ class DocutilsParser(RstParser):
         existing.fields_recognized += extraction.fields_recognized
         existing.fields_unknown_type += extraction.fields_unknown_type
         existing.fields_failed += extraction.fields_failed
-        existing.status = _status_from_section(existing)
+        existing.status = _status_from_counters(existing)
 
     # ---- example sections ------------------------------------------- #
     def _extract_example_section(
@@ -215,11 +253,12 @@ class DocutilsParser(RstParser):
         blocks = extract_examples(section_node)
 
         if kind is SectionKind.EXAMPLE_REQUEST:
-            _set_example_section(results, "example_request", blocks)
+            _set_example_section(results, SECTION_EXAMPLE_REQUEST, blocks)
         elif kind is SectionKind.EXAMPLE_RESPONSE:
-            _set_example_section(results, "example_response", blocks)
+            _set_example_section(results, SECTION_EXAMPLE_RESPONSE, blocks)
         else:  # EXAMPLE_COMBINED — split by label
             req, resp = [], []
+            guessed = False
             for b in blocks:
                 tag = (b.label or "").lower()
                 if "response" in tag:
@@ -230,10 +269,24 @@ class DocutilsParser(RstParser):
                     # No discriminating label — drop both into request as
                     # a fallback (most combined sections start with one).
                     req.append(b)
+                    guessed = True
+            extra = (
+                [
+                    Issue(
+                        code=IssueCode.EXAMPLE_UNLABELED,
+                        location="combined example section",
+                        details="request/response split guessed (no labels)",
+                    )
+                ]
+                if guessed
+                else None
+            )
             if req:
-                _set_example_section(results, "example_request", req)
+                _set_example_section(
+                    results, SECTION_EXAMPLE_REQUEST, req, extra_issues=extra
+                )
             if resp:
-                _set_example_section(results, "example_response", resp)
+                _set_example_section(results, SECTION_EXAMPLE_RESPONSE, resp)
 
 
 # --------------------------------------------------------------------------- #
@@ -245,46 +298,65 @@ def _table_title(table: nodes.table) -> str:
     return title_node.astext().strip() if title_node else ""
 
 
-def _status_from_metrics(extraction) -> SectionStatus:
-    """Map TableExtraction metrics to a SectionStatus."""
-    if extraction.fields_total == 0:
+def _status_from_counters(counters) -> SectionStatus:
+    """Map field-level counters to a SectionStatus.
+
+    Works on anything carrying ``fields_total`` / ``fields_failed`` /
+    ``fields_unknown_type`` — both :class:`TableExtraction` and
+    :class:`SectionResult` qualify, so one rule covers create and merge.
+    """
+    if counters.fields_total == 0:
         # The table existed but yielded no rows — structurally broken.
         return SectionStatus.FAILED
-    if extraction.fields_failed or extraction.fields_unknown_type:
+    if counters.fields_failed or counters.fields_unknown_type:
         return SectionStatus.PARTIAL
     return SectionStatus.OK
 
 
-def _status_from_section(section: SectionResult) -> SectionStatus:
-    """Recompute status after merging additional rows into a SectionResult."""
-    if section.fields_total == 0:
-        return SectionStatus.FAILED
-    if section.fields_failed or section.fields_unknown_type:
-        return SectionStatus.PARTIAL
-    return SectionStatus.OK
+def _example_json_issues(blocks) -> list[Issue]:
+    """One EXAMPLE_INVALID_JSON issue per block that didn't parse as JSON."""
+    return [
+        Issue(
+            code=IssueCode.EXAMPLE_INVALID_JSON,
+            location=f"example {i}",
+            details=(b.label or "")[:_DETAILS_MAX] or None,
+        )
+        for i, b in enumerate(blocks, start=1)
+        if b.parsed is None
+    ]
 
 
 def _set_example_section(
     results: dict[str, SectionResult],
     key: str,
     blocks,
+    *,
+    extra_issues: list[Issue] | None = None,
 ) -> None:
-    """Create or extend an example_* section."""
+    """Create or extend an example_* section.
+
+    Invalid-JSON issues are computed on *both* the create and the extend
+    path. ``extra_issues`` (e.g. EXAMPLE_UNLABELED) are informational
+    and do not degrade the section by themselves.
+    """
     if not blocks:
         return
-    if key in results:
-        results[key].examples.extend(blocks)
+
+    json_issues = _example_json_issues(blocks)
+    extra = extra_issues or []
+
+    existing = results.get(key)
+    if existing is not None:
+        existing.examples.extend(blocks)
+        existing.issues.extend(json_issues)
+        existing.issues.extend(extra)
+        if any(i.code is IssueCode.EXAMPLE_INVALID_JSON for i in existing.issues):
+            existing.status = SectionStatus.PARTIAL
         return
 
-    # Note any JSON-parse failures as warnings (not section failures).
-    issues = [
-        Issue(
-            code=IssueCode.EXAMPLE_INVALID_JSON,
-            location=f"example {i}",
-            details=(b.label or "")[:80] or None,
-        )
-        for i, b in enumerate(blocks, start=1)
-        if b.parsed is None
-    ]
-    status = SectionStatus.PARTIAL if issues else SectionStatus.OK
-    results[key] = SectionResult(status=status, issues=issues, examples=list(blocks))
+    status = SectionStatus.PARTIAL if json_issues else SectionStatus.OK
+    results[key] = SectionResult(
+        status=status,
+        issues=[*json_issues, *extra],
+        examples=list(blocks),
+    )

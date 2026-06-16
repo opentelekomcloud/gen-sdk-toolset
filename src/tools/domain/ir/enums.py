@@ -1,4 +1,3 @@
-import re
 from enum import Enum
 
 
@@ -10,13 +9,6 @@ class HttpMethod(str, Enum):
     DELETE = "DELETE"
     HEAD = "HEAD"
     OPTIONS = "OPTIONS"
-
-
-_METHODS = "|".join(m.value for m in HttpMethod)
-URI_RE = re.compile(
-    rf"^\s*({_METHODS})\s+(/\S+)\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
 
 
 class ParameterType(str, Enum):

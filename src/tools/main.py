@@ -12,9 +12,10 @@ from pydantic import ValidationError
 
 from tools.config import Settings, load_settings
 from tools.domain.exceptions import RepositoryError
+from tools.domain.report import OrgScanResult, OverallStatus
 from tools.domain.services.scanner import ScannerService
 from tools.infrastructure.github.client import GitHubDocProvider
-from tools.infrastructure.parsers.doc_parser import DocutilsParser
+from tools.infrastructure.parsers import DocutilsParser, classify_doc_style
 
 # Exit codes
 EXIT_OK = 0
@@ -117,6 +118,48 @@ def _load_settings_or_exit(config_path: str | None) -> Settings:
         raise SystemExit(EXIT_USAGE_ERROR) from e
 
 
+def _build_scanner(settings: Settings) -> ScannerService:
+    """Composition root: wire the adapters into a :class:`ScannerService`."""
+    github_provider = GitHubDocProvider(
+        token=settings.github_token.get_secret_value(),
+        api_url=settings.github.api_url,
+        prefix=settings.scanner.rst_source_prefix,
+    )
+    return ScannerService(
+        doc_provider=github_provider,
+        parser=DocutilsParser(),
+        style_classifier=classify_doc_style,
+        max_workers=settings.scanner.max_workers,
+        excluded_segments=settings.scanner.excluded_segments,
+    )
+
+
+def _print_human_summary(
+    result: OrgScanResult, api_ref_path: str, logger: logging.Logger
+) -> None:
+    """Display-only roll-up on stderr. Reads the model's computed views."""
+    status_counts = result.quality_summary.by_overall_status
+    logger.info("=" * 60)
+    logger.info("Scan summary for org '%s'", result.org)
+    logger.info("  Total repos discovered : %d", result.total_repos)
+    logger.info("  Eligible (%s)   : %d", api_ref_path, result.eligible_repos)
+    logger.info("  Skipped repos          : %d", len(result.skipped_repos))
+    logger.info("  Total API documents    : %d", result.total_documents)
+    for status in OverallStatus:
+        if status.value in status_counts:
+            logger.info("  %-22s : %d", status.value, status_counts[status.value])
+    if result.by_version:
+        logger.info("  Parsed by version      :")
+        for version, count in result.by_version.items():
+            logger.info("    - %-12s : %d", version, count)
+    top_issues = result.quality_summary.top_issues[:5]
+    if top_issues:
+        logger.info("  Top issues             :")
+        for entry in top_issues:
+            logger.info("    - %-26s : %d", entry["code"], entry["count"])
+    logger.info("=" * 60)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
@@ -132,18 +175,7 @@ def main(argv: list[str] | None = None) -> int:
 
     logger.info("Starting organization scan for %s@%s", org, branch)
 
-    github_provider = GitHubDocProvider(
-        token=settings.github_token.get_secret_value(),
-        api_url=settings.github.api_url,
-        prefix=settings.scanner.rst_source_prefix,
-    )
-    rst_parser = DocutilsParser()
-    scanner = ScannerService(
-        doc_provider=github_provider,
-        parser=rst_parser,
-        max_workers=settings.scanner.max_workers,
-        excluded_segments=settings.scanner.excluded_segments,
-    )
+    scanner = _build_scanner(settings)
 
     try:
         result = scanner.scan_organization(
@@ -158,27 +190,14 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("Scan aborted: %s", e)
         return EXIT_RUNTIME_ERROR
 
-    # Org-wide rollup of parsed/partial documents by API version.
-    by_version: dict[str, int] = {}
-    for repo in result.repos:
-        for version, docs in repo.documents_by_version.items():
-            by_version[version] = by_version.get(version, 0) + len(docs)
-    by_version = dict(sorted(by_version.items(), key=lambda kv: kv[1], reverse=True))
-
-    # JSON-serialisable payload. The model already carries
-    # `quality_summary` (computed); add `by_version` next to it for
-    # at-a-glance reading.
-    payload = result.model_dump(mode="json")
-    payload["summary"] = {
-        "total_repos": result.total_repos,
-        "eligible_repos": result.eligible_repos,
-        "skipped_repos": len(result.skipped_repos),
-        "total_documents": result.total_documents,
-        "by_overall_status": result.quality_summary.by_overall_status,
-        "by_version": by_version,
-    }
-
-    json_text = json.dumps(payload, indent=settings.output.indent, ensure_ascii=False)
+    # The model is the single source of truth: total_documents, by_version
+    # and quality_summary are all computed fields, so the JSON carries each
+    # fact exactly once.
+    json_text = json.dumps(
+        result.model_dump(mode="json"),
+        indent=settings.output.indent,
+        ensure_ascii=False,
+    )
 
     if write_to_file:
         out_path = Path(output_path)
@@ -189,34 +208,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.stdout or not write_to_file:
         print(json_text)
 
-    # Human-readable summary on stderr.
-    status_counts = result.quality_summary.by_overall_status
-    logger.info("=" * 60)
-    logger.info("Scan summary for org '%s'", result.org)
-    logger.info("  Total repos discovered : %d", result.total_repos)
-    logger.info(
-        "  Eligible (%s)   : %d", settings.scanner.api_ref_path, result.eligible_repos
-    )
-    logger.info("  Skipped repos          : %d", len(result.skipped_repos))
-    logger.info("  Total API documents    : %d", result.total_documents)
-    for status_name in ("ok", "partial", "failed", "unsupported"):
-        if status_name in status_counts:
-            logger.info(
-                "  %-22s : %d",
-                status_name,
-                status_counts[status_name],
-            )
-    if by_version:
-        logger.info("  Parsed by version      :")
-        for version, count in by_version.items():
-            logger.info("    - %-12s : %d", version, count)
-    top_issues = result.quality_summary.top_issues[:5]
-    if top_issues:
-        logger.info("  Top issues             :")
-        for entry in top_issues:
-            logger.info("    - %-26s : %d", entry["code"], entry["count"])
-    logger.info("=" * 60)
-
+    _print_human_summary(result, settings.scanner.api_ref_path, logger)
     return EXIT_OK
 
 

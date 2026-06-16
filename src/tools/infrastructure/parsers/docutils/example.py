@@ -20,19 +20,12 @@ Handles two layouts:
 from __future__ import annotations
 
 import json
-import re
 
 from docutils import nodes
 
 from tools.domain.report import ExampleBlock
 
-# Strips a leading HTTP-wire-format request line so JSON parsing has a
-# chance on what follows. CCE/VPC examples put e.g.
-# "POST https://{Endpoint}/v3/..." on the first line and the JSON body below.
-_HTTP_PREFIX_RE = re.compile(
-    r"^\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+https?://\S+\s*\n",
-    re.IGNORECASE,
-)
+from .patterns import HTTP_PREFIX_RE
 
 
 def extract_examples(section: nodes.section) -> list[ExampleBlock]:
@@ -89,7 +82,7 @@ def _make_example(block: nodes.literal_block, *, label: str | None) -> ExampleBl
 
 def _try_parse_json(raw: str) -> dict | list | None:
     """Best-effort JSON parse. Returns None on any failure."""
-    candidate = _HTTP_PREFIX_RE.sub("", raw, count=1).strip()
+    candidate = HTTP_PREFIX_RE.sub("", raw, count=1).strip()
     if not candidate:
         return None
     try:

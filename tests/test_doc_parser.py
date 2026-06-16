@@ -6,7 +6,7 @@ import pytest
 
 from tools.domain.ir import HttpMethod, ParameterType
 from tools.domain.report import IssueCode, ParseFailure, SectionStatus
-from tools.infrastructure.parsers.doc_parser import DocutilsParser
+from tools.infrastructure.parsers import DocutilsParser
 
 
 @pytest.fixture
@@ -137,6 +137,34 @@ This page has no URI line.
 
 
 # --------------------------------------------------------------------------- #
+# ELB list endpoint — path vs query parameter separation
+# --------------------------------------------------------------------------- #
+def test_elb_list_separates_path_and_query(
+    parser: DocutilsParser, elb_list_doc: str
+) -> None:
+    parsed = parser.parse(elb_list_doc, "fixtures/elb.rst")
+
+    # Host-form URI is recognised and stored without the host.
+    assert parsed.method is HttpMethod.GET
+    assert parsed.uri == "/v3/{project_id}/elb/pools"
+
+    path_names = [p.name for p in parsed.sections["path_params"].parameters]
+    query_names = [p.name for p in parsed.sections["query_params"].parameters]
+
+    assert path_names == ["project_id"]
+    assert query_names == ["marker", "limit", "page_reverse"]
+
+    # The pagination params must NOT have leaked into path_params.
+    assert "limit" not in path_names
+    assert "marker" not in path_names
+
+
+def test_elb_query_section_present(parser: DocutilsParser, elb_list_doc: str) -> None:
+    parsed = parser.parse(elb_list_doc, "fixtures/elb.rst")
+    assert "query_params" in parsed.sections
+
+
+# --------------------------------------------------------------------------- #
 # Quality-report shape sanity
 # --------------------------------------------------------------------------- #
 def test_field_metrics_sum(parser: DocutilsParser, vpc_doc: str) -> None:
@@ -147,3 +175,32 @@ def test_field_metrics_sum(parser: DocutilsParser, vpc_doc: str) -> None:
             sec.fields_recognized + sec.fields_unknown_type + sec.fields_failed
             == sec.fields_total
         )
+
+
+# --------------------------------------------------------------------------- #
+# Canonical-key guard
+# --------------------------------------------------------------------------- #
+def test_parser_section_keys_are_canonical(
+    parser: DocutilsParser,
+    cce_doc: str,
+    vpc_doc: str,
+    kms_doc: str,
+    iam_doc: str,
+    elb_list_doc: str,
+) -> None:
+    from tools.domain.report import SECTION_NAMES
+
+    docs = {
+        "cce.rst": cce_doc,
+        "vpc.rst": vpc_doc,
+        "kms.rst": kms_doc,
+        "iam.rst": iam_doc,
+        "elb.rst": elb_list_doc,
+    }
+    produced: set[str] = set()
+    for path, content in docs.items():
+        produced.update(parser.parse(content, path).sections)
+
+    assert produced, "fixtures should exercise at least one section"
+    off_canon = produced - set(SECTION_NAMES)
+    assert not off_canon, f"parser produced non-canonical section keys: {off_canon}"

@@ -13,9 +13,8 @@ branch = "main"
 api_url = "https://api.github.com"
 
 [scanner]
-# Path prefix inside docs repos that holds RST endpoint files.
-rst_source_prefix = "api-ref/source/"
-# Directory whose existence makes a repo eligible for scanning.
+# Directory whose existence makes a repo eligible for scanning. The RST
+# file prefix (api-ref/source/) is derived from this with a trailing slash.
 api_ref_path = "api-ref/source"
 # Path segments that exclude files from processing.
 # Extend this list when new deprecation conventions appear in OTC docs.

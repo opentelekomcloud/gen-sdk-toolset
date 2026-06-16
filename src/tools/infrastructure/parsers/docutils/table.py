@@ -26,6 +26,9 @@ from docutils import nodes
 from tools.domain.ir import Parameter, ParameterType
 from tools.domain.report import Issue, IssueCode
 
+# Max length of free-text `details` we attach to diagnostic issues.
+_DETAILS_MAX = 80
+
 # Column-header aliases mapped to canonical column keys. Comparison is
 # case-insensitive on whitespace-stripped text.
 _HEADER_ALIASES: dict[str, str] = {
@@ -40,14 +43,14 @@ _HEADER_ALIASES: dict[str, str] = {
 }
 
 
-# Type-text → ParameterType. Loose matching: lowercase, strip RST markup
-# fragments like ``:ref:`X <anchor>` object`` to a bare canonical type.
+# Type-text → ParameterType. Loose matching on lower-cased text. Sphinx
+# :ref: markup is already resolved to its visible label at parse time by the
+# passthrough role registered in doc_parser (_ensure_roles), so no stripping
+# is needed here — see tests/test_ref_resolution.py.
 def _classify_type(raw: str) -> ParameterType:
     if not raw:
         return ParameterType.UNKNOWN
-    # Strip Sphinx :ref:`text <anchor>` markup, keeping the visible text.
-    text = re.sub(r":ref:`([^<`]+?)\s*<[^>]+>`", r"\1", raw).strip()
-    lower = text.lower()
+    lower = raw.strip().lower()
 
     # Composite array types first (more specific).
     if re.search(r"\barray\s+of\s+strings?\b", lower):
@@ -131,7 +134,7 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
         fields_total += 1
         try:
             cells = [_cell_text(entry) for entry in row.children]
-            name = _strip_refs(cells[column_map["name"]]).strip()
+            name = cells[column_map["name"]].strip()
             type_raw = cells[column_map["type"]].strip() if "type" in column_map else ""
             mandatory = (
                 _parse_mandatory(cells[column_map["mandatory"]])
@@ -177,7 +180,7 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
                     Issue(
                         code=IssueCode.UNKNOWN_TYPE_FORMAT,
                         location=f"row {row_idx}",
-                        details=type_raw[:80],
+                        details=type_raw[:_DETAILS_MAX],
                     )
                 )
             else:
@@ -234,11 +237,6 @@ def _body_rows(table: nodes.table) -> list[nodes.row]:
 def _cell_text(entry: nodes.Element) -> str:
     """Extract the textual content of a single table cell."""
     return entry.astext()
-
-
-def _strip_refs(text: str) -> str:
-    """Strip Sphinx :ref:`label <anchor>` markers, keeping the label."""
-    return re.sub(r":ref:`([^<`]+?)\s*<[^>]+>`", r"\1", text)
 
 
 def _parse_mandatory(text: str) -> bool:

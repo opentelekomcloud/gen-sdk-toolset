@@ -17,16 +17,10 @@ pre-filter that runs before the expensive AST walk.
 from __future__ import annotations
 
 import re
-from enum import Enum
 
-from tools.domain.ir import URI_RE
+from tools.domain.report import DocStyle
 
-
-class DocStyle(str, Enum):
-    STYLE_A = "style_a"
-    S3_COMPATIBLE = "s3_compatible"
-    NOT_ENDPOINT = "not_endpoint"
-
+from .patterns import URI_RE
 
 # S3-style section headings as they appear in OBS docs. We require the
 # heading to be a real RST section (text followed by an underline of
@@ -49,6 +43,11 @@ _S3_HEADING_RE = re.compile(
 # in Style-A docs by accident.
 _S3_THRESHOLD = 2
 
+# A real "URI" RST section heading (text followed by an underline). Its
+# presence means the doc *is* an endpoint doc even when we can't extract a
+# method+path line from it — see classify_doc_style.
+_URI_HEADING_RE = re.compile(r"^URI[ \t]*\n[-=~^\"'`#*+]+\s*$", re.MULTILINE)
+
 
 def classify_doc_style(content: str) -> DocStyle:
     """Classify an RST doc as Style-A, S3-compatible, or non-endpoint."""
@@ -56,8 +55,9 @@ def classify_doc_style(content: str) -> DocStyle:
     if s3_markers >= _S3_THRESHOLD:
         return DocStyle.S3_COMPATIBLE
 
-    # Style-A signal: a bare "METHOD /path" line somewhere in the doc.
     if URI_RE.search(content):
+        return DocStyle.STYLE_A
+    if _URI_HEADING_RE.search(content):
         return DocStyle.STYLE_A
 
     return DocStyle.NOT_ENDPOINT
