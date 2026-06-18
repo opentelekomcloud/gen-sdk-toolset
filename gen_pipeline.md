@@ -105,7 +105,8 @@ passing data through the filesystem as artifacts:
 ┌──────────────────────────────────┐
 │ 4. gen-sdk-generate              │
 │    input:  ir.json, templates/   │
-│    output: generated/*.py        │
+│    checkout python-t-cloud→/tmp, │
+│    commit+push, open PR per repo │
 └────────────────┬─────────────────┘
                  ▼
 ┌──────────────────────────────────┐
@@ -148,7 +149,10 @@ Every step is a workflow step. Failures are visible per-step in the Actions
 UI. Intermediate outputs (ir.json, generated/, refined/) are uploaded as
 artifacts for post-mortem debugging.
 
-### Why GitHub Actions as orchestrator (and not a Python orchestrator)
+### Why GitHub Actions for the generation pipeline
+
+This covers the generation pipeline only; scan orchestration and state live in
+the panel (see Components → Panel).
 
 - Each module's natural output (JSON for scanner, Python files for generator
   and llm) is already a filesystem artifact. No special serialization is
@@ -222,6 +226,26 @@ The scanner does not generate code. It parses and reports.
 
 Detailed scanner internals and the `SectionResult` / `IssueCode` model are
 covered in a separate design issue in `gen-sdk-tooling`.
+
+### Panel (control plane)
+
+The panel is a stateful FastAPI + React app that drives scanning and is the
+analytics surface. It exists because GitHub Actions can't: GitHub rate limits
+prevent scanning all ~90 services in one pass, so services are scanned one at
+a time and accumulated in a database.
+
+- **Per-service scan orchestration** — triggers a single-repo scan (via the
+  scanner's single-repo entrypoint), stores the result as a new generation.
+- **Two generations per service** — `current` + `previous` only; rollback
+  swaps the pointers, no rescanning.
+- **Aggregation** — quality_summary, by_version, structOk, completeness are
+  computed here from raw per-document data (not in the scanner, not in shared).
+- **Phase 3 decision surface** — the org-wide quality picture is read from the
+  panel DB; the Jinja-vs-LLM decision is made here, not from a raw JSON dump.
+- **Drift** — stores repo HEAD per service; `docs_changed = commit_hash != head_commit`.
+
+Read endpoints never call GitHub; they read stored state. Detailed schema and
+the 2-generations model are covered in the panel design issues.
 
 ### Gating check
 
@@ -360,6 +384,10 @@ merge rights.
 
 The bot account is created as a setup task before MVP launch.
 
+Per Anton: generation checks out `python-t-cloud` into `/tmp` for a stable
+target structure, commits and pushes the generated code, and opens one PR per
+docs repo. The bot account performs the push and PR creation.
+
 ### Branch protection
 
 `python-t-cloud` `main` branch is protected:
@@ -414,7 +442,7 @@ services:
 
 Each workflow run preserves the following as artifacts:
 
-- `report.json` — scanner output, for post-mortem analysis
+- `report.json` — scanner output (raw per-document results, no aggregates), for post-mortem analysis
 - `generated/` — Jinja-only output (commit 1 state)
 - `refined/` — final output after LLM (commit 2 state, if applicable)
 
@@ -439,14 +467,29 @@ not foundation.**
 
 ## Quality report (one-off)
 
-A separate concern from the production pipeline. The quality report is a
-one-time analytical artifact used to inform the Phase 3 generator decision
-(Jinja2 sufficient vs. LLM-assistance required). It is produced by running
-the scanner across the full org and rendering the resulting `OrgScanResult`
-as markdown + JSON.
+The quality report informs the Phase 3 generator decision (Jinja2 sufficient
+vs. LLM-assisted). It is produced on the **panel side** by aggregating the
+per-service raw scan results stored in the panel DB — not by the scanner
+emitting an org-wide `OrgScanResult`. It is rendered in the panel UI (and
+exportable as JSON/markdown) once the full org has been scanned
+service-by-service.
 
-Not part of the production pipeline. Generated locally or via a manual
-workflow run when needed.
+## Open: generation strategy (Phase 3)
+
+Two of Anton's review comments on the pipeline are recorded here as open
+decisions, to be resolved on data from the full-org scan (see Quality report):
+
+- **LLM-primary vs. Jinja-first.** Anton proposes using an LLM for generation
+  rather than building the generator from complex Jinja templates. This is
+  deferred, not adopted. Decision criteria: regeneration diff-quality on a
+  minor RST change, graceful degradation (Jinja baseline opens a PR even if
+  Ollama is down), and SonarCloud-verifiability (deterministic output is
+  checkable against the VPC v1 reference; LLM output is not a priori).
+- **Merge refine into generate (drop step 7).** Anton suggests refining within
+  the generate step instead of a separate `gen-sdk-refine` pass. Trade-off:
+  this removes the two-commit split (see Git workflow), i.e. the Jinja-baseline
+  commit that opens a PR even when the LLM is unavailable. Resolve together
+  with the strategy decision above.
 
 ## Rollout phases
 
