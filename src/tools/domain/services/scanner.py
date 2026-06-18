@@ -205,7 +205,7 @@ class ScannerService:
                 repo=repo,
                 failure_reason=e.issue,
             )
-        except Exception as e:  # pragma: no cover - unexpected parser bug
+        except Exception as e:
             logger.exception("Unexpected parser error for %s/%s", repo, path)
             return DocumentScanResult(
                 document=path,

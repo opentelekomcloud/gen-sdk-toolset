@@ -42,10 +42,7 @@ from tools.domain.report import (
 from .example import extract_examples
 from .patterns import URI_RE
 from .section import SectionKind, classify_section_title, classify_table_title
-from .table import extract_parameter_table
-
-# Max length of free-text `details` we attach to diagnostic issues.
-_DETAILS_MAX = 80
+from .table import DETAILS_MAX, extract_parameter_table
 
 
 # OTC docs use Sphinx-specific roles like ``:ref:`Label <anchor>``` that
@@ -319,7 +316,7 @@ def _example_json_issues(blocks) -> list[Issue]:
         Issue(
             code=IssueCode.EXAMPLE_INVALID_JSON,
             location=f"example {i}",
-            details=(b.label or "")[:_DETAILS_MAX] or None,
+            details=(b.label or "")[:DETAILS_MAX] or None,
         )
         for i, b in enumerate(blocks, start=1)
         if b.parsed is None

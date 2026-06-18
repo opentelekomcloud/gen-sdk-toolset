@@ -204,3 +204,65 @@ def test_parser_section_keys_are_canonical(
     assert produced, "fixtures should exercise at least one section"
     off_canon = produced - set(SECTION_NAMES)
     assert not off_canon, f"parser produced non-canonical section keys: {off_canon}"
+
+
+# --------------------------------------------------------------------------- #
+# Two tables → same section key merge into one section (_merge_table_into_section
+# existing-section branch).
+# --------------------------------------------------------------------------- #
+def test_two_body_tables_merge(
+    parser: DocutilsParser, two_body_tables_doc: str
+) -> None:
+    parsed = parser.parse(two_body_tables_doc, "api-ref/source/v1/create.rst")
+    body = parsed.sections["body"]
+    assert [p.name for p in body.parameters] == ["name", "age"]
+    # Field-level metrics are summed across the merged tables, not overwritten.
+    assert body.fields_total == 2
+    assert body.fields_recognized == 2
+    assert body.status is SectionStatus.OK
+
+
+# --------------------------------------------------------------------------- #
+# Example section EXTEND path: an unparseable example arriving second must still
+# produce an invalid-JSON issue and degrade the section (review item 14).
+# --------------------------------------------------------------------------- #
+def test_example_extend_invalid_json_degrades() -> None:
+    from tools.domain.report import (
+        SECTION_EXAMPLE_REQUEST,
+        ExampleBlock,
+    )
+    from tools.infrastructure.parsers.docutils.doc_parser import _set_example_section
+
+    results: dict = {}
+    # First call creates the section from a valid JSON example → OK.
+    _set_example_section(
+        results,
+        SECTION_EXAMPLE_REQUEST,
+        [ExampleBlock(raw='{"a": 1}', parsed={"a": 1})],
+    )
+    assert results[SECTION_EXAMPLE_REQUEST].status is SectionStatus.OK
+
+    # Second call extends the existing section with an unparseable example.
+    _set_example_section(
+        results,
+        SECTION_EXAMPLE_REQUEST,
+        [ExampleBlock(raw="not json", parsed=None)],
+    )
+    sec = results[SECTION_EXAMPLE_REQUEST]
+    assert len(sec.examples) == 2
+    assert sec.status is SectionStatus.PARTIAL
+    assert any(i.code is IssueCode.EXAMPLE_INVALID_JSON for i in sec.issues)
+
+
+# --------------------------------------------------------------------------- #
+# api_version falls back to the source file path when the URI carries no
+# version segment, and the captured version is lower-cased (review item 15).
+# --------------------------------------------------------------------------- #
+def test_api_version_from_source_path() -> None:
+    extract = DocutilsParser._extract_api_version
+    # URI has no version segment; the path does.
+    assert extract("/elb/pools", "api-ref/source/v2/create.rst") == "v2"
+    # Uppercase V in the path is normalised to lowercase.
+    assert extract("/elb/pools", "api-ref/source/V2/create.rst") == "v2"
+    # No version anywhere → None.
+    assert extract("/elb/pools", "api-ref/source/x.rst") is None

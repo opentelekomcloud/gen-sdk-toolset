@@ -27,7 +27,7 @@ from tools.domain.ir import Parameter, ParameterType
 from tools.domain.report import Issue, IssueCode
 
 # Max length of free-text `details` we attach to diagnostic issues.
-_DETAILS_MAX = 80
+DETAILS_MAX = 80
 
 # Column-header aliases mapped to canonical column keys. Comparison is
 # case-insensitive on whitespace-stripped text.
@@ -180,7 +180,7 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
                     Issue(
                         code=IssueCode.UNKNOWN_TYPE_FORMAT,
                         location=f"row {row_idx}",
-                        details=type_raw[:_DETAILS_MAX],
+                        details=type_raw[:DETAILS_MAX],
                     )
                 )
             else:

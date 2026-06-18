@@ -47,3 +47,8 @@ def obs_doc() -> str:
 @pytest.fixture
 def elb_list_doc() -> str:
     return load_fixture("style_a_elb_list_query.rst")
+
+
+@pytest.fixture
+def two_body_tables_doc() -> str:
+    return load_fixture("style_a_two_body_tables.rst")
