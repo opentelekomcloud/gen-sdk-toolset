@@ -9,9 +9,14 @@ from tools.domain.exceptions import (
     RateLimitError,
     RepositoryError,
 )
-from tools.domain.interfaces.doc_provider import DocProvider
+from tools.domain.interfaces.doc_provider import DocProvider, FileListing
 
 logger = logging.getLogger(__name__)
+
+# HTTP request timeout (seconds) for every GitHub call.
+_TIMEOUT = 30
+# Max length of an error-response body we quote back in an exception message.
+_ERROR_BODY_MAX = 200
 
 
 class GitHubDocProvider(DocProvider):
@@ -30,18 +35,12 @@ class GitHubDocProvider(DocProvider):
         repos: list[str] = []
         page = 1
         while True:
-            url = f"{self.api_url}/orgs/{org}/repos"
-            params = {"per_page": 100, "page": page, "type": "public"}
-            try:
-                resp = self.session.get(url, params=params, timeout=30)
-                self._raise_for_status(resp, repo=org, resource=f"orgs/{org}/repos")
-            except requests.RequestException as e:
-                raise RepositoryError(
-                    f"Failed to list repos for org {org}: {e}",
-                    repo=org,
-                    cause=e,
-                ) from e
-
+            resp = self._get(
+                f"{self.api_url}/orgs/{org}/repos",
+                repo=org,
+                resource=f"orgs/{org}/repos",
+                params={"per_page": 100, "page": page, "type": "public"},
+            )
             batch = resp.json()
             if not isinstance(batch, list) or not batch:
                 break
@@ -61,58 +60,43 @@ class GitHubDocProvider(DocProvider):
         """Check whether `path` exists in `repo` at `branch`."""
         url = f"{self.api_url}/repos/{repo}/contents/{path.rstrip('/')}"
         try:
-            resp = self.session.get(url, params={"ref": branch}, timeout=30)
-        except requests.RequestException as e:
-            raise RepositoryError(
-                f"Failed to check path '{path}' in {repo}: {e}",
-                repo=repo,
-                cause=e,
-            ) from e
-
-        if resp.status_code == 404:
+            self._get(url, repo=repo, resource=path, params={"ref": branch})
+        except NotFoundError:
             return False
-        # Surface auth/rate-limit errors clearly rather than treating them as "missing"
-        self._raise_for_status(resp, repo=repo, resource=path)
         return True
 
-    def list_files(self, repo: str, branch: str) -> list[str]:
+    def list_files(self, repo: str, branch: str) -> FileListing:
         url = f"{self.api_url}/repos/{repo}/git/trees/{branch}"
-        try:
-            resp = self.session.get(url, params={"recursive": "1"}, timeout=30)
-            self._raise_for_status(resp, repo=repo, resource=f"tree/{branch}")
-        except requests.RequestException as e:
-            raise RepositoryError(
-                f"Failed to list files in {repo}@{branch}: {e}",
-                repo=repo,
-                cause=e,
-            ) from e
+        resp = self._get(
+            url, repo=repo, resource=f"tree/{branch}", params={"recursive": "1"}
+        )
 
         data = resp.json()
-        if data.get("truncated"):
+        truncated = bool(data.get("truncated"))
+        if truncated:
             logger.warning(
                 "Tree for %s@%s is truncated; some files may be missing",
                 repo,
                 branch,
             )
-        return [
+        paths = [
             item["path"]
             for item in data.get("tree", [])
             if item.get("type") == "blob"
             and item["path"].startswith(self.prefix)
             and item["path"].endswith(".rst")
         ]
+        return FileListing(
+            paths=paths,
+            truncated=truncated,
+            truncated_reason="GitHub git-tree response was truncated"
+            if truncated
+            else None,
+        )
 
-    def fetch_content(self, repo: str, path: str) -> str:
+    def fetch_content(self, repo: str, path: str, branch: str) -> str:
         url = f"{self.api_url}/repos/{repo}/contents/{path}"
-        try:
-            resp = self.session.get(url, timeout=30)
-            self._raise_for_status(resp, repo=repo, resource=path)
-        except requests.RequestException as e:
-            raise RepositoryError(
-                f"Failed to fetch {path} from {repo}: {e}",
-                repo=repo,
-                cause=e,
-            ) from e
+        resp = self._get(url, repo=repo, resource=path, params={"ref": branch})
 
         payload = resp.json()
         encoded = payload.get("content", "")
@@ -121,6 +105,25 @@ class GitHubDocProvider(DocProvider):
     # ------------------------------------------------------------------ #
     # Helpers
     # ------------------------------------------------------------------ #
+    def _get(
+        self, url: str, *, repo: str, resource: str, **kwargs
+    ) -> requests.Response:
+        """Issue a GET, mapping transport + HTTP errors to domain exceptions.
+
+        One place wraps the ``requests.RequestException`` → ``RepositoryError``
+        translation and the status-code check.
+        """
+        try:
+            resp = self.session.get(url, timeout=_TIMEOUT, **kwargs)
+        except requests.RequestException as e:
+            raise RepositoryError(
+                f"GitHub request for {resource} in {repo} failed: {e}",
+                repo=repo,
+                cause=e,
+            ) from e
+        self._raise_for_status(resp, repo=repo, resource=resource)
+        return resp
+
     @staticmethod
     def _raise_for_status(resp: requests.Response, *, repo: str, resource: str) -> None:
         """Translate HTTP errors to typed domain exceptions."""
@@ -138,6 +141,7 @@ class GitHubDocProvider(DocProvider):
                 raise RateLimitError(reset_time=reset)
             raise AuthenticationError(f"Forbidden when accessing {resource}", repo=repo)
         raise RepositoryError(
-            f"Unexpected HTTP {resp.status_code} for {resource}: {resp.text[:200]}",
+            f"Unexpected HTTP {resp.status_code} for {resource}: "
+            f"{resp.text[:_ERROR_BODY_MAX]}",
             repo=repo,
         )

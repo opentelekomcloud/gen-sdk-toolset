@@ -206,3 +206,7 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 .idea
+
+# gen-sdk-toolset scan artifacts
+scan-output.json
+scan.json

@@ -1,52 +1,49 @@
 import logging
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 
 from tools.domain.exceptions import RepositoryError
 from tools.domain.interfaces.doc_provider import DocProvider
-from tools.domain.interfaces.parser import RstParser
-from tools.domain.ir import URI_RE
-from tools.domain.report import DocumentScanResult, OrgScanResult, RepoScanResult
+from tools.domain.interfaces.parser import ParseFailure, RstParser
+from tools.domain.report import (
+    UNVERSIONED_KEY,
+    DocStyle,
+    DocumentScanResult,
+    Issue,
+    IssueCode,
+    OrgScanResult,
+    OverallStatus,
+    RepoScanResult,
+)
 
 logger = logging.getLogger(__name__)
-
-# Default location of the API reference docs inside an OTC docs repo.
-API_REF_PATH = "api-ref/source"
-
-# Path segments whose presence in a file path marks the file as
-# excluded from processing (e.g. deprecated API docs).
-# Extend this set if new conventions are discovered (e.g. "deprecated").
-DEFAULT_EXCLUDED_SEGMENTS: frozenset[str] = frozenset({"out-of-date_apis"})
-
-# Bucket key used for documents whose api_version cannot be determined.
-UNVERSIONED_KEY = "unversioned"
 
 
 class ScannerService:
     """Discovers API endpoint documents in OTC docs repos.
 
-    The scanner emits a structured result useful for evaluating the documentation
-    set as a whole:
-      * which repos contain an `api-ref/source/` directory and are eligible,
-      * which documents within each repo can be parsed into Endpoint metadata,
-      * which documents fail and why,
-      * how parsed documents distribute across API versions.
+    Emits a quality report (per :class:`DocumentScanResult`) describing,
+    for every endpoint doc encountered, whether it could be fully parsed,
+    partially parsed, or not parsed at all — plus the extracted data
+    (parameters, examples) and per-section metrics.
     """
 
     def __init__(
         self,
         doc_provider: DocProvider,
         parser: RstParser,
-        max_workers: int = 8,
-        excluded_segments: set[str] | frozenset[str] | None = None,
+        style_classifier: Callable[[str], DocStyle],
+        max_workers: int,
+        excluded_segments: Iterable[str] = (),
     ):
         self.doc_provider = doc_provider
         self.parser = parser
+        self.style_classifier = style_classifier
         self.max_workers = max_workers
-        self.excluded_segments = (
-            frozenset(excluded_segments)
-            if excluded_segments is not None
-            else DEFAULT_EXCLUDED_SEGMENTS
-        )
+        # Always wrap in a fresh frozenset so each instance owns its own
+        # object. Empty default = no exclusion (OTC-specific values come
+        # from [scanner].excluded_segments in scan-config.toml).
+        self.excluded_segments = frozenset(excluded_segments)
 
     # ------------------------------------------------------------------ #
     # Org-level scan
@@ -54,10 +51,15 @@ class ScannerService:
     def scan_organization(
         self,
         org: str,
+        api_ref_path: str,
         branch: str = "main",
-        api_ref_path: str = API_REF_PATH,
     ) -> OrgScanResult:
-        """Scan every eligible repo in `org` and aggregate per-document results."""
+        """Scan every eligible repo in `org` and aggregate per-document results.
+
+        `api_ref_path` is the directory whose presence makes a repo
+        eligible for scanning. It is required because the right value is
+        application-specific; the scanner library does not assume one.
+        """
         logger.info("Scanning organization %s (branch=%s)", org, branch)
         repos = self.doc_provider.list_repos(org)
         result = OrgScanResult(org=org, branch=branch, total_repos=len(repos))
@@ -82,11 +84,10 @@ class ScannerService:
 
         result.eligible_repos = sum(1 for r in result.repos if r.has_api_ref)
         logger.info(
-            "Org scan complete: %d/%d eligible, %d documents parsed, %d failed",
+            "Org scan complete: %d/%d eligible, %d total documents",
             result.eligible_repos,
             result.total_repos,
-            result.total_parsed,
-            result.total_failed,
+            result.total_documents,
         )
         return result
 
@@ -99,19 +100,29 @@ class ScannerService:
         result = RepoScanResult(repo=repo, branch=branch, has_api_ref=True)
 
         try:
-            paths = self.doc_provider.list_files(repo, branch)
+            listing = self.doc_provider.list_files(repo, branch)
         except RepositoryError as e:
             logger.error("Failed to list files for %s: %s", repo, e)
             result.error = str(e)
             return result
 
-        # Drop files under excluded directories (e.g. out-of-date_apis/).
-        included_paths = [p for p in paths if not self._is_excluded(p)]
-        excluded_count = len(paths) - len(included_paths)
-        if excluded_count:
+        # A truncated tree means we only saw part of the repo — record it so
+        # the result isn't mistaken for an authoritative clean scan (item 16).
+        if listing.truncated:
+            result.incomplete = True
+            result.incomplete_reason = (
+                listing.truncated_reason or "file tree truncated by provider"
+            )
+            logger.warning("File listing for %s is incomplete (truncated)", repo)
+
+        # Drop files under excluded directories before any fetch happens, but
+        # record which ones so the skip is visible in the report (item 17).
+        included_paths = [p for p in listing.paths if not self._is_excluded(p)]
+        result.excluded_documents = [p for p in listing.paths if self._is_excluded(p)]
+        if result.excluded_documents:
             logger.info(
                 "Skipped %d excluded doc(s) in %s (segments=%s)",
-                excluded_count,
+                len(result.excluded_documents),
                 repo,
                 sorted(self.excluded_segments),
             )
@@ -120,73 +131,103 @@ class ScannerService:
 
         # Fetch + parse files concurrently to keep org-level scans tractable.
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-            doc_results = list(
-                pool.map(lambda p: self._process_document(repo, p), included_paths)
+            doc_outcomes = list(
+                pool.map(
+                    lambda p: self._process_document(repo, p, branch),
+                    included_paths,
+                )
             )
 
-        for doc in doc_results:
-            if doc is None:
+        for path, outcome in zip(included_paths, doc_outcomes):
+            if outcome is None:
+                # Not an endpoint doc — recorded so we don't lose the inventory.
+                result.non_endpoint_documents.append(path)
                 continue
-            result.documents.append(doc)
-            result.total_documents += 1
-            if doc.parsed:
-                result.parsed_count += 1
-                # Group parsed docs by API version for the grouped view.
-                key = doc.api_version or UNVERSIONED_KEY
-                result.documents_by_version.setdefault(key, []).append(doc)
-            else:
-                result.failed_count += 1
+
+            result.documents.append(outcome)
+            if outcome.overall_status in (OverallStatus.OK, OverallStatus.PARTIAL):
+                key = outcome.api_version or UNVERSIONED_KEY
+                result.documents_by_version.setdefault(key, []).append(outcome)
 
         return result
 
     # ------------------------------------------------------------------ #
     # Per-document
     # ------------------------------------------------------------------ #
-    def _process_document(self, repo: str, path: str) -> DocumentScanResult | None:
-        """Fetch + classify + parse a document. Returns None for non-API files."""
+    def _process_document(
+        self, repo: str, path: str, branch: str
+    ) -> DocumentScanResult | None:
+        """Fetch, classify and parse a document.
+
+        Returns ``None`` for non-endpoint docs (intro / conceptual pages)
+        — these surface in :attr:`RepoScanResult.non_endpoint_documents`
+        rather than as failure entries.
+
+        For endpoint docs, returns a :class:`DocumentScanResult` that
+        will have either a populated ``sections`` dict (success) or a
+        single ``failure_reason`` (gating failure or unsupported style).
+        """
         try:
-            content = self.doc_provider.fetch_content(repo, path)
+            content = self.doc_provider.fetch_content(repo, path, branch)
         except Exception as e:
             logger.warning("Fetch failed for %s/%s: %s", repo, path, e)
             return DocumentScanResult(
                 document=path,
                 repo=repo,
-                parsed=False,
-                error=f"fetch error: {e}",
+                failure_reason=Issue(
+                    code=IssueCode.FETCH_FAILED,
+                    details=str(e),
+                ),
             )
 
-        if not self._is_api_endpoint(content):
-            # Not an endpoint doc (intro pages, conceptual material, etc.).
+        style = self.style_classifier(content)
+
+        if style is DocStyle.NOT_ENDPOINT:
             return None
 
+        if style is DocStyle.S3_COMPATIBLE:
+            return DocumentScanResult(
+                document=path,
+                repo=repo,
+                failure_reason=Issue(
+                    code=IssueCode.UNSUPPORTED_DOC_STYLE,
+                    details="S3-style doc (Request Syntax / Sample Request layout)",
+                ),
+            )
+
+        # Style-A → hand off to the parser.
         try:
-            endpoint = self.parser.parse_endpoint(content, path)
-        except Exception as e:
+            parsed = self.parser.parse(content, path)
+        except ParseFailure as e:
             logger.warning("Parse failed for %s/%s: %s", repo, path, e)
             return DocumentScanResult(
                 document=path,
                 repo=repo,
-                parsed=False,
-                error=f"parse error: {e}",
+                failure_reason=e.issue,
+            )
+        except Exception as e:
+            logger.exception("Unexpected parser error for %s/%s", repo, path)
+            return DocumentScanResult(
+                document=path,
+                repo=repo,
+                failure_reason=Issue(
+                    code=IssueCode.PARSER_ERROR,
+                    details=f"parser raised: {e}",
+                ),
             )
 
         return DocumentScanResult(
             document=path,
             repo=repo,
-            parsed=True,
-            method=endpoint.method,
-            uri=endpoint.path,
-            title=endpoint.title or None,
-            api_version=endpoint.api_version or None,
+            method=parsed.method,
+            uri=parsed.uri,
+            title=parsed.title,
+            api_version=parsed.api_version,
+            sections=parsed.sections,
         )
 
     # ------------------------------------------------------------------ #
     # Helpers
     # ------------------------------------------------------------------ #
     def _is_excluded(self, path: str) -> bool:
-        """True if any path segment matches an excluded segment name."""
         return any(seg in self.excluded_segments for seg in path.split("/"))
-
-    @staticmethod
-    def _is_api_endpoint(content: str) -> bool:
-        return bool(URI_RE.search(content))

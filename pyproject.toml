@@ -14,16 +14,27 @@ dependencies = [
     "pydantic-settings>=2.7,<3",
     "requests>=2.32,<3",
     "docutils>=0.21,<1",
+    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=9,<10",
     "ruff>=0.15",
+    "import-linter>=2.0",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tools"]
+
+[tool.importlinter]
+root_package = "tools"
+
+[[tool.importlinter.contracts]]
+name = "domain is independent of infrastructure"
+type = "forbidden"
+source_modules = ["tools.domain"]
+forbidden_modules = ["tools.infrastructure"]
 
 [tool.ruff]
 line-length = 88

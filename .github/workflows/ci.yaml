@@ -31,6 +31,9 @@ jobs:
       - name: Run Ruff format check
         run: ruff format --check .
 
+      - name: Check architecture boundaries (domain must not import infrastructure)
+        run: lint-imports
+
   check:
     name: check
     if: >

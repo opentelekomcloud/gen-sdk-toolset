@@ -1,0 +1,34 @@
+# gen-sdk-toolset scan configuration.
+#
+# Edit these values to change scanner behaviour. Override individual values
+# from the command line with --org / --branch / --output, or point to a
+# different config file with --config <path>.
+#
+# The GitHub token is intentionally NOT in this file — set GITHUB_TOKEN in
+# .env or your shell environment so it can't be committed accidentally.
+
+[github]
+org = "opentelekomcloud-docs"
+branch = "main"
+api_url = "https://api.github.com"
+
+[scanner]
+# Directory whose existence makes a repo eligible for scanning. The RST
+# file prefix (api-ref/source/) is derived from this with a trailing slash.
+api_ref_path = "api-ref/source"
+# Path segments that exclude files from processing.
+# Extend this list when new deprecation conventions appear in OTC docs.
+excluded_segments = ["out-of-date_apis"]
+# Concurrent file fetches per repo. Increase cautiously — too many will trip
+# GitHub's secondary rate limit.
+max_workers = 8
+
+[output]
+# Where the JSON scan report is written. Override with --output on the CLI.
+path = "scan-output.json"
+# JSON indent for human readability. Set to 0 for compact output.
+indent = 2
+
+[logging]
+# Standard Python logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+level = "INFO"
