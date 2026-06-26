@@ -52,8 +52,16 @@ from .table import DETAILS_MAX, extract_parameter_table
 # Register a no-op role that just emits the visible label text — clean
 # extraction with no AST noise.
 def _passthrough_role(name, rawtext, text, lineno, inliner, options=None, content=None):
+    # Keep the visible label as the node text (prose unchanged) and attach
+    # the ref target as an attribute so the table extractor can read it.
+    # ``text`` is the full role body, e.g. "CreateFirewallOption <anchor>".
+    match = re.search(r"<([^>]+)>\s*$", text)
+    anchor = match.group(1).strip() if match else None
     label = re.sub(r"\s*<[^>]+>\s*$", "", text).strip()
-    return [nodes.Text(label)], []
+    node = nodes.inline(label, label)  # .astext() == label, prose unchanged
+    if anchor:
+        node["ref_target"] = anchor  # parser reads this; prose ignores it
+    return [node], []
 
 
 _roles_registered = False
