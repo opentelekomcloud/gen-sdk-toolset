@@ -21,8 +21,6 @@ SECTION_NESTED_OBJECTS = "nested_objects"
 # JSON output has a stable shape regardless of which sections a given doc
 # actually contains.
 #
-# `nested_objects` is populated as a SKIPPED placeholder until the
-# ref-resolution work (#6) lands — see IssueCode.NESTED_TABLE_SKIPPED.
 SECTION_NAMES: tuple[str, ...] = (
     SECTION_PATH_PARAMS,
     SECTION_QUERY_PARAMS,

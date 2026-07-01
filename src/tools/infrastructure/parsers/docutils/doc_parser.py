@@ -32,7 +32,6 @@ from tools.domain.report import (
     NESTED_STRUCT,
     SECTION_EXAMPLE_REQUEST,
     SECTION_EXAMPLE_RESPONSE,
-    SECTION_NESTED_OBJECTS,
     Issue,
     IssueCode,
     SectionResult,
@@ -40,9 +39,10 @@ from tools.domain.report import (
 )
 
 from .example import extract_examples
+from .nesting import RefKind, RefTarget, resolve_nested
 from .patterns import URI_RE
 from .section import SectionKind, classify_section_title, classify_table_title
-from .table import DETAILS_MAX, extract_parameter_table
+from .table import DETAILS_MAX, TableExtraction, extract_parameter_table
 
 
 # OTC docs use Sphinx-specific roles like ``:ref:`Label <anchor>``` that
@@ -153,100 +153,86 @@ class DocutilsParser(RstParser):
     # Content sections
     # ------------------------------------------------------------------ #
     def _extract_sections(self, doctree: nodes.document) -> dict[str, SectionResult]:
-        """Walk every section in the doc, dispatch each by classified kind.
+        """Two-pass extraction over every section in the doc.
 
         Sections of interest (URI / Request / Response / Example*) are
         typically *not* direct children of the doctree — they sit inside
-        the article-title wrapper section. We therefore walk all
-        sections at any depth and select by classification.
+        the article-title wrapper section — so we walk all sections at any
+        depth and select by classification.
+
+        A struct definition table can appear *after* the parameter that
+        references it (and structs reference other structs defined later), so
+        resolution needs the whole document first. Pass 1 routes primary
+        tables into ``primary`` and collects struct tables into a doc-wide
+        ``registry`` keyed by ref anchor; examples are handled inline. Pass 2
+        resolves each section's object/array params against the registry,
+        attaching any unresolved-ref issues to the owning section.
         """
         results: dict[str, SectionResult] = {}
+        primary: dict[str, TableExtraction] = {}
+        registry: dict[str, RefTarget] = {}
 
+        # Pass 1 — primary tables, the struct registry, and examples.
         for section_node in doctree.findall(nodes.section):
             title_node = section_node.next_node(nodes.title)
             if title_node is None:
                 continue
-            title = title_node.astext()
-            kind = classify_section_title(title)
+            kind = classify_section_title(title_node.astext())
 
             if kind in (SectionKind.URI, SectionKind.REQUEST, SectionKind.RESPONSE):
-                self._extract_parameter_section(section_node, kind, results)
+                self._collect_parameter_tables(section_node, kind, primary, registry)
             elif kind in (
                 SectionKind.EXAMPLE_REQUEST,
                 SectionKind.EXAMPLE_RESPONSE,
                 SectionKind.EXAMPLE_COMBINED,
             ):
                 self._extract_example_section(section_node, kind, results)
-            # Other section kinds (article title, Function, Status Codes,
-            # nested struct sub-sections, …) carry no data we currently
-            # extract — silently ignored.
+            # Other section kinds (article title, Function, Status Codes, …)
+            # carry no data we currently extract — silently ignored.
+
+        # A ref anchor pointing at a non-table node resolves to
+        # NESTED_REF_NOT_A_TABLE rather than looking absent. Record these
+        # after the struct tables so a real struct table keeps its anchor.
+        _register_non_table_targets(doctree, registry)
+
+        # Pass 2 — resolve refs into children; attach failures to their owning
+        # section and degrade OK → PARTIAL (worse statuses are left as-is).
+        # Resolve one section at a time: the flat issue list carries no section
+        # tag, so per-section calls are how we know which section each failure
+        # belongs to. Resolution is otherwise identical to one combined call.
+        for key, extraction in primary.items():
+            issues = resolve_nested({key: extraction}, registry)
+            section = _to_section_result(extraction)
+            for issue in issues:
+                section.issues.append(issue)
+                if section.status is SectionStatus.OK:
+                    section.status = SectionStatus.PARTIAL
+            results[key] = section
 
         return results
 
     # ---- parameter-bearing sections (URI / Request / Response) ------ #
-    def _extract_parameter_section(
+    def _collect_parameter_tables(
         self,
         section_node: nodes.section,
         kind: SectionKind,
-        results: dict[str, SectionResult],
+        primary: dict[str, TableExtraction],
+        registry: dict[str, RefTarget],
     ) -> None:
+        """Pass-1 collector: route each table to ``primary`` or ``registry``."""
         for table in section_node.findall(nodes.table):
-            table_title = _table_title(table)
-            target_key = classify_table_title(table_title, in_section=kind)
+            target_key = classify_table_title(_table_title(table), in_section=kind)
             if target_key is None:
                 # Status-code / non-parameter table — nothing to record.
                 continue
             if target_key == NESTED_STRUCT:
-                # Until resolving the nested structures, record the
-                # deferral so the doc reports `partial`, not a false `ok`
-                self._record_skipped_nested(results, table_title)
+                anchor = _table_label_id(table)
+                if anchor:
+                    registry[anchor] = RefTarget(
+                        kind=RefKind.TABLE, table=extract_parameter_table(table)
+                    )
                 continue
-            self._merge_table_into_section(table, target_key, results)
-
-    @staticmethod
-    def _record_skipped_nested(
-        results: dict[str, SectionResult], table_title: str
-    ) -> None:
-        section = results.setdefault(
-            SECTION_NESTED_OBJECTS, SectionResult(status=SectionStatus.SKIPPED)
-        )
-        location = f"table '{table_title}'" if table_title else "nested struct table"
-        section.issues.append(
-            Issue(code=IssueCode.NESTED_TABLE_SKIPPED, location=location)
-        )
-
-    def _merge_table_into_section(
-        self,
-        table: nodes.table,
-        key: str,
-        results: dict[str, SectionResult],
-    ) -> None:
-        """Parse one table and merge its output into results[key]."""
-        extraction = extract_parameter_table(table)
-
-        existing = results.get(key)
-        if existing is None:
-            results[key] = SectionResult(
-                status=_status_from_counters(extraction),
-                issues=list(extraction.issues),
-                parameters=list(extraction.parameters),
-                fields_total=extraction.fields_total,
-                fields_recognized=extraction.fields_recognized,
-                fields_unknown_type=extraction.fields_unknown_type,
-                fields_failed=extraction.fields_failed,
-            )
-            return
-
-        # Merge into the existing section (e.g. a request has both a
-        # header table and a body table — same conceptual section keyed
-        # together when their target keys match).
-        existing.parameters.extend(extraction.parameters)
-        existing.issues.extend(extraction.issues)
-        existing.fields_total += extraction.fields_total
-        existing.fields_recognized += extraction.fields_recognized
-        existing.fields_unknown_type += extraction.fields_unknown_type
-        existing.fields_failed += extraction.fields_failed
-        existing.status = _status_from_counters(existing)
+            _accumulate(primary, target_key, extract_parameter_table(table))
 
     # ---- example sections ------------------------------------------- #
     def _extract_example_section(
@@ -301,6 +287,68 @@ def _table_title(table: nodes.table) -> str:
     """Title text on a ``.. table:: <Title>`` directive (empty if absent)."""
     title_node = next(iter(table.findall(nodes.title)), None)
     return title_node.astext().strip() if title_node else ""
+
+
+def _table_label_id(table: nodes.table) -> str | None:
+    """Ref anchor of a struct table: the label from its ``.. _anchor:`` target.
+
+    We read ``names`` (the authored label, underscore-preserving) rather than
+    ``ids`` (which docutils normalises to hyphens) so it matches the raw
+    anchors captured from ``:ref:`` type cells in :mod:`.table`.
+    """
+    names = table.get("names")
+    return names[0] if names else None
+
+
+def _accumulate(
+    primary: dict[str, TableExtraction], key: str, extraction: TableExtraction
+) -> None:
+    """Merge an extraction into ``primary[key]``.
+
+    A request can carry both a header table and a body table; tables sharing a
+    target key are concatenated. ``ref_anchors`` is extended in lockstep with
+    ``parameters`` so the 1:1 alignment the resolver relies on is preserved.
+    """
+    existing = primary.get(key)
+    if existing is None:
+        primary[key] = extraction
+        return
+    existing.parameters.extend(extraction.parameters)
+    existing.ref_anchors.extend(extraction.ref_anchors)
+    existing.issues.extend(extraction.issues)
+    existing.fields_total += extraction.fields_total
+    existing.fields_recognized += extraction.fields_recognized
+    existing.fields_unknown_type += extraction.fields_unknown_type
+    existing.fields_failed += extraction.fields_failed
+
+
+def _to_section_result(extraction: TableExtraction) -> SectionResult:
+    """Build a SectionResult from a (resolved) primary extraction."""
+    return SectionResult(
+        status=_status_from_counters(extraction),
+        issues=list(extraction.issues),
+        parameters=list(extraction.parameters),
+        fields_total=extraction.fields_total,
+        fields_recognized=extraction.fields_recognized,
+        fields_unknown_type=extraction.fields_unknown_type,
+        fields_failed=extraction.fields_failed,
+    )
+
+
+def _register_non_table_targets(
+    doctree: nodes.document, registry: dict[str, RefTarget]
+) -> None:
+    """Record every named non-table node as a ``NON_TABLE`` target.
+
+    A type-cell ref pointing at a section or paragraph then resolves to
+    ``NESTED_REF_NOT_A_TABLE`` instead of looking absent. ``setdefault`` keeps
+    struct tables (registered first, in pass 1) winning their own anchor.
+    """
+    for node in doctree.findall(nodes.Element):
+        if isinstance(node, nodes.table):
+            continue  # struct tables are registered in pass 1; primary aren't refs
+        for name in node.get("names", ()):
+            registry.setdefault(name, RefTarget(kind=RefKind.NON_TABLE))
 
 
 def _status_from_counters(counters) -> SectionStatus:
