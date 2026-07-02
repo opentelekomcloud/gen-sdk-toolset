@@ -192,8 +192,10 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
                     param_type=param_type,
                     mandatory=mandatory,
                     description=description,
+                    type_name=type_name,
                 )
             )
+            ref_anchors.append(anchor)
 
             if not type_raw:
                 # Recognised (we have a name) but no type cell at all.
