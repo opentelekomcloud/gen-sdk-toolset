@@ -1,12 +1,9 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
 
+from tools.panel.core.db import models  # noqa: F401
 from tools.panel.core.db.base import Base
-from tools.panel.core.db import models
 from tools.panel.core.db.engine import engine as connectable
 
 # this is the Alembic Config object, which provides

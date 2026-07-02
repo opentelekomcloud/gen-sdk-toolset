@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.engine import Engine
+from sqlalchemy.orm import sessionmaker
 
 from tools.config import load_settings
 
