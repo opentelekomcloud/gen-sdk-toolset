@@ -86,7 +86,8 @@ def _classify_type(raw: str) -> ParameterType:
 # Struct/array keywords stripped from a type cell to leave the bare struct
 # name (e.g. "Array of RequestTag objects" -> "RequestTag"). A cell that is
 # only keywords ("object", "Array of objects") leaves nothing -> no type_name.
-_STRUCT_KEYWORDS_RE = re.compile(r"(?i)\b(array of|objects?|array)\b")
+# `\s+` tolerates irregular whitespace in "array of" (double spaces, newlines).
+_STRUCT_KEYWORDS_RE = re.compile(r"(?i)\barray\s+of\b|\bobjects?\b")
 
 # Parameter types that carry a referenced struct name worth preserving.
 _STRUCT_TYPES = frozenset({ParameterType.OBJECT, ParameterType.ARRAY_OF_OBJECTS})

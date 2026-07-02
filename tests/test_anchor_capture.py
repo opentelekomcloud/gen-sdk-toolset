@@ -8,12 +8,16 @@ name (``Parameter.type_name``). Report-visible cell text is unchanged.
 
 from __future__ import annotations
 
+import pytest
 from docutils import nodes
 from docutils.core import publish_doctree
 
 from tools.domain.ir import ParameterType
 from tools.infrastructure.parsers.docutils.doc_parser import _ensure_roles
-from tools.infrastructure.parsers.docutils.table import extract_parameter_table
+from tools.infrastructure.parsers.docutils.table import (
+    _struct_type_name,
+    extract_parameter_table,
+)
 
 from .conftest import load_fixture
 
@@ -107,3 +111,26 @@ def test_ref_anchors_aligned_with_parameters_across_fixtures() -> None:
         for table in _tables_by_title(load_fixture(fixture)).values():
             ex = extract_parameter_table(table)
             assert len(ex.ref_anchors) == len(ex.parameters)
+
+
+# --------------------------------------------------------------------------- #
+# Struct-name extraction, including irregular whitespace
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "raw_type, expected",
+    [
+        ("CreateFirewallOption object", "CreateFirewallOption"),
+        ("Array of RequestTag objects", "RequestTag"),
+        ("AllowUserBody object", "AllowUserBody"),
+        # Keyword-only cells carry no struct name.
+        ("object", None),
+        ("Array of objects", None),
+        # Irregular whitespace in "array of" and around the name must still
+        # yield the bare struct name.
+        ("Array  of  RequestTag  objects", "RequestTag"),
+        ("Array\nof\nRequestTag objects", "RequestTag"),
+        ("  Array of   RequestTag  ", "RequestTag"),
+    ],
+)
+def test_struct_type_name(raw_type: str, expected: str | None) -> None:
+    assert _struct_type_name(raw_type) == expected
