@@ -63,7 +63,6 @@ class IssueCode(str, Enum):
     # --- Nested resolution (#6)
     NESTED_TABLE_NOT_FOUND = "nested_table_not_found"  # ref anchor has no struct table
     NESTED_TABLE_EMPTY = "nested_table_empty"  # struct table found but has no fields
-    NESTED_TABLE_SKIPPED = "nested_table_skipped"  # retired by #6 wire-in; unused
     NESTED_CIRCULAR_REF = "nested_circular_ref"  # struct references itself on the path
     NESTED_REF_NOT_A_TABLE = "nested_ref_not_a_table"  # anchor → non-table node
     NESTED_REF_EXTERNAL = "nested_ref_external"  # ref resolves into another doc
