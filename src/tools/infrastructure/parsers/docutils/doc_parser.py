@@ -195,13 +195,17 @@ class DocutilsParser(RstParser):
         # after the struct tables so a real struct table keeps its anchor.
         _register_non_table_targets(doctree, registry)
 
+        # This document's own label, so an unresolved anchor with a foreign
+        # docid is reported as external rather than dangling.
+        doc_id = _document_doc_id(doctree)
+
         # Pass 2 — resolve refs into children; attach failures to their owning
         # section and degrade OK → PARTIAL (worse statuses are left as-is).
         # Resolve one section at a time: the flat issue list carries no section
         # tag, so per-section calls are how we know which section each failure
         # belongs to. Resolution is otherwise identical to one combined call.
         for key, extraction in primary.items():
-            issues = resolve_nested({key: extraction}, registry)
+            issues = resolve_nested({key: extraction}, registry, doc_id=doc_id)
             section = _to_section_result(extraction)
             for issue in issues:
                 section.issues.append(issue)
@@ -298,6 +302,25 @@ def _table_label_id(table: nodes.table) -> str | None:
     """
     names = table.get("names")
     return names[0] if names else None
+
+
+def _document_doc_id(doctree: nodes.document) -> str | None:
+    """The document's own label (e.g. ``cce_02_0245``), or ``None``.
+
+    OTC docs carry a ``.. _<docid>:`` target before the title, which lands on
+    the top section alongside the title-derived name. We return the top
+    section name that is *not* the title's — the authored docid, in the same
+    underscore-preserving form as the ref anchors it will be compared against.
+    """
+    top = next(iter(doctree.findall(nodes.section)), None)
+    if top is None:
+        return None
+    title_node = top.next_node(nodes.title)
+    title_name = nodes.fully_normalize_name(title_node.astext()) if title_node else None
+    for name in top.get("names", ()):
+        if name != title_name:
+            return name
+    return None
 
 
 def _accumulate(

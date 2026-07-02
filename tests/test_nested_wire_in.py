@@ -2,10 +2,9 @@
 
 Covers the happy paths on real fixtures (VPC recursive chain; IAM same-named
 request/response structs that must bind to their own tables by anchor) and one
-fixture per failure code reachable from a single document — NESTED_TABLE_NOT_FOUND,
-NESTED_CIRCULAR_REF, NESTED_REF_NOT_A_TABLE, NESTED_TABLE_EMPTY. NESTED_REF_EXTERNAL
-needs a repo-wide target index, so it is covered by the resolver's unit tests
-(``test_nesting.py``), not here.
+fixture per failure code — NESTED_TABLE_NOT_FOUND, NESTED_CIRCULAR_REF,
+NESTED_REF_NOT_A_TABLE, NESTED_TABLE_EMPTY, and NESTED_REF_EXTERNAL (an anchor
+whose docid differs from the document's own label).
 """
 
 from __future__ import annotations
@@ -37,9 +36,15 @@ def _simple_table(title: str, headers: list[str], rows: list[list[str]]) -> str:
     return f".. table:: {title}\n\n{indented}\n"
 
 
-def _doc(*blocks: str) -> str:
+def _doc(*blocks: str, doc_label: str | None = None) -> str:
+    # An optional `.. _<doc_label>:` before the title gives the doc its own
+    # docid, needed to tell cross-doc refs from in-doc ones. The
+    # `:original_name:` docinfo mirrors real OTC docs and keeps the lone title
+    # from being promoted to the document title, so the docid (and title name)
+    # land on the top section — where the parser reads them.
+    prefix = f":original_name: demo.html\n\n.. _{doc_label}:\n\n" if doc_label else ""
     head = (
-        "Demo\n====\n\nURI\n---\n\nPOST /v1/test\n\n"
+        f"{prefix}Demo\n====\n\nURI\n---\n\nPOST /v1/test\n\n"
         "Request Parameters\n------------------\n\n"
     )
     return head + "\n".join(blocks)
@@ -188,3 +193,19 @@ def test_empty_struct_table(parser: DocutilsParser) -> None:
     parsed = parser.parse(content, "x.rst")
     assert parsed.sections["body"].status is SectionStatus.PARTIAL
     assert IssueCode.NESTED_TABLE_EMPTY in _body_issue_codes(parser, content)
+
+
+def test_external_cross_doc_ref(parser: DocutilsParser) -> None:
+    # This doc's label is `thisdoc`; the ref's docid `otherdoc` differs, so it
+    # points into another document -> external (not a dangling in-doc ref).
+    content = _doc(
+        _simple_table(
+            "**Table 1** Request body parameters",
+            ["Parameter", "Type", "Description"],
+            [["foo", ":ref:`Foo <otherdoc__struct>` object", "a foo"]],
+        ),
+        doc_label="thisdoc",
+    )
+    parsed = parser.parse(content, "x.rst")
+    assert parsed.sections["body"].status is SectionStatus.PARTIAL
+    assert IssueCode.NESTED_REF_EXTERNAL in _body_issue_codes(parser, content)
