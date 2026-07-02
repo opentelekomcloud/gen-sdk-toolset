@@ -23,6 +23,7 @@ dev = [
     "ruff>=0.15",
     "import-linter>=2.0",
 ]
+panel = ["fastapi", "sqlalchemy>=2.0", "alembic", "uvicorn"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tools"]

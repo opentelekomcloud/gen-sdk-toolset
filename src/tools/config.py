@@ -57,6 +57,10 @@ class LoggingSection(BaseModel):
     level: str = "INFO"
 
 
+class DatabaseSection(BaseModel):
+    url: str = "sqlite:///./panel.db"
+
+
 class Settings(BaseSettings):
     github_token: SecretStr = Field(
         default=...,
@@ -69,6 +73,7 @@ class Settings(BaseSettings):
     scanner: ScannerSection = Field(default_factory=ScannerSection)
     output: OutputSection = Field(default_factory=OutputSection)
     logging: LoggingSection = Field(default_factory=LoggingSection)
+    database: DatabaseSection = Field(default_factory=DatabaseSection)
 
     model_config = SettingsConfigDict(
         env_file=".env",
