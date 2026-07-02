@@ -210,3 +210,5 @@ __marimo__/
 # gen-sdk-toolset scan artifacts
 scan-output.json
 scan.json
+
+*.db
