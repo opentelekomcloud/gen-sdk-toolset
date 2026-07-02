@@ -102,8 +102,10 @@ class Document(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    service_id: Mapped[int] = mapped_column(sa.ForeignKey("service.id"))
-    job_id: Mapped[int] = mapped_column(sa.ForeignKey("job.id"))
+    service_id: Mapped[int] = mapped_column(sa.ForeignKey("service.id"),
+                                            index=True)
+    job_id: Mapped[int] = mapped_column(sa.ForeignKey("job.id"),
+                                        index=True)
 
     document: Mapped[str]  # path to rst
     method: Mapped[str | None]
@@ -120,9 +122,7 @@ class Document(Base):
     sections: Mapped[dict] = mapped_column(sa.JSON, deferred=True)
 
     __table_args__ = (
-        sa.UniqueConstraint("job_id", "document", name="uq_document_job_document"),
-        sa.Index("ix_document_job_id", "job_id"),
-        sa.Index("ix_document_service_id", "service_id"),
+        sa.UniqueConstraint("job_id", "document"),
     )
 
 
@@ -135,13 +135,8 @@ class Issue(Base):
         sa.ForeignKey("document.id", ondelete="CASCADE")
     )
     service_id: Mapped[int] = mapped_column(sa.ForeignKey("service.id"))
-    job_id: Mapped[int] = mapped_column(sa.ForeignKey("job.id"))
+    job_id: Mapped[int] = mapped_column(sa.ForeignKey("job.id"), index=True)
 
-    code: Mapped[str]
+    code: Mapped[str] = mapped_column(index=True)
     location: Mapped[str | None]
     details: Mapped[str | None]
-
-    __table_args__ = (
-        sa.Index("ix_issue_job_id", "job_id"),
-        sa.Index("ix_issue_code", "code"),
-    )
