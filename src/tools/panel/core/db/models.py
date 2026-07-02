@@ -31,13 +31,9 @@ class Job(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    kind: Mapped[JobKind] = mapped_column(
-        sa.Enum(JobKind, native_enum=False)
-    )
+    kind: Mapped[JobKind] = mapped_column(sa.Enum(JobKind, native_enum=False))
     target: Mapped[str]
-    status: Mapped[JobStatus] = mapped_column(
-        sa.Enum(JobStatus, native_enum=False)
-    )
+    status: Mapped[JobStatus] = mapped_column(sa.Enum(JobStatus, native_enum=False))
 
     scanner_version: Mapped[str | None]
     commit_hash: Mapped[str | None]
@@ -54,12 +50,8 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), default=_utcnow
     )
-    started_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True)
-    )
-    finished_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True)
-    )
+    started_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
 
 
 class Service(Base):
@@ -73,21 +65,15 @@ class Service(Base):
     has_api_ref: Mapped[bool]
 
     error: Mapped[str | None]
-    scanned_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True)
-    )
+    scanned_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     scanner_version: Mapped[str | None]
     commit_hash: Mapped[str | None]
 
     head_commit: Mapped[str | None]
     non_endpoint_documents: Mapped[int | None]
 
-    current_job_id: Mapped[int | None] = mapped_column(
-        sa.ForeignKey("job.id")
-    )
-    previous_job_id: Mapped[int | None] = mapped_column(
-        sa.ForeignKey("job.id")
-    )
+    current_job_id: Mapped[int | None] = mapped_column(sa.ForeignKey("job.id"))
+    previous_job_id: Mapped[int | None] = mapped_column(sa.ForeignKey("job.id"))
 
 
 class DocStatus(enum.Enum):
@@ -102,10 +88,8 @@ class Document(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    service_id: Mapped[int] = mapped_column(sa.ForeignKey("service.id"),
-                                            index=True)
-    job_id: Mapped[int] = mapped_column(sa.ForeignKey("job.id"),
-                                        index=True)
+    service_id: Mapped[int] = mapped_column(sa.ForeignKey("service.id"), index=True)
+    job_id: Mapped[int] = mapped_column(sa.ForeignKey("job.id"), index=True)
 
     document: Mapped[str]  # path to rst
     method: Mapped[str | None]
@@ -121,9 +105,7 @@ class Document(Base):
 
     sections: Mapped[dict] = mapped_column(sa.JSON, deferred=True)
 
-    __table_args__ = (
-        sa.UniqueConstraint("job_id", "document"),
-    )
+    __table_args__ = (sa.UniqueConstraint("job_id", "document"),)
 
 
 class Issue(Base):
