@@ -60,10 +60,13 @@ class IssueCode(str, Enum):
     EMPTY_MANDATORY_COLUMN = "empty_mandatory_column"
     DESCRIPTION_TRUNCATED = "description_truncated"
 
-    # --- Nested resolution (#6 — defined now so the enum is stable later)
-    NESTED_TABLE_NOT_FOUND = "nested_table_not_found"
-    NESTED_TABLE_SKIPPED = "nested_table_skipped"  # honest placeholder until #6
-    NESTED_CIRCULAR_REF = "nested_circular_ref"
+    # --- Nested resolution (#6)
+    NESTED_TABLE_NOT_FOUND = "nested_table_not_found"  # ref anchor has no struct table
+    NESTED_TABLE_EMPTY = "nested_table_empty"  # struct table found but has no fields
+    NESTED_TABLE_SKIPPED = "nested_table_skipped"  # placeholder until wire-in (S6)
+    NESTED_CIRCULAR_REF = "nested_circular_ref"  # struct references itself on the path
+    NESTED_REF_NOT_A_TABLE = "nested_ref_not_a_table"  # anchor → non-table node
+    NESTED_REF_EXTERNAL = "nested_ref_external"  # ref resolves into another doc
 
     # --- Examples
     EXAMPLE_INVALID_JSON = "example_invalid_json"

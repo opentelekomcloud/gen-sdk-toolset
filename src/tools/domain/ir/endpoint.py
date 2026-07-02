@@ -11,6 +11,7 @@ class Parameter(BaseModel):
     mandatory: bool = False
     description: str = ""
     children: list[Parameter] = Field(default_factory=list)
+    type_name: str | None = None
 
 
 class Endpoint(BaseModel):

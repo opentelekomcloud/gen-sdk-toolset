@@ -83,11 +83,24 @@ def _classify_type(raw: str) -> ParameterType:
     return ParameterType.UNKNOWN
 
 
+# Struct/array keywords stripped from a type cell to leave the bare struct
+# name (e.g. "Array of RequestTag objects" -> "RequestTag"). A cell that is
+# only keywords ("object", "Array of objects") leaves nothing -> no type_name.
+# `\s+` tolerates irregular whitespace in "array of" (double spaces, newlines).
+_STRUCT_KEYWORDS_RE = re.compile(r"(?i)\barray\s+of\b|\bobjects?\b")
+
+# Parameter types that carry a referenced struct name worth preserving.
+_STRUCT_TYPES = frozenset({ParameterType.OBJECT, ParameterType.ARRAY_OF_OBJECTS})
+
+
 @dataclass
 class TableExtraction:
     """Result of parsing one parameter table."""
 
     parameters: list[Parameter]
+    # Struct ref anchor (`:ref:` target) for each parameter, aligned 1:1 with
+    # ``parameters``. ``None`` for primitives / rows without a struct ref.
+    ref_anchors: list[str | None]
     issues: list[Issue]
     fields_total: int
     fields_recognized: int
@@ -103,6 +116,7 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
     """
     issues: list[Issue] = []
     parameters: list[Parameter] = []
+    ref_anchors: list[str | None] = []
 
     column_map = _build_column_map(table)
     if column_map is None or "name" not in column_map:
@@ -116,6 +130,7 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
         )
         return TableExtraction(
             parameters=[],
+            ref_anchors=[],
             issues=issues,
             fields_total=0,
             fields_recognized=0,
@@ -133,7 +148,8 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
     for row_idx, row in enumerate(body_rows, start=1):
         fields_total += 1
         try:
-            cells = [_cell_text(entry) for entry in row.children]
+            entries = list(row.children)
+            cells = [_cell_text(entry) for entry in entries]
             name = cells[column_map["name"]].strip()
             type_raw = cells[column_map["type"]].strip() if "type" in column_map else ""
             mandatory = (
@@ -160,6 +176,15 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
                 continue
 
             param_type = _classify_type(type_raw)
+            is_struct = param_type in _STRUCT_TYPES
+            type_name = _struct_type_name(type_raw) if is_struct else None
+            # The struct ref anchor lives on the type cell in some corpora
+            # (VPC: ":ref:`CreateFirewallOption <...>` object") and on the
+            # name cell in others (IAM: ":ref:`protect_policy <...>`" with a
+            # bare "object" type). Capture it for struct-typed params only,
+            # preferring the type cell, so primitive rows never pick up an
+            # unrelated name-cell ref.
+            anchor = _struct_anchor(entries, column_map) if is_struct else None
 
             parameters.append(
                 Parameter(
@@ -167,8 +192,10 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
                     param_type=param_type,
                     mandatory=mandatory,
                     description=description,
+                    type_name=type_name,
                 )
             )
+            ref_anchors.append(anchor)
 
             if not type_raw:
                 # Recognised (we have a name) but no type cell at all.
@@ -195,8 +222,16 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
                 )
             )
 
+    # ref_anchors is appended in lockstep with parameters, so the resolver
+    # (S5) can zip them safely. Guard the invariant rather than trust it.
+    assert len(ref_anchors) == len(parameters), (
+        f"ref_anchors ({len(ref_anchors)}) misaligned with "
+        f"parameters ({len(parameters)})"
+    )
+
     return TableExtraction(
         parameters=parameters,
+        ref_anchors=ref_anchors,
         issues=issues,
         fields_total=fields_total,
         fields_recognized=fields_recognized,
@@ -237,6 +272,49 @@ def _body_rows(table: nodes.table) -> list[nodes.row]:
 def _cell_text(entry: nodes.Element) -> str:
     """Extract the textual content of a single table cell."""
     return entry.astext()
+
+
+def _ref_anchor(entry: nodes.Element) -> str | None:
+    """First ``ref_target`` on an inline node in a cell, else ``None``.
+
+    The passthrough role (see doc_parser) attaches ``ref_target`` to the
+    inline node it emits for a ``:ref:``. One struct ref per cell in practice.
+    """
+    for inline in entry.findall(nodes.inline):
+        anchor = inline.get("ref_target")
+        if anchor:
+            return anchor
+    return None
+
+
+def _struct_anchor(
+    entries: list[nodes.Element], column_map: dict[str, int]
+) -> str | None:
+    """Struct ref anchor for a row: type cell first, then name cell.
+
+    Type-cell refs (VPC) win over name-cell refs (IAM) when both exist, so a
+    ``:ref:`` on the type always takes precedence.
+    """
+    for column in ("type", "name"):
+        idx = column_map.get(column)
+        if idx is None:
+            continue
+        anchor = _ref_anchor(entries[idx])
+        if anchor:
+            return anchor
+    return None
+
+
+def _struct_type_name(raw_type: str) -> str | None:
+    """Bare struct name from an object/array type cell, or ``None``.
+
+    ``"CreateFirewallOption object"`` -> ``"CreateFirewallOption"``;
+    ``"Array of RequestTag objects"`` -> ``"RequestTag"``; a cell that is
+    only structural keywords (``"object"``, ``"Array of objects"``) -> ``None``.
+    """
+    name = _STRUCT_KEYWORDS_RE.sub(" ", raw_type)
+    name = re.sub(r"\s+", " ", name).strip()
+    return name or None
 
 
 def _parse_mandatory(text: str) -> bool:
