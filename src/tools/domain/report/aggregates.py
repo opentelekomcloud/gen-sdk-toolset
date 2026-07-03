@@ -11,7 +11,7 @@ from tools import __version__ as _SCANNER_VERSION
 
 from .document import DocumentScanResult
 
-REPORT_SCHEMA_VERSION = 3
+REPORT_SCHEMA_VERSION = 4
 
 
 class RepoScanResult(BaseModel):
