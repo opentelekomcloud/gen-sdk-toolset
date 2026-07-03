@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from tools.domain.interfaces.doc_provider import FileListing
-from tools.domain.report import IssueCode, SectionStatus
+from tools.domain.report import IssueCode
 from tools.domain.services.scanner import ScannerService
 from tools.infrastructure.parsers import DocutilsParser, classify_doc_style
 
@@ -94,10 +94,15 @@ def test_style_a_populates_sections() -> None:
     assert len(docs) == 1
     doc = docs[0]
     assert doc.failure_reason is None
-    assert doc.overall_status == "partial"
+    # CCE's `metadata` object resolves to its struct table, so the doc is fully
+    # extracted now (no deferred-nesting partial) and emits no nested_objects.
+    assert doc.overall_status == "ok"
     assert "path_params" in doc.sections
     assert "body" in doc.sections
-    assert doc.sections["nested_objects"].status is SectionStatus.SKIPPED
+    assert "nested_objects" not in doc.sections
+    metadata = doc.sections["body"].parameters[0]
+    assert metadata.name == "metadata"
+    assert [c.name for c in metadata.children] == ["name"]
     assert doc.api_version == "v3"
 
 
@@ -286,8 +291,8 @@ def test_quality_summary_counts() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
     qs = result.quality_summary
-    # CCE is partial (deferred nested struct), OBS is unsupported.
-    assert qs.by_overall_status.get("partial", 0) >= 1
+    # CCE is ok (nested struct resolved), OBS is unsupported.
+    assert qs.by_overall_status.get("ok", 0) >= 1
     assert qs.by_overall_status.get("unsupported", 0) == 1
 
 
