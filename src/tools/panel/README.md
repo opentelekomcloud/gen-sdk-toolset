@@ -25,3 +25,27 @@ uv run alembic current                 # show current revision
 uv run alembic downgrade -1            # roll back the last migration
 uv run alembic revision --autogenerate -m "message"   # new migration after model changes
 ```
+
+## Running the dev server
+
+From the project root, with `.env` present (must include `GITHUB_TOKEN`):
+
+```bash
+uv run uvicorn tools.panel.api.app:create_app --factory --reload
+```
+
+The API starts on `http://127.0.0.1:8000`.
+
+- Health check: `GET http://127.0.0.1:8000/health` → `{"status": "ok"}`
+- Interactive docs (Swagger UI): `http://127.0.0.1:8000/docs`
+- OpenAPI schema: `http://127.0.0.1:8000/openapi.json`
+
+## Regenerating the OpenAPI schema
+
+The committed schema at `src/tools/panel/openapi.json` is the API contract
+consumed by the frontend type generator. It does **not** require a running
+server. Regenerate it after any change to the API and commit the result:
+
+```bash
+uv run panel openapi > src/tools/panel/openapi.json
+```
