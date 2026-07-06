@@ -60,6 +60,8 @@ class LoggingSection(BaseModel):
 class DatabaseSection(BaseModel):
     url: str = "sqlite:///./panel.db"
 
+class PanelSection(BaseModel):
+    frontend_origin: str = "http://localhost:5173"
 
 class Settings(BaseSettings):
     github_token: SecretStr = Field(
@@ -74,6 +76,7 @@ class Settings(BaseSettings):
     output: OutputSection = Field(default_factory=OutputSection)
     logging: LoggingSection = Field(default_factory=LoggingSection)
     database: DatabaseSection = Field(default_factory=DatabaseSection)
+    panel: PanelSection = Field(default_factory=PanelSection)
 
     model_config = SettingsConfigDict(
         env_file=".env",

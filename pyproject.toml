@@ -50,3 +50,4 @@ testpaths = ["tests"]
 
 [project.scripts]
 gen-sdk-scan = "tools.main:main"
+panel = "tools.panel.cli:main"
