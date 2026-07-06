@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
+from tools.config import load_settings
 from tools.panel.api.errors import register_error_handlers
 from tools.panel.api.routes.health import router as health_router
-from tools.config import load_settings
 
 
 def create_app() -> FastAPI:
