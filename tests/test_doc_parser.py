@@ -6,7 +6,7 @@ import pytest
 
 from tools.domain.ir import HttpMethod, ParameterType
 from tools.domain.report import IssueCode, ParseFailure, SectionStatus
-from tools.infrastructure.parsers import DocutilsParser
+from tools.scanner.parsers import DocutilsParser
 
 
 @pytest.fixture
@@ -231,7 +231,7 @@ def test_example_extend_invalid_json_degrades() -> None:
         SECTION_EXAMPLE_REQUEST,
         ExampleBlock,
     )
-    from tools.infrastructure.parsers.docutils.doc_parser import _set_example_section
+    from tools.scanner.parsers.docutils.doc_parser import _set_example_section
 
     results: dict = {}
     # First call creates the section from a valid JSON example → OK.

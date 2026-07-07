@@ -32,10 +32,10 @@ packages = ["src/tools"]
 root_package = "tools"
 
 [[tool.importlinter.contracts]]
-name = "domain is independent of infrastructure"
+name = "domain is independent of the scanner"
 type = "forbidden"
 source_modules = ["tools.domain"]
-forbidden_modules = ["tools.infrastructure"]
+forbidden_modules = ["tools.scanner"]
 
 [tool.ruff]
 line-length = 88
@@ -49,5 +49,5 @@ select = ["E", "F", "I", "UP"]
 testpaths = ["tests"]
 
 [project.scripts]
-gen-sdk-scan = "tools.main:main"
+gen-sdk-scan = "tools.scanner.main:main"
 panel = "tools.panel.cli:main"

@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from tools.domain.ir import Parameter, ParameterType
 from tools.domain.report import IssueCode
-from tools.infrastructure.parsers.docutils.nesting import (
+from tools.scanner.parsers.docutils.nesting import (
     RefKind,
     RefTarget,
     resolve_nested,
 )
-from tools.infrastructure.parsers.docutils.table import TableExtraction
+from tools.scanner.parsers.docutils.table import TableExtraction
 
 
 def _extraction(rows: list[tuple[Parameter, str | None]]) -> TableExtraction:

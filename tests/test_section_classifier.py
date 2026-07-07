@@ -2,7 +2,7 @@
 
 import pytest
 
-from tools.infrastructure.parsers.docutils.section import (
+from tools.scanner.parsers.docutils.section import (
     SectionKind,
     classify_section_title,
     classify_table_title,
