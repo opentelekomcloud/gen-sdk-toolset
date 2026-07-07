@@ -8,28 +8,7 @@ GitHub organisation, locates every repository whose docs contain an
 structured JSON report describing which documents can be processed today and
 which can't.
 
-## Setup
-
-```bash
-git clone git@github.com:opentelekomcloud/gen-sdk-toolset.git
-cd gen-sdk-toolset
-
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-## Configuration
-
-The scanner reads its configuration from three sources, in order of precedence:
-
-1. **CLI flags** (`--org`, `--branch`, `--output`, …)
-2. **Environment variables**, including nested overrides via `__`
-   (e.g. `GITHUB__ORG=foo`)
-3. **`scan-config.toml`** in the current working directory, or a custom path
-   via `--config <path>`
-
-### GitHub token
+## GitHub token
 
 The token is the one thing kept *outside* the TOML config — it lives in `.env`
 (or your shell environment) so it can never be committed by accident.
@@ -42,32 +21,61 @@ The token is the one thing kept *outside* the TOML config — it lives in `.env`
    cp .env.example .env
    # then edit .env and set GITHUB_TOKEN=ghp_...
    ```
+   
+## Panel
 
-### `scan-config.toml`
+The panel is a web app over the scan results: a FastAPI backend and a
+React + TypeScript frontend, living in `src/tools/panel/` and `frontend/`.
 
-A committed default file with sensible values. Edit it (or override
-individual fields via env / CLI) to tweak:
+### Running the full stack (Docker)
 
-```toml
-[github]
-org = "opentelekomcloud-docs"
-branch = "main"
+Requires Docker Desktop running and a `.env` file in the repo root with
+`GITHUB_TOKEN` set (the backend won't start without it).
 
-[scanner]
-rst_source_prefix = "api-ref/source/"
-api_ref_path = "api-ref/source"
-excluded_segments = ["out-of-date_apis"]
-max_workers = 8
+From the repo root:
 
-[output]
-path = "scan-output.json"
-indent = 2
-
-[logging]
-level = "INFO"
+```bash
+docker compose up --build
 ```
 
-## Usage
+Starts both services:
+
+- Backend (FastAPI) on `http://localhost:8000`
+- Frontend (Vite) on `http://localhost:5173`
+
+Stop with:
+
+```bash
+docker compose down
+```
+
+### Component docs
+
+- Backend details: `src/tools/panel/README.md`
+- Frontend dev (run without Docker): `frontend/README.md`
+
+## Scanner Usage
+
+### Setup
+
+```bash
+git clone git@github.com:opentelekomcloud/gen-sdk-toolset.git
+cd gen-sdk-toolset
+
+python -m venv .venv #change to uv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+### Configuration
+
+The scanner reads its configuration from three sources, in order of precedence:
+
+1. **CLI flags** (`--org`, `--branch`, `--output`, …)
+2. **Environment variables**, including nested overrides via `__`
+   (e.g. `GITHUB__ORG=foo`)
+3. **`scan-config.toml`** in the current working directory, or a custom path
+   via `--config <path>`
 
 ```bash
 # Scan with defaults from scan-config.toml; report written to scan-output.json
@@ -132,6 +140,30 @@ The scan produces a single JSON file structured as a *quality report*:
   - `by_section_status` — distribution per section
   - `top_issues` — most frequent issue codes across the org
   - plus `report_schema_version: 1`
+
+### `scan-config.toml`
+
+A committed default file with sensible values. Edit it (or override
+individual fields via env / CLI) to tweak:
+
+```toml
+[github]
+org = "opentelekomcloud-docs"
+branch = "main"
+
+[scanner]
+rst_source_prefix = "api-ref/source/"
+api_ref_path = "api-ref/source"
+excluded_segments = ["out-of-date_apis"]
+max_workers = 8
+
+[output]
+path = "scan-output.json"
+indent = 2
+
+[logging]
+level = "INFO"
+```
 
 ## Development
 

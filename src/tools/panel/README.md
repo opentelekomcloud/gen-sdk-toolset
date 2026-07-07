@@ -24,6 +24,7 @@ On a fresh database this creates all four tables (`job`, `service`,
 uv run alembic current                 # show current revision
 uv run alembic downgrade -1            # roll back the last migration
 uv run alembic revision --autogenerate -m "message"   # new migration after model changes
+uv sync --extra panel                  # add dependencies
 ```
 
 ## Running the dev server
@@ -47,5 +48,5 @@ consumed by the frontend type generator. It does **not** require a running
 server. Regenerate it after any change to the API and commit the result:
 
 ```bash
-uv run panel openapi > src/tools/panel/openapi.json
+uv run panel openapi | Out-File -Encoding utf8 src/tools/panel/openapi.json
 ```
