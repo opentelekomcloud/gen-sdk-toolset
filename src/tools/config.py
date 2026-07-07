@@ -63,6 +63,10 @@ class DatabaseSection(BaseModel):
 class PanelSection(BaseModel):
     frontend_origin: str = "http://localhost:5173"
 
+class PanelSection(BaseModel):
+    frontend_origin: str = "http://localhost:5173"
+
+
 class Settings(BaseSettings):
     github_token: SecretStr = Field(
         default=...,
