@@ -12,8 +12,8 @@ from __future__ import annotations
 from docutils import nodes
 from docutils.core import publish_doctree
 
-from tools.infrastructure.parsers.docutils.doc_parser import _ensure_roles
-from tools.infrastructure.parsers.docutils.table import extract_parameter_table
+from tools.scanner.parsers.docutils.doc_parser import _ensure_roles
+from tools.scanner.parsers.docutils.table import extract_parameter_table
 
 _RST = """
 Demo

@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from tools.domain.report import IssueCode, SectionStatus
-from tools.infrastructure.parsers import DocutilsParser
+from tools.scanner.parsers import DocutilsParser
 
 
 @pytest.fixture
