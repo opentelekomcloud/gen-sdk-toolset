@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from tools.domain.interfaces.doc_provider import FileListing
 from tools.domain.report import IssueCode
-from tools.domain.services.scanner import ScannerService
-from tools.infrastructure.parsers import DocutilsParser, classify_doc_style
+from tools.scanner.parsers import DocutilsParser, classify_doc_style
+from tools.scanner.service import ScannerService
 
 from .conftest import load_fixture
 

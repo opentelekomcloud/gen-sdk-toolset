@@ -13,8 +13,8 @@ from docutils import nodes
 from docutils.core import publish_doctree
 
 from tools.domain.ir import ParameterType
-from tools.infrastructure.parsers.docutils.doc_parser import _ensure_roles
-from tools.infrastructure.parsers.docutils.table import (
+from tools.scanner.parsers.docutils.doc_parser import _ensure_roles
+from tools.scanner.parsers.docutils.table import (
     _struct_type_name,
     extract_parameter_table,
 )

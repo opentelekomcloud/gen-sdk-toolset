@@ -3,7 +3,7 @@
 The parser is intentionally thin: it walks the docutils tree once,
 delegates each concern to a focused helper module, and assembles the
 result into a :class:`ParsedDocument`. Style classification happens
-upstream in :mod:`tools.infrastructure.parsers.style`; this module is
+upstream in :mod:`tools.scanner.parsers.docutils.style`; this module is
 only ever called on docs already known to be Style-A.
 
 Outputs:
