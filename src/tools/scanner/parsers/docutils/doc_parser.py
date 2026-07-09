@@ -26,7 +26,7 @@ from docutils import nodes
 from docutils.core import publish_doctree
 from docutils.parsers.rst import roles
 
-from tools.domain.interfaces.parser import ParsedDocument, ParseFailure, RstParser
+from tools.scanner.interfaces import ParsedDocument, ParseFailure, RstParser
 from tools.shared.ir import HttpMethod
 from tools.domain.report import (
     NESTED_STRUCT,

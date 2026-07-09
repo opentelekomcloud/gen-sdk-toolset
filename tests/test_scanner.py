@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tools.domain.interfaces.doc_provider import FileListing
+from tools.scanner.interfaces import FileListing
 from tools.domain.report import IssueCode
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService

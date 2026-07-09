@@ -3,8 +3,8 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 
 from tools.shared.exceptions import RepositoryError
-from tools.domain.interfaces.doc_provider import DocProvider
-from tools.domain.interfaces.parser import ParseFailure, RstParser
+from tools.scanner.interfaces import DocProvider
+from tools.scanner.interfaces import ParseFailure, RstParser
 from tools.domain.report import (
     UNVERSIONED_KEY,
     DocumentScanResult,

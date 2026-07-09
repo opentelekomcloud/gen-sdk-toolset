@@ -9,7 +9,7 @@ from tools.shared.exceptions import (
     RateLimitError,
     RepositoryError,
 )
-from tools.domain.interfaces.doc_provider import DocProvider, FileListing
+from tools.scanner.interfaces import DocProvider, FileListing
 
 logger = logging.getLogger(__name__)
 

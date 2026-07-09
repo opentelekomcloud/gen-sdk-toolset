@@ -49,23 +49,6 @@ from tools.shared.report.keys import (
 )
 from .section import ExampleBlock, SectionResult
 
-# `ParsedDocument` / `ParseFailure` live in tools.domain.interfaces.parser
-# (the parser port's contract). They are re-exported here for backwards
-# compatibility, but *lazily* via PEP 562: importing them eagerly would form
-# a cycle, because interfaces.parser imports the report submodules above.
-# Deferring the import until first access breaks that cycle regardless of
-# which module is imported first.
-_LAZY_REEXPORTS = frozenset({"ParsedDocument", "ParseFailure"})
-
-
-def __getattr__(name: str):
-    if name in _LAZY_REEXPORTS:
-        from tools.domain.interfaces import parser
-
-        return getattr(parser, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 __all__ = [
     "REPORT_SCHEMA_VERSION",
     "SECTION_NAMES",
@@ -89,6 +72,4 @@ __all__ = [
     "RepoScanResult",
     "QualitySummary",
     "OrgScanResult",
-    "ParsedDocument",
-    "ParseFailure",
 ]
