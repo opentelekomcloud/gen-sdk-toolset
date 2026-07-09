@@ -7,7 +7,7 @@ wire-in (S6) rely on exist with stable values.
 
 from __future__ import annotations
 
-from tools.domain.ir import Parameter, ParameterType
+from tools.shared.ir import Parameter, ParameterType
 from tools.domain.report import IssueCode
 
 

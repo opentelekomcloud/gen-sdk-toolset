@@ -3,7 +3,7 @@ import logging
 
 import requests
 
-from tools.domain.exceptions import (
+from tools.shared.exceptions import (
     AuthenticationError,
     NotFoundError,
     RateLimitError,

@@ -7,7 +7,7 @@ and termination on cyclic input.
 
 from __future__ import annotations
 
-from tools.domain.ir import Parameter, ParameterType
+from tools.shared.ir import Parameter, ParameterType
 from tools.domain.report import IssueCode
 from tools.scanner.parsers.docutils.nesting import (
     RefKind,

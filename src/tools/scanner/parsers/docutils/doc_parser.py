@@ -27,7 +27,7 @@ from docutils.core import publish_doctree
 from docutils.parsers.rst import roles
 
 from tools.domain.interfaces.parser import ParsedDocument, ParseFailure, RstParser
-from tools.domain.ir import HttpMethod
+from tools.shared.ir import HttpMethod
 from tools.domain.report import (
     NESTED_STRUCT,
     SECTION_EXAMPLE_REQUEST,

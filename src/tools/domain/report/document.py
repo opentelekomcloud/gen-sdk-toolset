@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, computed_field
 
-from tools.domain.ir import HttpMethod
+from tools.shared.ir import HttpMethod
 
 from .enums import IssueCode, OverallStatus, SectionStatus
 from .issue import Issue

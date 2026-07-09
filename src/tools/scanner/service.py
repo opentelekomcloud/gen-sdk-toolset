@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 
-from tools.domain.exceptions import RepositoryError
+from tools.shared.exceptions import RepositoryError
 from tools.domain.interfaces.doc_provider import DocProvider
 from tools.domain.interfaces.parser import ParseFailure, RstParser
 from tools.domain.report import (

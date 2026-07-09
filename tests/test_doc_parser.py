@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from tools.domain.ir import HttpMethod, ParameterType
+from tools.shared.ir import HttpMethod, ParameterType
 from tools.domain.report import IssueCode, ParseFailure, SectionStatus
 from tools.scanner.parsers import DocutilsParser
 

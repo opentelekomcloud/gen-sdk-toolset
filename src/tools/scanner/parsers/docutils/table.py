@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from docutils import nodes
 
-from tools.domain.ir import Parameter, ParameterType
+from tools.shared.ir import Parameter, ParameterType
 from tools.domain.report import Issue, IssueCode
 
 # Max length of free-text `details` we attach to diagnostic issues.

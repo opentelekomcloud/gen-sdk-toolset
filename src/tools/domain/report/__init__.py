@@ -34,7 +34,7 @@ from .aggregates import (
 from .document import DocumentScanResult
 from .enums import DocStyle, IssueCode, OverallStatus, SectionStatus
 from .issue import Issue
-from .keys import (
+from tools.shared.report.keys import (
     NESTED_STRUCT,
     SECTION_BODY,
     SECTION_EXAMPLE_REQUEST,
