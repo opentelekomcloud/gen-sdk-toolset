@@ -32,7 +32,7 @@ from .aggregates import (
     RepoScanResult,
 )
 from .document import DocumentScanResult
-from .enums import DocStyle, IssueCode, OverallStatus, SectionStatus
+from tools.shared.report.enums import IssueCode, OverallStatus, SectionStatus
 from .issue import Issue
 from tools.shared.report.keys import (
     NESTED_STRUCT,
@@ -82,7 +82,6 @@ __all__ = [
     "SectionStatus",
     "OverallStatus",
     "IssueCode",
-    "DocStyle",
     "Issue",
     "ExampleBlock",
     "SectionResult",

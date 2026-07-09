@@ -17,8 +17,7 @@ pre-filter that runs before the expensive AST walk.
 from __future__ import annotations
 
 import re
-
-from tools.domain.report import DocStyle
+from enum import Enum
 
 from .patterns import URI_RE
 
@@ -47,6 +46,26 @@ _S3_THRESHOLD = 2
 # presence means the doc *is* an endpoint doc even when we can't extract a
 # method+path line from it — see classify_doc_style.
 _URI_HEADING_RE = re.compile(r"^URI[ \t]*\n[-=~^\"'`#*+]+\s*$", re.MULTILINE)
+
+
+class DocStyle(str, Enum):
+    """Layout classification of an RST doc, mapped to report semantics.
+
+    Mapping to report outcomes:
+
+    * ``STYLE_A``       — modern OTC layout; handed to the parser. (A doc
+      with endpoint headings but no extractable URI is still STYLE_A so the
+      parser surfaces it as a ``no_uri_match`` gating failure)
+    * ``S3_COMPATIBLE`` — OBS/S3 layout; recognised but not yet extractable →
+      gating failure ``UNSUPPORTED_DOC_STYLE`` → ``overall_status``
+      ``"unsupported"``.
+    * ``NOT_ENDPOINT``  — no endpoint signal; excluded from quality metrics,
+      recorded in ``RepoScanResult.non_endpoint_documents``.
+    """
+
+    STYLE_A = "style_a"
+    S3_COMPATIBLE = "s3_compatible"
+    NOT_ENDPOINT = "not_endpoint"
 
 
 def classify_doc_style(content: str) -> DocStyle:

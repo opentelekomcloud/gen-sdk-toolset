@@ -7,7 +7,6 @@ from tools.domain.interfaces.doc_provider import DocProvider
 from tools.domain.interfaces.parser import ParseFailure, RstParser
 from tools.domain.report import (
     UNVERSIONED_KEY,
-    DocStyle,
     DocumentScanResult,
     Issue,
     IssueCode,
@@ -15,6 +14,7 @@ from tools.domain.report import (
     OverallStatus,
     RepoScanResult,
 )
+from tools.scanner.parsers.docutils.style import DocStyle
 
 logger = logging.getLogger(__name__)
 
