@@ -102,6 +102,27 @@ class GitHubDocProvider(DocProvider):
         encoded = payload.get("content", "")
         return base64.b64decode(encoded).decode("utf-8")
 
+    def get_commit_hash(self, repo: str, branch: str) -> str | None:
+        """Head commit SHA of `branch`, or None if the ref can't be resolved.
+
+        Uses the commits listing capped at one entry so the response stays
+        small (the single-commit endpoint would carry the full diff).
+        """
+        url = f"{self.api_url}/repos/{repo}/commits"
+        try:
+            resp = self._get(
+                url,
+                repo=repo,
+                resource=f"commits@{branch}",
+                params={"sha": branch, "per_page": 1},
+            )
+        except NotFoundError:
+            return None
+        commits = resp.json()
+        if isinstance(commits, list) and commits:
+            return commits[0].get("sha")
+        return None
+
     # ------------------------------------------------------------------ #
     # Helpers
     # ------------------------------------------------------------------ #
@@ -129,7 +150,7 @@ class GitHubDocProvider(DocProvider):
         """Translate HTTP errors to typed domain exceptions."""
         if resp.status_code < 400:
             return
-        if resp.status_code == 404:
+        if resp.status_code in (404, 409):
             raise NotFoundError(resource=resource, repo=repo)
         if resp.status_code == 401:
             raise AuthenticationError("Invalid or missing GitHub token", repo=repo)

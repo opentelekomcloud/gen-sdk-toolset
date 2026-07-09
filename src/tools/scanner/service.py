@@ -98,8 +98,18 @@ class ScannerService:
         logger.info("Scanning repo %s@%s", repo, branch)
         result = RepoScanResult(repo=repo, branch=branch, has_api_ref=True)
 
+        # Pin the snapshot to a commit. A missing hash must not fail the scan.
         try:
-            listing = self.doc_provider.list_files(repo, branch)
+            result.commit_hash = self.doc_provider.get_commit_hash(repo, branch)
+        except RepositoryError as e:
+            logger.warning(
+                "Could not resolve commit hash for %s@%s: %s", repo, branch, e
+            )
+
+        ref = result.commit_hash or branch
+
+        try:
+            listing = self.doc_provider.list_files(repo, ref)
         except RepositoryError as e:
             logger.error("Failed to list files for %s: %s", repo, e)
             result.error = str(e)
@@ -132,7 +142,7 @@ class ScannerService:
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             doc_outcomes = list(
                 pool.map(
-                    lambda p: self._process_document(repo, p, branch),
+                    lambda p: self._process_document(repo, p, ref),
                     included_paths,
                 )
             )

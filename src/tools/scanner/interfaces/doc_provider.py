@@ -36,3 +36,7 @@ class DocProvider(Protocol):
     def fetch_content(self, repo: str, path: str, branch: str) -> str:
         """Return the textual content of a file in the repo at the given branch."""
         ...
+
+    def get_commit_hash(self, repo: str, branch: str) -> str | None:
+        """Return the head commit SHA of `branch`, or None if unavailable."""
+        ...
