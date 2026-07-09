@@ -6,6 +6,7 @@ from tools.domain.report import IssueCode
 from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
+from tools.domain.report.analytics import doc_overall_status
 from tools.shared.exceptions import RepositoryError
 
 from .conftest import load_fixture
@@ -171,7 +172,7 @@ def test_style_a_populates_sections() -> None:
     assert doc.failure_reason is None
     # CCE's `metadata` object resolves to its struct table, so the doc is fully
     # extracted now (no deferred-nesting partial) and emits no nested_objects.
-    assert doc.overall_status == "ok"
+    assert doc_overall_status(doc) == "ok"
     assert "path_params" in doc.sections
     assert "body" in doc.sections
     assert "nested_objects" not in doc.sections
@@ -190,7 +191,7 @@ def test_obs_marked_unsupported() -> None:
     doc = result.repos[0].documents[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.UNSUPPORTED_DOC_STYLE
-    assert doc.overall_status == "unsupported"
+    assert doc_overall_status(doc) == "unsupported"
     assert doc.sections == {}
 
 
@@ -224,7 +225,7 @@ def test_fetch_failure_is_gating() -> None:
     doc = result.repos[0].documents[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.FETCH_FAILED
-    assert doc.overall_status == "failed"
+    assert doc_overall_status(doc) == "failed"
 
 
 def test_parser_crash_is_parser_error() -> None:
@@ -243,7 +244,7 @@ def test_parser_crash_is_parser_error() -> None:
     doc = result.repos[0].documents[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.PARSER_ERROR
-    assert doc.overall_status == "failed"
+    assert doc_overall_status(doc) == "failed"
 
 
 def test_endpoint_doc_without_uri_is_failed() -> None:
@@ -262,7 +263,7 @@ def test_endpoint_doc_without_uri_is_failed() -> None:
     doc = repo.documents[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.NO_URI_MATCH
-    assert doc.overall_status == "failed"
+    assert doc_overall_status(doc) == "failed"
 
 
 # --------------------------------------------------------------------------- #

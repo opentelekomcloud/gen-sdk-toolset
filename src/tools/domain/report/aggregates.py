@@ -10,7 +10,7 @@ from . import analytics
 from .analytics import QualitySummary
 from .document import DocumentScanResult
 
-REPORT_SCHEMA_VERSION = 4
+REPORT_SCHEMA_VERSION = 5
 
 
 class RepoScanResult(BaseModel):
@@ -51,17 +51,6 @@ class RepoScanResult(BaseModel):
     # Set when the repo itself couldn't be scanned (e.g. tree fetch failed).
     error: str | None = None
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def total_documents(self) -> int:
-        return analytics.count_documents(self.documents)
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def status_counts(self) -> dict[str, int]:
-        """Distribution of overall_status across this repo's documents."""
-        return analytics.count_by_status(self.documents)
-
 
 class OrgScanResult(BaseModel):
     """Top-level scan result for an organization."""
@@ -80,7 +69,7 @@ class OrgScanResult(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def total_documents(self) -> int:
-        return sum(r.total_documents for r in self.repos)
+        return sum(analytics.count_documents(r.documents) for r in self.repos)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
