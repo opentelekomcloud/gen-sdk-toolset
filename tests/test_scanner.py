@@ -119,6 +119,39 @@ def test_commit_hash_failure_does_not_abort_scan() -> None:
     assert repo.documents  # scan still produced results
 
 
+def _refs_used_by_scan(commit_hash: str | None) -> list[str]:
+    """Run a scan and return every ref the provider was asked to read at."""
+    seen: list[str] = []
+
+    class _Recording(FakeDocProvider):
+        def list_files(self, repo: str, branch: str) -> FileListing:
+            seen.append(branch)
+            return super().list_files(repo, branch)
+
+        def fetch_content(self, repo: str, path: str, branch: str) -> str:
+            seen.append(branch)
+            return super().fetch_content(repo, path, branch)
+
+    provider = _Recording(
+        repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
+        commit_hash=commit_hash,
+    )
+    make_scanner(provider).scan_organization(org="o", api_ref_path="api-ref/source")
+    return seen
+
+
+def test_scan_reads_tree_and_files_at_resolved_commit() -> None:
+    # Every content read is pinned to the resolved SHA, not the branch name, so
+    # a push mid-scan can't diverge the content from the recorded commit_hash.
+    refs = _refs_used_by_scan("a" * 40)
+    assert refs and all(ref == "a" * 40 for ref in refs)
+
+
+def test_scan_falls_back_to_branch_when_commit_hash_unknown() -> None:
+    refs = _refs_used_by_scan(None)
+    assert refs and all(ref == "main" for ref in refs)
+
+
 # --------------------------------------------------------------------------- #
 # Per-document outcomes
 # --------------------------------------------------------------------------- #

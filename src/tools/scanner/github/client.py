@@ -150,7 +150,7 @@ class GitHubDocProvider(DocProvider):
         """Translate HTTP errors to typed domain exceptions."""
         if resp.status_code < 400:
             return
-        if resp.status_code == 404:
+        if resp.status_code in (404, 409):
             raise NotFoundError(resource=resource, repo=repo)
         if resp.status_code == 401:
             raise AuthenticationError("Invalid or missing GitHub token", repo=repo)

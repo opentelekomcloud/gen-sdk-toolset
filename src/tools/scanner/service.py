@@ -106,8 +106,10 @@ class ScannerService:
                 "Could not resolve commit hash for %s@%s: %s", repo, branch, e
             )
 
+        ref = result.commit_hash or branch
+
         try:
-            listing = self.doc_provider.list_files(repo, branch)
+            listing = self.doc_provider.list_files(repo, ref)
         except RepositoryError as e:
             logger.error("Failed to list files for %s: %s", repo, e)
             result.error = str(e)
@@ -140,7 +142,7 @@ class ScannerService:
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             doc_outcomes = list(
                 pool.map(
-                    lambda p: self._process_document(repo, p, branch),
+                    lambda p: self._process_document(repo, p, ref),
                     included_paths,
                 )
             )
