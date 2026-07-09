@@ -154,8 +154,10 @@ class ScannerService:
                 continue
 
             result.documents.append(outcome)
-            if (analytics.doc_overall_status(outcome)
-                    in (OverallStatus.OK, OverallStatus.PARTIAL)):
+            if analytics.doc_overall_status(outcome) in (
+                OverallStatus.OK,
+                OverallStatus.PARTIAL,
+            ):
                 key = outcome.api_version or UNVERSIONED_KEY
                 result.documents_by_version.setdefault(key, []).append(outcome)
 
