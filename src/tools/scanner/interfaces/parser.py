@@ -12,8 +12,8 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field
 
-from tools.shared.report.section import SectionResult
 from tools.shared.ir import HttpMethod
+from tools.shared.report.section import SectionResult
 
 
 class ParsedDocument(BaseModel):

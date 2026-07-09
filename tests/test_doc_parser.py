@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from tools.shared.report import IssueCode, SectionStatus
-from tools.shared.exceptions import ParseFailure
 from tools.scanner.parsers import DocutilsParser
+from tools.shared.exceptions import ParseFailure
 from tools.shared.ir import HttpMethod, ParameterType
+from tools.shared.report import IssueCode, SectionStatus
 
 
 @pytest.fixture
@@ -228,11 +228,11 @@ def test_two_body_tables_merge(
 # produce an invalid-JSON issue and degrade the section (review item 14).
 # --------------------------------------------------------------------------- #
 def test_example_extend_invalid_json_degrades() -> None:
+    from tools.scanner.parsers.docutils.doc_parser import _set_example_section
     from tools.shared.report import (
         SECTION_EXAMPLE_REQUEST,
         ExampleBlock,
     )
-    from tools.scanner.parsers.docutils.doc_parser import _set_example_section
 
     results: dict = {}
     # First call creates the section from a valid JSON example → OK.

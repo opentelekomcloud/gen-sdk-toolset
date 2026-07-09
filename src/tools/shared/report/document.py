@@ -9,7 +9,6 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from tools.shared.ir import HttpMethod
-
 from tools.shared.report.issue import Issue
 from tools.shared.report.section import SectionResult
 
