@@ -6,6 +6,7 @@ from tools.domain.report import IssueCode
 from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
+from tools.shared.exceptions import RepositoryError
 
 from .conftest import load_fixture
 
@@ -19,6 +20,7 @@ class FakeDocProvider:
         repos: dict[str, dict[str, str]],
         has_api_ref: set[str] | None = None,
         truncated: set[str] | None = None,
+        commit_hash: str | None = "0" * 40,
     ):
         # repos: {repo_name: {file_path: content}}
         self._repos = repos
@@ -26,6 +28,7 @@ class FakeDocProvider:
             has_api_ref if has_api_ref is not None else set(repos.keys())
         )
         self._truncated = truncated or set()
+        self._commit_hash = commit_hash
 
     def list_repos(self, org: str) -> list[str]:
         return list(self._repos.keys())
@@ -42,6 +45,9 @@ class FakeDocProvider:
 
     def fetch_content(self, repo: str, path: str, branch: str) -> str:
         return self._repos[repo][path]
+
+    def get_commit_hash(self, repo: str, branch: str) -> str | None:
+        return self._commit_hash
 
 
 def make_scanner(fake: FakeDocProvider, **kwargs) -> ScannerService:
@@ -75,6 +81,42 @@ def test_eligible_count_excludes_skipped() -> None:
     result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
     assert result.total_repos == 3
     assert result.eligible_repos == 2
+
+
+# --------------------------------------------------------------------------- #
+# commit_hash (S2)
+# --------------------------------------------------------------------------- #
+def test_commit_hash_emitted() -> None:
+    fake = FakeDocProvider(
+        repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
+        commit_hash="a" * 40,
+    )
+    result = make_scanner(fake).scan_organization(
+        org="o", api_ref_path="api-ref/source"
+    )
+    repo = result.repos[0]
+    assert repo.commit_hash == "a" * 40
+    # Present in the serialized report, not just the model.
+    assert result.model_dump(mode="json")["repos"][0]["commit_hash"] == "a" * 40
+
+
+def test_commit_hash_failure_does_not_abort_scan() -> None:
+    """A provider error resolving the commit hash leaves it None but still
+    produces the document results."""
+
+    class NoCommitProvider(FakeDocProvider):
+        def get_commit_hash(self, repo: str, branch: str) -> str | None:
+            raise RepositoryError("commit lookup failed", repo=repo)
+
+    fake = NoCommitProvider(
+        repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
+    )
+    result = make_scanner(fake).scan_organization(
+        org="o", api_ref_path="api-ref/source"
+    )
+    repo = result.repos[0]
+    assert repo.commit_hash is None
+    assert repo.documents  # scan still produced results
 
 
 # --------------------------------------------------------------------------- #

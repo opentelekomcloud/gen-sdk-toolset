@@ -98,6 +98,14 @@ class ScannerService:
         logger.info("Scanning repo %s@%s", repo, branch)
         result = RepoScanResult(repo=repo, branch=branch, has_api_ref=True)
 
+        # Pin the snapshot to a commit. A missing hash must not fail the scan.
+        try:
+            result.commit_hash = self.doc_provider.get_commit_hash(repo, branch)
+        except RepositoryError as e:
+            logger.warning(
+                "Could not resolve commit hash for %s@%s: %s", repo, branch, e
+            )
+
         try:
             listing = self.doc_provider.list_files(repo, branch)
         except RepositoryError as e:
