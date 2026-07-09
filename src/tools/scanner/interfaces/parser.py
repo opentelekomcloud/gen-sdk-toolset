@@ -16,11 +16,11 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field
 
+from tools.domain.report.issue import Issue
+from tools.domain.report.section import SectionResult
 from tools.shared.exceptions import GenSdkError
 from tools.shared.ir import HttpMethod
 from tools.shared.report.enums import IssueCode
-from tools.domain.report.issue import Issue
-from tools.domain.report.section import SectionResult
 
 
 class ParsedDocument(BaseModel):

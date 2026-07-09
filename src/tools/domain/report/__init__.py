@@ -25,15 +25,7 @@ for backwards compatibility.
 
 from __future__ import annotations
 
-from .aggregates import (
-    REPORT_SCHEMA_VERSION,
-    OrgScanResult,
-    QualitySummary,
-    RepoScanResult,
-)
-from .document import DocumentScanResult
 from tools.shared.report.enums import IssueCode, OverallStatus, SectionStatus
-from .issue import Issue
 from tools.shared.report.keys import (
     NESTED_STRUCT,
     SECTION_BODY,
@@ -47,6 +39,15 @@ from tools.shared.report.keys import (
     SECTION_RESPONSE,
     UNVERSIONED_KEY,
 )
+
+from .aggregates import (
+    REPORT_SCHEMA_VERSION,
+    OrgScanResult,
+    QualitySummary,
+    RepoScanResult,
+)
+from .document import DocumentScanResult
+from .issue import Issue
 from .section import ExampleBlock, SectionResult
 
 __all__ = [

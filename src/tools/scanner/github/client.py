@@ -3,13 +3,13 @@ import logging
 
 import requests
 
+from tools.scanner.interfaces import DocProvider, FileListing
 from tools.shared.exceptions import (
     AuthenticationError,
     NotFoundError,
     RateLimitError,
     RepositoryError,
 )
-from tools.scanner.interfaces import DocProvider, FileListing
 
 logger = logging.getLogger(__name__)
 

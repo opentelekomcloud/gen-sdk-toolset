@@ -5,8 +5,8 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from tools.shared.ir import Parameter
-
 from tools.shared.report.enums import SectionStatus
+
 from .issue import Issue
 
 
