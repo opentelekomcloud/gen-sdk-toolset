@@ -72,23 +72,3 @@ class IssueCode(str, Enum):
     EXAMPLE_MISSING = "example_missing"
     EXAMPLE_UNLABELED = "example_unlabeled"  # req/resp split guessed
     EXAMPLE_LLM_FAILED = "example_llm_failed"  # reserved for LLM-assisted parsing
-
-
-class DocStyle(str, Enum):
-    """Layout classification of an RST doc, mapped to report semantics.
-
-    Mapping to report outcomes:
-
-    * ``STYLE_A``       — modern OTC layout; handed to the parser. (A doc
-      with endpoint headings but no extractable URI is still STYLE_A so the
-      parser surfaces it as a ``no_uri_match`` gating failure)
-    * ``S3_COMPATIBLE`` — OBS/S3 layout; recognised but not yet extractable →
-      gating failure ``UNSUPPORTED_DOC_STYLE`` → ``overall_status``
-      ``"unsupported"``.
-    * ``NOT_ENDPOINT``  — no endpoint signal; excluded from quality metrics,
-      recorded in ``RepoScanResult.non_endpoint_documents``.
-    """
-
-    STYLE_A = "style_a"
-    S3_COMPATIBLE = "s3_compatible"
-    NOT_ENDPOINT = "not_endpoint"

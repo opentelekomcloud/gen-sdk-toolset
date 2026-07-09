@@ -7,8 +7,8 @@ wire-in (S6) rely on exist with stable values.
 
 from __future__ import annotations
 
-from tools.domain.ir import Parameter, ParameterType
 from tools.domain.report import IssueCode
+from tools.shared.ir import Parameter, ParameterType
 
 
 def test_type_name_defaults_to_none() -> None:

@@ -12,12 +12,12 @@ import pytest
 from docutils import nodes
 from docutils.core import publish_doctree
 
-from tools.domain.ir import ParameterType
 from tools.scanner.parsers.docutils.doc_parser import _ensure_roles
 from tools.scanner.parsers.docutils.table import (
     _struct_type_name,
     extract_parameter_table,
 )
+from tools.shared.ir import ParameterType
 
 from .conftest import load_fixture
 

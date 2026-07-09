@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from .enums import IssueCode
+from tools.shared.report.enums import IssueCode
 
 
 class Issue(BaseModel):

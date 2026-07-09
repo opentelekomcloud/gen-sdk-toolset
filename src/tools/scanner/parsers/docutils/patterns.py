@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from tools.domain.ir import HttpMethod
+from tools.shared.ir import HttpMethod
 
 # Single source of the method alternation, derived from the domain enum.
 HTTP_METHODS_RE = "|".join(m.value for m in HttpMethod)
