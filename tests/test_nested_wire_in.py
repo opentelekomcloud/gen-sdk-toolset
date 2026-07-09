@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from tools.domain.report import IssueCode, SectionStatus
+from tools.shared.report import IssueCode, SectionStatus
 from tools.scanner.parsers import DocutilsParser
 
 

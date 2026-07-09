@@ -19,9 +19,9 @@ from pydantic import BaseModel, Field
 from tools.shared.report.enums import IssueCode, OverallStatus, SectionStatus
 
 if TYPE_CHECKING:
-    from .aggregates import RepoScanResult
-    from .document import DocumentScanResult
-    from .issue import Issue
+    from tools.shared.report.document import DocumentScanResult
+    from tools.shared.report.issue import Issue
+    from tools.shared.report.repo import RepoScanResult
 
 _TOP_ISSUES_LIMIT = 20
 

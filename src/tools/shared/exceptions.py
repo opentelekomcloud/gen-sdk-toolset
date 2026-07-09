@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from tools.shared.report.enums import IssueCode
+from tools.shared.report.issue import Issue
+
 
 class GenSdkError(Exception):
     """Base exception for all gen_sdk errors."""
@@ -41,3 +44,15 @@ class NotFoundError(RepositoryError):
 
 class ConfigurationError(GenSdkError):
     """Invalid or missing configuration."""
+
+
+class ParseFailure(GenSdkError):
+    """Raised by the parser when a gating step fails (e.g. no URI in doc).
+
+    Caught at the scanner layer and converted into
+    :attr:`DocumentScanResult.failure_reason`.
+    """
+
+    def __init__(self, code: IssueCode, details: str | None = None):
+        self.issue = Issue(code=code, details=details)
+        super().__init__(f"{code.value}" + (f": {details}" if details else ""))

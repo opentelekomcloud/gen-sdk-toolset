@@ -1,13 +1,9 @@
 """The RST parser port and its contract types.
 
-``ParsedDocument`` and ``ParseFailure`` are the parser port's contract, so
-they live here next to the :class:`RstParser` Protocol rather than in the
-report models. They are re-exported from ``tools.domain.report`` for
-backwards compatibility.
-
-Imports reach into the report *submodules* (``report.section`` etc.) rather
-than the ``report`` package root so that ``report/__init__`` can re-export
-these names without creating an import cycle.
+``ParsedDocument`` is the parser port's contract, so it lives here next
+to the :class:`RstParser` Protocol. ``ParseFailure`` is part of the
+shared exception hierarchy (``tools.shared.exceptions``) and is
+re-exported from this package for convenience.
 """
 
 from __future__ import annotations
@@ -16,11 +12,8 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field
 
-from tools.domain.report.issue import Issue
-from tools.domain.report.section import SectionResult
-from tools.shared.exceptions import GenSdkError
+from tools.shared.report.section import SectionResult
 from tools.shared.ir import HttpMethod
-from tools.shared.report.enums import IssueCode
 
 
 class ParsedDocument(BaseModel):
@@ -37,18 +30,6 @@ class ParsedDocument(BaseModel):
     title: str | None = None
     api_version: str | None = None
     sections: dict[str, SectionResult] = Field(default_factory=dict)
-
-
-class ParseFailure(GenSdkError):
-    """Raised by the parser when a gating step fails (e.g. no URI in doc).
-
-    Caught at the scanner layer and converted into
-    :attr:`DocumentScanResult.failure_reason`.
-    """
-
-    def __init__(self, code: IssueCode, details: str | None = None):
-        self.issue = Issue(code=code, details=details)
-        super().__init__(f"{code.value}" + (f": {details}" if details else ""))
 
 
 class RstParser(Protocol):

@@ -26,7 +26,7 @@ from docutils import nodes
 from docutils.core import publish_doctree
 from docutils.parsers.rst import roles
 
-from tools.domain.report import (
+from tools.shared.report import (
     NESTED_STRUCT,
     SECTION_EXAMPLE_REQUEST,
     SECTION_EXAMPLE_RESPONSE,
@@ -35,7 +35,8 @@ from tools.domain.report import (
     SectionResult,
     SectionStatus,
 )
-from tools.scanner.interfaces import ParsedDocument, ParseFailure, RstParser
+from tools.scanner.interfaces import ParsedDocument, RstParser
+from tools.shared.exceptions import ParseFailure
 from tools.shared.ir import HttpMethod
 
 from .example import extract_examples

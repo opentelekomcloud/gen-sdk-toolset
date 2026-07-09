@@ -2,18 +2,18 @@ import logging
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 
-from tools.domain.report import (
+from tools.domain.report import OrgScanResult, analytics
+from tools.scanner.interfaces import DocProvider, RstParser
+from tools.scanner.parsers.docutils.style import DocStyle
+from tools.shared.exceptions import ParseFailure, RepositoryError
+from tools.shared.report import (
     UNVERSIONED_KEY,
     DocumentScanResult,
     Issue,
     IssueCode,
-    OrgScanResult,
     OverallStatus,
-    RepoScanResult, analytics,
+    RepoScanResult,
 )
-from tools.scanner.interfaces import DocProvider, ParseFailure, RstParser
-from tools.scanner.parsers.docutils.style import DocStyle
-from tools.shared.exceptions import RepositoryError
 
 logger = logging.getLogger(__name__)
 

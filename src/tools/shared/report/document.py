@@ -1,4 +1,8 @@
-"""Per-document scan result + derived roll-ups."""
+"""Per-document scan result form (data only).
+
+Derived views — overall status, completeness, the flat issue list —
+are computed by functions in ``tools.domain.report.analytics``.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +10,8 @@ from pydantic import BaseModel, Field
 
 from tools.shared.ir import HttpMethod
 
-from .issue import Issue
-from .section import SectionResult
+from tools.shared.report.issue import Issue
+from tools.shared.report.section import SectionResult
 
 
 class DocumentScanResult(BaseModel):
@@ -15,8 +19,7 @@ class DocumentScanResult(BaseModel):
 
     The model carries either a single gating ``failure_reason`` (no
     sections then) or per-section ``sections`` results (with possibly
-    several issues across them). The derived ``overall_status`` rolls
-    these into one of ok / partial / failed / unsupported.
+    several issues across them).
     """
 
     document: str

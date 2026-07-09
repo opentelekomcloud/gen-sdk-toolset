@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from tools.domain.report import IssueCode, SectionStatus
-from tools.scanner.interfaces import ParseFailure
+from tools.shared.report import IssueCode, SectionStatus
+from tools.shared.exceptions import ParseFailure
 from tools.scanner.parsers import DocutilsParser
 from tools.shared.ir import HttpMethod, ParameterType
 
@@ -189,7 +189,7 @@ def test_parser_section_keys_are_canonical(
     iam_doc: str,
     elb_list_doc: str,
 ) -> None:
-    from tools.domain.report import SECTION_NAMES
+    from tools.shared.report import SECTION_NAMES
 
     docs = {
         "cce.rst": cce_doc,
@@ -228,7 +228,7 @@ def test_two_body_tables_merge(
 # produce an invalid-JSON issue and degrade the section (review item 14).
 # --------------------------------------------------------------------------- #
 def test_example_extend_invalid_json_degrades() -> None:
-    from tools.domain.report import (
+    from tools.shared.report import (
         SECTION_EXAMPLE_REQUEST,
         ExampleBlock,
     )
