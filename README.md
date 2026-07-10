@@ -88,7 +88,7 @@ gen-sdk-scan --branch develop --output reports/develop.json
 gen-sdk-scan --stdout
 
 # Pipe-only output (no file written)
-gen-sdk-scan --output - | jq '.summary'
+gen-sdk-scan --output - | jq '.quality_summary'
 
 # Use a non-default config file
 gen-sdk-scan --config configs/staging.toml
@@ -111,10 +111,15 @@ gen-sdk-scan -v
 
 ### Output
 
-The scan produces a single JSON file structured as a *quality report*:
+The scan produces a single JSON file structured as a *quality report*
+(`report_schema_version: 5`). Since schema v5 the report carries **data
+only**: derived views (per-document overall status, completeness, flat
+issue lists) are no longer embedded in the JSON — they are computed from
+it by the pure functions in `tools.domain.report.analytics`.
 
-- **Per-document results** — for every endpoint doc encountered:
-  - `document`, `repo`, `service`, `method`, `uri`, `title`, `api_version`
+- **Per-document results** (`DocumentScanResult`) — for every endpoint
+  doc encountered:
+  - `document`, `repo`, `method`, `uri`, `title`, `api_version`
   - `failure_reason: Issue | null` — populated for gating failures (fetch
     failed, no URI line found, unsupported doc style)
   - `sections: dict[str, SectionResult]` — keyed by `path_params`,
@@ -127,19 +132,24 @@ The scan produces a single JSON file structured as a *quality report*:
       best-effort JSON parse)
     - field-level metrics: `fields_total`, `fields_recognized`,
       `fields_unknown_type`, `fields_failed`
-  - Computed fields: `overall_status` (`ok` / `partial` / `failed` /
-    `unsupported`), `completeness` (0.0–1.0), `all_issues` (flat list
-    aggregating gating + per-section issues)
 
-- **Per-repo rollups** (`RepoScanResult`):
-  - `documents`, `non_endpoint_documents`, `documents_by_version`,
-    `total_documents`, `status_counts`
+- **Per-repo results** (`RepoScanResult`):
+  - `repo`, `branch`, `commit_hash` (head commit the scan saw),
+    `has_api_ref`, `scanner_version`
+  - `documents`, `non_endpoint_documents`, `excluded_documents`,
+    `documents_by_version`
+  - `incomplete` / `incomplete_reason` — set when the provider returned a
+    truncated file tree, so a partial scan is never mistaken for a clean one
+  - `error` — repo-level failure (e.g. file listing failed)
 
-- **Org-level `quality_summary`** — the headline numbers:
-  - `by_overall_status` — `{"ok": N, "partial": N, "failed": N, "unsupported": N}`
-  - `by_section_status` — distribution per section
-  - `top_issues` — most frequent issue codes across the org
-  - plus `report_schema_version: 1`
+- **Org-level** (`OrgScanResult`, top of the file):
+  - `report_schema_version`, `scanner_version`, `org`, `branch`,
+    `total_repos`, `eligible_repos`, `skipped_repos`
+  - computed roll-ups: `total_documents`, `by_version`, and
+    `quality_summary` — the headline numbers:
+    - `by_overall_status` — `{"ok": N, "partial": N, "failed": N, "unsupported": N}`
+    - `by_section_status` — distribution per section
+    - `top_issues` — most frequent issue codes across the org
 
 ### `scan-config.toml`
 
@@ -168,8 +178,8 @@ level = "INFO"
 ## Development
 
 ```bash
-pytest                  # 66 tests covering style/section classifiers,
-                        # parser end-to-end on real OTC fixtures, scanner
+pytest                  # style/section classifiers, parser end-to-end on
+                        # real OTC fixtures, scanner service, GitHub client
 ruff check src/         # lint
 ruff format src/        # auto-format
 ```
