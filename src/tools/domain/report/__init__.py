@@ -17,10 +17,8 @@ The org-wide report (:class:`OrgScanResult`) carries a derived
 set doing across all repos".
 
 This package re-exports its public names so callers can keep importing
-everything from ``tools.domain.report`` directly. ``ParsedDocument`` /
-``ParseFailure`` are the parser *port's* contract and live next to the
-port in :mod:`tools.domain.interfaces.parser`; they are re-exported here
-for backwards compatibility.
+everything from ``tools.domain.report`` directly. Counting/roll-up
+logic lives in :mod:`.analytics`; the models delegate to it.
 """
 
 from __future__ import annotations
@@ -43,9 +41,9 @@ from tools.shared.report.keys import (
 from .aggregates import (
     REPORT_SCHEMA_VERSION,
     OrgScanResult,
-    QualitySummary,
     RepoScanResult,
 )
+from .analytics import QualitySummary
 from .document import DocumentScanResult
 from .issue import Issue
 from .section import ExampleBlock, SectionResult
