@@ -6,9 +6,8 @@ from tools.domain.report.analytics import doc_overall_status
 from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
-from tools.shared.report import IssueCode
-from tools.domain.report.analytics import doc_overall_status
 from tools.shared.exceptions import RepositoryError
+from tools.shared.report import IssueCode
 
 from .conftest import load_fixture
 
