@@ -41,6 +41,8 @@ class ScannerSection(BaseModel):
     )
     # Single source of the worker default; ScannerService requires the value,
     max_workers: int = Field(default=8, ge=1, le=64)
+    # How many times to wait out a GitHub rate limit before giving up on a call.
+    max_rate_limit_retries: int = Field(default=3, ge=0, le=10)
 
     @property
     def rst_source_prefix(self) -> str:

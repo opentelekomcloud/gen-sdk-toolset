@@ -154,6 +154,40 @@ def test_scan_falls_back_to_branch_when_commit_hash_unknown() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Single-repository scan (S1)
+# --------------------------------------------------------------------------- #
+def test_find_endpoints_matches_repos_element_shape() -> None:
+    fake = FakeDocProvider(
+        repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
+    )
+    scanner = make_scanner(fake)
+
+    repo_result = scanner.find_endpoints(repo="o/cce", branch="main")
+    org = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+
+    # Same type and same serialised shape as an element of the org report's
+    # repos[], so F2 ingest accepts it unchanged.
+    assert type(repo_result) is type(org.repos[0])
+    assert repo_result.model_dump(mode="json").keys() == (
+        org.repos[0].model_dump(mode="json").keys()
+    )
+    assert repo_result.repo == "o/cce"
+    assert repo_result.has_api_ref is True
+    assert len(repo_result.documents) == 1
+
+
+def test_find_endpoints_captures_error_without_raising() -> None:
+    class ListFailProvider(FakeDocProvider):
+        def list_files(self, repo: str, branch: str) -> FileListing:
+            raise RepositoryError("tree fetch failed", repo=repo)
+
+    scanner = make_scanner(ListFailProvider(repos={"o/x": {}}))
+    repo_result = scanner.find_endpoints(repo="o/x", branch="main")
+    assert repo_result.error == "tree fetch failed"
+    assert repo_result.documents == []
+
+
+# --------------------------------------------------------------------------- #
 # Per-document outcomes
 # --------------------------------------------------------------------------- #
 def test_style_a_populates_sections() -> None:
