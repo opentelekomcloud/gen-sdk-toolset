@@ -11,6 +11,7 @@ class RepoScanResult(BaseModel):
 
     repo: str
     branch: str
+    commit_hash: str | None = None
     has_api_ref: bool = False
 
     # Version of the scanner/parser that produced this result, so report
