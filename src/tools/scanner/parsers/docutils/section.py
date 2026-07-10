@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from enum import Enum
 
-from tools.domain.report import (
+from tools.shared.report import (
     NESTED_STRUCT,
     SECTION_BODY,
     SECTION_HEADERS,
@@ -124,9 +124,9 @@ def classify_table_title(title: str, *, in_section: SectionKind) -> str | None:
     """Resolve a table title to a canonical section key.
 
     Returns one of the strings in
-    :data:`tools.domain.report.SECTION_NAMES` when the table is a
+    :data:`tools.shared.report.SECTION_NAMES` when the table is a
     primary section table (e.g. path / body / response). Returns
-    :data:`tools.domain.report.NESTED_STRUCT` when the title looks like a
+    :data:`tools.shared.report.NESTED_STRUCT` when the title looks like a
     referenced object definition (e.g. ``CreateFirewallOption`` or
     ``metadata``).
     Returns ``None`` for non-parameter tables (status codes, etc.).

@@ -11,11 +11,12 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from tools.config import Settings, load_settings
-from tools.domain.report import OrgScanResult, OverallStatus
+from tools.domain.report import OrgScanResult
 from tools.scanner.github.client import GitHubDocProvider
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
 from tools.shared.exceptions import RepositoryError
+from tools.shared.report import OverallStatus
 
 # Exit codes
 EXIT_OK = 0

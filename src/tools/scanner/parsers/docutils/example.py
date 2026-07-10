@@ -23,7 +23,7 @@ import json
 
 from docutils import nodes
 
-from tools.domain.report import ExampleBlock
+from tools.shared.report import ExampleBlock
 
 from .patterns import HTTP_PREFIX_RE
 

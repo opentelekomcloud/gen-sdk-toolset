@@ -7,7 +7,7 @@ class Service(BaseModel):
     """A logical group of endpoints belonging to one OTC service.
 
     Pure IR — describes the *API*, not the scanner's progress. Scan-time
-    statistics live on :class:`tools.domain.report.RepoScanResult`.
+    statistics live on :class:`tools.shared.report.RepoScanResult`.
     """
 
     service_name: str

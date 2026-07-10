@@ -28,8 +28,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from tools.domain.report import Issue, IssueCode
 from tools.shared.ir import Parameter
+from tools.shared.report import Issue, IssueCode
 
 from .table import TableExtraction
 
