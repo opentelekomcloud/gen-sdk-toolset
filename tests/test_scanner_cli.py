@@ -29,9 +29,7 @@ class FakeScanner:
         assert self.repo_result is not None
         return self.repo_result
 
-    def scan_organization(
-        self, org: str, branch: str = "main"
-    ) -> OrgScanResult:
+    def scan_organization(self, org: str, branch: str = "main") -> OrgScanResult:
         self.calls.append(("org", org, branch))
         assert self.org_result is not None
         return self.org_result
@@ -107,9 +105,7 @@ def test_repo_file_contains_same_json_as_stdout(
     _install_fakes(monkeypatch, scanner)
 
     assert (
-        scanner_main.main(
-            ["--repo", "o/name", "--branch", "feature", "--output", "-"]
-        )
+        scanner_main.main(["--repo", "o/name", "--branch", "feature", "--output", "-"])
         == scanner_main.EXIT_OK
     )
     stdout_payload = json.loads(capsys.readouterr().out)

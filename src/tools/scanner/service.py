@@ -97,9 +97,7 @@ class ScannerService:
 
         ref = result.commit_hash or branch
         try:
-            has_api_ref = self.doc_provider.path_exists(
-                repo, ref, self.api_ref_path
-            )
+            has_api_ref = self.doc_provider.path_exists(repo, ref, self.api_ref_path)
         except RepositoryError as e:
             # TODO(#70): let RateLimitError reach background-job orchestration
             # once durable retry state exists. Do not retry in the scanner.
