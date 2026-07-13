@@ -132,7 +132,8 @@ class GitHubDocProvider(DocProvider):
         """Issue a GET, mapping transport + HTTP errors to domain exceptions.
 
         One place wraps the ``requests.RequestException`` → ``RepositoryError``
-        translation and the status-code check.
+        translation and the status-code check. Rate-limit responses are exposed
+        immediately so the caller can own any retry policy.
         """
         try:
             resp = self.session.get(url, timeout=_TIMEOUT, **kwargs)
@@ -142,6 +143,7 @@ class GitHubDocProvider(DocProvider):
                 repo=repo,
                 cause=e,
             ) from e
+
         self._raise_for_status(resp, repo=repo, resource=resource)
         return resp
 

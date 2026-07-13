@@ -8,7 +8,7 @@ import logging
 import sys
 from pathlib import Path
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from tools.config import Settings, load_settings
 from tools.domain.report import OrgScanResult
@@ -45,10 +45,21 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "Pass '-' to skip the file and emit the report to stdout instead."
         ),
     )
-    parser.add_argument(
+    # Org-wide run (--org) and single-repo run (--repo) are mutually exclusive.
+    target = parser.add_mutually_exclusive_group()
+    target.add_argument(
         "--org",
         metavar="NAME",
-        help="GitHub organisation to scan. Overrides [github].org.",
+        help="GitHub organisation to scan (org-wide run). Overrides [github].org.",
+    )
+    target.add_argument(
+        "--repo",
+        metavar="OWNER/NAME",
+        help=(
+            "Scan a single repository instead of the whole org. Emits one "
+            "result in the same shape as an element of the org report's "
+            "repos[]."
+        ),
     )
     parser.add_argument(
         "--branch",
@@ -161,6 +172,31 @@ def _print_human_summary(
     logger.info("=" * 60)
 
 
+def _emit_report(
+    model: BaseModel,
+    output_path: str,
+    also_stdout: bool,
+    indent: int,
+    logger: logging.Logger,
+) -> None:
+    """Serialise a scan model to JSON and write it to file and/or stdout.
+
+    ``output_path == "-"`` skips the file and prints to stdout; otherwise the
+    file is written and stdout is used only when ``also_stdout`` is set.
+    """
+    json_text = json.dumps(
+        model.model_dump(mode="json"), indent=indent, ensure_ascii=False
+    )
+    write_to_file = output_path != "-"
+    if write_to_file:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json_text, encoding="utf-8")
+        logger.info("Wrote scan report to %s", out_path)
+    if also_stdout or not write_to_file:
+        print(json_text)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
@@ -168,16 +204,25 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging(_resolve_log_level(settings, args.verbose, args.quiet))
     logger = logging.getLogger("gen-sdk-toolset")
 
-    # CLI overrides for top-level settings
-    org = args.org or settings.github.org
     branch = args.branch or settings.github.branch
     output_path = args.output or settings.output.path
-    write_to_file = output_path != "-"
-
-    logger.info("Starting organization scan for %s@%s", org, branch)
-
     scanner = _build_scanner(settings)
 
+    # Single-repo mode: scan one repo → one repos[]-shaped RepoScanResult.
+    if args.repo:
+        logger.info("Scanning repository %s@%s", args.repo, branch)
+        repo_result = scanner.find_endpoints(repo=args.repo, branch=branch)
+        _emit_report(
+            repo_result, output_path, args.stdout, settings.output.indent, logger
+        )
+        if repo_result.error:
+            logger.error("Repo scan reported an error: %s", repo_result.error)
+            return EXIT_RUNTIME_ERROR
+        return EXIT_OK
+
+    # Org-wide mode (default).
+    org = args.org or settings.github.org
+    logger.info("Starting organization scan for %s@%s", org, branch)
     try:
         result = scanner.scan_organization(
             org=org,
@@ -191,24 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("Scan aborted: %s", e)
         return EXIT_RUNTIME_ERROR
 
-    # The model is the single source of truth: total_documents, by_version
-    # and quality_summary are all computed fields, so the JSON carries each
-    # fact exactly once.
-    json_text = json.dumps(
-        result.model_dump(mode="json"),
-        indent=settings.output.indent,
-        ensure_ascii=False,
-    )
-
-    if write_to_file:
-        out_path = Path(output_path)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(json_text, encoding="utf-8")
-        logger.info("Wrote scan report to %s", out_path)
-
-    if args.stdout or not write_to_file:
-        print(json_text)
-
+    _emit_report(result, output_path, args.stdout, settings.output.indent, logger)
     _print_human_summary(result, settings.scanner.api_ref_path, logger)
     return EXIT_OK
 
