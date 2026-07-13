@@ -61,10 +61,7 @@ docker compose down
 ```bash
 git clone git@github.com:opentelekomcloud/gen-sdk-toolset.git
 cd gen-sdk-toolset
-
-python -m venv .venv #change to uv
-source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync --extra dev
 ```
 
 ### Configuration
@@ -77,25 +74,37 @@ The scanner reads its configuration from three sources, in order of precedence:
 3. **`scan-config.toml`** in the current working directory, or a custom path
    via `--config <path>`
 
+The supported entrypoint is `uv run gen-sdk-scan`. Choose one target mode:
+
 ```bash
-# Scan with defaults from scan-config.toml; report written to scan-output.json
-gen-sdk-scan
+# Scan one repository and print one raw RepoScanResult (no file written)
+uv run gen-sdk-scan \
+  --repo opentelekomcloud-docs/anti-ddos \
+  --output -
 
-# Scan a different branch, write report to a custom path
-gen-sdk-scan --branch develop --output reports/develop.json
+# A branch name or a fixed commit SHA can select the snapshot
+uv run gen-sdk-scan \
+  --repo opentelekomcloud-docs/anti-ddos \
+  --branch 8ff5254f6b7d669170bdacbdf5058e9adcfbe75f \
+  --output reports/anti-ddos.json
 
-# Print the report to stdout in addition to writing it
-gen-sdk-scan --stdout
+# Run the legacy organization scan
+uv run gen-sdk-scan \
+  --org opentelekomcloud-docs \
+  --output reports/organization.json
 
-# Pipe-only output (no file written)
-gen-sdk-scan --output - | jq '.quality_summary'
+# Write to a file and also print the same JSON to stdout
+uv run gen-sdk-scan --repo OWNER/NAME --output report.json --stdout
 
-# Use a non-default config file
-gen-sdk-scan --config configs/staging.toml
-
-# Verbose logging
-gen-sdk-scan -v
+# Use a non-default config file or enable verbose logging
+uv run gen-sdk-scan --config configs/staging.toml -v
 ```
+
+`--repo` requires exactly two non-empty components in `OWNER/NAME` form.
+`--repo` and `--org` are mutually exclusive. A repository without the
+configured API reference path is a normal, successful result with
+`has_api_ref=false` and empty document collections; a repository or ref that
+cannot be confirmed instead includes a diagnostic `error` and exits non-zero.
 
 ### Command-line flags
 
@@ -103,19 +112,21 @@ gen-sdk-scan -v
 |---|---|
 | `--config PATH` | Path to TOML config (default: `scan-config.toml`) |
 | `--output PATH` | Output JSON file path. `-` redirects to stdout instead |
-| `--org NAME` | Override `[github].org` |
-| `--branch NAME` | Override `[github].branch` |
+| `--repo OWNER/NAME` | Scan one repository and emit one `RepoScanResult` |
+| `--org NAME` | Run the legacy organization scan; mutually exclusive with `--repo` |
+| `--branch NAME` | Branch name or fixed commit SHA to scan |
 | `--stdout` | Also print the JSON report to stdout (in addition to the file) |
 | `-v`, `--verbose` | DEBUG-level logging |
 | `-q`, `--quiet` | WARNING-level logging |
 
 ### Output
 
-The scan produces a single JSON file structured as a *quality report*
-(`report_schema_version: 5`). Since schema v5 the report carries **data
-only**: derived views (per-document overall status, completeness, flat
-issue lists) are no longer embedded in the JSON — they are computed from
-it by the pure functions in `tools.domain.report.analytics`.
+Repository mode produces one raw `RepoScanResult`. Legacy organization mode
+produces a quality report (`report_schema_version: 5`) containing repository
+results. Since schema v5 both forms carry **data only**: derived views
+(per-document overall status, completeness, flat issue lists) are no longer
+embedded in the JSON — they are computed by the pure functions in
+`tools.domain.report.analytics`.
 
 - **Per-document results** (`DocumentScanResult`) — for every endpoint
   doc encountered:
