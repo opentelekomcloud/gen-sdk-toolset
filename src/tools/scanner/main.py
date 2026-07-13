@@ -142,6 +142,7 @@ def _build_scanner(settings: Settings) -> ScannerService:
         parser=DocutilsParser(),
         style_classifier=classify_doc_style,
         max_workers=settings.scanner.max_workers,
+        api_ref_path=settings.scanner.api_ref_path,
         excluded_segments=settings.scanner.excluded_segments,
     )
 
@@ -224,11 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     org = args.org or settings.github.org
     logger.info("Starting organization scan for %s@%s", org, branch)
     try:
-        result = scanner.scan_organization(
-            org=org,
-            branch=branch,
-            api_ref_path=settings.scanner.api_ref_path,
-        )
+        result = scanner.scan_organization(org=org, branch=branch)
     except RepositoryError as e:
         # Org-level failures (auth, rate limit, network) surface as a clean
         # message rather than a traceback. Per-document errors are handled

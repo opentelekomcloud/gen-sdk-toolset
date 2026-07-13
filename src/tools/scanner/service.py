@@ -33,12 +33,14 @@ class ScannerService:
         parser: RstParser,
         style_classifier: Callable[[str], DocStyle],
         max_workers: int,
+        api_ref_path: str,
         excluded_segments: Iterable[str] = (),
     ):
         self.doc_provider = doc_provider
         self.parser = parser
         self.style_classifier = style_classifier
         self.max_workers = max_workers
+        self.api_ref_path = api_ref_path.rstrip("/")
         # Always wrap in a fresh frozenset so each instance owns its own
         # object. Empty default = no exclusion (OTC-specific values come
         # from [scanner].excluded_segments in scan-config.toml).
@@ -50,35 +52,19 @@ class ScannerService:
     def scan_organization(
         self,
         org: str,
-        api_ref_path: str,
         branch: str = "main",
     ) -> OrgScanResult:
-        """Scan every eligible repo in `org` and aggregate per-document results.
-
-        `api_ref_path` is the directory whose presence makes a repo
-        eligible for scanning. It is required because the right value is
-        application-specific; the scanner library does not assume one.
-        """
+        """Scan every eligible repo in `org` and aggregate per-document results."""
         logger.info("Scanning organization %s (branch=%s)", org, branch)
         repos = self.doc_provider.list_repos(org)
         result = OrgScanResult(org=org, branch=branch, total_repos=len(repos))
 
         for repo in repos:
-            try:
-                if not self.doc_provider.path_exists(repo, branch, api_ref_path):
-                    logger.debug("Skipping %s (no %s)", repo, api_ref_path)
-                    result.skipped_repos.append(repo)
-                    continue
-            except RepositoryError as e:
-                logger.warning("Skipping %s due to repo error: %s", repo, e)
-                result.repos.append(
-                    RepoScanResult(
-                        repo=repo, branch=branch, has_api_ref=False, error=str(e)
-                    )
-                )
-                continue
-
             repo_result = self.find_endpoints(repo=repo, branch=branch)
+            if not repo_result.has_api_ref and repo_result.error is None:
+                logger.debug("Skipping %s (no %s)", repo, self.api_ref_path)
+                result.skipped_repos.append(repo)
+                continue
             result.repos.append(repo_result)
 
         result.eligible_repos = sum(1 for r in result.repos if r.has_api_ref)
@@ -96,17 +82,41 @@ class ScannerService:
     def find_endpoints(self, repo: str, branch: str = "main") -> RepoScanResult:
         """Scan one repository and return per-document parse results."""
         logger.info("Scanning repo %s@%s", repo, branch)
-        result = RepoScanResult(repo=repo, branch=branch, has_api_ref=True)
+        result = RepoScanResult(repo=repo, branch=branch)
 
-        # Pin the snapshot to a commit. A missing hash must not fail the scan.
+        # Pin the snapshot to a commit before checking eligibility so the path
+        # check and every content read observe the same repository snapshot.
         try:
             result.commit_hash = self.doc_provider.get_commit_hash(repo, branch)
         except RepositoryError as e:
-            logger.warning(
-                "Could not resolve commit hash for %s@%s: %s", repo, branch, e
-            )
+            # TODO(#70): let RateLimitError reach background-job orchestration
+            # once durable retry state exists. S1a keeps the generic error flow.
+            result.error = f"Could not resolve commit for {repo}@{branch}: {e}"
+            logger.error(result.error)
+            return result
 
         ref = result.commit_hash or branch
+        try:
+            has_api_ref = self.doc_provider.path_exists(
+                repo, ref, self.api_ref_path
+            )
+        except RepositoryError as e:
+            # TODO(#70): let RateLimitError reach background-job orchestration
+            # once durable retry state exists. Do not retry in the scanner.
+            result.error = f"Could not check eligibility for {repo}@{ref}: {e}"
+            logger.error(result.error)
+            return result
+
+        if not has_api_ref:
+            if result.commit_hash is None:
+                result.error = (
+                    f"Cannot confirm {repo}@{branch}: commit could not be resolved "
+                    f"and {self.api_ref_path} was not found"
+                )
+                logger.error(result.error)
+            return result
+
+        result.has_api_ref = True
 
         try:
             listing = self.doc_provider.list_files(repo, ref)

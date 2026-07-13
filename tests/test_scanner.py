@@ -22,6 +22,8 @@ class FakeDocProvider:
         has_api_ref: set[str] | None = None,
         truncated: set[str] | None = None,
         commit_hash: str | None = "0" * 40,
+        commit_error: str | None = None,
+        path_error: str | None = None,
     ):
         # repos: {repo_name: {file_path: content}}
         self._repos = repos
@@ -30,14 +32,22 @@ class FakeDocProvider:
         )
         self._truncated = truncated or set()
         self._commit_hash = commit_hash
+        self._commit_error = commit_error
+        self._path_error = path_error
+        self.calls: list[str] = []
 
     def list_repos(self, org: str) -> list[str]:
+        self.calls.append(f"list_repos:{org}")
         return list(self._repos.keys())
 
     def path_exists(self, repo: str, branch: str, path: str) -> bool:
+        self.calls.append(f"path_exists:{repo}@{branch}:{path}")
+        if self._path_error:
+            raise RepositoryError(self._path_error, repo=repo)
         return repo in self._has_api_ref
 
     def list_files(self, repo: str, branch: str) -> FileListing:
+        self.calls.append(f"list_files:{repo}@{branch}")
         return FileListing(
             paths=list(self._repos.get(repo, {}).keys()),
             truncated=repo in self._truncated,
@@ -45,9 +55,13 @@ class FakeDocProvider:
         )
 
     def fetch_content(self, repo: str, path: str, branch: str) -> str:
+        self.calls.append(f"fetch_content:{repo}@{branch}:{path}")
         return self._repos[repo][path]
 
     def get_commit_hash(self, repo: str, branch: str) -> str | None:
+        self.calls.append(f"get_commit_hash:{repo}@{branch}")
+        if self._commit_error:
+            raise RepositoryError(self._commit_error, repo=repo)
         return self._commit_hash
 
 
@@ -56,6 +70,7 @@ def make_scanner(fake: FakeDocProvider, **kwargs) -> ScannerService:
     kwargs.setdefault("parser", DocutilsParser())
     kwargs.setdefault("style_classifier", classify_doc_style)
     kwargs.setdefault("max_workers", 4)
+    kwargs.setdefault("api_ref_path", "api-ref/source")
     return ScannerService(doc_provider=fake, **kwargs)
 
 
@@ -68,9 +83,16 @@ def test_skips_repo_without_api_ref() -> None:
         has_api_ref={"o/svc-a"},  # only svc-a has api-ref
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     assert result.skipped_repos == ["o/svc-b"]
     assert {r.repo for r in result.repos} == {"o/svc-a"}
+    assert [call for call in fake.calls if call.startswith("path_exists:")] == [
+        "path_exists:o/svc-a@" + "0" * 40 + ":api-ref/source",
+        "path_exists:o/svc-b@" + "0" * 40 + ":api-ref/source",
+    ]
+    assert fake.calls.index("get_commit_hash:o/svc-a@main") < fake.calls.index(
+        "path_exists:o/svc-a@" + "0" * 40 + ":api-ref/source"
+    )
 
 
 def test_eligible_count_excludes_skipped() -> None:
@@ -79,7 +101,7 @@ def test_eligible_count_excludes_skipped() -> None:
         has_api_ref={"o/a", "o/c"},
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     assert result.total_repos == 3
     assert result.eligible_repos == 2
 
@@ -92,32 +114,25 @@ def test_commit_hash_emitted() -> None:
         repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
         commit_hash="a" * 40,
     )
-    result = make_scanner(fake).scan_organization(
-        org="o", api_ref_path="api-ref/source"
-    )
+    result = make_scanner(fake).scan_organization(org="o")
     repo = result.repos[0]
     assert repo.commit_hash == "a" * 40
     # Present in the serialized report, not just the model.
     assert result.model_dump(mode="json")["repos"][0]["commit_hash"] == "a" * 40
 
 
-def test_commit_hash_failure_does_not_abort_scan() -> None:
-    """A provider error resolving the commit hash leaves it None but still
-    produces the document results."""
-
-    class NoCommitProvider(FakeDocProvider):
-        def get_commit_hash(self, repo: str, branch: str) -> str | None:
-            raise RepositoryError("commit lookup failed", repo=repo)
-
-    fake = NoCommitProvider(
+def test_commit_hash_error_stops_before_eligibility_and_scan() -> None:
+    fake = FakeDocProvider(
         repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
+        commit_error="commit lookup failed",
     )
-    result = make_scanner(fake).scan_organization(
-        org="o", api_ref_path="api-ref/source"
-    )
+    result = make_scanner(fake).scan_organization(org="o")
     repo = result.repos[0]
     assert repo.commit_hash is None
-    assert repo.documents  # scan still produced results
+    assert repo.has_api_ref is False
+    assert repo.error == "Could not resolve commit for o/cce@main: commit lookup failed"
+    assert repo.documents == []
+    assert fake.calls == ["list_repos:o", "get_commit_hash:o/cce@main"]
 
 
 def _refs_used_by_scan(commit_hash: str | None) -> list[str]:
@@ -137,7 +152,7 @@ def _refs_used_by_scan(commit_hash: str | None) -> list[str]:
         repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
         commit_hash=commit_hash,
     )
-    make_scanner(provider).scan_organization(org="o", api_ref_path="api-ref/source")
+    make_scanner(provider).scan_organization(org="o")
     return seen
 
 
@@ -156,6 +171,120 @@ def test_scan_falls_back_to_branch_when_commit_hash_unknown() -> None:
 # --------------------------------------------------------------------------- #
 # Single-repository scan (S1)
 # --------------------------------------------------------------------------- #
+def test_find_endpoints_checks_eligibility_at_resolved_commit() -> None:
+    sha = "a" * 40
+    path = "api-ref/source/x.rst"
+    fake = FakeDocProvider(
+        repos={"o/cce": {path: load_fixture("style_a_cce_grid.rst")}},
+        commit_hash=sha,
+    )
+
+    result = make_scanner(fake).find_endpoints("o/cce", branch="main")
+
+    assert result.has_api_ref is True
+    assert result.commit_hash == sha
+    assert result.documents
+    assert fake.calls == [
+        "get_commit_hash:o/cce@main",
+        f"path_exists:o/cce@{sha}:api-ref/source",
+        f"list_files:o/cce@{sha}",
+        f"fetch_content:o/cce@{sha}:{path}",
+    ]
+
+
+def test_find_endpoints_returns_ineligible_without_scanning() -> None:
+    sha = "a" * 40
+    fake = FakeDocProvider(
+        repos={"o/empty": {"api-ref/source/x.rst": "unused"}},
+        has_api_ref=set(),
+        commit_hash=sha,
+    )
+
+    result = make_scanner(fake).find_endpoints("o/empty")
+
+    assert result.has_api_ref is False
+    assert result.error is None
+    assert result.documents == []
+    assert result.documents_by_version == {}
+    assert result.non_endpoint_documents == []
+    assert result.excluded_documents == []
+    assert fake.calls == [
+        "get_commit_hash:o/empty@main",
+        f"path_exists:o/empty@{sha}:api-ref/source",
+    ]
+
+
+def test_unresolved_commit_and_missing_path_is_not_normal_ineligible() -> None:
+    fake = FakeDocProvider(
+        repos={"o/missing": {}},
+        has_api_ref=set(),
+        commit_hash=None,
+    )
+
+    result = make_scanner(fake).find_endpoints("o/missing", branch="bad-ref")
+
+    assert result.has_api_ref is False
+    assert result.commit_hash is None
+    assert result.error == (
+        "Cannot confirm o/missing@bad-ref: commit could not be resolved and "
+        "api-ref/source was not found"
+    )
+    assert fake.calls == [
+        "get_commit_hash:o/missing@bad-ref",
+        "path_exists:o/missing@bad-ref:api-ref/source",
+    ]
+
+
+def test_unresolved_commit_with_existing_path_scans_original_ref() -> None:
+    path = "api-ref/source/x.rst"
+    fake = FakeDocProvider(
+        repos={"o/cce": {path: load_fixture("style_a_cce_grid.rst")}},
+        commit_hash=None,
+    )
+
+    result = make_scanner(fake).find_endpoints("o/cce", branch="develop")
+
+    assert result.has_api_ref is True
+    assert result.commit_hash is None
+    assert result.documents
+    assert fake.calls == [
+        "get_commit_hash:o/cce@develop",
+        "path_exists:o/cce@develop:api-ref/source",
+        "list_files:o/cce@develop",
+        f"fetch_content:o/cce@develop:{path}",
+    ]
+
+
+def test_eligibility_error_stops_before_file_listing() -> None:
+    sha = "a" * 40
+    fake = FakeDocProvider(
+        repos={"o/cce": {"api-ref/source/x.rst": "unused"}},
+        commit_hash=sha,
+        path_error="eligibility lookup failed",
+    )
+
+    result = make_scanner(fake).find_endpoints("o/cce")
+
+    assert result.has_api_ref is False
+    assert result.error == (
+        f"Could not check eligibility for o/cce@{sha}: eligibility lookup failed"
+    )
+    assert fake.calls == [
+        "get_commit_hash:o/cce@main",
+        f"path_exists:o/cce@{sha}:api-ref/source",
+    ]
+
+
+def test_find_endpoints_repeated_call_preserves_result_contract() -> None:
+    fake = FakeDocProvider(repos={"o/empty": {}}, has_api_ref=set())
+    scanner = make_scanner(fake)
+
+    first = scanner.find_endpoints("o/empty").model_dump(mode="json")
+    second = scanner.find_endpoints("o/empty").model_dump(mode="json")
+
+    assert second == first
+
+
 def test_find_endpoints_matches_repos_element_shape() -> None:
     fake = FakeDocProvider(
         repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
@@ -163,7 +292,7 @@ def test_find_endpoints_matches_repos_element_shape() -> None:
     scanner = make_scanner(fake)
 
     repo_result = scanner.find_endpoints(repo="o/cce", branch="main")
-    org = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    org = scanner.scan_organization(org="o")
 
     # Same type and same serialised shape as an element of the org report's
     # repos[], so F2 ingest accepts it unchanged.
@@ -199,7 +328,7 @@ def test_style_a_populates_sections() -> None:
         }
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     docs = result.repos[0].documents
     assert len(docs) == 1
     doc = docs[0]
@@ -221,7 +350,7 @@ def test_obs_marked_unsupported() -> None:
         repos={"o/obs": {"api-ref/source/x.rst": load_fixture("style_b_obs.rst")}}
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     doc = result.repos[0].documents[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.UNSUPPORTED_DOC_STYLE
@@ -239,7 +368,7 @@ def test_non_endpoint_recorded() -> None:
         }
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     repo = result.repos[0]
     assert repo.non_endpoint_documents == ["api-ref/source/intro.rst"]
     assert len(repo.documents) == 1
@@ -255,7 +384,7 @@ def test_fetch_failure_is_gating() -> None:
         repos={"o/svc": {"api-ref/source/x.rst": ""}},
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     doc = result.repos[0].documents[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.FETCH_FAILED
@@ -274,7 +403,7 @@ def test_parser_crash_is_parser_error() -> None:
         repos={"o/svc": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
     )
     scanner = make_scanner(fake, parser=CrashingParser())
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     doc = result.repos[0].documents[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.PARSER_ERROR
@@ -291,7 +420,7 @@ def test_endpoint_doc_without_uri_is_failed() -> None:
     )
     fake = FakeDocProvider(repos={"o/svc": {"api-ref/source/x.rst": content}})
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     repo = result.repos[0]
     assert repo.non_endpoint_documents == []
     doc = repo.documents[0]
@@ -313,7 +442,7 @@ def test_excluded_segments_drop_paths() -> None:
         }
     )
     scanner = make_scanner(fake, excluded_segments=["out-of-date_apis"])
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     repo = result.repos[0]
     # Excluded file is not parsed, not counted as a non_endpoint doc...
     assert all("out-of-date_apis" not in d.document for d in repo.documents)
@@ -344,7 +473,7 @@ def test_truncated_tree_marks_repo_incomplete() -> None:
         truncated={"o/svc"},
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     repo = result.repos[0]
     assert repo.incomplete is True
     assert repo.incomplete_reason
@@ -362,7 +491,7 @@ def test_by_version_groups_parsed() -> None:
         }
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     repo = result.repos[0]
     assert "v3" in repo.documents_by_version
     assert len(repo.documents_by_version["v3"]) == 1
@@ -380,7 +509,7 @@ def test_by_version_excludes_failed() -> None:
         }
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     assert result.repos[0].documents_by_version == {}
 
 
@@ -399,7 +528,7 @@ def test_quality_summary_counts() -> None:
         }
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
     qs = result.quality_summary
     # CCE is ok (nested struct resolved), OBS is unsupported.
     assert qs.by_overall_status.get("ok", 0) >= 1
@@ -419,7 +548,7 @@ def test_report_stamps_scanner_version() -> None:
         repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o", api_ref_path="api-ref/source")
+    result = scanner.scan_organization(org="o")
 
     assert result.report_schema_version == REPORT_SCHEMA_VERSION >= 3
     assert result.scanner_version == __version__

@@ -72,7 +72,7 @@ Each module ships a CLI entry point registered in `pyproject.toml`:
 
 ```toml
 [project.scripts]
-gen-sdk-scan = "tools.scanner.__main__:main"
+gen-sdk-scan = "tools.scanner.main:main"
 gen-sdk-generate = "tools.generator.__main__:main"
 gen-sdk-refine = "tools.llm.__main__:main"
 ```
