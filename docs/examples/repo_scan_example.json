@@ -1,6 +1,7 @@
 {
   "repo": "opentelekomcloud-docs/anti-ddos",
-  "branch": "main",
+  "branch": "8ff5254f6b7d669170bdacbdf5058e9adcfbe75f",
+  "commit_hash": "8ff5254f6b7d669170bdacbdf5058e9adcfbe75f",
   "has_api_ref": true,
   "scanner_version": "0.1.0",
   "documents": [
@@ -65,17 +66,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 0.5,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/alarm_reminding_apis/updating_alarm_configuration.rst",
@@ -136,11 +127,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "ok",
-      "completeness": 1.0,
-      "all_issues": []
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/configuring_the_default_protection_policy_for_newly_purchased_public_ip_addresses.rst",
@@ -258,17 +245,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 1.0,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/querying_a_specified_api_version.rst",
@@ -333,17 +310,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 0.5,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/querying_all_api_versions.rst",
@@ -357,17 +324,7 @@
         "location": null,
         "details": "No 'METHOD /path' line found in api-ref/source/api/anti-ddos_apis/querying_all_api_versions.rst"
       },
-      "sections": {},
-      "service": "anti-ddos",
-      "overall_status": "failed",
-      "completeness": null,
-      "all_issues": [
-        {
-          "code": "no_uri_match",
-          "location": null,
-          "details": "No 'METHOD /path' line found in api-ref/source/api/anti-ddos_apis/querying_all_api_versions.rst"
-        }
-      ]
+      "sections": {}
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/querying_anti-ddos_tasks.rst",
@@ -440,17 +397,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 1.0,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/querying_configured_anti-ddos_defense_policies.rst",
@@ -558,17 +505,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 1.0,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/querying_events_of_a_specified_eip.rst",
@@ -666,17 +603,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 1.0,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/querying_optional_anti-ddos_defense_policies.rst",
@@ -913,17 +840,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 0.5,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/querying_the_default_protection_policy_configured_for_the_newly_purchased_public_ip_addresses.rst",
@@ -980,17 +897,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 0.5,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/querying_the_defense_status_of_a_specified_eip.rst",
@@ -1043,17 +950,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 0.5,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/querying_the_list_of_eip_defense_statuses.rst",
@@ -1181,17 +1078,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 1.0,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/querying_the_traffic_of_a_specified_eip.rst",
@@ -1248,22 +1135,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 0.0,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        },
-        {
-          "code": "example_invalid_json",
-          "location": "example_response/example 1",
-          "details": "Example response"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/querying_weekly_defense_statistics.rst",
@@ -1392,17 +1264,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 1.0,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     },
     {
       "document": "api-ref/source/api/anti-ddos_apis/updating_anti-ddos_defense_policies.rst",
@@ -1555,17 +1417,7 @@
           "fields_unknown_type": 0,
           "fields_failed": 0
         }
-      },
-      "service": "anti-ddos",
-      "overall_status": "partial",
-      "completeness": 1.0,
-      "all_issues": [
-        {
-          "code": "example_invalid_json",
-          "location": "example_request/example 1",
-          "details": "Example request"
-        }
-      ]
+      }
     }
   ],
   "non_endpoint_documents": [
@@ -1642,17 +1494,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 0.5,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       },
       {
         "document": "api-ref/source/api/alarm_reminding_apis/updating_alarm_configuration.rst",
@@ -1713,11 +1555,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "ok",
-        "completeness": 1.0,
-        "all_issues": []
+        }
       }
     ],
     "v1": [
@@ -1837,17 +1675,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 1.0,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       },
       {
         "document": "api-ref/source/api/anti-ddos_apis/querying_anti-ddos_tasks.rst",
@@ -1920,17 +1748,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 1.0,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       },
       {
         "document": "api-ref/source/api/anti-ddos_apis/querying_configured_anti-ddos_defense_policies.rst",
@@ -2038,17 +1856,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 1.0,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       },
       {
         "document": "api-ref/source/api/anti-ddos_apis/querying_events_of_a_specified_eip.rst",
@@ -2146,17 +1954,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 1.0,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       },
       {
         "document": "api-ref/source/api/anti-ddos_apis/querying_optional_anti-ddos_defense_policies.rst",
@@ -2393,17 +2191,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 0.5,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       },
       {
         "document": "api-ref/source/api/anti-ddos_apis/querying_the_default_protection_policy_configured_for_the_newly_purchased_public_ip_addresses.rst",
@@ -2460,17 +2248,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 0.5,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       },
       {
         "document": "api-ref/source/api/anti-ddos_apis/querying_the_defense_status_of_a_specified_eip.rst",
@@ -2523,17 +2301,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 0.5,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       },
       {
         "document": "api-ref/source/api/anti-ddos_apis/querying_the_list_of_eip_defense_statuses.rst",
@@ -2661,17 +2429,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 1.0,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       },
       {
         "document": "api-ref/source/api/anti-ddos_apis/querying_the_traffic_of_a_specified_eip.rst",
@@ -2728,22 +2486,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 0.0,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          },
-          {
-            "code": "example_invalid_json",
-            "location": "example_response/example 1",
-            "details": "Example response"
-          }
-        ]
+        }
       },
       {
         "document": "api-ref/source/api/anti-ddos_apis/querying_weekly_defense_statistics.rst",
@@ -2872,17 +2615,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 1.0,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       },
       {
         "document": "api-ref/source/api/anti-ddos_apis/updating_anti-ddos_defense_policies.rst",
@@ -3035,17 +2768,7 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 1.0,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       }
     ],
     "unversioned": [
@@ -3112,27 +2835,11 @@
             "fields_unknown_type": 0,
             "fields_failed": 0
           }
-        },
-        "service": "anti-ddos",
-        "overall_status": "partial",
-        "completeness": 0.5,
-        "all_issues": [
-          {
-            "code": "example_invalid_json",
-            "location": "example_request/example 1",
-            "details": "Example request"
-          }
-        ]
+        }
       }
     ]
   },
   "incomplete": false,
   "incomplete_reason": null,
-  "error": null,
-  "total_documents": 15,
-  "status_counts": {
-    "partial": 13,
-    "ok": 1,
-    "failed": 1
-  }
+  "error": null
 }

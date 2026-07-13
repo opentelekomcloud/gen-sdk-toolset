@@ -1,6 +1,5 @@
 import base64
 import logging
-import time
 
 import requests
 
@@ -18,23 +17,15 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = 30
 # Max length of an error-response body we quote back in an exception message.
 _ERROR_BODY_MAX = 200
-# Seconds added past the rate-limit reset before retrying (clock-skew margin).
-_RATE_LIMIT_BUFFER = 2
-# Upper bound on a single rate-limit wait so a bogus reset can't hang the scan.
-_MAX_RATE_LIMIT_WAIT = 3600
 
 
 class GitHubDocProvider(DocProvider):
-    def __init__(
-        self, token: str, api_url: str, prefix: str, max_rate_limit_retries: int = 3
-    ):
+    def __init__(self, token: str, api_url: str, prefix: str):
         self.session = requests.Session()
         self.session.headers["Authorization"] = f"Bearer {token}"
         self.session.headers["Accept"] = "application/vnd.github+json"
         self.api_url = api_url
         self.prefix = prefix
-        # How many times to wait-out a rate limit before giving up on a call.
-        self.max_rate_limit_retries = max_rate_limit_retries
 
     # ------------------------------------------------------------------ #
     # Public DocProvider methods
@@ -141,48 +132,20 @@ class GitHubDocProvider(DocProvider):
         """Issue a GET, mapping transport + HTTP errors to domain exceptions.
 
         One place wraps the ``requests.RequestException`` → ``RepositoryError``
-        translation and the status-code check. On a rate limit it waits out the
-        reset and retries (up to ``max_rate_limit_retries``) so a scan runs to
-        completion instead of aborting the moment the quota is hit.
+        translation and the status-code check. Rate-limit responses are exposed
+        immediately so the caller can own any retry policy.
         """
-        attempts = 0
-        while True:
-            try:
-                resp = self.session.get(url, timeout=_TIMEOUT, **kwargs)
-            except requests.RequestException as e:
-                raise RepositoryError(
-                    f"GitHub request for {resource} in {repo} failed: {e}",
-                    repo=repo,
-                    cause=e,
-                ) from e
+        try:
+            resp = self.session.get(url, timeout=_TIMEOUT, **kwargs)
+        except requests.RequestException as e:
+            raise RepositoryError(
+                f"GitHub request for {resource} in {repo} failed: {e}",
+                repo=repo,
+                cause=e,
+            ) from e
 
-            try:
-                self._raise_for_status(resp, repo=repo, resource=resource)
-            except RateLimitError as e:
-                attempts += 1
-                if attempts > self.max_rate_limit_retries:
-                    raise
-                wait = self._seconds_until_reset(e.reset_time)
-                logger.warning(
-                    "Rate limited on %s (%s); waiting %ds then retrying (%d/%d)",
-                    resource,
-                    repo,
-                    wait,
-                    attempts,
-                    self.max_rate_limit_retries,
-                )
-                time.sleep(wait)
-                continue
-
-            return resp
-
-    @staticmethod
-    def _seconds_until_reset(reset_time: int | None) -> int:
-        """Seconds to sleep until the rate-limit window resets (bounded)."""
-        if not reset_time:
-            return _RATE_LIMIT_BUFFER
-        wait = reset_time - int(time.time()) + _RATE_LIMIT_BUFFER
-        return max(0, min(wait, _MAX_RATE_LIMIT_WAIT))
+        self._raise_for_status(resp, repo=repo, resource=resource)
+        return resp
 
     @staticmethod
     def _raise_for_status(resp: requests.Response, *, repo: str, resource: str) -> None:

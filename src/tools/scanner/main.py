@@ -136,7 +136,6 @@ def _build_scanner(settings: Settings) -> ScannerService:
         token=settings.github_token.get_secret_value(),
         api_url=settings.github.api_url,
         prefix=settings.scanner.rst_source_prefix,
-        max_rate_limit_retries=settings.scanner.max_rate_limit_retries,
     )
     return ScannerService(
         doc_provider=github_provider,

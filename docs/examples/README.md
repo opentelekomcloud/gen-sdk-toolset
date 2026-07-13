@@ -6,4 +6,13 @@
 
 Regenerate (requires `GITHUB_TOKEN` in the environment or `.env`):
 
-    python -m tools.scanner --repo opentelekomcloud-docs/anti-ddos --output docs/examples/repo_scan_example.json
+```bash
+uv run gen-sdk-scan \
+  --repo opentelekomcloud-docs/anti-ddos \
+  --branch 8ff5254f6b7d669170bdacbdf5058e9adcfbe75f \
+  --output docs/examples/repo_scan_example.json
+```
+
+This committed example intentionally passes a full commit SHA through
+`--branch` to make regeneration reproducible. `RepoScanResult.branch` may
+contain a normal branch name in regular scans.
