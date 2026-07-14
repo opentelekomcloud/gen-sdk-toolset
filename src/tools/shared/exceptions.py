@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import enum
+
 from tools.shared.report.enums import IssueCode
 from tools.shared.report.issue import Issue
 
@@ -8,42 +10,34 @@ class GenSdkError(Exception):
     """Base exception for all gen_sdk errors."""
 
 
-class RepositoryError(GenSdkError):
-    """Error accessing a documentation repository."""
+class ProviderErrorKind(str, enum.Enum):
+    rate_limit = "rate_limit"
+    authentication = "authentication"
+    permission_denied = "permission_denied"
+    not_found = "not_found"
+    connection_error = "connection_error"
+    unexpected_response = "unexpected_response"
+
+
+class ProviderError(GenSdkError):
+    """Normalized failure returned by an external data provider."""
 
     def __init__(
-        self, message: str, repo: str | None = None, cause: Exception | None = None
+        self,
+        message: str,
+        *,
+        kind: ProviderErrorKind,
+        status_code: int | None = None,
+        resource: str | None = None,
+        reset_time: int | None = None,
+        cause: Exception | None = None,
     ):
         super().__init__(message)
-        self.repo = repo
-        self.cause = cause
-
-
-class RateLimitError(RepositoryError):
-    """GitHub API rate limit exceeded."""
-
-    def __init__(self, reset_time: int | None = None):
-        msg = "GitHub API rate limit exceeded"
-        if reset_time:
-            msg += f". Resets at {reset_time}"
-        super().__init__(msg)
-        self.reset_time = reset_time
-
-
-class AuthenticationError(RepositoryError):
-    """Authentication failed (invalid or missing token)."""
-
-
-class PermissionDeniedError(RepositoryError):
-    """Authentication succeeded, but access to a resource is forbidden."""
-
-
-class NotFoundError(RepositoryError):
-    """Repository or file not found."""
-
-    def __init__(self, resource: str, repo: str | None = None):
-        super().__init__(f"Not found: {resource}", repo=repo)
+        self.kind = kind
+        self.status_code = status_code
         self.resource = resource
+        self.reset_time = reset_time
+        self.cause = cause
 
 
 class ConfigurationError(GenSdkError):

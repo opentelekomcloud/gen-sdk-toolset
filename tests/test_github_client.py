@@ -10,13 +10,7 @@ import pytest
 import requests
 
 from tools.scanner.github.client import GitHubDocProvider
-from tools.shared.exceptions import (
-    AuthenticationError,
-    NotFoundError,
-    PermissionDeniedError,
-    RateLimitError,
-    RepositoryError,
-)
+from tools.shared.exceptions import ProviderError, ProviderErrorKind
 
 
 class _Resp:
@@ -78,11 +72,11 @@ def _provider(session: _Session) -> GitHubDocProvider:
 @pytest.mark.parametrize("status", [404, 409])
 def test_missing_or_empty_repo_maps_to_not_found(status: int) -> None:
     # 404 = missing; 409 = empty repository (no commits/tree yet). Both should
-    # surface as NotFoundError so callers treat them as "nothing to scan".
-    with pytest.raises(NotFoundError):
+    with pytest.raises(ProviderError) as exc_info:
         GitHubDocProvider._raise_for_status(
             _Resp(status), repo="o/r", resource="commits"
         )
+    assert exc_info.value.kind is ProviderErrorKind.not_found
 
 
 # --------------------------------------------------------------------------- #
@@ -93,9 +87,10 @@ def test_rate_limit_is_raised_immediately_without_retry() -> None:
     session = _Session([_rate_limited(reset)])
     provider = _provider(session)
 
-    with pytest.raises(RateLimitError) as exc_info:
+    with pytest.raises(ProviderError) as exc_info:
         provider.list_repos("o")
 
+    assert exc_info.value.kind is ProviderErrorKind.rate_limit
     assert exc_info.value.reset_time == reset
     assert session.calls == 1
 
@@ -137,26 +132,44 @@ def test_path_exists_converts_not_found_to_false(status: int) -> None:
 
 
 @pytest.mark.parametrize(
-    ("response", "expected_error"),
+    ("response", "expected_kind"),
     [
-        (_Resp(401), AuthenticationError),
-        (_rate_limited(1_800_000_000), RateLimitError),
-        (_Resp(403), PermissionDeniedError),
-        (_Resp(500, text="server failed"), RepositoryError),
+        (_Resp(401), ProviderErrorKind.authentication),
+        (_rate_limited(1_800_000_000), ProviderErrorKind.rate_limit),
+        (_Resp(403), ProviderErrorKind.permission_denied),
+        (_Resp(500, text="server failed"), ProviderErrorKind.unexpected_response),
     ],
 )
 def test_path_exists_preserves_operational_errors(
     response: _Resp,
-    expected_error: type[RepositoryError],
+    expected_kind: ProviderErrorKind,
 ) -> None:
-    with pytest.raises(expected_error):
+    with pytest.raises(ProviderError) as exc_info:
         _provider(_Session([response])).path_exists("o/r", "main", "p")
+    assert exc_info.value.kind is expected_kind
 
 
 def test_path_exists_wraps_transport_errors_instead_of_returning_false() -> None:
     provider = _provider(_Session([requests.ConnectionError("offline")]))
 
-    with pytest.raises(RepositoryError, match="offline") as exc_info:
+    with pytest.raises(ProviderError, match="offline") as exc_info:
         provider.path_exists("o/r", "main", "p")
 
+    assert exc_info.value.kind is ProviderErrorKind.connection_error
     assert isinstance(exc_info.value.cause, requests.ConnectionError)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        _Resp(403, headers={"Retry-After": "60"}),
+        _Resp(403, text="You have exceeded a secondary rate limit"),
+        _Resp(429),
+    ],
+)
+def test_secondary_rate_limits_remain_distinguishable_from_permission_denied(
+    response: _Resp,
+) -> None:
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(_Session([response])).path_exists("o/r", "main", "p")
+    assert exc_info.value.kind is ProviderErrorKind.rate_limit

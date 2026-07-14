@@ -6,7 +6,7 @@ from tools.domain.report import OrgScanResult, analytics
 from tools.scanner.eligibility import check_repository_eligibility
 from tools.scanner.interfaces import DocProvider, RstParser
 from tools.scanner.parsers.docutils.style import DocStyle
-from tools.shared.exceptions import ParseFailure, RepositoryError
+from tools.shared.exceptions import ParseFailure, ProviderError
 from tools.shared.report import (
     UNVERSIONED_KEY,
     DocumentScanResult,
@@ -74,9 +74,9 @@ class ScannerService:
         # check and every content read observe the same repository snapshot.
         try:
             result.commit_hash = self.doc_provider.get_commit_hash(repo, branch)
-        except RepositoryError as e:
-            # TODO(#70): let RateLimitError reach background-job orchestration
-            # once durable retry state exists. S1a keeps the generic error flow.
+        except ProviderError as e:
+            # TODO(#70): let rate-limited ProviderError reach background-job
+            # orchestration once durable retry state exists.
             result.error = f"Could not resolve commit for {repo}@{branch}: {e}"
             logger.error(result.error)
             return result
@@ -110,7 +110,7 @@ class ScannerService:
 
         try:
             listing = self.doc_provider.list_files(repo, ref)
-        except RepositoryError as e:
+        except ProviderError as e:
             logger.error("Failed to list files for %s: %s", repo, e)
             result.error = str(e)
             return result

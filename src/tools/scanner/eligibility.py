@@ -5,12 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from tools.scanner.interfaces import RepositoryEligibilityProvider
-from tools.shared.exceptions import (
-    AuthenticationError,
-    PermissionDeniedError,
-    RateLimitError,
-    RepositoryError,
-)
+from tools.shared.exceptions import ProviderError, ProviderErrorKind
 from tools.shared.repository import (
     RepositoryInterruption,
     RepositoryInterruptionKind,
@@ -43,7 +38,7 @@ def check_repository_eligibility(
     """Check ``api_ref_path`` once and convert repository errors into data."""
     try:
         has_api_ref = provider.path_exists(repo, ref, api_ref_path)
-    except RepositoryError as exc:
+    except ProviderError as exc:
         return EligibilityResult(
             has_api_ref=None,
             interruption=interruption_from_repository_error(exc, repo=repo),
@@ -52,19 +47,19 @@ def check_repository_eligibility(
 
 
 def interruption_from_repository_error(
-    error: RepositoryError,
+    error: ProviderError,
     *,
     repo: str | None,
 ) -> RepositoryInterruption:
     """Convert a repository exception into a serializable typed value."""
     reset_time: int | None = None
-    if isinstance(error, RateLimitError):
+    if error.kind is ProviderErrorKind.rate_limit:
         kind = RepositoryInterruptionKind.rate_limit
         if error.reset_time is not None and error.reset_time > 0:
             reset_time = error.reset_time
-    elif isinstance(error, AuthenticationError):
+    elif error.kind is ProviderErrorKind.authentication:
         kind = RepositoryInterruptionKind.authentication
-    elif isinstance(error, PermissionDeniedError):
+    elif error.kind is ProviderErrorKind.permission_denied:
         kind = RepositoryInterruptionKind.permission_denied
     else:
         kind = RepositoryInterruptionKind.repository_failure

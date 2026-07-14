@@ -6,7 +6,7 @@ from tools.domain.report.analytics import doc_overall_status
 from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
-from tools.shared.exceptions import RepositoryError
+from tools.shared.exceptions import ProviderError, ProviderErrorKind
 from tools.shared.report import IssueCode
 from tools.shared.repository import RepositoryInterruptionKind
 
@@ -44,7 +44,11 @@ class FakeDocProvider:
     def path_exists(self, repo: str, branch: str, path: str) -> bool:
         self.calls.append(f"path_exists:{repo}@{branch}:{path}")
         if self._path_error:
-            raise RepositoryError(self._path_error, repo=repo)
+            raise ProviderError(
+                self._path_error,
+                kind=ProviderErrorKind.unexpected_response,
+                resource=repo,
+            )
         return repo in self._has_api_ref
 
     def list_files(self, repo: str, branch: str) -> FileListing:
@@ -62,7 +66,11 @@ class FakeDocProvider:
     def get_commit_hash(self, repo: str, branch: str) -> str | None:
         self.calls.append(f"get_commit_hash:{repo}@{branch}")
         if self._commit_error:
-            raise RepositoryError(self._commit_error, repo=repo)
+            raise ProviderError(
+                self._commit_error,
+                kind=ProviderErrorKind.unexpected_response,
+                resource=repo,
+            )
         return self._commit_hash
 
 
@@ -318,7 +326,11 @@ def test_scan_repository_matches_repos_element_shape() -> None:
 def test_scan_repository_captures_error_without_raising() -> None:
     class ListFailProvider(FakeDocProvider):
         def list_files(self, repo: str, branch: str) -> FileListing:
-            raise RepositoryError("tree fetch failed", repo=repo)
+            raise ProviderError(
+                "tree fetch failed",
+                kind=ProviderErrorKind.unexpected_response,
+                resource=repo,
+            )
 
     scanner = make_scanner(ListFailProvider(repos={"o/x": {}}))
     repo_result = scanner.scan_repository(repo="o/x", branch="main")

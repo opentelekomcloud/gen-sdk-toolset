@@ -4,13 +4,7 @@ import logging
 import requests
 
 from tools.scanner.interfaces import DocProvider, FileListing
-from tools.shared.exceptions import (
-    AuthenticationError,
-    NotFoundError,
-    PermissionDeniedError,
-    RateLimitError,
-    RepositoryError,
-)
+from tools.shared.exceptions import ProviderError, ProviderErrorKind
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +56,9 @@ class GitHubDocProvider(DocProvider):
         url = f"{self.api_url}/repos/{repo}/contents/{path.rstrip('/')}"
         try:
             self._get(url, repo=repo, resource=path, params={"ref": branch})
-        except NotFoundError:
+        except ProviderError as error:
+            if error.kind is not ProviderErrorKind.not_found:
+                raise
             return False
         return True
 
@@ -117,7 +113,9 @@ class GitHubDocProvider(DocProvider):
                 resource=f"commits@{branch}",
                 params={"sha": branch, "per_page": 1},
             )
-        except NotFoundError:
+        except ProviderError as error:
+            if error.kind is not ProviderErrorKind.not_found:
+                raise
             return None
         commits = resp.json()
         if isinstance(commits, list) and commits:
@@ -132,16 +130,17 @@ class GitHubDocProvider(DocProvider):
     ) -> requests.Response:
         """Issue a GET, mapping transport + HTTP errors to domain exceptions.
 
-        One place wraps the ``requests.RequestException`` → ``RepositoryError``
+        One place wraps the ``requests.RequestException`` → ``ProviderError``
         translation and the status-code check. Rate-limit responses are exposed
         immediately so the caller can own any retry policy.
         """
         try:
             resp = self.session.get(url, timeout=_TIMEOUT, **kwargs)
         except requests.RequestException as e:
-            raise RepositoryError(
+            raise ProviderError(
                 f"GitHub request for {resource} in {repo} failed: {e}",
-                repo=repo,
+                kind=ProviderErrorKind.connection_error,
+                resource=resource,
                 cause=e,
             ) from e
 
@@ -154,19 +153,46 @@ class GitHubDocProvider(DocProvider):
         if resp.status_code < 400:
             return
         if resp.status_code in (404, 409):
-            raise NotFoundError(resource=resource, repo=repo)
-        if resp.status_code == 401:
-            raise AuthenticationError("Invalid or missing GitHub token", repo=repo)
-        if resp.status_code == 403:
-            remaining = resp.headers.get("X-RateLimit-Remaining")
-            if remaining == "0":
-                reset = int(resp.headers.get("X-RateLimit-Reset", 0))
-                raise RateLimitError(reset_time=reset)
-            raise PermissionDeniedError(
-                f"Forbidden when accessing {resource}", repo=repo
+            raise ProviderError(
+                f"Not found: {resource}",
+                kind=ProviderErrorKind.not_found,
+                status_code=resp.status_code,
+                resource=resource,
             )
-        raise RepositoryError(
+        if resp.status_code == 401:
+            raise ProviderError(
+                "Invalid or missing GitHub token",
+                kind=ProviderErrorKind.authentication,
+                status_code=resp.status_code,
+                resource=resource,
+            )
+        if resp.status_code in (403, 429):
+            remaining = resp.headers.get("X-RateLimit-Remaining")
+            rate_limited = (
+                resp.status_code == 429
+                or remaining == "0"
+                or "Retry-After" in resp.headers
+                or "rate limit" in resp.text.lower()
+            )
+            if rate_limited:
+                reset = int(resp.headers.get("X-RateLimit-Reset", 0))
+                raise ProviderError(
+                    "GitHub API rate limit exceeded",
+                    kind=ProviderErrorKind.rate_limit,
+                    status_code=resp.status_code,
+                    resource=resource,
+                    reset_time=reset or None,
+                )
+            raise ProviderError(
+                f"Forbidden when accessing {resource}",
+                kind=ProviderErrorKind.permission_denied,
+                status_code=resp.status_code,
+                resource=resource,
+            )
+        raise ProviderError(
             f"Unexpected HTTP {resp.status_code} for {resource}: "
             f"{resp.text[:_ERROR_BODY_MAX]}",
-            repo=repo,
+            kind=ProviderErrorKind.unexpected_response,
+            status_code=resp.status_code,
+            resource=resource,
         )

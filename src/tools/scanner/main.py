@@ -15,7 +15,7 @@ from tools.domain.report import OrgScanResult
 from tools.scanner.github.client import GitHubDocProvider
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
-from tools.shared.exceptions import RepositoryError
+from tools.shared.exceptions import ProviderError
 from tools.shared.report import OverallStatus
 
 # Exit codes
@@ -226,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("Starting organization scan for %s@%s", org, branch)
     try:
         result = scanner.scan_organization(org=org, branch=branch)
-    except RepositoryError as e:
+    except ProviderError as e:
         # Org-level failures (auth, rate limit, network) surface as a clean
         # message rather than a traceback. Per-document errors are handled
         # inside the scanner and recorded in the report.

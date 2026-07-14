@@ -3,18 +3,18 @@ from __future__ import annotations
 import pytest
 
 from tools.scanner.eligibility import EligibilityResult, check_repository_eligibility
-from tools.shared.exceptions import RateLimitError, RepositoryError
+from tools.shared.exceptions import ProviderError, ProviderErrorKind
 from tools.shared.repository import RepositoryInterruptionKind
 
 
 class _PathProvider:
-    def __init__(self, outcome: bool | RepositoryError) -> None:
+    def __init__(self, outcome: bool | ProviderError) -> None:
         self.outcome = outcome
         self.calls: list[tuple[str, str, str]] = []
 
     def path_exists(self, repo: str, branch: str, path: str) -> bool:
         self.calls.append((repo, branch, path))
-        if isinstance(self.outcome, RepositoryError):
+        if isinstance(self.outcome, ProviderError):
             raise self.outcome
         return self.outcome
 
@@ -35,7 +35,13 @@ def test_check_returns_completed_eligibility(has_api_ref: bool) -> None:
 
 
 def test_check_returns_typed_interruption_without_raising() -> None:
-    provider = _PathProvider(RateLimitError(reset_time=1_800_000_000))
+    provider = _PathProvider(
+        ProviderError(
+            "rate limited",
+            kind=ProviderErrorKind.rate_limit,
+            reset_time=1_800_000_000,
+        )
+    )
 
     result = check_repository_eligibility(
         provider,
@@ -60,7 +66,9 @@ def test_result_rejects_ambiguous_states(
     has_interruption: bool,
 ) -> None:
     interruption = check_repository_eligibility(
-        _PathProvider(RepositoryError("failed")),
+        _PathProvider(
+            ProviderError("failed", kind=ProviderErrorKind.unexpected_response)
+        ),
         repo="o/r",
         ref="main",
         api_ref_path="p",

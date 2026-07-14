@@ -5,12 +5,7 @@ from collections.abc import Set
 import pytest
 
 from tools.scanner.discovery import DiscoveredRepository, discover_repositories
-from tools.shared.exceptions import (
-    AuthenticationError,
-    PermissionDeniedError,
-    RateLimitError,
-    RepositoryError,
-)
+from tools.shared.exceptions import ProviderError, ProviderErrorKind
 from tools.shared.repository import RepositoryInterruptionKind
 
 
@@ -87,7 +82,11 @@ def test_repository_failure_returns_checked_prefix_and_stops() -> None:
     provider = _Provider(
         ["o/a", "o/b", "o/broken", "o/later"],
         eligible={"o/a"},
-        path_errors={"o/broken": RepositoryError("lookup failed")},
+        path_errors={
+            "o/broken": ProviderError(
+                "lookup failed", kind=ProviderErrorKind.unexpected_response
+            )
+        },
     )
 
     result = _discover(provider)
@@ -107,7 +106,13 @@ def test_rate_limit_returns_prefix_context_and_reset_time() -> None:
     provider = _Provider(
         ["o/first", "o/limited", "o/later"],
         eligible={"o/first"},
-        path_errors={"o/limited": RateLimitError(1_800_000_000)},
+        path_errors={
+            "o/limited": ProviderError(
+                "rate limited",
+                kind=ProviderErrorKind.rate_limit,
+                reset_time=1_800_000_000,
+            )
+        },
     )
 
     result = _discover(provider)
@@ -123,7 +128,16 @@ def test_rate_limit_returns_prefix_context_and_reset_time() -> None:
 @pytest.mark.parametrize("reset_time", [None, 0, -1])
 def test_rate_limit_discards_unusable_reset_time(reset_time: int | None) -> None:
     result = _discover(
-        _Provider(["o/r"], path_errors={"o/r": RateLimitError(reset_time)})
+        _Provider(
+            ["o/r"],
+            path_errors={
+                "o/r": ProviderError(
+                    "rate limited",
+                    kind=ProviderErrorKind.rate_limit,
+                    reset_time=reset_time,
+                )
+            },
+        )
     )
     assert result.interruption is not None
     assert result.interruption.reset_time is None
@@ -132,15 +146,18 @@ def test_rate_limit_discards_unusable_reset_time(reset_time: int | None) -> None
 @pytest.mark.parametrize(
     ("error", "kind"),
     [
-        (AuthenticationError("bad token"), RepositoryInterruptionKind.authentication),
         (
-            PermissionDeniedError("forbidden"),
+            ProviderError("bad token", kind=ProviderErrorKind.authentication),
+            RepositoryInterruptionKind.authentication,
+        ),
+        (
+            ProviderError("forbidden", kind=ProviderErrorKind.permission_denied),
             RepositoryInterruptionKind.permission_denied,
         ),
     ],
 )
 def test_access_failures_remain_distinguishable(
-    error: RepositoryError, kind: RepositoryInterruptionKind
+    error: ProviderError, kind: RepositoryInterruptionKind
 ) -> None:
     result = _discover(_Provider(["o/r"], path_errors={"o/r": error}))
     assert result.interruption is not None
@@ -148,7 +165,14 @@ def test_access_failures_remain_distinguishable(
 
 
 def test_listing_failure_returns_empty_interrupted_result() -> None:
-    result = _discover(_Provider([], list_error=RepositoryError("listing failed")))
+    result = _discover(
+        _Provider(
+            [],
+            list_error=ProviderError(
+                "listing failed", kind=ProviderErrorKind.unexpected_response
+            ),
+        )
+    )
     assert result.repositories == []
     assert result.interruption is not None
     assert result.interruption.kind is RepositoryInterruptionKind.repository_failure

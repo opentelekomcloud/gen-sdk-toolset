@@ -10,7 +10,7 @@ from tools.scanner.eligibility import (
     interruption_from_repository_error,
 )
 from tools.scanner.interfaces import RepositoryDiscoveryProvider
-from tools.shared.exceptions import RepositoryError
+from tools.shared.exceptions import ProviderError
 from tools.shared.repository import RepositoryInterruption
 
 
@@ -41,7 +41,7 @@ def discover_repositories(
     """Check repository eligibility until complete or operationally interrupted."""
     try:
         repos = provider.list_repos(org)
-    except RepositoryError as exc:
+    except ProviderError as exc:
         return DiscoveryResult([], interruption_from_repository_error(exc, repo=None))
 
     discovered: list[DiscoveredRepository] = []
