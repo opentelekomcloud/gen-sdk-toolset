@@ -20,13 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class ScannerService:
-    """Discovers API endpoint documents in OTC docs repos.
-
-    Emits a quality report (per :class:`DocumentScanResult`) describing,
-    for every endpoint doc encountered, whether it could be fully parsed,
-    partially parsed, or not parsed at all — plus the extracted data
-    (parameters, examples) and per-section metrics.
-    """
+    """Scan API endpoint documentation and produce quality reports."""
 
     def __init__(
         self,
@@ -42,14 +36,8 @@ class ScannerService:
         self.style_classifier = style_classifier
         self.max_workers = max_workers
         self.api_ref_path = api_ref_path.rstrip("/")
-        # Always wrap in a fresh frozenset so each instance owns its own
-        # object. Empty default = no exclusion (OTC-specific values come
-        # from [scanner].excluded_segments in scan-config.toml).
         self.excluded_segments = frozenset(excluded_segments)
 
-    # ------------------------------------------------------------------ #
-    # Org-level scan
-    # ------------------------------------------------------------------ #
     def scan_organization(
         self,
         org: str,
@@ -77,9 +65,6 @@ class ScannerService:
         )
         return result
 
-    # ------------------------------------------------------------------ #
-    # Repo-level scan
-    # ------------------------------------------------------------------ #
     def scan_repository(self, repo: str, branch: str = "main") -> RepoScanResult:
         """Scan one repository and return per-document parse results."""
         logger.info("Scanning repo %s@%s", repo, branch)
@@ -130,8 +115,6 @@ class ScannerService:
             result.error = str(e)
             return result
 
-        # A truncated tree means we only saw part of the repo — record it so
-        # the result isn't mistaken for an authoritative clean scan (item 16).
         if listing.truncated:
             result.incomplete = True
             result.incomplete_reason = (
@@ -139,8 +122,6 @@ class ScannerService:
             )
             logger.warning("File listing for %s is incomplete (truncated)", repo)
 
-        # Drop files under excluded directories before any fetch happens, but
-        # record which ones so the skip is visible in the report (item 17).
         included_paths = [p for p in listing.paths if not self._is_excluded(p)]
         result.excluded_documents = [p for p in listing.paths if self._is_excluded(p)]
         if result.excluded_documents:
@@ -153,7 +134,6 @@ class ScannerService:
 
         logger.debug("%s: %d candidate RST files", repo, len(included_paths))
 
-        # Fetch + parse files concurrently to keep org-level scans tractable.
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             doc_outcomes = list(
                 pool.map(
@@ -164,7 +144,6 @@ class ScannerService:
 
         for path, outcome in zip(included_paths, doc_outcomes):
             if outcome is None:
-                # Not an endpoint doc — recorded so we don't lose the inventory.
                 result.non_endpoint_documents.append(path)
                 continue
 
@@ -178,9 +157,6 @@ class ScannerService:
 
         return result
 
-    # ------------------------------------------------------------------ #
-    # Per-document
-    # ------------------------------------------------------------------ #
     def _process_document(
         self, repo: str, path: str, branch: str
     ) -> DocumentScanResult | None:
@@ -222,7 +198,6 @@ class ScannerService:
                 ),
             )
 
-        # Style-A → hand off to the parser.
         try:
             parsed = self.parser.parse(content, path)
         except ParseFailure as e:
@@ -253,8 +228,5 @@ class ScannerService:
             sections=parsed.sections,
         )
 
-    # ------------------------------------------------------------------ #
-    # Helpers
-    # ------------------------------------------------------------------ #
     def _is_excluded(self, path: str) -> bool:
         return any(seg in self.excluded_segments for seg in path.split("/"))
