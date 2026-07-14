@@ -22,6 +22,8 @@ dev = [
     "pytest>=9,<10",
     "ruff>=0.15",
     "import-linter>=2.0",
+    "pytest-cov>=6,<8",
+    "diff-cover[toml]>=9,<10",
 ]
 panel = ["fastapi", "sqlalchemy>=2.0", "alembic", "uvicorn"]
 
@@ -53,6 +55,21 @@ select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["tools"]
+
+[tool.coverage.report]
+fail_under = 75
+precision = 2
+show_missing = true
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+[tool.diff_cover]
+fail_under = 80
 
 [project.scripts]
 gen-sdk-scan = "tools.scanner.main:main"

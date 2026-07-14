@@ -188,9 +188,30 @@ level = "INFO"
 
 ## Development
 
+### Python tests and coverage
+
+Run the test suite and create `coverage.xml` in the repository root:
+
 ```bash
-pytest                  # style/section classifiers, parser end-to-end on
-                        # real OTC fixtures, scanner service, GitHub client
+uv run pytest \
+  --cov \
+  --cov-report=term-missing \
+  --cov-report=xml
+```
+
+The current baseline is **77.48%** and total coverage must remain at least
+**75%**. New and changed executable Python code must have at least **80%**
+coverage. Check it against `origin/main` with:
+
+```bash
+uv run diff-cover coverage.xml \
+  --config-file pyproject.toml \
+  --compare-branch=origin/main
+```
+
+### Code quality
+
+```bash
 ruff check src/         # lint
 ruff format src/        # auto-format
 ```
