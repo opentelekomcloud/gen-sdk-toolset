@@ -21,7 +21,7 @@ class FileListing:
 
 
 class RepositoryDiscoveryProvider(Protocol):
-    """Minimal provider contract required to discover eligible repositories."""
+    """Minimal provider contract required to discover repository eligibility."""
 
     def list_repos(self, org: str) -> list[str]:
         """Return list of repositories (full_name) belonging to an organization."""

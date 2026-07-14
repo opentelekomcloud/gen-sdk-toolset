@@ -7,6 +7,7 @@ from tools.scanner.interfaces import DocProvider, FileListing
 from tools.shared.exceptions import (
     AuthenticationError,
     NotFoundError,
+    PermissionDeniedError,
     RateLimitError,
     RepositoryError,
 )
@@ -157,12 +158,13 @@ class GitHubDocProvider(DocProvider):
         if resp.status_code == 401:
             raise AuthenticationError("Invalid or missing GitHub token", repo=repo)
         if resp.status_code == 403:
-            # Distinguish rate-limit vs forbidden
             remaining = resp.headers.get("X-RateLimit-Remaining")
             if remaining == "0":
                 reset = int(resp.headers.get("X-RateLimit-Reset", 0))
                 raise RateLimitError(reset_time=reset)
-            raise AuthenticationError(f"Forbidden when accessing {resource}", repo=repo)
+            raise PermissionDeniedError(
+                f"Forbidden when accessing {resource}", repo=repo
+            )
         raise RepositoryError(
             f"Unexpected HTTP {resp.status_code} for {resource}: "
             f"{resp.text[:_ERROR_BODY_MAX]}",

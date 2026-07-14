@@ -1,59 +1,112 @@
-"""Cheap repository discovery independent of scanning and parsing."""
+"""Resumable repository discovery independent of scanning and parsing."""
 
 from __future__ import annotations
 
-import logging
+import enum
+from collections.abc import Set
+from dataclasses import dataclass
 
 from tools.scanner.interfaces import RepositoryDiscoveryProvider
 from tools.shared.exceptions import (
     AuthenticationError,
+    PermissionDeniedError,
     RateLimitError,
     RepositoryError,
 )
 
-logger = logging.getLogger(__name__)
+
+class DiscoveryInterruptionKind(str, enum.Enum):
+    """Operational reasons why discovery stopped before completion."""
+
+    rate_limit = "rate_limit"
+    authentication = "authentication"
+    permission_denied = "permission_denied"
+    repository_failure = "repository_failure"
 
 
-def discover_eligible_repos(
+@dataclass(frozen=True)
+class DiscoveryInterruption:
+    """Typed operational failure returned with a checked repository prefix."""
+
+    kind: DiscoveryInterruptionKind
+    repository: str | None
+    message: str
+    reset_time: int | None = None
+
+
+@dataclass(frozen=True)
+class DiscoveredRepository:
+    """Eligibility recorded by one successful path lookup."""
+
+    repo: str
+    has_api_ref: bool
+
+
+@dataclass(frozen=True)
+class DiscoveryResult:
+    """Completed checks plus an optional reason discovery stopped."""
+
+    repositories: list[DiscoveredRepository]
+    interruption: DiscoveryInterruption | None
+
+
+def discover_repositories(
     provider: RepositoryDiscoveryProvider,
     *,
     org: str,
     api_ref_path: str,
     branch: str = "main",
-) -> list[str]:
-    """Return repositories containing ``api_ref_path`` at ``branch``.
+    skip_repos: Set[str] = frozenset(),
+) -> DiscoveryResult:
+    """Check repository eligibility until complete or operationally interrupted."""
+    try:
+        repos = provider.list_repos(org)
+    except RepositoryError as exc:
+        return DiscoveryResult([], _map_interruption(exc, repository=None))
 
-    Repository-local lookup failures are skipped. Authentication and rate-limit
-    failures invalidate the whole result and therefore propagate immediately.
-    The result is additive discovery output, not an authoritative absence list:
-    callers must not delete repositories merely because they are omitted.
-    """
-    repos = provider.list_repos(org)
-    eligible: list[str] = []
+    discovered: list[DiscoveredRepository] = []
     seen: set[str] = set()
 
     for repo in repos:
         if repo in seen:
             continue
         seen.add(repo)
-
-        try:
-            path_exists = provider.path_exists(repo, branch, api_ref_path)
-        except RateLimitError:
-            raise
-        except AuthenticationError:
-            raise
-        except RepositoryError as exc:
-            logger.warning(
-                "Skipping %s during discovery: could not check %s at %s: %s",
-                repo,
-                api_ref_path,
-                branch,
-                exc,
-            )
+        if repo in skip_repos:
             continue
 
-        if path_exists:
-            eligible.append(repo)
+        try:
+            has_api_ref = provider.path_exists(repo, branch, api_ref_path)
+        except RepositoryError as exc:
+            return DiscoveryResult(
+                discovered,
+                _map_interruption(exc, repository=repo),
+            )
 
-    return eligible
+        discovered.append(DiscoveredRepository(repo=repo, has_api_ref=has_api_ref))
+
+    return DiscoveryResult(discovered, interruption=None)
+
+
+def _map_interruption(
+    error: RepositoryError,
+    *,
+    repository: str | None,
+) -> DiscoveryInterruption:
+    reset_time: int | None = None
+    if isinstance(error, RateLimitError):
+        kind = DiscoveryInterruptionKind.rate_limit
+        if error.reset_time is not None and error.reset_time > 0:
+            reset_time = error.reset_time
+    elif isinstance(error, AuthenticationError):
+        kind = DiscoveryInterruptionKind.authentication
+    elif isinstance(error, PermissionDeniedError):
+        kind = DiscoveryInterruptionKind.permission_denied
+    else:
+        kind = DiscoveryInterruptionKind.repository_failure
+
+    return DiscoveryInterruption(
+        kind=kind,
+        repository=repository,
+        message=str(error),
+        reset_time=reset_time,
+    )

@@ -34,6 +34,10 @@ class AuthenticationError(RepositoryError):
     """Authentication failed (invalid or missing token)."""
 
 
+class PermissionDeniedError(RepositoryError):
+    """Authentication succeeded, but access to a resource is forbidden."""
+
+
 class NotFoundError(RepositoryError):
     """Repository or file not found."""
 
