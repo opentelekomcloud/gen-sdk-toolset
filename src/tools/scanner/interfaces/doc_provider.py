@@ -20,7 +20,9 @@ class FileListing:
     truncated_reason: str | None = None
 
 
-class DocProvider(Protocol):
+class RepositoryDiscoveryProvider(Protocol):
+    """Minimal provider contract required to discover eligible repositories."""
+
     def list_repos(self, org: str) -> list[str]:
         """Return list of repositories (full_name) belonging to an organization."""
         ...
@@ -28,6 +30,10 @@ class DocProvider(Protocol):
     def path_exists(self, repo: str, branch: str, path: str) -> bool:
         """Return True if the given path exists in the repo at the given branch."""
         ...
+
+
+class DocProvider(RepositoryDiscoveryProvider, Protocol):
+    """Full provider contract required to scan repository content."""
 
     def list_files(self, repo: str, branch: str) -> FileListing:
         """Return the RST file paths in the repo plus a truncation flag."""
