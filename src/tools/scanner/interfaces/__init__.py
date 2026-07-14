@@ -2,7 +2,12 @@
 
 from tools.shared.exceptions import ParseFailure
 
-from .doc_provider import DocProvider, FileListing, RepositoryDiscoveryProvider
+from .doc_provider import (
+    DocProvider,
+    FileListing,
+    RepositoryDiscoveryProvider,
+    RepositoryEligibilityProvider,
+)
 from .parser import ParsedDocument, RstParser
 
 __all__ = [
@@ -11,5 +16,6 @@ __all__ = [
     "ParsedDocument",
     "ParseFailure",
     "RepositoryDiscoveryProvider",
+    "RepositoryEligibilityProvider",
     "RstParser",
 ]

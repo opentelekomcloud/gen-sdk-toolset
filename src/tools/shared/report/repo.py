@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from tools import __version__ as _SCANNER_VERSION
 from tools.shared.report.document import DocumentScanResult
+from tools.shared.repository import RepositoryInterruption
 
 
 class RepoScanResult(BaseModel):
@@ -43,3 +44,4 @@ class RepoScanResult(BaseModel):
 
     # Set when the repo itself couldn't be scanned (e.g. tree fetch failed).
     error: str | None = None
+    interruption: RepositoryInterruption | None = None

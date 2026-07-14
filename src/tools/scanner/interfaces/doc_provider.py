@@ -20,15 +20,19 @@ class FileListing:
     truncated_reason: str | None = None
 
 
-class RepositoryDiscoveryProvider(Protocol):
-    """Minimal provider contract required to discover repository eligibility."""
-
-    def list_repos(self, org: str) -> list[str]:
-        """Return list of repositories (full_name) belonging to an organization."""
-        ...
+class RepositoryEligibilityProvider(Protocol):
+    """Minimal provider contract required to check one repository."""
 
     def path_exists(self, repo: str, branch: str, path: str) -> bool:
         """Return True if the given path exists in the repo at the given branch."""
+        ...
+
+
+class RepositoryDiscoveryProvider(RepositoryEligibilityProvider, Protocol):
+    """Provider contract required to discover repository eligibility."""
+
+    def list_repos(self, org: str) -> list[str]:
+        """Return list of repositories (full_name) belonging to an organization."""
         ...
 
 

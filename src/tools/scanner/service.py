@@ -3,6 +3,7 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 
 from tools.domain.report import OrgScanResult, analytics
+from tools.scanner.eligibility import check_repository_eligibility
 from tools.scanner.interfaces import DocProvider, RstParser
 from tools.scanner.parsers.docutils.style import DocStyle
 from tools.shared.exceptions import ParseFailure, RepositoryError
@@ -96,16 +97,22 @@ class ScannerService:
             return result
 
         ref = result.commit_hash or branch
-        try:
-            has_api_ref = self.doc_provider.path_exists(repo, ref, self.api_ref_path)
-        except RepositoryError as e:
-            # TODO(#70): let RateLimitError reach background-job orchestration
-            # once durable retry state exists. Do not retry in the scanner.
-            result.error = f"Could not check eligibility for {repo}@{ref}: {e}"
+        eligibility = check_repository_eligibility(
+            self.doc_provider,
+            repo=repo,
+            ref=ref,
+            api_ref_path=self.api_ref_path,
+        )
+        if eligibility.interruption is not None:
+            result.interruption = eligibility.interruption
+            result.error = (
+                f"Could not check eligibility for {repo}@{ref}: "
+                f"{eligibility.interruption.message}"
+            )
             logger.error(result.error)
             return result
 
-        if not has_api_ref:
+        if not eligibility.has_api_ref:
             if result.commit_hash is None:
                 result.error = (
                     f"Cannot confirm {repo}@{branch}: commit could not be resolved "

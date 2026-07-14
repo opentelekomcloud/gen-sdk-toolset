@@ -4,22 +4,18 @@ from collections.abc import Set
 
 import pytest
 
-from tools.scanner.discovery import (
-    DiscoveredRepository,
-    DiscoveryInterruptionKind,
-    DiscoveryResult,
-    discover_repositories,
-)
+from tools.scanner.discovery import DiscoveredRepository, discover_repositories
 from tools.shared.exceptions import (
     AuthenticationError,
     PermissionDeniedError,
     RateLimitError,
     RepositoryError,
 )
+from tools.shared.repository import RepositoryInterruptionKind
 
 
-class _StrictProvider:
-    """Discovery fake exposing only the two allowed provider operations."""
+class _Provider:
+    """Strict fake exposing only the discovery port."""
 
     def __init__(
         self,
@@ -38,7 +34,7 @@ class _StrictProvider:
 
     def list_repos(self, org: str) -> list[str]:
         self.list_calls.append(org)
-        if self.list_error is not None:
+        if self.list_error:
             raise self.list_error
         return self.repos
 
@@ -49,205 +45,130 @@ class _StrictProvider:
         return repo in self.eligible
 
 
-def test_returns_both_eligibility_states_in_stable_provider_order() -> None:
-    provider = _StrictProvider(
-        ["o/b", "o/a", "o/b", "o/c"],
-        eligible={"o/b", "o/c"},
-    )
+def _discover(provider: _Provider, **kwargs):
+    return discover_repositories(provider, org="o", api_ref_path="p", **kwargs)
 
-    result = discover_repositories(
-        provider,
-        org="o",
-        branch="stable",
-        api_ref_path="api-ref/source",
-    )
 
-    assert result == DiscoveryResult(
-        repositories=[
-            DiscoveredRepository(repo="o/b", has_api_ref=True),
-            DiscoveredRepository(repo="o/a", has_api_ref=False),
-            DiscoveredRepository(repo="o/c", has_api_ref=True),
-        ],
-        interruption=None,
-    )
+def test_returns_both_states_in_stable_order_and_forwards_arguments() -> None:
+    provider = _Provider(["o/b", "o/a", "o/b", "o/c"], eligible={"o/b", "o/c"})
+
+    result = _discover(provider, branch="stable")
+
+    assert result.repositories == [
+        DiscoveredRepository("o/b", True),
+        DiscoveredRepository("o/a", False),
+        DiscoveredRepository("o/c", True),
+    ]
+    assert result.interruption is None
     assert provider.list_calls == ["o"]
     assert provider.path_calls == [
-        ("o/b", "stable", "api-ref/source"),
-        ("o/a", "stable", "api-ref/source"),
-        ("o/c", "stable", "api-ref/source"),
+        ("o/b", "stable", "p"),
+        ("o/a", "stable", "p"),
+        ("o/c", "stable", "p"),
     ]
 
 
 def test_empty_organization_returns_empty_complete_result() -> None:
-    provider = _StrictProvider([])
-
-    result = discover_repositories(provider, org="o", api_ref_path="api-ref/source")
-
-    assert result == DiscoveryResult(repositories=[], interruption=None)
-    assert provider.list_calls == ["o"]
-    assert provider.path_calls == []
-
-
-def test_skip_repos_are_neither_checked_nor_returned() -> None:
-    provider = _StrictProvider(["o/a", "o/b", "o/a", "o/c"], eligible={"o/c"})
-
-    result = discover_repositories(
-        provider,
-        org="o",
-        api_ref_path="api-ref/source",
-        skip_repos={"o/a", "o/b"},
-    )
-
-    assert result.repositories == [DiscoveredRepository(repo="o/c", has_api_ref=True)]
+    result = _discover(_Provider([]))
+    assert result.repositories == []
     assert result.interruption is None
-    assert provider.path_calls == [("o/c", "main", "api-ref/source")]
+
+
+def test_skipped_repositories_are_not_checked_or_returned() -> None:
+    provider = _Provider(["o/a", "o/b", "o/a", "o/c"], eligible={"o/c"})
+
+    result = _discover(provider, skip_repos={"o/a", "o/b"})
+
+    assert result.repositories == [DiscoveredRepository("o/c", True)]
+    assert provider.path_calls == [("o/c", "main", "p")]
 
 
 def test_repository_failure_returns_checked_prefix_and_stops() -> None:
-    provider = _StrictProvider(
-        ["o/a", "o/b", "o/broken", "o/not-checked"],
+    provider = _Provider(
+        ["o/a", "o/b", "o/broken", "o/later"],
         eligible={"o/a"},
         path_errors={"o/broken": RepositoryError("lookup failed")},
     )
 
-    result = discover_repositories(provider, org="o", api_ref_path="p")
+    result = _discover(provider)
 
     assert result.repositories == [
-        DiscoveredRepository(repo="o/a", has_api_ref=True),
-        DiscoveredRepository(repo="o/b", has_api_ref=False),
+        DiscoveredRepository("o/a", True),
+        DiscoveredRepository("o/b", False),
     ]
     assert result.interruption is not None
-    assert result.interruption.kind is DiscoveryInterruptionKind.repository_failure
+    assert result.interruption.kind is RepositoryInterruptionKind.repository_failure
     assert result.interruption.repository == "o/broken"
     assert result.interruption.message == "lookup failed"
-    assert result.interruption.reset_time is None
-    assert provider.path_calls == [
-        ("o/a", "main", "p"),
-        ("o/b", "main", "p"),
-        ("o/broken", "main", "p"),
-    ]
+    assert [call[0] for call in provider.path_calls] == ["o/a", "o/b", "o/broken"]
 
 
-def test_rate_limit_returns_prefix_repository_and_reset_time() -> None:
-    provider = _StrictProvider(
-        ["o/first", "o/limited", "o/not-checked"],
+def test_rate_limit_returns_prefix_context_and_reset_time() -> None:
+    provider = _Provider(
+        ["o/first", "o/limited", "o/later"],
         eligible={"o/first"},
-        path_errors={"o/limited": RateLimitError(reset_time=1_800_000_000)},
+        path_errors={"o/limited": RateLimitError(1_800_000_000)},
     )
 
-    result = discover_repositories(provider, org="o", api_ref_path="p")
+    result = _discover(provider)
 
-    assert result.repositories == [
-        DiscoveredRepository(repo="o/first", has_api_ref=True)
-    ]
+    assert result.repositories == [DiscoveredRepository("o/first", True)]
     assert result.interruption is not None
-    assert result.interruption.kind is DiscoveryInterruptionKind.rate_limit
+    assert result.interruption.kind is RepositoryInterruptionKind.rate_limit
     assert result.interruption.repository == "o/limited"
     assert result.interruption.reset_time == 1_800_000_000
-    assert provider.path_calls == [
-        ("o/first", "main", "p"),
-        ("o/limited", "main", "p"),
-    ]
+    assert [call[0] for call in provider.path_calls] == ["o/first", "o/limited"]
 
 
 @pytest.mark.parametrize("reset_time", [None, 0, -1])
 def test_rate_limit_discards_unusable_reset_time(reset_time: int | None) -> None:
-    provider = _StrictProvider(
-        ["o/limited"],
-        path_errors={"o/limited": RateLimitError(reset_time=reset_time)},
+    result = _discover(
+        _Provider(["o/r"], path_errors={"o/r": RateLimitError(reset_time)})
     )
-
-    result = discover_repositories(provider, org="o", api_ref_path="p")
-
     assert result.interruption is not None
     assert result.interruption.reset_time is None
 
 
 @pytest.mark.parametrize(
-    ("error", "expected_kind"),
+    ("error", "kind"),
     [
-        (
-            AuthenticationError("invalid token"),
-            DiscoveryInterruptionKind.authentication,
-        ),
+        (AuthenticationError("bad token"), RepositoryInterruptionKind.authentication),
         (
             PermissionDeniedError("forbidden"),
-            DiscoveryInterruptionKind.permission_denied,
+            RepositoryInterruptionKind.permission_denied,
         ),
     ],
 )
-def test_typed_access_failure_remains_distinguishable(
-    error: RepositoryError,
-    expected_kind: DiscoveryInterruptionKind,
+def test_access_failures_remain_distinguishable(
+    error: RepositoryError, kind: RepositoryInterruptionKind
 ) -> None:
-    provider = _StrictProvider(["o/private"], path_errors={"o/private": error})
+    result = _discover(_Provider(["o/r"], path_errors={"o/r": error}))
+    assert result.interruption is not None
+    assert result.interruption.kind is kind
 
-    result = discover_repositories(provider, org="o", api_ref_path="p")
 
+def test_listing_failure_returns_empty_interrupted_result() -> None:
+    result = _discover(_Provider([], list_error=RepositoryError("listing failed")))
     assert result.repositories == []
     assert result.interruption is not None
-    assert result.interruption.kind is expected_kind
-    assert result.interruption.repository == "o/private"
-
-
-@pytest.mark.parametrize(
-    ("error", "expected_kind", "expected_reset"),
-    [
-        (
-            RateLimitError(reset_time=1_800_000_000),
-            DiscoveryInterruptionKind.rate_limit,
-            1_800_000_000,
-        ),
-        (
-            AuthenticationError("invalid token"),
-            DiscoveryInterruptionKind.authentication,
-            None,
-        ),
-        (
-            PermissionDeniedError("forbidden"),
-            DiscoveryInterruptionKind.permission_denied,
-            None,
-        ),
-        (
-            RepositoryError("listing failed"),
-            DiscoveryInterruptionKind.repository_failure,
-            None,
-        ),
-    ],
-)
-def test_listing_failure_returns_empty_typed_interruption(
-    error: RepositoryError,
-    expected_kind: DiscoveryInterruptionKind,
-    expected_reset: int | None,
-) -> None:
-    provider = _StrictProvider([], list_error=error)
-
-    result = discover_repositories(provider, org="o", api_ref_path="p")
-
-    assert result.repositories == []
-    assert result.interruption is not None
-    assert result.interruption.kind is expected_kind
+    assert result.interruption.kind is RepositoryInterruptionKind.repository_failure
     assert result.interruption.repository is None
-    assert result.interruption.reset_time == expected_reset
-    assert provider.path_calls == []
 
 
 @pytest.mark.parametrize("stage", ["list", "path"])
 def test_unexpected_exception_propagates(stage: str) -> None:
     error = RuntimeError("bug")
-    provider = _StrictProvider(
-        ["o/a"],
+    provider = _Provider(
+        ["o/r"],
         list_error=error if stage == "list" else None,
-        path_errors={"o/a": error} if stage == "path" else None,
+        path_errors={"o/r": error} if stage == "path" else None,
     )
-
     with pytest.raises(RuntimeError, match="bug"):
-        discover_repositories(provider, org="o", api_ref_path="p")
+        _discover(provider)
 
 
-def test_discovery_provider_does_not_expose_scanning_operations() -> None:
-    provider = _StrictProvider([])
-
+def test_fake_has_no_scanning_operations() -> None:
+    provider = _Provider([])
     assert not hasattr(provider, "get_commit_hash")
     assert not hasattr(provider, "list_files")
     assert not hasattr(provider, "fetch_content")

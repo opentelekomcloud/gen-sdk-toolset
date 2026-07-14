@@ -2841,5 +2841,6 @@
   },
   "incomplete": false,
   "incomplete_reason": null,
-  "error": null
+  "error": null,
+  "interruption": null
 }

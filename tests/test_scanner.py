@@ -8,6 +8,7 @@ from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
 from tools.shared.exceptions import RepositoryError
 from tools.shared.report import IssueCode
+from tools.shared.repository import RepositoryInterruptionKind
 
 from .conftest import load_fixture
 
@@ -269,6 +270,15 @@ def test_eligibility_error_stops_before_file_listing() -> None:
     assert result.error == (
         f"Could not check eligibility for o/cce@{sha}: eligibility lookup failed"
     )
+    assert result.interruption is not None
+    assert result.interruption.kind is RepositoryInterruptionKind.repository_failure
+    assert result.interruption.repository == "o/cce"
+    assert result.model_dump(mode="json")["interruption"] == {
+        "kind": "repository_failure",
+        "repository": "o/cce",
+        "message": "eligibility lookup failed",
+        "reset_time": None,
+    }
     assert fake.calls == [
         "get_commit_hash:o/cce@main",
         f"path_exists:o/cce@{sha}:api-ref/source",

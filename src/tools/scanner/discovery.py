@@ -2,36 +2,16 @@
 
 from __future__ import annotations
 
-import enum
 from collections.abc import Set
 from dataclasses import dataclass
 
-from tools.scanner.interfaces import RepositoryDiscoveryProvider
-from tools.shared.exceptions import (
-    AuthenticationError,
-    PermissionDeniedError,
-    RateLimitError,
-    RepositoryError,
+from tools.scanner.eligibility import (
+    check_repository_eligibility,
+    interruption_from_repository_error,
 )
-
-
-class DiscoveryInterruptionKind(str, enum.Enum):
-    """Operational reasons why discovery stopped before completion."""
-
-    rate_limit = "rate_limit"
-    authentication = "authentication"
-    permission_denied = "permission_denied"
-    repository_failure = "repository_failure"
-
-
-@dataclass(frozen=True)
-class DiscoveryInterruption:
-    """Typed operational failure returned with a checked repository prefix."""
-
-    kind: DiscoveryInterruptionKind
-    repository: str | None
-    message: str
-    reset_time: int | None = None
+from tools.scanner.interfaces import RepositoryDiscoveryProvider
+from tools.shared.exceptions import RepositoryError
+from tools.shared.repository import RepositoryInterruption
 
 
 @dataclass(frozen=True)
@@ -47,7 +27,7 @@ class DiscoveryResult:
     """Completed checks plus an optional reason discovery stopped."""
 
     repositories: list[DiscoveredRepository]
-    interruption: DiscoveryInterruption | None
+    interruption: RepositoryInterruption | None
 
 
 def discover_repositories(
@@ -62,7 +42,7 @@ def discover_repositories(
     try:
         repos = provider.list_repos(org)
     except RepositoryError as exc:
-        return DiscoveryResult([], _map_interruption(exc, repository=None))
+        return DiscoveryResult([], interruption_from_repository_error(exc, repo=None))
 
     discovered: list[DiscoveredRepository] = []
     seen: set[str] = set()
@@ -74,39 +54,18 @@ def discover_repositories(
         if repo in skip_repos:
             continue
 
-        try:
-            has_api_ref = provider.path_exists(repo, branch, api_ref_path)
-        except RepositoryError as exc:
-            return DiscoveryResult(
-                discovered,
-                _map_interruption(exc, repository=repo),
-            )
+        eligibility = check_repository_eligibility(
+            provider,
+            repo=repo,
+            ref=branch,
+            api_ref_path=api_ref_path,
+        )
+        if eligibility.interruption is not None:
+            return DiscoveryResult(discovered, eligibility.interruption)
 
-        discovered.append(DiscoveredRepository(repo=repo, has_api_ref=has_api_ref))
+        assert eligibility.has_api_ref is not None
+        discovered.append(
+            DiscoveredRepository(repo=repo, has_api_ref=eligibility.has_api_ref)
+        )
 
     return DiscoveryResult(discovered, interruption=None)
-
-
-def _map_interruption(
-    error: RepositoryError,
-    *,
-    repository: str | None,
-) -> DiscoveryInterruption:
-    reset_time: int | None = None
-    if isinstance(error, RateLimitError):
-        kind = DiscoveryInterruptionKind.rate_limit
-        if error.reset_time is not None and error.reset_time > 0:
-            reset_time = error.reset_time
-    elif isinstance(error, AuthenticationError):
-        kind = DiscoveryInterruptionKind.authentication
-    elif isinstance(error, PermissionDeniedError):
-        kind = DiscoveryInterruptionKind.permission_denied
-    else:
-        kind = DiscoveryInterruptionKind.repository_failure
-
-    return DiscoveryInterruption(
-        kind=kind,
-        repository=repository,
-        message=str(error),
-        reset_time=reset_time,
-    )
