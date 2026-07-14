@@ -34,11 +34,52 @@ jobs:
       - name: Check architecture boundaries (domain must not import infrastructure)
         run: lint-imports
 
+  tests:
+    name: Python tests and coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout complete history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8
+
+      - name: Install dependencies
+        run: uv sync --extra dev --frozen
+
+      - name: Run Python tests with coverage
+        run: >-
+          uv run pytest
+          --cov
+          --cov-report=term-missing
+          --cov-report=xml
+
+      - name: Check pull request diff coverage
+        if: github.event_name == 'pull_request'
+        run: >-
+          uv run diff-cover coverage.xml
+          --config-file pyproject.toml
+          --compare-branch="origin/${{ github.base_ref }}"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage
+          path: coverage.xml
+
   check:
     name: check
     if: >
       always()
-    needs: [lint]
+    needs: [lint, tests]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
