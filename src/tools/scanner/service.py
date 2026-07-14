@@ -61,7 +61,7 @@ class ScannerService:
         result = OrgScanResult(org=org, branch=branch, total_repos=len(repos))
 
         for repo in repos:
-            repo_result = self.find_endpoints(repo=repo, branch=branch)
+            repo_result = self.scan_repository(repo=repo, branch=branch)
             if not repo_result.has_api_ref and repo_result.error is None:
                 logger.debug("Skipping %s (no %s)", repo, self.api_ref_path)
                 result.skipped_repos.append(repo)
@@ -80,7 +80,7 @@ class ScannerService:
     # ------------------------------------------------------------------ #
     # Repo-level scan
     # ------------------------------------------------------------------ #
-    def find_endpoints(self, repo: str, branch: str = "main") -> RepoScanResult:
+    def scan_repository(self, repo: str, branch: str = "main") -> RepoScanResult:
         """Scan one repository and return per-document parse results."""
         logger.info("Scanning repo %s@%s", repo, branch)
         result = RepoScanResult(repo=repo, branch=branch)

@@ -212,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     # Single-repo mode: scan one repo → one repos[]-shaped RepoScanResult.
     if args.repo:
         logger.info("Scanning repository %s@%s", args.repo, branch)
-        repo_result = scanner.find_endpoints(repo=args.repo, branch=branch)
+        repo_result = scanner.scan_repository(repo=args.repo, branch=branch)
         _emit_report(
             repo_result, output_path, args.stdout, settings.output.indent, logger
         )

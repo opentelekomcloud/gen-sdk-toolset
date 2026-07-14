@@ -24,7 +24,7 @@ class FakeScanner:
         self.org_result = org_result
         self.calls: list[tuple[str, str, str]] = []
 
-    def find_endpoints(self, repo: str, branch: str = "main") -> RepoScanResult:
+    def scan_repository(self, repo: str, branch: str = "main") -> RepoScanResult:
         self.calls.append(("repo", repo, branch))
         assert self.repo_result is not None
         return self.repo_result

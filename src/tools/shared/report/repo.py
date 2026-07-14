@@ -43,5 +43,6 @@ class RepoScanResult(BaseModel):
     incomplete_reason: str | None = None
 
     # Set when the repo itself couldn't be scanned (e.g. tree fetch failed).
+    #todo: do we really need those 2 fields?
     error: str | None = None
     interruption: RepositoryInterruption | None = None
