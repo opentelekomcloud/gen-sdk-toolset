@@ -50,12 +50,12 @@ class IssueCode(str, Enum):
     PARSER_ERROR = "parser_error"  # parser raised unexpectedly
     UNSUPPORTED_DOC_STYLE = "unsupported_doc_style"
 
-    # --- Structural / table-level (in SectionResult.issues)
+    # --- Structural / table-level (in SectionScanResult.issues)
     TABLE_NOT_FOUND = "table_not_found"
     MALFORMED_GRID_TABLE = "malformed_grid_table"
     UNEXPECTED_COLUMNS = "unexpected_columns"
 
-    # --- Field-level (in SectionResult.issues, with location="row N")
+    # --- Field-level (in SectionScanResult.issues, with location="row N")
     UNKNOWN_TYPE_FORMAT = "unknown_type_format"
     EMPTY_MANDATORY_COLUMN = "empty_mandatory_column"
     DESCRIPTION_TRUNCATED = "description_truncated"

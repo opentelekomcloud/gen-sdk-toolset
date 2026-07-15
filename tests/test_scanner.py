@@ -361,7 +361,7 @@ def test_style_a_populates_sections() -> None:
     assert "path_params" in doc.sections
     assert "body" in doc.sections
     assert "nested_objects" not in doc.sections
-    metadata = doc.sections["body"].parameters[0]
+    metadata = doc.sections["body"].section.parameters[0]
     assert metadata.name == "metadata"
     assert [c.name for c in metadata.children] == ["name"]
     assert doc.api_version == "v3"

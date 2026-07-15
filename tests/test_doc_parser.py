@@ -6,7 +6,7 @@ import pytest
 
 from tools.scanner.parsers import DocutilsParser
 from tools.shared.exceptions import ParseFailure
-from tools.shared.ir import HttpMethod, ParameterType
+from tools.shared.ir import Example, HttpMethod, ParameterType
 from tools.shared.report import IssueCode, SectionStatus
 
 
@@ -32,9 +32,9 @@ def test_cce_path_params(parser: DocutilsParser, cce_doc: str) -> None:
     parsed = parser.parse(cce_doc, "fixtures/cce.rst")
     sec = parsed.sections["path_params"]
     assert sec.status is SectionStatus.OK
-    names = [p.name for p in sec.parameters]
+    names = [p.name for p in sec.section.parameters]
     assert names == ["project_id", "cluster_id", "node_id"]
-    assert all(p.mandatory for p in sec.parameters)
+    assert all(p.mandatory for p in sec.section.parameters)
 
 
 def test_cce_body_excludes_struct_table(parser: DocutilsParser, cce_doc: str) -> None:
@@ -42,15 +42,15 @@ def test_cce_body_excludes_struct_table(parser: DocutilsParser, cce_doc: str) ->
     into the body — only the top-level body table contributes."""
     parsed = parser.parse(cce_doc, "fixtures/cce.rst")
     sec = parsed.sections["body"]
-    names = [p.name for p in sec.parameters]
+    names = [p.name for p in sec.section.parameters]
     assert names == ["metadata"]
-    assert sec.parameters[0].param_type is ParameterType.OBJECT
+    assert sec.section.parameters[0].param_type is ParameterType.OBJECT
 
 
 def test_cce_headers(parser: DocutilsParser, cce_doc: str) -> None:
     parsed = parser.parse(cce_doc, "fixtures/cce.rst")
     sec = parsed.sections["headers"]
-    names = [p.name for p in sec.parameters]
+    names = [p.name for p in sec.section.parameters]
     assert "X-Auth-Token" in names
     assert "Content-Type" in names
 
@@ -70,21 +70,21 @@ def test_vpc_body_top_level_only(parser: DocutilsParser, vpc_doc: str) -> None:
     struct definition (nested_struct) and must not inflate the body."""
     parsed = parser.parse(vpc_doc, "fixtures/vpc.rst")
     sec = parsed.sections["body"]
-    names = [p.name for p in sec.parameters]
+    names = [p.name for p in sec.section.parameters]
     assert names == ["firewall", "dry_run"]
 
 
 def test_vpc_response_top_level_only(parser: DocutilsParser, vpc_doc: str) -> None:
     parsed = parser.parse(vpc_doc, "fixtures/vpc.rst")
     sec = parsed.sections["response"]
-    names = [p.name for p in sec.parameters]
+    names = [p.name for p in sec.section.parameters]
     assert names == ["firewall", "request_id"]
 
 
 def test_vpc_has_examples(parser: DocutilsParser, vpc_doc: str) -> None:
     parsed = parser.parse(vpc_doc, "fixtures/vpc.rst")
-    assert len(parsed.sections["example_request"].examples) >= 1
-    assert len(parsed.sections["example_response"].examples) >= 1
+    assert len(parsed.sections["example_request"].section.examples) >= 1
+    assert len(parsed.sections["example_response"].section.examples) >= 1
 
 
 # --------------------------------------------------------------------------- #
@@ -93,10 +93,10 @@ def test_vpc_has_examples(parser: DocutilsParser, vpc_doc: str) -> None:
 def test_kms_simple_table(parser: DocutilsParser, kms_doc: str) -> None:
     parsed = parser.parse(kms_doc, "fixtures/kms.rst")
     sec = parsed.sections["body"]
-    names = [p.name for p in sec.parameters]
+    names = [p.name for p in sec.section.parameters]
     assert names == ["key_id", "grant_id", "sequence"]
-    assert sec.parameters[0].mandatory is True
-    assert sec.parameters[2].mandatory is False  # sequence is optional
+    assert sec.section.parameters[0].mandatory is True
+    assert sec.section.parameters[2].mandatory is False
 
 
 def test_kms_bulleted_examples(parser: DocutilsParser, kms_doc: str) -> None:
@@ -105,10 +105,9 @@ def test_kms_bulleted_examples(parser: DocutilsParser, kms_doc: str) -> None:
     parsed = parser.parse(kms_doc, "fixtures/kms.rst")
     assert "example_request" in parsed.sections
     assert "example_response" in parsed.sections
-    # At least one response example is valid JSON parsed
-    req = parsed.sections["example_request"].examples[0]
-    assert req.raw  # non-empty
-    assert req.parsed is not None  # JSON should parse
+    req = parsed.sections["example_request"].section.examples[0]
+    assert req.raw
+    assert req.parsed is not None
     assert "key_id" in req.parsed
 
 
@@ -118,8 +117,7 @@ def test_kms_bulleted_examples(parser: DocutilsParser, kms_doc: str) -> None:
 def test_iam_strips_ref_in_name(parser: DocutilsParser, iam_doc: str) -> None:
     parsed = parser.parse(iam_doc, "fixtures/iam.rst")
     sec = parsed.sections["body"]
-    # parameter name should be the visible label, with :ref: markup stripped
-    assert sec.parameters[0].name == "protect_policy"
+    assert sec.section.parameters[0].name == "protect_policy"
 
 
 # --------------------------------------------------------------------------- #
@@ -149,8 +147,12 @@ def test_elb_list_separates_path_and_query(
     assert parsed.method is HttpMethod.GET
     assert parsed.uri == "/v3/{project_id}/elb/pools"
 
-    path_names = [p.name for p in parsed.sections["path_params"].parameters]
-    query_names = [p.name for p in parsed.sections["query_params"].parameters]
+    path_names = [
+        p.name for p in parsed.sections["path_params"].section.parameters
+    ]
+    query_names = [
+        p.name for p in parsed.sections["query_params"].section.parameters
+    ]
 
     assert path_names == ["project_id"]
     assert query_names == ["marker", "limit", "page_reverse"]
@@ -216,7 +218,7 @@ def test_two_body_tables_merge(
 ) -> None:
     parsed = parser.parse(two_body_tables_doc, "api-ref/source/v1/create.rst")
     body = parsed.sections["body"]
-    assert [p.name for p in body.parameters] == ["name", "age"]
+    assert [p.name for p in body.section.parameters] == ["name", "age"]
     # Field-level metrics are summed across the merged tables, not overwritten.
     assert body.fields_total == 2
     assert body.fields_recognized == 2
@@ -229,17 +231,14 @@ def test_two_body_tables_merge(
 # --------------------------------------------------------------------------- #
 def test_example_extend_invalid_json_degrades() -> None:
     from tools.scanner.parsers.docutils.doc_parser import _set_example_section
-    from tools.shared.report import (
-        SECTION_EXAMPLE_REQUEST,
-        ExampleBlock,
-    )
+    from tools.shared.report import SECTION_EXAMPLE_REQUEST
 
     results: dict = {}
     # First call creates the section from a valid JSON example → OK.
     _set_example_section(
         results,
         SECTION_EXAMPLE_REQUEST,
-        [ExampleBlock(raw='{"a": 1}', parsed={"a": 1})],
+        [Example(raw='{"a": 1}', parsed={"a": 1})],
     )
     assert results[SECTION_EXAMPLE_REQUEST].status is SectionStatus.OK
 
@@ -247,10 +246,10 @@ def test_example_extend_invalid_json_degrades() -> None:
     _set_example_section(
         results,
         SECTION_EXAMPLE_REQUEST,
-        [ExampleBlock(raw="not json", parsed=None)],
+        [Example(raw="not json", parsed=None)],
     )
     sec = results[SECTION_EXAMPLE_REQUEST]
-    assert len(sec.examples) == 2
+    assert len(sec.section.examples) == 2
     assert sec.status is SectionStatus.PARTIAL
     assert any(i.code is IssueCode.EXAMPLE_INVALID_JSON for i in sec.issues)
 

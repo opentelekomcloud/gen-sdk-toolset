@@ -9,9 +9,8 @@ only ever called on docs already known to be Style-A.
 Outputs:
 
 * Gating data (method, URI, title, api_version).
-* A ``sections`` dict keyed by canonical section names, where each
-  value is a :class:`SectionResult` with extracted parameters /
-  examples plus field-level metrics.
+* A ``sections`` dict keyed by canonical section names, where each value is a
+  :class:`SectionScanResult` associated with the extracted section data.
 
 A failure to extract the URI from the URI section raises
 :class:`ParseFailure` so the scanner can record it as a gating failure.
@@ -28,14 +27,14 @@ from docutils.parsers.rst import roles
 
 from tools.scanner.interfaces import ParsedDocument, RstParser
 from tools.shared.exceptions import ParseFailure
-from tools.shared.ir import HttpMethod
+from tools.shared.ir import HttpMethod, Section
 from tools.shared.report import (
     NESTED_STRUCT,
     SECTION_EXAMPLE_REQUEST,
     SECTION_EXAMPLE_RESPONSE,
     Issue,
     IssueCode,
-    SectionResult,
+    SectionScanResult,
     SectionStatus,
 )
 
@@ -153,7 +152,9 @@ class DocutilsParser(RstParser):
     # ------------------------------------------------------------------ #
     # Content sections
     # ------------------------------------------------------------------ #
-    def _extract_sections(self, doctree: nodes.document) -> dict[str, SectionResult]:
+    def _extract_sections(
+        self, doctree: nodes.document
+    ) -> dict[str, SectionScanResult]:
         """Two-pass extraction over every section in the doc.
 
         Sections of interest (URI / Request / Response / Example*) are
@@ -169,7 +170,7 @@ class DocutilsParser(RstParser):
         resolves each section's object/array params against the registry,
         attaching any unresolved-ref issues to the owning section.
         """
-        results: dict[str, SectionResult] = {}
+        results: dict[str, SectionScanResult] = {}
         primary: dict[str, TableExtraction] = {}
         registry: dict[str, RefTarget] = {}
 
@@ -207,7 +208,7 @@ class DocutilsParser(RstParser):
         # belongs to. Resolution is otherwise identical to one combined call.
         for key, extraction in primary.items():
             issues = resolve_nested({key: extraction}, registry, doc_id=doc_id)
-            section = _to_section_result(extraction)
+            section = _to_section_scan_result(extraction)
             for issue in issues:
                 section.issues.append(issue)
                 if section.status is SectionStatus.OK:
@@ -244,7 +245,7 @@ class DocutilsParser(RstParser):
         self,
         section_node: nodes.section,
         kind: SectionKind,
-        results: dict[str, SectionResult],
+        results: dict[str, SectionScanResult],
     ) -> None:
         blocks = extract_examples(section_node)
 
@@ -346,12 +347,11 @@ def _accumulate(
     existing.fields_failed += extraction.fields_failed
 
 
-def _to_section_result(extraction: TableExtraction) -> SectionResult:
-    """Build a SectionResult from a (resolved) primary extraction."""
-    return SectionResult(
+def _to_section_scan_result(extraction: TableExtraction) -> SectionScanResult:
+    return SectionScanResult(
+        section=Section(parameters=list(extraction.parameters)),
         status=_status_from_counters(extraction),
         issues=list(extraction.issues),
-        parameters=list(extraction.parameters),
         fields_total=extraction.fields_total,
         fields_recognized=extraction.fields_recognized,
         fields_unknown_type=extraction.fields_unknown_type,
@@ -380,7 +380,7 @@ def _status_from_counters(counters) -> SectionStatus:
 
     Works on anything carrying ``fields_total`` / ``fields_failed`` /
     ``fields_unknown_type`` — both :class:`TableExtraction` and
-    :class:`SectionResult` qualify, so one rule covers create and merge.
+    :class:`SectionScanResult` qualify, so one rule covers create and merge.
     """
     if counters.fields_total == 0:
         # The table existed but yielded no rows — structurally broken.
@@ -404,7 +404,7 @@ def _example_json_issues(blocks) -> list[Issue]:
 
 
 def _set_example_section(
-    results: dict[str, SectionResult],
+    results: dict[str, SectionScanResult],
     key: str,
     blocks,
     *,
@@ -424,7 +424,7 @@ def _set_example_section(
 
     existing = results.get(key)
     if existing is not None:
-        existing.examples.extend(blocks)
+        existing.section.examples.extend(blocks)
         existing.issues.extend(json_issues)
         existing.issues.extend(extra)
         if any(i.code is IssueCode.EXAMPLE_INVALID_JSON for i in existing.issues):
@@ -432,8 +432,8 @@ def _set_example_section(
         return
 
     status = SectionStatus.PARTIAL if json_issues else SectionStatus.OK
-    results[key] = SectionResult(
+    results[key] = SectionScanResult(
+        section=Section(examples=list(blocks)),
         status=status,
         issues=[*json_issues, *extra],
-        examples=list(blocks),
     )

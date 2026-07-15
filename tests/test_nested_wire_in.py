@@ -62,7 +62,7 @@ def test_vpc_request_resolves_recursively(parser: DocutilsParser, vpc_doc: str) 
     body = parser.parse(vpc_doc, "vpc.rst").sections["body"]
     assert body.status is SectionStatus.OK  # everything resolved, no issues
 
-    firewall = next(p for p in body.parameters if p.name == "firewall")
+    firewall = next(p for p in body.section.parameters if p.name == "firewall")
     assert firewall.type_name == "CreateFirewallOption"
     child_names = {c.name for c in firewall.children}
     assert {"name", "tags", "admin_state_up"} <= child_names
@@ -75,7 +75,7 @@ def test_vpc_response_resolves_recursively(
     parser: DocutilsParser, vpc_doc: str
 ) -> None:
     resp = parser.parse(vpc_doc, "vpc.rst").sections["response"]
-    firewall = next(p for p in resp.parameters if p.name == "firewall")
+    firewall = next(p for p in resp.section.parameters if p.name == "firewall")
     detail = {c.name for c in firewall.children}
     assert {"tags", "associations", "ingress_rules", "egress_rules"} <= detail
 
@@ -91,10 +91,14 @@ def test_iam_same_named_structs_bind_to_their_own_tables(
 ) -> None:
     parsed = parser.parse(iam_doc, "iam.rst")
     req_policy = next(
-        p for p in parsed.sections["body"].parameters if p.name == "protect_policy"
+        p
+        for p in parsed.sections["body"].section.parameters
+        if p.name == "protect_policy"
     )
     resp_policy = next(
-        p for p in parsed.sections["response"].parameters if p.name == "protect_policy"
+        p
+        for p in parsed.sections["response"].section.parameters
+        if p.name == "protect_policy"
     )
 
     req_fields = {c.name for c in req_policy.children}
@@ -154,7 +158,7 @@ def test_circular_ref(parser: DocutilsParser) -> None:
     assert parsed.sections["body"].status is SectionStatus.PARTIAL
     assert IssueCode.NESTED_CIRCULAR_REF in _body_issue_codes(parser, content)
     # First level resolved; recursion stopped at the repeat.
-    node = parsed.sections["body"].parameters[0]
+    node = parsed.sections["body"].section.parameters[0]
     assert [c.name for c in node.children] == ["child"]
     assert node.children[0].children == []
 

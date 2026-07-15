@@ -21,7 +21,7 @@ from .keys import (
     UNVERSIONED_KEY,
 )
 from .repo import RepoScanResult
-from .section import ExampleBlock, SectionResult
+from .section import SectionScanResult
 
 __all__ = [
     "SECTION_NAMES",
@@ -38,8 +38,7 @@ __all__ = [
     "OverallStatus",
     "IssueCode",
     "Issue",
-    "ExampleBlock",
-    "SectionResult",
+    "SectionScanResult",
     "DocumentScanResult",
     "RepoScanResult",
 ]

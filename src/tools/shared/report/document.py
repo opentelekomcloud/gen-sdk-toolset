@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from tools.shared.ir import HttpMethod
 from tools.shared.report.issue import Issue
-from tools.shared.report.section import SectionResult
+from tools.shared.report.section import SectionScanResult
 
 
 class DocumentScanResult(BaseModel):
@@ -37,4 +37,4 @@ class DocumentScanResult(BaseModel):
     # Per-content-section results. Keys come from SECTION_NAMES. Sections
     # not present in the doc are omitted from the dict (their absence
     # equals SectionStatus.MISSING for accounting purposes).
-    sections: dict[str, SectionResult] = Field(default_factory=dict)
+    sections: dict[str, SectionScanResult] = Field(default_factory=dict)
