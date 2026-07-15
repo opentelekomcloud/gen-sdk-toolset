@@ -6,8 +6,9 @@ from tools.domain.report.analytics import doc_overall_status
 from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
-from tools.shared.exceptions import RepositoryError
+from tools.shared.exceptions import ProviderError, ProviderErrorKind
 from tools.shared.report import IssueCode
+from tools.shared.repository import RepositoryInterruptionKind
 
 from .conftest import load_fixture
 
@@ -43,7 +44,11 @@ class FakeDocProvider:
     def path_exists(self, repo: str, branch: str, path: str) -> bool:
         self.calls.append(f"path_exists:{repo}@{branch}:{path}")
         if self._path_error:
-            raise RepositoryError(self._path_error, repo=repo)
+            raise ProviderError(
+                self._path_error,
+                kind=ProviderErrorKind.unexpected_response,
+                resource=repo,
+            )
         return repo in self._has_api_ref
 
     def list_files(self, repo: str, branch: str) -> FileListing:
@@ -61,7 +66,11 @@ class FakeDocProvider:
     def get_commit_hash(self, repo: str, branch: str) -> str | None:
         self.calls.append(f"get_commit_hash:{repo}@{branch}")
         if self._commit_error:
-            raise RepositoryError(self._commit_error, repo=repo)
+            raise ProviderError(
+                self._commit_error,
+                kind=ProviderErrorKind.unexpected_response,
+                resource=repo,
+            )
         return self._commit_hash
 
 
@@ -171,7 +180,7 @@ def test_scan_falls_back_to_branch_when_commit_hash_unknown() -> None:
 # --------------------------------------------------------------------------- #
 # Single-repository scan (S1)
 # --------------------------------------------------------------------------- #
-def test_find_endpoints_checks_eligibility_at_resolved_commit() -> None:
+def test_scan_repository_checks_eligibility_at_resolved_commit() -> None:
     sha = "a" * 40
     path = "api-ref/source/x.rst"
     fake = FakeDocProvider(
@@ -179,7 +188,7 @@ def test_find_endpoints_checks_eligibility_at_resolved_commit() -> None:
         commit_hash=sha,
     )
 
-    result = make_scanner(fake).find_endpoints("o/cce", branch="main")
+    result = make_scanner(fake).scan_repository("o/cce", branch="main")
 
     assert result.has_api_ref is True
     assert result.commit_hash == sha
@@ -192,7 +201,7 @@ def test_find_endpoints_checks_eligibility_at_resolved_commit() -> None:
     ]
 
 
-def test_find_endpoints_returns_ineligible_without_scanning() -> None:
+def test_scan_repository_returns_ineligible_without_scanning() -> None:
     sha = "a" * 40
     fake = FakeDocProvider(
         repos={"o/empty": {"api-ref/source/x.rst": "unused"}},
@@ -200,7 +209,7 @@ def test_find_endpoints_returns_ineligible_without_scanning() -> None:
         commit_hash=sha,
     )
 
-    result = make_scanner(fake).find_endpoints("o/empty")
+    result = make_scanner(fake).scan_repository("o/empty")
 
     assert result.has_api_ref is False
     assert result.error is None
@@ -221,7 +230,7 @@ def test_unresolved_commit_and_missing_path_is_not_normal_ineligible() -> None:
         commit_hash=None,
     )
 
-    result = make_scanner(fake).find_endpoints("o/missing", branch="bad-ref")
+    result = make_scanner(fake).scan_repository("o/missing", branch="bad-ref")
 
     assert result.has_api_ref is False
     assert result.commit_hash is None
@@ -242,7 +251,7 @@ def test_unresolved_commit_with_existing_path_scans_original_ref() -> None:
         commit_hash=None,
     )
 
-    result = make_scanner(fake).find_endpoints("o/cce", branch="develop")
+    result = make_scanner(fake).scan_repository("o/cce", branch="develop")
 
     assert result.has_api_ref is True
     assert result.commit_hash is None
@@ -263,35 +272,44 @@ def test_eligibility_error_stops_before_file_listing() -> None:
         path_error="eligibility lookup failed",
     )
 
-    result = make_scanner(fake).find_endpoints("o/cce")
+    result = make_scanner(fake).scan_repository("o/cce")
 
     assert result.has_api_ref is False
     assert result.error == (
         f"Could not check eligibility for o/cce@{sha}: eligibility lookup failed"
     )
+    assert result.interruption is not None
+    assert result.interruption.kind is RepositoryInterruptionKind.repository_failure
+    assert result.interruption.repository == "o/cce"
+    assert result.model_dump(mode="json")["interruption"] == {
+        "kind": "repository_failure",
+        "repository": "o/cce",
+        "message": "eligibility lookup failed",
+        "reset_time": None,
+    }
     assert fake.calls == [
         "get_commit_hash:o/cce@main",
         f"path_exists:o/cce@{sha}:api-ref/source",
     ]
 
 
-def test_find_endpoints_repeated_call_preserves_result_contract() -> None:
+def test_scan_repository_repeated_call_preserves_result_contract() -> None:
     fake = FakeDocProvider(repos={"o/empty": {}}, has_api_ref=set())
     scanner = make_scanner(fake)
 
-    first = scanner.find_endpoints("o/empty").model_dump(mode="json")
-    second = scanner.find_endpoints("o/empty").model_dump(mode="json")
+    first = scanner.scan_repository("o/empty").model_dump(mode="json")
+    second = scanner.scan_repository("o/empty").model_dump(mode="json")
 
     assert second == first
 
 
-def test_find_endpoints_matches_repos_element_shape() -> None:
+def test_scan_repository_matches_repos_element_shape() -> None:
     fake = FakeDocProvider(
         repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
     )
     scanner = make_scanner(fake)
 
-    repo_result = scanner.find_endpoints(repo="o/cce", branch="main")
+    repo_result = scanner.scan_repository(repo="o/cce", branch="main")
     org = scanner.scan_organization(org="o")
 
     # Same type and same serialised shape as an element of the org report's
@@ -305,13 +323,17 @@ def test_find_endpoints_matches_repos_element_shape() -> None:
     assert len(repo_result.documents) == 1
 
 
-def test_find_endpoints_captures_error_without_raising() -> None:
+def test_scan_repository_captures_error_without_raising() -> None:
     class ListFailProvider(FakeDocProvider):
         def list_files(self, repo: str, branch: str) -> FileListing:
-            raise RepositoryError("tree fetch failed", repo=repo)
+            raise ProviderError(
+                "tree fetch failed",
+                kind=ProviderErrorKind.unexpected_response,
+                resource=repo,
+            )
 
     scanner = make_scanner(ListFailProvider(repos={"o/x": {}}))
-    repo_result = scanner.find_endpoints(repo="o/x", branch="main")
+    repo_result = scanner.scan_repository(repo="o/x", branch="main")
     assert repo_result.error == "tree fetch failed"
     assert repo_result.documents == []
 

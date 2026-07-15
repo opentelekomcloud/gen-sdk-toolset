@@ -214,3 +214,4 @@ scan.json
 *.db
 
 node_modules/
+tasks/

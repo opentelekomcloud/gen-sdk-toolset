@@ -15,7 +15,6 @@ SECTION_BODY = "body"
 SECTION_RESPONSE = "response"
 SECTION_EXAMPLE_REQUEST = "example_request"
 SECTION_EXAMPLE_RESPONSE = "example_response"
-SECTION_NESTED_OBJECTS = "nested_objects"
 
 # Canonical section names. Used as keys in DocumentScanResult.sections so the
 # JSON output has a stable shape regardless of which sections a given doc
@@ -29,7 +28,6 @@ SECTION_NAMES: tuple[str, ...] = (
     SECTION_RESPONSE,
     SECTION_EXAMPLE_REQUEST,
     SECTION_EXAMPLE_RESPONSE,
-    SECTION_NESTED_OBJECTS,
 )
 
 NESTED_STRUCT = "nested_struct"
