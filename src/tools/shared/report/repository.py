@@ -38,27 +38,45 @@ class RepositoryScanResult(BaseModel):
                 raise ValueError("a non-service repository cannot have scan results")
             return self
 
-        document_paths = [document.path for document in self.repository.documents]
-        result_paths = [result.document.path for result in self.document_results]
-        if len(document_paths) != len(set(document_paths)):
+        documents_by_path = {
+            document.path: document for document in self.repository.documents
+        }
+        result_documents_by_path = {
+            result.document.path: result.document for result in self.document_results
+        }
+        if len(documents_by_path) != len(self.repository.documents):
             raise ValueError("service document paths must be unique")
-        if len(result_paths) != len(set(result_paths)):
+        if len(result_documents_by_path) != len(self.document_results):
             raise ValueError("documents cannot have multiple scan results")
-        if set(document_paths) != set(result_paths):
+        if documents_by_path.keys() != result_documents_by_path.keys():
             raise ValueError("every service document must have one document result")
+        if any(
+            document != result_documents_by_path[path]
+            for path, document in documents_by_path.items()
+        ):
+            raise ValueError(
+                "document result must reference the matching service document"
+            )
 
-        section_keys = {
-            (section.endpoint_path, section.name)
-            for document in self.repository.documents
+        sections_by_key = {
+            (section.endpoint_path, section.name): section
+            for document in documents_by_path.values()
             if isinstance(document, Endpoint)
             for section in document.sections
         }
-        result_keys = [
-            (result.section.endpoint_path, result.section.name)
+        result_sections_by_key = {
+            (result.section.endpoint_path, result.section.name): result.section
             for result in self.section_results
-        ]
-        if len(result_keys) != len(set(result_keys)):
+        }
+        if len(result_sections_by_key) != len(self.section_results):
             raise ValueError("sections cannot have multiple scan results")
-        if section_keys != set(result_keys):
+        if sections_by_key.keys() != result_sections_by_key.keys():
             raise ValueError("every endpoint section must have one section result")
+        if any(
+            section != result_sections_by_key[key]
+            for key, section in sections_by_key.items()
+        ):
+            raise ValueError(
+                "section result must reference the matching endpoint section"
+            )
         return self

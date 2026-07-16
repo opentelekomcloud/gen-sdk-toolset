@@ -6,12 +6,18 @@ from tools.shared.ir import (
     Document,
     Endpoint,
     HttpMethod,
+    Parameter,
     Repository,
     Section,
     SectionName,
     Service,
 )
-from tools.shared.report import DocumentScanResult, RepositoryScanResult
+from tools.shared.report import (
+    DocumentScanResult,
+    RepositoryScanResult,
+    SectionScanResult,
+    SectionStatus,
+)
 
 
 def _sections(endpoint_path: str) -> list[Section]:
@@ -121,6 +127,66 @@ def test_document_results_reference_service_documents() -> None:
     )
 
     assert result.document_results[0].document == result.repository.documents[0]
+
+
+def test_document_result_rejects_different_entity_with_same_path() -> None:
+    path = "api-ref/source/list.rst"
+    endpoint = Endpoint(
+        path=path,
+        method=HttpMethod.GET,
+        uri="/v1/resources",
+        sections=_sections(path),
+    )
+
+    with pytest.raises(ValidationError, match="matching service document"):
+        RepositoryScanResult(
+            repository=Service(repo="org/service", documents=[endpoint]),
+            branch="main",
+            document_results=[
+                DocumentScanResult(document=Document(path=endpoint.path))
+            ],
+            section_results=[
+                SectionScanResult(section=section, status=SectionStatus.MISSING)
+                for section in endpoint.sections
+            ],
+        )
+
+
+def test_section_result_rejects_different_entity_with_same_key() -> None:
+    path = "api-ref/source/list.rst"
+    endpoint = Endpoint(
+        path=path,
+        method=HttpMethod.GET,
+        uri="/v1/resources",
+        sections=_sections(path),
+    )
+    section_results = [
+        SectionScanResult(
+            section=(
+                section.model_copy(
+                    update={"parameters": [Parameter(name="unexpected")]}
+                )
+                if section.name is SectionName.BODY
+                else section
+            ),
+            status=(
+                SectionStatus.OK
+                if section.name is SectionName.BODY
+                else SectionStatus.MISSING
+            ),
+            fields_total=1 if section.name is SectionName.BODY else 0,
+            fields_recognized=1 if section.name is SectionName.BODY else 0,
+        )
+        for section in endpoint.sections
+    ]
+
+    with pytest.raises(ValidationError, match="matching endpoint section"):
+        RepositoryScanResult(
+            repository=Service(repo="org/service", documents=[endpoint]),
+            branch="main",
+            document_results=[DocumentScanResult(document=endpoint)],
+            section_results=section_results,
+        )
 
 
 def test_service_document_requires_document_result() -> None:
