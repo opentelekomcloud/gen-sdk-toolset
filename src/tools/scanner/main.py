@@ -209,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     output_path = args.output or settings.output.path
     scanner = _build_scanner(settings)
 
-    # Single-repo mode: scan one repo → one repos[]-shaped RepoScanResult.
+    # Single-repo mode returns one RepositoryScanResult.
     if args.repo:
         logger.info("Scanning repository %s@%s", args.repo, branch)
         repo_result = scanner.scan_repository(repo=args.repo, branch=branch)

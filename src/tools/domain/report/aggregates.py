@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, computed_field
 
 from tools import __version__ as _SCANNER_VERSION
-from tools.shared.report import RepoScanResult
+from tools.shared.report import RepositoryScanResult
 
 from . import analytics
 from .analytics import QualitySummary
@@ -25,12 +25,15 @@ class OrgScanResult(BaseModel):
     total_repos: int = 0
     eligible_repos: int = 0
     skipped_repos: list[str] = Field(default_factory=list)
-    repos: list[RepoScanResult] = Field(default_factory=list)
+    repos: list[RepositoryScanResult] = Field(default_factory=list)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def total_documents(self) -> int:
-        return sum(analytics.count_documents(r.documents) for r in self.repos)
+        return sum(
+            analytics.count_documents(result.document_results)
+            for result in self.repos
+        )
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -42,6 +45,14 @@ class OrgScanResult(BaseModel):
     def quality_summary(self) -> QualitySummary:
         """Compute the org-wide quality roll-up from per-doc results."""
         return analytics.compute_quality_summary(
-            (document for repo in self.repos for document in repo.documents),
-            (result for repo in self.repos for result in repo.section_results),
+            (
+                document
+                for result in self.repos
+                for document in result.document_results
+            ),
+            (
+                section
+                for result in self.repos
+                for section in result.section_results
+            ),
         )

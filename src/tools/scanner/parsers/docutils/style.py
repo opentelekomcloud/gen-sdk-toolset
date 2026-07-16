@@ -60,7 +60,7 @@ class DocStyle(str, Enum):
       gating failure ``UNSUPPORTED_DOC_STYLE`` → ``overall_status``
       ``"unsupported"``.
     * ``NOT_ENDPOINT``  — no endpoint signal; excluded from quality metrics,
-      recorded in ``RepoScanResult.non_endpoint_documents``.
+      recorded in ``RepositoryScanResult.non_endpoint_documents``.
     """
 
     STYLE_A = "style_a"

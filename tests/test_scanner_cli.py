@@ -10,21 +10,24 @@ import pytest
 from tools.config import Settings
 from tools.domain.report import OrgScanResult
 from tools.scanner import main as scanner_main
-from tools.shared.report import RepoScanResult
+from tools.shared.ir import Repository, Service
+from tools.shared.report import RepositoryScanResult
 
 
 class FakeScanner:
     def __init__(
         self,
         *,
-        repo_result: RepoScanResult | None = None,
+        repo_result: RepositoryScanResult | None = None,
         org_result: OrgScanResult | None = None,
     ):
         self.repo_result = repo_result
         self.org_result = org_result
         self.calls: list[tuple[str, str, str]] = []
 
-    def scan_repository(self, repo: str, branch: str = "main") -> RepoScanResult:
+    def scan_repository(
+        self, repo: str, branch: str = "main"
+    ) -> RepositoryScanResult:
         self.calls.append(("repo", repo, branch))
         assert self.repo_result is not None
         return self.repo_result
@@ -69,11 +72,10 @@ def test_repo_stdout_is_one_raw_repo_result(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    result = RepoScanResult(
-        repo="o/name",
+    result = RepositoryScanResult(
+        repository=Service(repo="o/name"),
         branch="main",
         commit_hash="a" * 40,
-        has_api_ref=True,
     )
     scanner = FakeScanner(repo_result=result)
     _install_fakes(monkeypatch, scanner)
@@ -82,7 +84,7 @@ def test_repo_stdout_is_one_raw_repo_result(
     payload = json.loads(capsys.readouterr().out)
 
     assert exit_code == scanner_main.EXIT_OK
-    assert RepoScanResult.model_validate(payload) == result
+    assert RepositoryScanResult.model_validate(payload) == result
     assert scanner.calls == [("repo", "o/name", "main")]
     assert list(tmp_path.iterdir()) == []
     assert {
@@ -100,7 +102,10 @@ def test_repo_stdout_is_one_raw_repo_result(
 def test_repo_file_contains_same_json_as_stdout(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
-    result = RepoScanResult(repo="o/name", branch="feature", has_api_ref=True)
+    result = RepositoryScanResult(
+        repository=Service(repo="o/name"),
+        branch="feature",
+    )
     scanner = FakeScanner(repo_result=result)
     _install_fakes(monkeypatch, scanner)
 
@@ -130,7 +135,10 @@ def test_repo_file_contains_same_json_as_stdout(
 
 
 def test_ineligible_repo_is_a_successful_empty_result(monkeypatch, capsys) -> None:
-    result = RepoScanResult(repo="o/name", branch="main", has_api_ref=False)
+    result = RepositoryScanResult(
+        repository=Repository(repo="o/name"),
+        branch="main",
+    )
     scanner = FakeScanner(repo_result=result)
     _install_fakes(monkeypatch, scanner)
 
@@ -138,9 +146,9 @@ def test_ineligible_repo_is_a_successful_empty_result(monkeypatch, capsys) -> No
     payload = json.loads(capsys.readouterr().out)
 
     assert exit_code == scanner_main.EXIT_OK
-    assert payload["has_api_ref"] is False
+    assert "documents" not in payload["repository"]
     assert payload["error"] is None
-    assert payload["documents"] == []
+    assert payload["document_results"] == []
 
 
 @pytest.mark.parametrize(
@@ -153,8 +161,10 @@ def test_ineligible_repo_is_a_successful_empty_result(monkeypatch, capsys) -> No
 def test_repo_diagnostic_error_is_serialized_and_returns_runtime_error(
     error: str, monkeypatch, capsys
 ) -> None:
-    result = RepoScanResult(
-        repo="o/name", branch="bad-ref", has_api_ref=False, error=error
+    result = RepositoryScanResult(
+        repository=Repository(repo="o/name"),
+        branch="bad-ref",
+        error=error,
     )
     scanner = FakeScanner(repo_result=result)
     _install_fakes(monkeypatch, scanner)

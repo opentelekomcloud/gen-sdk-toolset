@@ -20,7 +20,7 @@ from .keys import (
     SECTION_RESPONSE,
     UNVERSIONED_KEY,
 )
-from .repo import RepoScanResult
+from .repository import RepositoryScanResult
 from .section import SectionScanResult
 
 __all__ = [
@@ -40,5 +40,5 @@ __all__ = [
     "Issue",
     "SectionScanResult",
     "DocumentScanResult",
-    "RepoScanResult",
+    "RepositoryScanResult",
 ]

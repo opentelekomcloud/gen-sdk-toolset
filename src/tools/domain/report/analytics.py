@@ -15,7 +15,7 @@ from tools.shared.report.section import SectionScanResult
 if TYPE_CHECKING:
     from tools.shared.report.document import DocumentScanResult
     from tools.shared.report.issue import Issue
-    from tools.shared.report.repo import RepoScanResult
+    from tools.shared.report.repository import RepositoryScanResult
 
 _TOP_ISSUES_LIMIT = 20
 
@@ -102,7 +102,7 @@ def count_by_status(
     )
 
 
-def count_by_version(repos: Iterable[RepoScanResult]) -> dict[str, int]:
+def count_by_version(repos: Iterable[RepositoryScanResult]) -> dict[str, int]:
     counts: Counter[str] = Counter()
     for repo in repos:
         for version, docs in repo.documents_by_version.items():

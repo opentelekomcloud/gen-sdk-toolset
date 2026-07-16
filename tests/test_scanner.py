@@ -7,7 +7,7 @@ from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
 from tools.shared.exceptions import ProviderError, ProviderErrorKind
-from tools.shared.ir import Endpoint
+from tools.shared.ir import Endpoint, Service
 from tools.shared.report import IssueCode
 from tools.shared.repository import RepositoryInterruptionKind
 
@@ -95,7 +95,7 @@ def test_skips_repo_without_api_ref() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
     assert result.skipped_repos == ["o/svc-b"]
-    assert {r.repo for r in result.repos} == {"o/svc-a"}
+    assert {r.repository.repo for r in result.repos} == {"o/svc-a"}
     assert [call for call in fake.calls if call.startswith("path_exists:")] == [
         "path_exists:o/svc-a@" + "0" * 40 + ":api-ref/source",
         "path_exists:o/svc-b@" + "0" * 40 + ":api-ref/source",
@@ -139,9 +139,9 @@ def test_commit_hash_error_stops_before_eligibility_and_scan() -> None:
     result = make_scanner(fake).scan_organization(org="o")
     repo = result.repos[0]
     assert repo.commit_hash is None
-    assert repo.has_api_ref is False
+    assert not isinstance(repo.repository, Service)
     assert repo.error == "Could not resolve commit for o/cce@main: commit lookup failed"
-    assert repo.documents == []
+    assert repo.document_results == []
     assert fake.calls == ["list_repos:o", "get_commit_hash:o/cce@main"]
 
 
@@ -191,9 +191,9 @@ def test_scan_repository_checks_eligibility_at_resolved_commit() -> None:
 
     result = make_scanner(fake).scan_repository("o/cce", branch="main")
 
-    assert result.has_api_ref is True
+    assert isinstance(result.repository, Service)
     assert result.commit_hash == sha
-    assert result.documents
+    assert result.document_results
     assert fake.calls == [
         "get_commit_hash:o/cce@main",
         f"path_exists:o/cce@{sha}:api-ref/source",
@@ -212,9 +212,9 @@ def test_scan_repository_returns_ineligible_without_scanning() -> None:
 
     result = make_scanner(fake).scan_repository("o/empty")
 
-    assert result.has_api_ref is False
+    assert not isinstance(result.repository, Service)
     assert result.error is None
-    assert result.documents == []
+    assert result.document_results == []
     assert result.documents_by_version == {}
     assert result.non_endpoint_documents == []
     assert result.excluded_documents == []
@@ -233,7 +233,7 @@ def test_unresolved_commit_and_missing_path_is_not_normal_ineligible() -> None:
 
     result = make_scanner(fake).scan_repository("o/missing", branch="bad-ref")
 
-    assert result.has_api_ref is False
+    assert not isinstance(result.repository, Service)
     assert result.commit_hash is None
     assert result.error == (
         "Cannot confirm o/missing@bad-ref: commit could not be resolved and "
@@ -254,9 +254,9 @@ def test_unresolved_commit_with_existing_path_scans_original_ref() -> None:
 
     result = make_scanner(fake).scan_repository("o/cce", branch="develop")
 
-    assert result.has_api_ref is True
+    assert isinstance(result.repository, Service)
     assert result.commit_hash is None
-    assert result.documents
+    assert result.document_results
     assert fake.calls == [
         "get_commit_hash:o/cce@develop",
         "path_exists:o/cce@develop:api-ref/source",
@@ -275,7 +275,7 @@ def test_eligibility_error_stops_before_file_listing() -> None:
 
     result = make_scanner(fake).scan_repository("o/cce")
 
-    assert result.has_api_ref is False
+    assert not isinstance(result.repository, Service)
     assert result.error == (
         f"Could not check eligibility for o/cce@{sha}: eligibility lookup failed"
     )
@@ -319,9 +319,9 @@ def test_scan_repository_matches_repos_element_shape() -> None:
     assert repo_result.model_dump(mode="json").keys() == (
         org.repos[0].model_dump(mode="json").keys()
     )
-    assert repo_result.repo == "o/cce"
-    assert repo_result.has_api_ref is True
-    assert len(repo_result.documents) == 1
+    assert repo_result.repository.repo == "o/cce"
+    assert isinstance(repo_result.repository, Service)
+    assert len(repo_result.document_results) == 1
 
 
 def test_scan_repository_captures_error_without_raising() -> None:
@@ -336,7 +336,7 @@ def test_scan_repository_captures_error_without_raising() -> None:
     scanner = make_scanner(ListFailProvider(repos={"o/x": {}}))
     repo_result = scanner.scan_repository(repo="o/x", branch="main")
     assert repo_result.error == "tree fetch failed"
-    assert repo_result.documents == []
+    assert repo_result.document_results == []
 
 
 # --------------------------------------------------------------------------- #
@@ -353,7 +353,7 @@ def test_style_a_populates_sections() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
-    docs = repo.documents
+    docs = repo.document_results
     assert len(docs) == 1
     doc = docs[0]
     assert doc.failure_reason is None
@@ -361,6 +361,7 @@ def test_style_a_populates_sections() -> None:
     # extracted now (no deferred-nesting partial) and emits no nested_objects.
     assert doc_overall_status(doc, repo.section_results) == "ok"
     assert isinstance(doc.document, Endpoint)
+    assert repo.repository.documents == [doc.document]
     sections = {section.name: section for section in doc.document.sections}
     assert "path_params" in sections
     assert "body" in sections
@@ -378,7 +379,7 @@ def test_obs_marked_unsupported() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
-    doc = repo.documents[0]
+    doc = repo.document_results[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.UNSUPPORTED_DOC_STYLE
     assert doc_overall_status(doc, repo.section_results) == "unsupported"
@@ -398,8 +399,8 @@ def test_non_endpoint_recorded() -> None:
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
     assert repo.non_endpoint_documents == ["api-ref/source/intro.rst"]
-    assert len(repo.documents) == 1
-    assert repo.documents[0].document.path == "api-ref/source/real.rst"
+    assert len(repo.document_results) == 1
+    assert repo.document_results[0].document.path == "api-ref/source/real.rst"
 
 
 def test_fetch_failure_is_gating() -> None:
@@ -413,7 +414,7 @@ def test_fetch_failure_is_gating() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
-    doc = repo.documents[0]
+    doc = repo.document_results[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.FETCH_FAILED
     assert doc_overall_status(doc, repo.section_results) == "failed"
@@ -433,7 +434,7 @@ def test_parser_crash_is_parser_error() -> None:
     scanner = make_scanner(fake, parser=CrashingParser())
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
-    doc = repo.documents[0]
+    doc = repo.document_results[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.PARSER_ERROR
     assert doc_overall_status(doc, repo.section_results) == "failed"
@@ -452,7 +453,7 @@ def test_endpoint_doc_without_uri_is_failed() -> None:
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
     assert repo.non_endpoint_documents == []
-    doc = repo.documents[0]
+    doc = repo.document_results[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.NO_URI_MATCH
     assert doc_overall_status(doc, repo.section_results) == "failed"
@@ -474,7 +475,10 @@ def test_excluded_segments_drop_paths() -> None:
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
     # Excluded file is not parsed, not counted as a non_endpoint doc...
-    assert all("out-of-date_apis" not in d.document.path for d in repo.documents)
+    assert all(
+        "out-of-date_apis" not in result.document.path
+        for result in repo.document_results
+    )
     assert "out-of-date_apis" not in str(repo.non_endpoint_documents)
     assert repo.excluded_documents == ["api-ref/source/out-of-date_apis/old.rst"]
 

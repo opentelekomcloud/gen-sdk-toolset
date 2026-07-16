@@ -8,14 +8,14 @@ from tools.scanner.eligibility import check_repository_eligibility
 from tools.scanner.interfaces import DocProvider, RstParser
 from tools.scanner.parsers.docutils.style import DocStyle
 from tools.shared.exceptions import ParseFailure, ProviderError
-from tools.shared.ir import Document, Endpoint
+from tools.shared.ir import Document, Endpoint, Repository, Service
 from tools.shared.report import (
     UNVERSIONED_KEY,
     DocumentScanResult,
     Issue,
     IssueCode,
     OverallStatus,
-    RepoScanResult,
+    RepositoryScanResult,
     SectionScanResult,
 )
 
@@ -59,13 +59,18 @@ class ScannerService:
 
         for repo in repos:
             repo_result = self.scan_repository(repo=repo, branch=branch)
-            if not repo_result.has_api_ref and repo_result.error is None:
+            if (
+                not isinstance(repo_result.repository, Service)
+                and repo_result.error is None
+            ):
                 logger.debug("Skipping %s (no %s)", repo, self.api_ref_path)
                 result.skipped_repos.append(repo)
                 continue
             result.repos.append(repo_result)
 
-        result.eligible_repos = sum(1 for r in result.repos if r.has_api_ref)
+        result.eligible_repos = sum(
+            isinstance(repo.repository, Service) for repo in result.repos
+        )
         logger.info(
             "Org scan complete: %d/%d eligible, %d total documents",
             result.eligible_repos,
@@ -74,10 +79,15 @@ class ScannerService:
         )
         return result
 
-    def scan_repository(self, repo: str, branch: str = "main") -> RepoScanResult:
+    def scan_repository(
+        self, repo: str, branch: str = "main"
+    ) -> RepositoryScanResult:
         """Scan one repository and return per-document parse results."""
         logger.info("Scanning repo %s@%s", repo, branch)
-        result = RepoScanResult(repo=repo, branch=branch)
+        result = RepositoryScanResult(
+            repository=Repository(repo=repo),
+            branch=branch,
+        )
 
         # Pin the snapshot to a commit before checking eligibility so the path
         # check and every content read observe the same repository snapshot.
@@ -115,7 +125,7 @@ class ScannerService:
                 logger.error(result.error)
             return result
 
-        result.has_api_ref = True
+        result.repository = Service(repo=repo)
 
         try:
             listing = self.doc_provider.list_files(repo, ref)
@@ -157,7 +167,9 @@ class ScannerService:
                 continue
 
             document_result = outcome.document_result
-            result.documents.append(document_result)
+            result.document_results.append(document_result)
+            assert isinstance(result.repository, Service)
+            result.repository.documents.append(document_result.document)
             result.section_results.extend(outcome.section_results)
             if analytics.doc_overall_status(
                 document_result, outcome.section_results
@@ -173,7 +185,7 @@ class ScannerService:
                     document_result
                 )
 
-        return result
+        return RepositoryScanResult.model_validate(result.model_dump(mode="json"))
 
     def _process_document(
         self, repo: str, path: str, branch: str
@@ -181,7 +193,8 @@ class ScannerService:
         """Fetch, classify and parse a document.
 
         Returns ``None`` for non-endpoint docs (intro / conceptual pages)
-        — these surface in :attr:`RepoScanResult.non_endpoint_documents`
+        — these surface in
+        :attr:`RepositoryScanResult.non_endpoint_documents`
         rather than as failure entries.
 
         Endpoint data and section results remain separate in the returned
