@@ -36,7 +36,6 @@ class TableTarget(str, Enum):
     """Internal routing targets that are not endpoint sections."""
 
     NESTED_STRUCT = "nested_struct"
-    STATUS_CODES = "status_codes"
 
 
 # Maps canonical SectionKind → set of literal heading variants seen in
@@ -75,8 +74,6 @@ def classify_section_title(title: str) -> SectionKind:
 # --------------------------------------------------------------------------- #
 # Table title → canonical section name
 # --------------------------------------------------------------------------- #
-# Internal marker for status-code tables: recognised so we don't misfile
-# them, but they are not parameter tables, so the classifier returns None.
 # Order matters: more specific patterns first. The classifier walks the
 # list and returns the first match.
 _TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], SectionName | TableTarget]] = [
@@ -113,8 +110,9 @@ _TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], SectionName | TableTarget]] =
     (re.compile(r"\bresponse\s+param", re.IGNORECASE), SectionName.RESPONSE),
     # Generic catches go last
     (re.compile(r"\brequest\s+param", re.IGNORECASE), SectionName.BODY),
-    (re.compile(r"\bstatus\s+code", re.IGNORECASE), TableTarget.STATUS_CODES),
 ]
+
+_STATUS_CODE_TABLE_RE = re.compile(r"\bstatus\s+code", re.IGNORECASE)
 
 
 def classify_table_title(
@@ -130,10 +128,11 @@ def classify_table_title(
     generic title defaults to path_params; a table in Response with a
     generic title defaults to response.
     """
+    if _STATUS_CODE_TABLE_RE.search(title):
+        return None
+
     for pattern, key in _TABLE_TITLE_PATTERNS:
         if pattern.search(title):
-            if key is TableTarget.STATUS_CODES:
-                return None  # status code tables are not parameter tables
             return key
 
     # No pattern matched. A generic "Query Parameters"-ish title that

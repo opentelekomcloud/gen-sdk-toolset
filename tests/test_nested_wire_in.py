@@ -21,7 +21,7 @@ def parser() -> DocutilsParser:
 
 
 def _sections(parsed) -> dict:
-    return {section.name: section for section in parsed.endpoint.sections}
+    return {section.name: section for section in parsed.sections}
 
 
 # --------------------------------------------------------------------------- #

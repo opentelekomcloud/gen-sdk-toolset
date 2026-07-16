@@ -2427,7 +2427,6 @@
   "commit_hash": "8ff5254f6b7d669170bdacbdf5058e9adcfbe75f",
   "scanner_version": "0.1.0",
   "excluded_documents": [],
-  "incomplete": false,
   "incomplete_reason": null,
   "error": null,
   "interruption": null

@@ -13,6 +13,8 @@ from tools.shared.ir import (
 )
 from tools.shared.scan import (
     DocumentScanResult,
+    RepositoryInterruption,
+    RepositoryInterruptionKind,
     RepositoryScanResult,
     SectionScanResult,
     SectionStatus,
@@ -84,7 +86,6 @@ def test_repository_scan_result_restores_nested_service() -> None:
         "commit_hash": "a" * 40,
         "scanner_version": __version__,
         "excluded_documents": [],
-        "incomplete": False,
         "incomplete_reason": None,
         "error": None,
         "interruption": None,
@@ -95,6 +96,22 @@ def test_repository_scan_result_restores_nested_service() -> None:
     assert isinstance(result.repository, Service)
     assert isinstance(result.repository.documents[0], Endpoint)
     assert result.model_dump(mode="json") == payload
+
+
+def test_repository_scan_result_has_one_failure_source() -> None:
+    with pytest.raises(
+        ValidationError, match="error and interruption cannot both be set"
+    ):
+        RepositoryScanResult(
+            repository=Repository(repo="org/service"),
+            branch="main",
+            error="eligibility failed",
+            interruption=RepositoryInterruption(
+                kind=RepositoryInterruptionKind.repository_failure,
+                repository="org/service",
+                message="eligibility failed",
+            ),
+        )
 
 
 def test_repository_scan_result_rejects_unknown_kind() -> None:

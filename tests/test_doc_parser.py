@@ -16,7 +16,7 @@ def parser() -> DocutilsParser:
 
 
 def _sections(parsed) -> dict:
-    return {section.name: section for section in parsed.endpoint.sections}
+    return {section.name: section for section in parsed.sections}
 
 
 # --------------------------------------------------------------------------- #
@@ -24,12 +24,12 @@ def _sections(parsed) -> dict:
 # --------------------------------------------------------------------------- #
 def test_cce_gating(parser: DocutilsParser, cce_doc: str) -> None:
     parsed = parser.parse(cce_doc, "fixtures/cce.rst")
-    assert parsed.endpoint.method is HttpMethod.PUT
-    assert parsed.endpoint.uri == (
+    assert parsed.method is HttpMethod.PUT
+    assert parsed.uri == (
         "/api/v3/projects/{project_id}/clusters/{cluster_id}/nodes/{node_id}"
     )
-    assert parsed.endpoint.title == "Updating a Specified Node"
-    assert parsed.endpoint.api_version == "v3"
+    assert parsed.title == "Updating a Specified Node"
+    assert parsed.api_version == "v3"
 
 
 def test_cce_path_params(parser: DocutilsParser, cce_doc: str) -> None:
@@ -64,9 +64,9 @@ def test_cce_headers(parser: DocutilsParser, cce_doc: str) -> None:
 # --------------------------------------------------------------------------- #
 def test_vpc_gating(parser: DocutilsParser, vpc_doc: str) -> None:
     parsed = parser.parse(vpc_doc, "fixtures/vpc.rst")
-    assert parsed.endpoint.method is HttpMethod.POST
-    assert parsed.endpoint.uri == "/v3/{project_id}/vpc/firewalls"
-    assert parsed.endpoint.api_version == "v3"
+    assert parsed.method is HttpMethod.POST
+    assert parsed.uri == "/v3/{project_id}/vpc/firewalls"
+    assert parsed.api_version == "v3"
 
 
 def test_vpc_body_top_level_only(parser: DocutilsParser, vpc_doc: str) -> None:
@@ -150,8 +150,8 @@ def test_elb_list_separates_path_and_query(
     parsed = parser.parse(elb_list_doc, "fixtures/elb.rst")
 
     # Host-form URI is recognised and stored without the host.
-    assert parsed.endpoint.method is HttpMethod.GET
-    assert parsed.endpoint.uri == "/v3/{project_id}/elb/pools"
+    assert parsed.method is HttpMethod.GET
+    assert parsed.uri == "/v3/{project_id}/elb/pools"
 
     sections = _sections(parsed)
     path_names = [p.name for p in sections["path_params"].parameters]
@@ -176,7 +176,7 @@ def test_elb_query_section_present(parser: DocutilsParser, elb_list_doc: str) ->
 def test_field_metrics_sum(parser: DocutilsParser, vpc_doc: str) -> None:
     """fields_recognized + fields_unknown_type + fields_failed == fields_total."""
     parsed = parser.parse(vpc_doc, "fixtures/vpc.rst")
-    for section in parsed.endpoint.sections:
+    for section in parsed.sections:
         result = section.scan_result
         assert (
             result.fields_recognized + result.fields_unknown_type + result.fields_failed
@@ -204,9 +204,9 @@ def test_parser_section_keys_are_canonical(
     }
     for path, content in docs.items():
         parsed = parser.parse(content, path)
-        produced = {section.name for section in parsed.endpoint.sections}
+        produced = {section.name for section in parsed.sections}
         assert produced == set(SectionName)
-        assert len(parsed.endpoint.sections) == len(SectionName) == 7
+        assert len(parsed.sections) == len(SectionName) == 7
 
 
 # --------------------------------------------------------------------------- #

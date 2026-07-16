@@ -33,7 +33,7 @@ class OrgScanResult(BaseModel):
     @property
     def total_documents(self) -> int:
         return sum(
-            analytics.count_documents(result.repository.documents)
+            len(result.repository.documents)
             for result in self.repos
             if isinstance(result.repository, Service)
         )

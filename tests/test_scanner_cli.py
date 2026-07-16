@@ -11,7 +11,11 @@ from tools.config import Settings
 from tools.domain.report import OrgScanResult
 from tools.scanner import main as scanner_main
 from tools.shared.ir import Repository, Service
-from tools.shared.scan import RepositoryScanResult
+from tools.shared.scan import (
+    RepositoryInterruption,
+    RepositoryInterruptionKind,
+    RepositoryScanResult,
+)
 
 
 class FakeScanner:
@@ -175,6 +179,27 @@ def test_repo_diagnostic_error_is_serialized_and_returns_runtime_error(
 
     assert exit_code == scanner_main.EXIT_RUNTIME_ERROR
     assert payload["error"] == error
+
+
+def test_repo_interruption_returns_runtime_error(monkeypatch, capsys) -> None:
+    result = RepositoryScanResult(
+        repository=Repository(repo="o/name"),
+        branch="main",
+        interruption=RepositoryInterruption(
+            kind=RepositoryInterruptionKind.rate_limit,
+            repository="o/name",
+            message="rate limited",
+        ),
+    )
+    scanner = FakeScanner(repo_result=result)
+    _install_fakes(monkeypatch, scanner)
+
+    exit_code = scanner_main.main(["--repo", "o/name", "--output", "-"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == scanner_main.EXIT_RUNTIME_ERROR
+    assert payload["error"] is None
+    assert payload["interruption"]["message"] == "rate limited"
 
 
 def test_legacy_org_mode_still_emits_org_result(monkeypatch, capsys) -> None:

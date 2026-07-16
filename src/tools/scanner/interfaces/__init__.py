@@ -8,12 +8,11 @@ from .doc_provider import (
     RepositoryDiscoveryProvider,
     RepositoryEligibilityProvider,
 )
-from .parser import ParsedDocument, RstParser
+from .parser import RstParser
 
 __all__ = [
     "DocProvider",
     "FileListing",
-    "ParsedDocument",
     "ParseFailure",
     "RepositoryDiscoveryProvider",
     "RepositoryEligibilityProvider",

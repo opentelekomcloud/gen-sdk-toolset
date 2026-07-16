@@ -215,8 +215,8 @@ def main(argv: list[str] | None = None) -> int:
         _emit_report(
             repo_result, output_path, args.stdout, settings.output.indent, logger
         )
-        if repo_result.error:
-            logger.error("Repo scan reported an error: %s", repo_result.error)
+        if repo_result.failure_message:
+            logger.error("Repo scan reported an error: %s", repo_result.failure_message)
             return EXIT_RUNTIME_ERROR
         return EXIT_OK
 

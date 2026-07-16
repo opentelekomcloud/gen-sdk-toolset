@@ -48,10 +48,21 @@ class RepositoryScanResult(BaseModel):
 
     excluded_documents: list[str] = Field(default_factory=list)
 
-    incomplete: bool = False
     incomplete_reason: str | None = None
     error: str | None = None
     interruption: RepositoryInterruption | None = None
+
+    @property
+    def incomplete(self) -> bool:
+        return self.incomplete_reason is not None
+
+    @property
+    def failure_message(self) -> str | None:
+        if self.error is not None:
+            return self.error
+        if self.interruption is not None:
+            return self.interruption.message
+        return None
 
     @field_validator("repository", mode="before")
     @classmethod
@@ -62,6 +73,9 @@ class RepositoryScanResult(BaseModel):
 
     @model_validator(mode="after")
     def validate_scan_snapshot(self) -> Self:
+        if self.error is not None and self.interruption is not None:
+            raise ValueError("error and interruption cannot both be set")
+
         if not isinstance(self.repository, Service):
             return self
 

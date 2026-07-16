@@ -80,7 +80,7 @@ def test_missing_section_rejects_field_metrics() -> None:
 
 
 def test_missing_section_may_explain_absence_with_issue() -> None:
-    issue = Issue(code=IssueCode.TABLE_NOT_FOUND)
+    issue = Issue(code=IssueCode.UNEXPECTED_COLUMNS)
     section = Section(
         name="body",
         scan_result=SectionScanResult(

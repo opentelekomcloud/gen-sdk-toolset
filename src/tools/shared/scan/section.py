@@ -17,7 +17,6 @@ class SectionStatus(str, Enum):
     PARTIAL = "partial"
     FAILED = "failed"
     MISSING = "missing"
-    SKIPPED = "skipped"
 
 
 class SectionScanResult(BaseModel):

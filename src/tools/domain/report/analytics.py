@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -43,7 +43,7 @@ def doc_overall_status(document: Document) -> OverallStatus | None:
     if not isinstance(document, Endpoint):
         return None
 
-    degrading = {SectionStatus.PARTIAL, SectionStatus.FAILED, SectionStatus.SKIPPED}
+    degrading = {SectionStatus.PARTIAL, SectionStatus.FAILED}
     if any(
         section.scan_result.status in degrading
         for section in _document_sections(document)
@@ -64,10 +64,6 @@ def doc_all_issues(document: Document) -> list[Issue]:
             location = f"{name}/{issue.location}" if issue.location else name
             issues.append(issue.model_copy(update={"location": location}))
     return issues
-
-
-def count_documents(documents: Sequence[Document]) -> int:
-    return len(documents)
 
 
 def count_by_version(repos: Iterable[RepositoryScanResult]) -> dict[str, int]:

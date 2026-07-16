@@ -293,9 +293,8 @@ def test_eligibility_error_stops_before_file_listing() -> None:
     result = make_scanner(fake).scan_repository("o/cce")
 
     assert not isinstance(result.repository, Service)
-    assert result.error == (
-        f"Could not check eligibility for o/cce@{sha}: eligibility lookup failed"
-    )
+    assert result.error is None
+    assert result.failure_message == "eligibility lookup failed"
     assert result.interruption is not None
     assert result.interruption.kind is RepositoryInterruptionKind.repository_failure
     assert result.interruption.repository == "o/cce"
@@ -541,6 +540,7 @@ def test_truncated_tree_marks_repo_incomplete() -> None:
     repo = result.repos[0]
     assert repo.incomplete is True
     assert repo.incomplete_reason
+    assert "incomplete" not in repo.model_dump(mode="json")
 
 
 # --------------------------------------------------------------------------- #

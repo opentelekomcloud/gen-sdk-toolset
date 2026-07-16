@@ -46,7 +46,7 @@ class ScannerService:
             repo_result = self.scan_repository(repo=repo, branch=branch)
             if (
                 not isinstance(repo_result.repository, Service)
-                and repo_result.error is None
+                and repo_result.failure_message is None
             ):
                 logger.debug("Skipping %s (no %s)", repo, self.api_ref_path)
                 result.skipped_repos.append(repo)
@@ -91,16 +91,16 @@ class ScannerService:
             api_ref_path=self.api_ref_path,
         )
         if eligibility.interruption is not None:
-            error = (
-                f"Could not check eligibility for {repo}@{ref}: "
-                f"{eligibility.interruption.message}"
+            logger.error(
+                "Could not check eligibility for %s@%s: %s",
+                repo,
+                ref,
+                eligibility.interruption.message,
             )
-            logger.error(error)
             return RepositoryScanResult(
                 repository=Repository(repo=repo),
                 branch=branch,
                 commit_hash=commit_hash,
-                error=error,
                 interruption=eligibility.interruption,
             )
 
@@ -132,7 +132,6 @@ class ScannerService:
                 error=str(e),
             )
 
-        incomplete = listing.truncated
         incomplete_reason = None
         if listing.truncated:
             incomplete_reason = (
@@ -176,7 +175,6 @@ class ScannerService:
             branch=branch,
             commit_hash=commit_hash,
             excluded_documents=excluded_documents,
-            incomplete=incomplete,
             incomplete_reason=incomplete_reason,
         )
 
@@ -242,7 +240,7 @@ class ScannerService:
                 ),
             )
 
-        return parsed.endpoint
+        return parsed
 
     def _is_excluded(self, path: str) -> bool:
         return any(seg in self.excluded_segments for seg in path.split("/"))

@@ -1,13 +1,12 @@
 """Style-A docutils-based RST parser — the orchestrator.
 
 The parser is intentionally thin: it walks the docutils tree once,
-delegates each concern to a focused helper module, and assembles the
-result into a :class:`ParsedDocument`. Style classification happens
+delegates each concern to a focused helper module, and assembles an
+:class:`Endpoint`. Style classification happens
 upstream in :mod:`tools.scanner.parsers.docutils.style`; this module is
 only ever called on docs already known to be Style-A.
 
-Outputs a recognized :class:`Endpoint` with its sections and a separate list
-of :class:`SectionScanResult` objects.
+Outputs a recognized :class:`Endpoint` whose sections own their scan results.
 
 A failure to extract the URI from the URI section raises
 :class:`ParseFailure` so the scanner can record it as a gating failure.
@@ -22,7 +21,7 @@ from docutils import nodes
 from docutils.core import publish_doctree
 from docutils.parsers.rst import roles
 
-from tools.scanner.interfaces import ParsedDocument, RstParser
+from tools.scanner.interfaces import RstParser
 from tools.shared.exceptions import ParseFailure
 from tools.shared.ir import Endpoint, HttpMethod, Section, SectionName
 from tools.shared.scan import (
@@ -96,7 +95,7 @@ class DocutilsParser(RstParser):
     def __init__(self) -> None:
         _ensure_roles()
 
-    def parse(self, content: str, path: str) -> ParsedDocument:
+    def parse(self, content: str, path: str) -> Endpoint:
         doctree = publish_doctree(
             content, settings_overrides=self._SILENT_DOCUTILS_SETTINGS
         )
@@ -106,16 +105,14 @@ class DocutilsParser(RstParser):
         api_version = self._extract_api_version(uri, path)
         sections = self._extract_sections(doctree)
 
-        return ParsedDocument(
-            endpoint=Endpoint(
-                path=path,
-                title=title,
-                method=method,
-                uri=uri,
-                api_version=api_version,
-                sections=sections,
-                scan_result=DocumentScanResult(),
-            ),
+        return Endpoint(
+            path=path,
+            title=title,
+            method=method,
+            uri=uri,
+            api_version=api_version,
+            sections=sections,
+            scan_result=DocumentScanResult(),
         )
 
     # ------------------------------------------------------------------ #
@@ -387,13 +384,8 @@ def _register_non_table_targets(
             registry.setdefault(name, RefTarget(kind=RefKind.NON_TABLE))
 
 
-def _status_from_counters(counters) -> SectionStatus:
-    """Map field-level counters to a SectionStatus.
-
-    Works on anything carrying ``fields_total`` / ``fields_failed`` /
-    ``fields_unknown_type`` — both :class:`TableExtraction` and
-    :class:`SectionScanResult` qualify, so one rule covers create and merge.
-    """
+def _status_from_counters(counters: TableExtraction) -> SectionStatus:
+    """Map one table extraction's field counters to a section status."""
     if counters.fields_total == 0:
         # The table existed but yielded no rows — structurally broken.
         return SectionStatus.FAILED
