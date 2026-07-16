@@ -59,8 +59,8 @@ class DocStyle(str, Enum):
     * ``S3_COMPATIBLE`` — OBS/S3 layout; recognised but not yet extractable →
       gating failure ``UNSUPPORTED_DOC_STYLE`` → ``overall_status``
       ``"unsupported"``.
-    * ``NOT_ENDPOINT``  — no endpoint signal; excluded from quality metrics,
-      recorded in ``RepositoryScanResult.non_endpoint_documents``.
+    * ``NOT_ENDPOINT``  — no endpoint signal; represented as a successful
+      ``Document`` and excluded from endpoint quality metrics.
     """
 
     STYLE_A = "style_a"

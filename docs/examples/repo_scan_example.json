@@ -4,6 +4,11 @@
     "repo": "opentelekomcloud-docs/anti-ddos",
     "documents": [
       {
+        "kind": "document",
+        "path": "api-ref/source/api/alarm_reminding_apis/index.rst",
+        "title": null
+      },
+      {
         "kind": "endpoint",
         "path": "api-ref/source/api/alarm_reminding_apis/querying_alarm_configuration.rst",
         "title": "Querying Alarm Configuration",
@@ -285,6 +290,11 @@
             ]
           }
         ]
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/api/anti-ddos_apis/index.rst",
+        "title": null
       },
       {
         "kind": "endpoint",
@@ -1537,6 +1547,36 @@
             ]
           }
         ]
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/api/index.rst",
+        "title": null
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/api_usage_guidelines.rst",
+        "title": null
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/appendix/index.rst",
+        "title": null
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/appendix/status_code.rst",
+        "title": null
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/change_history.rst",
+        "title": null
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/index.rst",
+        "title": null
       }
     ]
   },
@@ -1544,6 +1584,14 @@
   "commit_hash": "8ff5254f6b7d669170bdacbdf5058e9adcfbe75f",
   "scanner_version": "0.1.0",
   "document_results": [
+    {
+      "document": {
+        "kind": "document",
+        "path": "api-ref/source/api/alarm_reminding_apis/index.rst",
+        "title": null
+      },
+      "failure_reason": null
+    },
     {
       "document": {
         "kind": "endpoint",
@@ -1833,6 +1881,14 @@
             ]
           }
         ]
+      },
+      "failure_reason": null
+    },
+    {
+      "document": {
+        "kind": "document",
+        "path": "api-ref/source/api/anti-ddos_apis/index.rst",
+        "title": null
       },
       "failure_reason": null
     },
@@ -3125,6 +3181,54 @@
             ]
           }
         ]
+      },
+      "failure_reason": null
+    },
+    {
+      "document": {
+        "kind": "document",
+        "path": "api-ref/source/api/index.rst",
+        "title": null
+      },
+      "failure_reason": null
+    },
+    {
+      "document": {
+        "kind": "document",
+        "path": "api-ref/source/api_usage_guidelines.rst",
+        "title": null
+      },
+      "failure_reason": null
+    },
+    {
+      "document": {
+        "kind": "document",
+        "path": "api-ref/source/appendix/index.rst",
+        "title": null
+      },
+      "failure_reason": null
+    },
+    {
+      "document": {
+        "kind": "document",
+        "path": "api-ref/source/appendix/status_code.rst",
+        "title": null
+      },
+      "failure_reason": null
+    },
+    {
+      "document": {
+        "kind": "document",
+        "path": "api-ref/source/change_history.rst",
+        "title": null
+      },
+      "failure_reason": null
+    },
+    {
+      "document": {
+        "kind": "document",
+        "path": "api-ref/source/index.rst",
+        "title": null
       },
       "failure_reason": null
     }
@@ -5388,16 +5492,6 @@
       "fields_unknown_type": 0,
       "fields_failed": 0
     }
-  ],
-  "non_endpoint_documents": [
-    "api-ref/source/api/alarm_reminding_apis/index.rst",
-    "api-ref/source/api/anti-ddos_apis/index.rst",
-    "api-ref/source/api/index.rst",
-    "api-ref/source/api_usage_guidelines.rst",
-    "api-ref/source/appendix/index.rst",
-    "api-ref/source/appendix/status_code.rst",
-    "api-ref/source/change_history.rst",
-    "api-ref/source/index.rst"
   ],
   "excluded_documents": [],
   "incomplete": false,

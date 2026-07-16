@@ -182,12 +182,7 @@ class ScannerService:
         documents: list[Document] = []
         document_results: list[DocumentScanResult] = []
         section_results: list[SectionScanResult] = []
-        non_endpoint_documents: list[str] = []
-        for path, outcome in zip(included_paths, doc_outcomes):
-            if outcome is None:
-                non_endpoint_documents.append(path)
-                continue
-
+        for outcome in doc_outcomes:
             document_result = outcome.document_result
             documents.append(document_result.document)
             document_results.append(document_result)
@@ -199,7 +194,6 @@ class ScannerService:
             commit_hash=commit_hash,
             document_results=document_results,
             section_results=section_results,
-            non_endpoint_documents=non_endpoint_documents,
             excluded_documents=excluded_documents,
             incomplete=incomplete,
             incomplete_reason=incomplete_reason,
@@ -207,17 +201,13 @@ class ScannerService:
 
     def _process_document(
         self, repo: str, path: str, branch: str
-    ) -> _DocumentOutcome | None:
+    ) -> _DocumentOutcome:
         """Fetch, classify and parse a document.
-
-        Returns ``None`` for non-endpoint docs (intro / conceptual pages)
-        — these surface in
-        :attr:`RepositoryScanResult.non_endpoint_documents`
-        rather than as failure entries.
 
         Endpoint data and section results remain separate in the returned
         outcome. Gating failures produce a plain ``Document`` with a failure
-        reason and no section results.
+        reason and no section results. Non-endpoint docs produce a successful
+        plain ``Document`` with no section results.
         """
         try:
             content = self.doc_provider.fetch_content(repo, path, branch)
@@ -237,7 +227,10 @@ class ScannerService:
         style = self.style_classifier(content)
 
         if style is DocStyle.NOT_ENDPOINT:
-            return None
+            return _DocumentOutcome(
+                document_result=DocumentScanResult(document=Document(path=path)),
+                section_results=[],
+            )
 
         if style is DocStyle.S3_COMPATIBLE:
             return _DocumentOutcome(

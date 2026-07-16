@@ -23,7 +23,6 @@ class RepositoryScanResult(BaseModel):
     document_results: list[DocumentScanResult] = Field(default_factory=list)
     section_results: list[SectionScanResult] = Field(default_factory=list)
 
-    non_endpoint_documents: list[str] = Field(default_factory=list)
     excluded_documents: list[str] = Field(default_factory=list)
 
     incomplete: bool = False

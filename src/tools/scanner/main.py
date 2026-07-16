@@ -157,7 +157,7 @@ def _print_human_summary(
     logger.info("  Total repos discovered : %d", result.total_repos)
     logger.info("  Eligible (%s)   : %d", api_ref_path, result.eligible_repos)
     logger.info("  Skipped repos          : %d", len(result.skipped_repos))
-    logger.info("  Total API documents    : %d", result.total_documents)
+    logger.info("  Total scanned documents: %d", result.total_documents)
     for status in OverallStatus:
         if status.value in status_counts:
             logger.info("  %-22s : %d", status.value, status_counts[status.value])

@@ -234,7 +234,6 @@ def test_scan_repository_returns_ineligible_without_scanning() -> None:
     assert not isinstance(result.repository, Service)
     assert result.error is None
     assert result.document_results == []
-    assert result.non_endpoint_documents == []
     assert result.excluded_documents == []
     assert fake.calls == [
         "get_commit_hash:o/empty@main",
@@ -410,7 +409,7 @@ def test_obs_marked_unsupported() -> None:
     assert not isinstance(doc.document, Endpoint)
 
 
-def test_non_endpoint_recorded() -> None:
+def test_non_endpoint_materialized_as_document() -> None:
     fake = FakeDocProvider(
         repos={
             "o/svc": {
@@ -422,9 +421,18 @@ def test_non_endpoint_recorded() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
-    assert repo.non_endpoint_documents == ["api-ref/source/intro.rst"]
-    assert len(repo.document_results) == 1
-    assert repo.document_results[0].document.path == "api-ref/source/real.rst"
+    assert "non_endpoint_documents" not in RepositoryScanResult.model_fields
+    assert len(repo.document_results) == 2
+    documents = {
+        document_result.document.path: document_result
+        for document_result in repo.document_results
+    }
+    intro = documents["api-ref/source/intro.rst"]
+    assert not isinstance(intro.document, Endpoint)
+    assert intro.failure_reason is None
+    assert isinstance(documents["api-ref/source/real.rst"].document, Endpoint)
+    assert result.total_documents == 2
+    assert result.quality_summary.by_overall_status == {"ok": 1}
 
 
 def test_fetch_failure_is_gating() -> None:
@@ -476,7 +484,6 @@ def test_endpoint_doc_without_uri_is_failed() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
-    assert repo.non_endpoint_documents == []
     doc = repo.document_results[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.NO_URI_MATCH
@@ -503,7 +510,6 @@ def test_excluded_segments_drop_paths() -> None:
         "out-of-date_apis" not in result.document.path
         for result in repo.document_results
     )
-    assert "out-of-date_apis" not in str(repo.non_endpoint_documents)
     assert repo.excluded_documents == ["api-ref/source/out-of-date_apis/old.rst"]
 
 

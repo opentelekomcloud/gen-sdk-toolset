@@ -52,11 +52,13 @@ def _document_section_results(
 
 def _doc_overall_status(
     doc: DocumentScanResult, section_results: _SectionResultIndex
-) -> OverallStatus:
+) -> OverallStatus | None:
     if doc.failure_reason is not None:
         if doc.failure_reason.code is IssueCode.UNSUPPORTED_DOC_STYLE:
             return OverallStatus.UNSUPPORTED
         return OverallStatus.FAILED
+    if not isinstance(doc.document, Endpoint):
+        return None
 
     degrading = {SectionStatus.PARTIAL, SectionStatus.FAILED, SectionStatus.SKIPPED}
     sections = _document_section_results(doc, section_results)
@@ -67,7 +69,7 @@ def _doc_overall_status(
 
 def doc_overall_status(
     doc: DocumentScanResult, section_results: Iterable[SectionScanResult]
-) -> OverallStatus:
+) -> OverallStatus | None:
     return _doc_overall_status(doc, _index_section_results(section_results))
 
 
@@ -120,9 +122,10 @@ def count_by_status(
     docs: Iterable[DocumentScanResult], section_results: Iterable[SectionScanResult]
 ) -> dict[str, int]:
     section_results_by_key = _index_section_results(section_results)
-    return dict(
-        Counter(_doc_overall_status(doc, section_results_by_key).value for doc in docs)
+    statuses = (
+        _doc_overall_status(doc, section_results_by_key) for doc in docs
     )
+    return dict(Counter(status.value for status in statuses if status is not None))
 
 
 def count_by_version(repos: Iterable[RepositoryScanResult]) -> dict[str, int]:
@@ -148,7 +151,9 @@ def compute_quality_summary(repos: Iterable[RepositoryScanResult]) -> QualitySum
             ] += 1
 
         for doc in repo.document_results:
-            by_overall[_doc_overall_status(doc, section_results_by_key).value] += 1
+            status = _doc_overall_status(doc, section_results_by_key)
+            if status is not None:
+                by_overall[status.value] += 1
             for issue in _doc_all_issues(doc, section_results_by_key):
                 issue_counter[issue.code.value] += 1
 

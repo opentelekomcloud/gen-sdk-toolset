@@ -1,6 +1,13 @@
 from tools.domain.report import OrgScanResult
-from tools.domain.report.analytics import doc_all_issues
-from tools.shared.ir import Endpoint, HttpMethod, Section, SectionName, Service
+from tools.domain.report.analytics import doc_all_issues, doc_overall_status
+from tools.shared.ir import (
+    Document,
+    Endpoint,
+    HttpMethod,
+    Section,
+    SectionName,
+    Service,
+)
 from tools.shared.report import (
     DocumentScanResult,
     Issue,
@@ -74,3 +81,9 @@ def test_doc_all_issues_prefixes_location_with_section_value() -> None:
     issues = doc_all_issues(result.document_results[0], result.section_results)
 
     assert issues[0].location == "body/row 1"
+
+
+def test_non_endpoint_document_has_no_endpoint_quality_status() -> None:
+    document = DocumentScanResult(document=Document(path="api-ref/source/intro.rst"))
+
+    assert doc_overall_status(document, []) is None

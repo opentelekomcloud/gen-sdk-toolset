@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from tools.shared.ir import Service
+from tools.shared.ir import Endpoint, Service
 from tools.shared.report import RepositoryScanResult
 
 EXAMPLE_PATH = (
@@ -25,3 +25,9 @@ def test_repo_scan_example_is_a_complete_scan_snapshot() -> None:
     assert isinstance(result.repository, Service)
     assert result.document_results
     assert result.section_results
+    assert "non_endpoint_documents" not in payload
+    assert any(
+        not isinstance(document_result.document, Endpoint)
+        and document_result.failure_reason is None
+        for document_result in result.document_results
+    )

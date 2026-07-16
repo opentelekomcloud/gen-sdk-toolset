@@ -79,7 +79,6 @@ def test_repository_scan_result_restores_service_subclass() -> None:
             }
             for section in section_payloads
         ],
-        "non_endpoint_documents": [],
         "excluded_documents": [],
         "incomplete": False,
         "incomplete_reason": None,

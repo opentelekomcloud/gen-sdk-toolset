@@ -133,6 +133,9 @@ embedded in the JSON — they are computed by the pure functions in
   endpoint documents are represented by `Endpoint(Document)` and contain
   their extracted `Section` records. The `kind` discriminator identifies each
   polymorphic entity as `repository`, `service`, `document`, or `endpoint`.
+  A plain `Document` without a failure is a successfully scanned non-endpoint;
+  this classification is derived from the entity and is not stored in a
+  parallel `non_endpoint_documents` field.
 
 - **Scan results** are separate from entity data:
   - `RepositoryScanResult.repository` references the repository or service;
