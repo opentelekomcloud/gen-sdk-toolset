@@ -100,7 +100,7 @@ def _doc_all_issues(
         issues.append(doc.failure_reason)
     for result in _document_section_results(doc, section_results):
         for issue in result.issues:
-            name = result.section.name
+            name = result.section.name.value
             location = f"{name}/{issue.location}" if issue.location else name
             issues.append(issue.model_copy(update={"location": location}))
     return issues

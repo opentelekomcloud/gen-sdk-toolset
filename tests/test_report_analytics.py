@@ -1,4 +1,5 @@
 from tools.domain.report import OrgScanResult
+from tools.domain.report.analytics import doc_all_issues
 from tools.shared.ir import Endpoint, HttpMethod, Section, SectionName, Service
 from tools.shared.report import (
     DocumentScanResult,
@@ -61,3 +62,15 @@ def test_quality_summary_keeps_same_document_paths_isolated_by_repository() -> N
     assert result.quality_summary.top_issues == [
         {"code": "unexpected_columns", "count": 1}
     ]
+
+
+def test_doc_all_issues_prefixes_location_with_section_value() -> None:
+    result = _repository_result(
+        "example/service",
+        SectionStatus.PARTIAL,
+        [Issue(code=IssueCode.UNEXPECTED_COLUMNS, location="row 1")],
+    )
+
+    issues = doc_all_issues(result.document_results[0], result.section_results)
+
+    assert issues[0].location == "body/row 1"
