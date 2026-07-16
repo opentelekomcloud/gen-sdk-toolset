@@ -1,40 +1,29 @@
-"""Per-document scan result form (data only).
+from pydantic import BaseModel, field_serializer, field_validator, model_validator
+from typing_extensions import Self
 
-Derived views — overall status, completeness, the flat issue list —
-are computed by functions in ``tools.domain.report.analytics``.
-"""
-
-from __future__ import annotations
-
-from pydantic import BaseModel, Field
-
-from tools.shared.ir import HttpMethod
+from tools.shared.ir import Document, Endpoint
 from tools.shared.report.issue import Issue
-from tools.shared.report.section import SectionScanResult
 
 
 class DocumentScanResult(BaseModel):
-    """Scan verdict + extracted data for one RST document.
+    """Document-level outcome of a scan."""
 
-    The model carries either a single gating ``failure_reason`` (no
-    sections then) or per-section ``sections`` results (with possibly
-    several issues across them).
-    """
-
-    document: str
-    repo: str
-
-    # Gating data — populated only when gating succeeded.
-    method: HttpMethod | None = None
-    uri: str | None = None
-    title: str | None = None
-    api_version: str | None = None
-
-    # At-most-one gating failure (gating is sequential, so multi-gating
-    # failures are structurally impossible — see :class:`IssueCode`).
+    document: Document
     failure_reason: Issue | None = None
 
-    # Per-content-section results. Keys come from SECTION_NAMES. Sections
-    # not present in the doc are omitted from the dict (their absence
-    # equals SectionStatus.MISSING for accounting purposes).
-    sections: dict[str, SectionScanResult] = Field(default_factory=dict)
+    @field_validator("document", mode="before")
+    @classmethod
+    def restore_endpoint(cls, value):
+        if isinstance(value, dict) and "method" in value and "uri" in value:
+            return Endpoint.model_validate(value)
+        return value
+
+    @field_serializer("document")
+    def serialize_document(self, document: Document) -> dict:
+        return document.model_dump(mode="json")
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> Self:
+        if isinstance(self.document, Endpoint) and self.failure_reason is not None:
+            raise ValueError("a recognized endpoint cannot have a gating failure")
+        return self

@@ -1,16 +1,22 @@
-from pydantic import BaseModel, Field
+from pydantic import Field, model_validator
+from typing_extensions import Self
 
+from .document import Document
 from .enums import HttpMethod
-from .parameter import Parameter
+from .section import Section
 
 
-class Endpoint(BaseModel):
-    title: str = ""
-    description: str = ""
-    api_version: str = ""
+class Endpoint(Document):
     method: HttpMethod
-    path: str
-    path_parameters: list[Parameter] = Field(default_factory=list)
-    query_parameters: list[Parameter] = Field(default_factory=list)
-    request_body: list[Parameter] = Field(default_factory=list)
-    response_body: list[Parameter] = Field(default_factory=list)
+    uri: str
+    api_version: str | None = None
+    sections: list[Section] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_sections(self) -> Self:
+        names = [section.name for section in self.sections]
+        if len(names) != len(set(names)):
+            raise ValueError("endpoint section names must be unique")
+        if any(section.endpoint_path != self.path for section in self.sections):
+            raise ValueError("section endpoint_path must match endpoint path")
+        return self

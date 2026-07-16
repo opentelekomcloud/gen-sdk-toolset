@@ -7,6 +7,7 @@ from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
 from tools.shared.exceptions import ProviderError, ProviderErrorKind
+from tools.shared.ir import Endpoint
 from tools.shared.report import IssueCode
 from tools.shared.repository import RepositoryInterruptionKind
 
@@ -351,20 +352,23 @@ def test_style_a_populates_sections() -> None:
     )
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
-    docs = result.repos[0].documents
+    repo = result.repos[0]
+    docs = repo.documents
     assert len(docs) == 1
     doc = docs[0]
     assert doc.failure_reason is None
     # CCE's `metadata` object resolves to its struct table, so the doc is fully
     # extracted now (no deferred-nesting partial) and emits no nested_objects.
-    assert doc_overall_status(doc) == "ok"
-    assert "path_params" in doc.sections
-    assert "body" in doc.sections
-    assert "nested_objects" not in doc.sections
-    metadata = doc.sections["body"].section.parameters[0]
+    assert doc_overall_status(doc, repo.section_results) == "ok"
+    assert isinstance(doc.document, Endpoint)
+    sections = {section.name: section for section in doc.document.sections}
+    assert "path_params" in sections
+    assert "body" in sections
+    assert "nested_objects" not in sections
+    metadata = sections["body"].parameters[0]
     assert metadata.name == "metadata"
     assert [c.name for c in metadata.children] == ["name"]
-    assert doc.api_version == "v3"
+    assert doc.document.api_version == "v3"
 
 
 def test_obs_marked_unsupported() -> None:
@@ -373,11 +377,12 @@ def test_obs_marked_unsupported() -> None:
     )
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
-    doc = result.repos[0].documents[0]
+    repo = result.repos[0]
+    doc = repo.documents[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.UNSUPPORTED_DOC_STYLE
-    assert doc_overall_status(doc) == "unsupported"
-    assert doc.sections == {}
+    assert doc_overall_status(doc, repo.section_results) == "unsupported"
+    assert not isinstance(doc.document, Endpoint)
 
 
 def test_non_endpoint_recorded() -> None:
@@ -394,7 +399,7 @@ def test_non_endpoint_recorded() -> None:
     repo = result.repos[0]
     assert repo.non_endpoint_documents == ["api-ref/source/intro.rst"]
     assert len(repo.documents) == 1
-    assert repo.documents[0].document == "api-ref/source/real.rst"
+    assert repo.documents[0].document.path == "api-ref/source/real.rst"
 
 
 def test_fetch_failure_is_gating() -> None:
@@ -407,10 +412,11 @@ def test_fetch_failure_is_gating() -> None:
     )
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
-    doc = result.repos[0].documents[0]
+    repo = result.repos[0]
+    doc = repo.documents[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.FETCH_FAILED
-    assert doc_overall_status(doc) == "failed"
+    assert doc_overall_status(doc, repo.section_results) == "failed"
 
 
 def test_parser_crash_is_parser_error() -> None:
@@ -426,10 +432,11 @@ def test_parser_crash_is_parser_error() -> None:
     )
     scanner = make_scanner(fake, parser=CrashingParser())
     result = scanner.scan_organization(org="o")
-    doc = result.repos[0].documents[0]
+    repo = result.repos[0]
+    doc = repo.documents[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.PARSER_ERROR
-    assert doc_overall_status(doc) == "failed"
+    assert doc_overall_status(doc, repo.section_results) == "failed"
 
 
 def test_endpoint_doc_without_uri_is_failed() -> None:
@@ -448,7 +455,7 @@ def test_endpoint_doc_without_uri_is_failed() -> None:
     doc = repo.documents[0]
     assert doc.failure_reason is not None
     assert doc.failure_reason.code is IssueCode.NO_URI_MATCH
-    assert doc_overall_status(doc) == "failed"
+    assert doc_overall_status(doc, repo.section_results) == "failed"
 
 
 # --------------------------------------------------------------------------- #
@@ -467,7 +474,7 @@ def test_excluded_segments_drop_paths() -> None:
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
     # Excluded file is not parsed, not counted as a non_endpoint doc...
-    assert all("out-of-date_apis" not in d.document for d in repo.documents)
+    assert all("out-of-date_apis" not in d.document.path for d in repo.documents)
     assert "out-of-date_apis" not in str(repo.non_endpoint_documents)
     assert repo.excluded_documents == ["api-ref/source/out-of-date_apis/old.rst"]
 

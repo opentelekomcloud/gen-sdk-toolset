@@ -7,8 +7,7 @@ a small, stable set of :class:`SectionKind` values.
 
 Within a section, individual parameter tables also have varying titles
 ("Path Parameters" / "URI parameter" / "Parameter description", etc.).
-The table-title classifier maps them into the canonical section-name
-keys consumed by ``DocumentScanResult.sections``.
+The table-title classifier maps them into canonical section names.
 """
 
 from __future__ import annotations
@@ -74,7 +73,7 @@ def classify_section_title(title: str) -> SectionKind:
 
 
 # --------------------------------------------------------------------------- #
-# Table title → canonical section key (used as DocumentScanResult.sections key)
+# Table title → canonical section name
 # --------------------------------------------------------------------------- #
 # Internal marker for status-code tables: recognised so we don't misfile
 # them, but they are not parameter tables, so the classifier returns None.

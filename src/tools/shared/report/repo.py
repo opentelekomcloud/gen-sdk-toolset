@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from tools import __version__ as _SCANNER_VERSION
 from tools.shared.report.document import DocumentScanResult
+from tools.shared.report.section import SectionScanResult
 from tools.shared.repository import RepositoryInterruption
 
 
@@ -18,6 +19,7 @@ class RepoScanResult(BaseModel):
     scanner_version: str = _SCANNER_VERSION
 
     documents: list[DocumentScanResult] = Field(default_factory=list)
+    section_results: list[SectionScanResult] = Field(default_factory=list)
 
     non_endpoint_documents: list[str] = Field(default_factory=list)
 

@@ -42,5 +42,6 @@ class OrgScanResult(BaseModel):
     def quality_summary(self) -> QualitySummary:
         """Compute the org-wide quality roll-up from per-doc results."""
         return analytics.compute_quality_summary(
-            d for r in self.repos for d in r.documents
+            (document for repo in self.repos for document in repo.documents),
+            (result for repo in self.repos for result in repo.section_results),
         )

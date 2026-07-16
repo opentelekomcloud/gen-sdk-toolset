@@ -15,22 +15,26 @@ def parser() -> DocutilsParser:
     return DocutilsParser()
 
 
+def _sections(parsed) -> dict:
+    return {result.section.name: result for result in parsed.section_results}
+
+
 # --------------------------------------------------------------------------- #
 # CCE — modern grid tables, simple :ref: targets, request header + body
 # --------------------------------------------------------------------------- #
 def test_cce_gating(parser: DocutilsParser, cce_doc: str) -> None:
     parsed = parser.parse(cce_doc, "fixtures/cce.rst")
-    assert parsed.method is HttpMethod.PUT
-    assert parsed.uri == (
+    assert parsed.endpoint.method is HttpMethod.PUT
+    assert parsed.endpoint.uri == (
         "/api/v3/projects/{project_id}/clusters/{cluster_id}/nodes/{node_id}"
     )
-    assert parsed.title == "Updating a Specified Node"
-    assert parsed.api_version == "v3"
+    assert parsed.endpoint.title == "Updating a Specified Node"
+    assert parsed.endpoint.api_version == "v3"
 
 
 def test_cce_path_params(parser: DocutilsParser, cce_doc: str) -> None:
     parsed = parser.parse(cce_doc, "fixtures/cce.rst")
-    sec = parsed.sections["path_params"]
+    sec = _sections(parsed)["path_params"]
     assert sec.status is SectionStatus.OK
     names = [p.name for p in sec.section.parameters]
     assert names == ["project_id", "cluster_id", "node_id"]
@@ -41,7 +45,7 @@ def test_cce_body_excludes_struct_table(parser: DocutilsParser, cce_doc: str) ->
     """The 'Data structure of metadata field' table should NOT be merged
     into the body — only the top-level body table contributes."""
     parsed = parser.parse(cce_doc, "fixtures/cce.rst")
-    sec = parsed.sections["body"]
+    sec = _sections(parsed)["body"]
     names = [p.name for p in sec.section.parameters]
     assert names == ["metadata"]
     assert sec.section.parameters[0].param_type is ParameterType.OBJECT
@@ -49,7 +53,7 @@ def test_cce_body_excludes_struct_table(parser: DocutilsParser, cce_doc: str) ->
 
 def test_cce_headers(parser: DocutilsParser, cce_doc: str) -> None:
     parsed = parser.parse(cce_doc, "fixtures/cce.rst")
-    sec = parsed.sections["headers"]
+    sec = _sections(parsed)["headers"]
     names = [p.name for p in sec.section.parameters]
     assert "X-Auth-Token" in names
     assert "Content-Type" in names
@@ -60,31 +64,32 @@ def test_cce_headers(parser: DocutilsParser, cce_doc: str) -> None:
 # --------------------------------------------------------------------------- #
 def test_vpc_gating(parser: DocutilsParser, vpc_doc: str) -> None:
     parsed = parser.parse(vpc_doc, "fixtures/vpc.rst")
-    assert parsed.method is HttpMethod.POST
-    assert parsed.uri == "/v3/{project_id}/vpc/firewalls"
-    assert parsed.api_version == "v3"
+    assert parsed.endpoint.method is HttpMethod.POST
+    assert parsed.endpoint.uri == "/v3/{project_id}/vpc/firewalls"
+    assert parsed.endpoint.api_version == "v3"
 
 
 def test_vpc_body_top_level_only(parser: DocutilsParser, vpc_doc: str) -> None:
     """Body has just firewall + dry_run; CreateFirewallOption is a
     struct definition (nested_struct) and must not inflate the body."""
     parsed = parser.parse(vpc_doc, "fixtures/vpc.rst")
-    sec = parsed.sections["body"]
+    sec = _sections(parsed)["body"]
     names = [p.name for p in sec.section.parameters]
     assert names == ["firewall", "dry_run"]
 
 
 def test_vpc_response_top_level_only(parser: DocutilsParser, vpc_doc: str) -> None:
     parsed = parser.parse(vpc_doc, "fixtures/vpc.rst")
-    sec = parsed.sections["response"]
+    sec = _sections(parsed)["response"]
     names = [p.name for p in sec.section.parameters]
     assert names == ["firewall", "request_id"]
 
 
 def test_vpc_has_examples(parser: DocutilsParser, vpc_doc: str) -> None:
     parsed = parser.parse(vpc_doc, "fixtures/vpc.rst")
-    assert len(parsed.sections["example_request"].section.examples) >= 1
-    assert len(parsed.sections["example_response"].section.examples) >= 1
+    sections = _sections(parsed)
+    assert len(sections["example_request"].section.examples) >= 1
+    assert len(sections["example_response"].section.examples) >= 1
 
 
 # --------------------------------------------------------------------------- #
@@ -92,7 +97,7 @@ def test_vpc_has_examples(parser: DocutilsParser, vpc_doc: str) -> None:
 # --------------------------------------------------------------------------- #
 def test_kms_simple_table(parser: DocutilsParser, kms_doc: str) -> None:
     parsed = parser.parse(kms_doc, "fixtures/kms.rst")
-    sec = parsed.sections["body"]
+    sec = _sections(parsed)["body"]
     names = [p.name for p in sec.section.parameters]
     assert names == ["key_id", "grant_id", "sequence"]
     assert sec.section.parameters[0].mandatory is True
@@ -103,9 +108,10 @@ def test_kms_bulleted_examples(parser: DocutilsParser, kms_doc: str) -> None:
     """The combined 'Example' section splits bullets by label
     (-  Example request / -  Example response)."""
     parsed = parser.parse(kms_doc, "fixtures/kms.rst")
-    assert "example_request" in parsed.sections
-    assert "example_response" in parsed.sections
-    req = parsed.sections["example_request"].section.examples[0]
+    sections = _sections(parsed)
+    assert "example_request" in sections
+    assert "example_response" in sections
+    req = sections["example_request"].section.examples[0]
     assert req.raw
     assert req.parsed is not None
     assert "key_id" in req.parsed
@@ -116,7 +122,7 @@ def test_kms_bulleted_examples(parser: DocutilsParser, kms_doc: str) -> None:
 # --------------------------------------------------------------------------- #
 def test_iam_strips_ref_in_name(parser: DocutilsParser, iam_doc: str) -> None:
     parsed = parser.parse(iam_doc, "fixtures/iam.rst")
-    sec = parsed.sections["body"]
+    sec = _sections(parsed)["body"]
     assert sec.section.parameters[0].name == "protect_policy"
 
 
@@ -144,14 +150,15 @@ def test_elb_list_separates_path_and_query(
     parsed = parser.parse(elb_list_doc, "fixtures/elb.rst")
 
     # Host-form URI is recognised and stored without the host.
-    assert parsed.method is HttpMethod.GET
-    assert parsed.uri == "/v3/{project_id}/elb/pools"
+    assert parsed.endpoint.method is HttpMethod.GET
+    assert parsed.endpoint.uri == "/v3/{project_id}/elb/pools"
 
+    sections = _sections(parsed)
     path_names = [
-        p.name for p in parsed.sections["path_params"].section.parameters
+        p.name for p in sections["path_params"].section.parameters
     ]
     query_names = [
-        p.name for p in parsed.sections["query_params"].section.parameters
+        p.name for p in sections["query_params"].section.parameters
     ]
 
     assert path_names == ["project_id"]
@@ -164,7 +171,7 @@ def test_elb_list_separates_path_and_query(
 
 def test_elb_query_section_present(parser: DocutilsParser, elb_list_doc: str) -> None:
     parsed = parser.parse(elb_list_doc, "fixtures/elb.rst")
-    assert "query_params" in parsed.sections
+    assert "query_params" in _sections(parsed)
 
 
 # --------------------------------------------------------------------------- #
@@ -173,7 +180,7 @@ def test_elb_query_section_present(parser: DocutilsParser, elb_list_doc: str) ->
 def test_field_metrics_sum(parser: DocutilsParser, vpc_doc: str) -> None:
     """fields_recognized + fields_unknown_type + fields_failed == fields_total."""
     parsed = parser.parse(vpc_doc, "fixtures/vpc.rst")
-    for sec in parsed.sections.values():
+    for sec in parsed.section_results:
         assert (
             sec.fields_recognized + sec.fields_unknown_type + sec.fields_failed
             == sec.fields_total
@@ -202,7 +209,10 @@ def test_parser_section_keys_are_canonical(
     }
     produced: set[str] = set()
     for path, content in docs.items():
-        produced.update(parser.parse(content, path).sections)
+        produced.update(
+            result.section.name
+            for result in parser.parse(content, path).section_results
+        )
 
     assert produced, "fixtures should exercise at least one section"
     off_canon = produced - set(SECTION_NAMES)
@@ -217,7 +227,7 @@ def test_two_body_tables_merge(
     parser: DocutilsParser, two_body_tables_doc: str
 ) -> None:
     parsed = parser.parse(two_body_tables_doc, "api-ref/source/v1/create.rst")
-    body = parsed.sections["body"]
+    body = _sections(parsed)["body"]
     assert [p.name for p in body.section.parameters] == ["name", "age"]
     # Field-level metrics are summed across the merged tables, not overwritten.
     assert body.fields_total == 2
@@ -238,6 +248,7 @@ def test_example_extend_invalid_json_degrades() -> None:
     _set_example_section(
         results,
         SECTION_EXAMPLE_REQUEST,
+        "example.rst",
         [Example(raw='{"a": 1}', parsed={"a": 1})],
     )
     assert results[SECTION_EXAMPLE_REQUEST].status is SectionStatus.OK
@@ -246,6 +257,7 @@ def test_example_extend_invalid_json_degrades() -> None:
     _set_example_section(
         results,
         SECTION_EXAMPLE_REQUEST,
+        "example.rst",
         [Example(raw="not json", parsed=None)],
     )
     sec = results[SECTION_EXAMPLE_REQUEST]

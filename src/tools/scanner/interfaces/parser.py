@@ -12,7 +12,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field
 
-from tools.shared.ir import HttpMethod
+from tools.shared.ir import Endpoint
 from tools.shared.report.section import SectionScanResult
 
 
@@ -25,11 +25,8 @@ class ParsedDocument(BaseModel):
     scanner layer, *before* the parser is invoked.
     """
 
-    method: HttpMethod
-    uri: str
-    title: str | None = None
-    api_version: str | None = None
-    sections: dict[str, SectionScanResult] = Field(default_factory=dict)
+    endpoint: Endpoint
+    section_results: list[SectionScanResult] = Field(default_factory=list)
 
 
 class RstParser(Protocol):

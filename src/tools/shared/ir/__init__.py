@@ -1,3 +1,4 @@
+from .document import Document
 from .endpoint import Endpoint
 from .enums import HttpMethod, ParameterType
 from .example import Example
@@ -8,6 +9,7 @@ from .service import Service
 __all__ = [
     "HttpMethod",
     "ParameterType",
+    "Document",
     "Endpoint",
     "Parameter",
     "Example",

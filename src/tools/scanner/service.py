@@ -1,12 +1,14 @@
 import logging
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 
 from tools.domain.report import OrgScanResult, analytics
 from tools.scanner.eligibility import check_repository_eligibility
 from tools.scanner.interfaces import DocProvider, RstParser
 from tools.scanner.parsers.docutils.style import DocStyle
 from tools.shared.exceptions import ParseFailure, ProviderError
+from tools.shared.ir import Document, Endpoint
 from tools.shared.report import (
     UNVERSIONED_KEY,
     DocumentScanResult,
@@ -14,9 +16,16 @@ from tools.shared.report import (
     IssueCode,
     OverallStatus,
     RepoScanResult,
+    SectionScanResult,
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _DocumentOutcome:
+    document_result: DocumentScanResult
+    section_results: list[SectionScanResult]
 
 
 class ScannerService:
@@ -147,40 +156,51 @@ class ScannerService:
                 result.non_endpoint_documents.append(path)
                 continue
 
-            result.documents.append(outcome)
-            if analytics.doc_overall_status(outcome) in (
+            document_result = outcome.document_result
+            result.documents.append(document_result)
+            result.section_results.extend(outcome.section_results)
+            if analytics.doc_overall_status(
+                document_result, outcome.section_results
+            ) in (
                 OverallStatus.OK,
                 OverallStatus.PARTIAL,
             ):
-                key = outcome.api_version or UNVERSIONED_KEY
-                result.documents_by_version.setdefault(key, []).append(outcome)
+                endpoint = document_result.document
+                if not isinstance(endpoint, Endpoint):
+                    continue
+                key = endpoint.api_version or UNVERSIONED_KEY
+                result.documents_by_version.setdefault(key, []).append(
+                    document_result
+                )
 
         return result
 
     def _process_document(
         self, repo: str, path: str, branch: str
-    ) -> DocumentScanResult | None:
+    ) -> _DocumentOutcome | None:
         """Fetch, classify and parse a document.
 
         Returns ``None`` for non-endpoint docs (intro / conceptual pages)
         — these surface in :attr:`RepoScanResult.non_endpoint_documents`
         rather than as failure entries.
 
-        For endpoint docs, returns a :class:`DocumentScanResult` that
-        will have either a populated ``sections`` dict (success) or a
-        single ``failure_reason`` (gating failure or unsupported style).
+        Endpoint data and section results remain separate in the returned
+        outcome. Gating failures produce a plain ``Document`` with a failure
+        reason and no section results.
         """
         try:
             content = self.doc_provider.fetch_content(repo, path, branch)
         except Exception as e:
             logger.warning("Fetch failed for %s/%s: %s", repo, path, e)
-            return DocumentScanResult(
-                document=path,
-                repo=repo,
-                failure_reason=Issue(
-                    code=IssueCode.FETCH_FAILED,
-                    details=str(e),
+            return _DocumentOutcome(
+                document_result=DocumentScanResult(
+                    document=Document(path=path),
+                    failure_reason=Issue(
+                        code=IssueCode.FETCH_FAILED,
+                        details=str(e),
+                    ),
                 ),
+                section_results=[],
             )
 
         style = self.style_classifier(content)
@@ -189,43 +209,44 @@ class ScannerService:
             return None
 
         if style is DocStyle.S3_COMPATIBLE:
-            return DocumentScanResult(
-                document=path,
-                repo=repo,
-                failure_reason=Issue(
-                    code=IssueCode.UNSUPPORTED_DOC_STYLE,
-                    details="S3-style doc (Request Syntax / Sample Request layout)",
+            return _DocumentOutcome(
+                document_result=DocumentScanResult(
+                    document=Document(path=path),
+                    failure_reason=Issue(
+                        code=IssueCode.UNSUPPORTED_DOC_STYLE,
+                        details="S3-style doc (Request Syntax / Sample Request layout)",
+                    ),
                 ),
+                section_results=[],
             )
 
         try:
             parsed = self.parser.parse(content, path)
         except ParseFailure as e:
             logger.warning("Parse failed for %s/%s: %s", repo, path, e)
-            return DocumentScanResult(
-                document=path,
-                repo=repo,
-                failure_reason=e.issue,
+            return _DocumentOutcome(
+                document_result=DocumentScanResult(
+                    document=Document(path=path),
+                    failure_reason=e.issue,
+                ),
+                section_results=[],
             )
         except Exception as e:
             logger.exception("Unexpected parser error for %s/%s", repo, path)
-            return DocumentScanResult(
-                document=path,
-                repo=repo,
-                failure_reason=Issue(
-                    code=IssueCode.PARSER_ERROR,
-                    details=f"parser raised: {e}",
+            return _DocumentOutcome(
+                document_result=DocumentScanResult(
+                    document=Document(path=path),
+                    failure_reason=Issue(
+                        code=IssueCode.PARSER_ERROR,
+                        details=f"parser raised: {e}",
+                    ),
                 ),
+                section_results=[],
             )
 
-        return DocumentScanResult(
-            document=path,
-            repo=repo,
-            method=parsed.method,
-            uri=parsed.uri,
-            title=parsed.title,
-            api_version=parsed.api_version,
-            sections=parsed.sections,
+        return _DocumentOutcome(
+            document_result=DocumentScanResult(document=parsed.endpoint),
+            section_results=parsed.section_results,
         )
 
     def _is_excluded(self, path: str) -> bool:
