@@ -19,10 +19,10 @@ class SectionScanResult(BaseModel):
     status: SectionStatus
     issues: list[Issue] = Field(default_factory=list)
 
-    fields_total: int = 0
-    fields_recognized: int = 0
-    fields_unknown_type: int = 0
-    fields_failed: int = 0
+    fields_total: int = Field(default=0, ge=0)
+    fields_recognized: int = Field(default=0, ge=0)
+    fields_unknown_type: int = Field(default=0, ge=0)
+    fields_failed: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def validate_field_metrics(self) -> Self:
@@ -34,4 +34,9 @@ class SectionScanResult(BaseModel):
                 "section field metrics must add up to fields_total: "
                 f"{accounted} != {self.fields_total}"
             )
+        if self.status is SectionStatus.MISSING:
+            if self.section.parameters or self.section.examples:
+                raise ValueError("a missing section cannot contain extracted data")
+            if self.fields_total:
+                raise ValueError("a missing section cannot contain field metrics")
         return self
