@@ -21,7 +21,7 @@ class Endpoint(Document):
         if len(names) != len(set(names)):
             raise ValueError("endpoint section names must be unique")
         if set(names) != set(SectionName):
-            raise ValueError("endpoint must contain all seven sections")
+            raise ValueError(f"endpoint must contain all {len(SectionName)} sections")
         if self.scan_result is not None and self.scan_result.failure_reason is not None:
             raise ValueError("a recognized endpoint cannot have a gating failure")
         return self

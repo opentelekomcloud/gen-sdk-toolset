@@ -128,7 +128,7 @@ def test_section_does_not_repeat_endpoint_path() -> None:
 
 
 def test_endpoint_requires_all_seven_sections() -> None:
-    with pytest.raises(ValidationError, match="all seven sections"):
+    with pytest.raises(ValidationError, match=f"all {len(SectionName)} sections"):
         Endpoint(
             path="api-ref/source/create.rst",
             method=HttpMethod.POST,

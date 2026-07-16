@@ -52,29 +52,6 @@ def doc_overall_status(document: Document) -> OverallStatus | None:
     return OverallStatus.OK
 
 
-def doc_completeness(document: Document) -> float | None:
-    if document.scan_result is None or document.scan_result.failure_reason is not None:
-        return None
-
-    sections = _document_sections(document)
-    total = sum(section.scan_result.fields_total for section in sections)
-    if total > 0:
-        recognized = sum(section.scan_result.fields_recognized for section in sections)
-        return recognized / total
-
-    present = [
-        section
-        for section in sections
-        if section.scan_result.status is not SectionStatus.MISSING
-    ]
-    if not present:
-        return None
-    ok_count = sum(
-        1 for section in present if section.scan_result.status is SectionStatus.OK
-    )
-    return ok_count / len(present)
-
-
 def doc_all_issues(document: Document) -> list[Issue]:
     issues: list[Issue] = []
     if document.scan_result is None:
@@ -91,13 +68,6 @@ def doc_all_issues(document: Document) -> list[Issue]:
 
 def count_documents(documents: Sequence[Document]) -> int:
     return len(documents)
-
-
-def count_by_status(
-    documents: Iterable[Document],
-) -> dict[str, int]:
-    statuses = (doc_overall_status(document) for document in documents)
-    return dict(Counter(status.value for status in statuses if status is not None))
 
 
 def count_by_version(repos: Iterable[RepositoryScanResult]) -> dict[str, int]:

@@ -34,6 +34,9 @@ _REPOSITORY_EXPORTS = {
 
 
 def __getattr__(name: str) -> Any:
+    # RepositoryScanResult depends on IR, while IR entities embed the eagerly
+    # exported document/section scan results. Defer only repository-level
+    # exports to keep the public facade without creating an import cycle.
     if name not in _REPOSITORY_EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

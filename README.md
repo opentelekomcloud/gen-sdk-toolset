@@ -122,9 +122,10 @@ instead includes a diagnostic `error` and exits non-zero.
 ### Output
 
 Repository mode produces one raw `RepositoryScanResult`. Legacy organization mode
-produces a quality report (`report_schema_version: 5`) containing repository
-results. Since schema v5 both forms carry **data only**: derived views
-(per-document overall status, completeness, flat issue lists) are no longer
+produces a quality report (`report_schema_version: 1`) containing repository
+results. During MVP the schema version remains `1`; version bumps start after the
+contract is stabilized. Both forms carry **data only**: derived views
+(per-document overall status and flat issue lists) are no longer
 embedded in the JSON — they are computed by the pure functions in
 `tools.domain.report.analytics`.
 

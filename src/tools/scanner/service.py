@@ -123,6 +123,8 @@ class ScannerService:
             listing = self.doc_provider.list_files(repo, ref)
         except ProviderError as e:
             logger.error("Failed to list files for %s: %s", repo, e)
+            # Eligibility succeeded before listing failed, so the repository is
+            # still a Service even though this scan produced no documents.
             return RepositoryScanResult(
                 repository=Service(repo=repo),
                 branch=branch,
@@ -146,8 +148,11 @@ class ScannerService:
                 repo,
             )
 
-        included_paths = [p for p in unique_paths if not self._is_excluded(p)]
-        excluded_documents = [p for p in unique_paths if self._is_excluded(p)]
+        included_paths: list[str] = []
+        excluded_documents: list[str] = []
+        for path in unique_paths:
+            target = excluded_documents if self._is_excluded(path) else included_paths
+            target.append(path)
         if excluded_documents:
             logger.info(
                 "Skipped %d excluded doc(s) in %s (segments=%s)",

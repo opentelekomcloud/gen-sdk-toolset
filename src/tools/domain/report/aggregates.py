@@ -11,7 +11,8 @@ from tools.shared.scan import RepositoryScanResult
 from . import analytics
 from .analytics import QualitySummary
 
-REPORT_SCHEMA_VERSION = 5
+# TODO: Start bumping this version after the MVP contract is stabilized.
+REPORT_SCHEMA_VERSION = 1
 
 
 class OrgScanResult(BaseModel):

@@ -1,6 +1,6 @@
-"""Tests for the doc-style classifier."""
+"""Tests for document style and title detection."""
 
-from tools.scanner.parsers import classify_doc_style
+from tools.scanner.parsers import classify_doc_style, extract_document_title
 from tools.scanner.parsers.docutils.style import DocStyle
 
 
@@ -41,6 +41,27 @@ Concepts
 Some concepts here.
 """
     assert classify_doc_style(content) is DocStyle.NOT_ENDPOINT
+
+
+def test_title_ignores_indented_literal_block() -> None:
+    content = """
+Intro text::
+
+    code line
+    ---------
+
+Actual Title
+============
+"""
+    assert extract_document_title(content) == "Actual Title"
+
+
+def test_title_requires_full_length_underline() -> None:
+    content = """
+Not a Heading
+---
+"""
+    assert extract_document_title(content) is None
 
 
 def test_single_s3_marker_insufficient() -> None:

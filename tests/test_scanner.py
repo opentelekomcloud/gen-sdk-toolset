@@ -599,8 +599,7 @@ def test_quality_summary_counts() -> None:
 # Scanner version stamped on the report (review addition A)
 # --------------------------------------------------------------------------- #
 def test_report_stamps_scanner_version() -> None:
-    """Every report carries the scanner version + bumped schema version, so
-    report diffing can tell 'docs changed' from 'parser improved'."""
+    """Every report carries scanner and fixed MVP schema versions."""
     from tools import __version__
     from tools.domain.report import REPORT_SCHEMA_VERSION
 
@@ -610,7 +609,7 @@ def test_report_stamps_scanner_version() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
 
-    assert result.report_schema_version == REPORT_SCHEMA_VERSION >= 3
+    assert result.report_schema_version == REPORT_SCHEMA_VERSION == 1
     assert result.scanner_version == __version__
     assert result.repos[0].scanner_version == __version__
     # Present in the serialized JSON, not just the model.
