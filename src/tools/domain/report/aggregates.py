@@ -31,8 +31,7 @@ class OrgScanResult(BaseModel):
     @property
     def total_documents(self) -> int:
         return sum(
-            analytics.count_documents(result.document_results)
-            for result in self.repos
+            analytics.count_documents(result.document_results) for result in self.repos
         )
 
     @computed_field  # type: ignore[prop-decorator]
@@ -45,14 +44,6 @@ class OrgScanResult(BaseModel):
     def quality_summary(self) -> QualitySummary:
         """Compute the org-wide quality roll-up from per-doc results."""
         return analytics.compute_quality_summary(
-            (
-                document
-                for result in self.repos
-                for document in result.document_results
-            ),
-            (
-                section
-                for result in self.repos
-                for section in result.section_results
-            ),
+            (document for result in self.repos for document in result.document_results),
+            (section for result in self.repos for section in result.section_results),
         )

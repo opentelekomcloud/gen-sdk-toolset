@@ -13,9 +13,7 @@ class Service(Repository):
     def restore_endpoints(cls, documents):
         return [
             Endpoint.model_validate(document)
-            if isinstance(document, dict)
-            and "method" in document
-            and "uri" in document
+            if isinstance(document, dict) and "method" in document and "uri" in document
             else document
             for document in documents
         ]

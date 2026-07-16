@@ -98,9 +98,7 @@ def count_by_status(
     docs: Iterable[DocumentScanResult], section_results: Iterable[SectionScanResult]
 ) -> dict[str, int]:
     section_results = list(section_results)
-    return dict(
-        Counter(doc_overall_status(doc, section_results).value for doc in docs)
-    )
+    return dict(Counter(doc_overall_status(doc, section_results).value for doc in docs))
 
 
 def count_by_version(repos: Iterable[RepositoryScanResult]) -> dict[str, int]:

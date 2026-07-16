@@ -96,14 +96,10 @@ def test_iam_same_named_structs_bind_to_their_own_tables(
     parsed = parser.parse(iam_doc, "iam.rst")
     sections = _sections(parsed)
     req_policy = next(
-        p
-        for p in sections["body"].section.parameters
-        if p.name == "protect_policy"
+        p for p in sections["body"].section.parameters if p.name == "protect_policy"
     )
     resp_policy = next(
-        p
-        for p in sections["response"].section.parameters
-        if p.name == "protect_policy"
+        p for p in sections["response"].section.parameters if p.name == "protect_policy"
     )
 
     req_fields = {c.name for c in req_policy.children}

@@ -6,10 +6,7 @@ from tools.shared.report import DocumentScanResult, Issue, IssueCode
 
 
 def _sections(endpoint_path: str) -> list[Section]:
-    return [
-        Section(endpoint_path=endpoint_path, name=name)
-        for name in SectionName
-    ]
+    return [Section(endpoint_path=endpoint_path, name=name) for name in SectionName]
 
 
 def test_endpoint_is_a_document_with_sections() -> None:

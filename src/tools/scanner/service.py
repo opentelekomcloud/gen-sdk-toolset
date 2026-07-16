@@ -77,9 +77,7 @@ class ScannerService:
         )
         return result
 
-    def scan_repository(
-        self, repo: str, branch: str = "main"
-    ) -> RepositoryScanResult:
+    def scan_repository(self, repo: str, branch: str = "main") -> RepositoryScanResult:
         """Scan one repository and return per-document parse results."""
         logger.info("Scanning repo %s@%s", repo, branch)
         result = RepositoryScanResult(

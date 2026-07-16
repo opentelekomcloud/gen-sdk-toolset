@@ -154,12 +154,8 @@ def test_elb_list_separates_path_and_query(
     assert parsed.endpoint.uri == "/v3/{project_id}/elb/pools"
 
     sections = _sections(parsed)
-    path_names = [
-        p.name for p in sections["path_params"].section.parameters
-    ]
-    query_names = [
-        p.name for p in sections["query_params"].section.parameters
-    ]
+    path_names = [p.name for p in sections["path_params"].section.parameters]
+    query_names = [p.name for p in sections["query_params"].section.parameters]
 
     assert path_names == ["project_id"]
     assert query_names == ["marker", "limit", "page_reverse"]

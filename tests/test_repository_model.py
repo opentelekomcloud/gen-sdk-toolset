@@ -15,10 +15,7 @@ from tools.shared.report import DocumentScanResult, RepositoryScanResult
 
 
 def _sections(endpoint_path: str) -> list[Section]:
-    return [
-        Section(endpoint_path=endpoint_path, name=name)
-        for name in SectionName
-    ]
+    return [Section(endpoint_path=endpoint_path, name=name) for name in SectionName]
 
 
 def test_service_reuses_repository_identity() -> None:
@@ -62,9 +59,7 @@ def test_repository_scan_result_restores_service_subclass() -> None:
         "branch": "main",
         "commit_hash": "a" * 40,
         "scanner_version": __version__,
-        "document_results": [
-            {"document": endpoint_payload, "failure_reason": None}
-        ],
+        "document_results": [{"document": endpoint_payload, "failure_reason": None}],
         "section_results": [
             {
                 "section": section,
@@ -120,8 +115,6 @@ def test_plain_repository_cannot_have_scan_results() -> None:
             repository=Repository(repo="org/repository"),
             branch="main",
             document_results=[
-                DocumentScanResult(
-                    document=Document(path="api-ref/source/intro.rst")
-                )
+                DocumentScanResult(document=Document(path="api-ref/source/intro.rst"))
             ],
         )
