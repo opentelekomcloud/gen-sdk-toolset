@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from tools.shared.ir import Endpoint
+from tools.shared.ir import Endpoint, Service
 from tools.shared.report.enums import IssueCode, OverallStatus, SectionStatus
+from tools.shared.report.keys import UNVERSIONED_KEY
 from tools.shared.report.section import SectionScanResult
 
 if TYPE_CHECKING:
@@ -104,9 +105,11 @@ def count_by_status(
 
 def count_by_version(repos: Iterable[RepositoryScanResult]) -> dict[str, int]:
     counts: Counter[str] = Counter()
-    for repo in repos:
-        for version, docs in repo.documents_by_version.items():
-            counts[version] += len(docs)
+    for result in repos:
+        if not isinstance(result.repository, Service):
+            continue
+        for endpoint in result.repository.endpoints:
+            counts[endpoint.api_version or UNVERSIONED_KEY] += 1
     return dict(counts.most_common())
 
 

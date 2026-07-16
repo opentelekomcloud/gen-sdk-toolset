@@ -8,7 +8,7 @@ from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
 from tools.shared.exceptions import ProviderError, ProviderErrorKind
 from tools.shared.ir import Endpoint, Service
-from tools.shared.report import IssueCode
+from tools.shared.report import IssueCode, RepositoryScanResult
 from tools.shared.repository import RepositoryInterruptionKind
 
 from .conftest import load_fixture
@@ -215,7 +215,6 @@ def test_scan_repository_returns_ineligible_without_scanning() -> None:
     assert not isinstance(result.repository, Service)
     assert result.error is None
     assert result.document_results == []
-    assert result.documents_by_version == {}
     assert result.non_endpoint_documents == []
     assert result.excluded_documents == []
     assert fake.calls == [
@@ -513,9 +512,9 @@ def test_truncated_tree_marks_repo_incomplete() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# documents_by_version
+# API version analytics
 # --------------------------------------------------------------------------- #
-def test_by_version_groups_parsed() -> None:
+def test_by_version_is_derived_from_endpoints() -> None:
     fake = FakeDocProvider(
         repos={
             "o/cce": {
@@ -525,15 +524,11 @@ def test_by_version_groups_parsed() -> None:
     )
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
-    repo = result.repos[0]
-    assert "v3" in repo.documents_by_version
-    assert len(repo.documents_by_version["v3"]) == 1
-    # Org-level computed aggregation mirrors the per-repo grouping (item 12).
+    assert "documents_by_version" not in RepositoryScanResult.model_fields
     assert result.by_version == {"v3": 1}
 
 
-def test_by_version_excludes_failed() -> None:
-    """Failed/unsupported docs do not appear in documents_by_version."""
+def test_by_version_excludes_non_endpoints() -> None:
     fake = FakeDocProvider(
         repos={
             "o/svc": {
@@ -543,7 +538,7 @@ def test_by_version_excludes_failed() -> None:
     )
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
-    assert result.repos[0].documents_by_version == {}
+    assert result.by_version == {}
 
 
 # --------------------------------------------------------------------------- #

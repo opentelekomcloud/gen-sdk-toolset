@@ -3,18 +3,16 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-from tools.domain.report import OrgScanResult, analytics
+from tools.domain.report import OrgScanResult
 from tools.scanner.eligibility import check_repository_eligibility
 from tools.scanner.interfaces import DocProvider, RstParser
 from tools.scanner.parsers.docutils.style import DocStyle
 from tools.shared.exceptions import ParseFailure, ProviderError
-from tools.shared.ir import Document, Endpoint, Repository, Service
+from tools.shared.ir import Document, Repository, Service
 from tools.shared.report import (
-    UNVERSIONED_KEY,
     DocumentScanResult,
     Issue,
     IssueCode,
-    OverallStatus,
     RepositoryScanResult,
     SectionScanResult,
 )
@@ -171,19 +169,6 @@ class ScannerService:
             assert isinstance(result.repository, Service)
             result.repository.documents.append(document_result.document)
             result.section_results.extend(outcome.section_results)
-            if analytics.doc_overall_status(
-                document_result, outcome.section_results
-            ) in (
-                OverallStatus.OK,
-                OverallStatus.PARTIAL,
-            ):
-                endpoint = document_result.document
-                if not isinstance(endpoint, Endpoint):
-                    continue
-                key = endpoint.api_version or UNVERSIONED_KEY
-                result.documents_by_version.setdefault(key, []).append(
-                    document_result
-                )
 
         return RepositoryScanResult.model_validate(result.model_dump(mode="json"))
 

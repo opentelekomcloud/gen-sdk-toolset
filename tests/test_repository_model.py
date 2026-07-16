@@ -43,7 +43,6 @@ def test_repository_scan_result_restores_service_subclass() -> None:
         "section_results": [],
         "non_endpoint_documents": [],
         "excluded_documents": [],
-        "documents_by_version": {},
         "incomplete": False,
         "incomplete_reason": None,
         "error": None,

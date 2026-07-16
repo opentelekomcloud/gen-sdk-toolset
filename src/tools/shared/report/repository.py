@@ -27,9 +27,6 @@ class RepositoryScanResult(BaseModel):
 
     non_endpoint_documents: list[str] = Field(default_factory=list)
     excluded_documents: list[str] = Field(default_factory=list)
-    documents_by_version: dict[str, list[DocumentScanResult]] = Field(
-        default_factory=dict
-    )
 
     incomplete: bool = False
     incomplete_reason: str | None = None

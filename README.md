@@ -128,32 +128,26 @@ results. Since schema v5 both forms carry **data only**: derived views
 embedded in the JSON — they are computed by the pure functions in
 `tools.domain.report.analytics`.
 
-- **Per-document results** (`DocumentScanResult`) — for every endpoint
-  doc encountered:
-  - `document`, `repo`, `method`, `uri`, `title`, `api_version`
-  - `failure_reason: Issue | null` — populated for gating failures (fetch
-    failed, no URI line found, unsupported doc style)
-  - `sections: dict[str, SectionResult]` — keyed by `path_params`,
-    `query_params`, `headers`, `body`, `response`, `example_request`,
-    `example_response`, `nested_objects`. Each section carries:
-    - `status` — `ok` / `partial` / `failed` / `missing` / `skipped`
-    - `issues` — structured `[{code, location, details}]` entries
-    - `parameters` — extracted `Parameter` objects
-    - `examples` — extracted `ExampleBlock` objects (raw text +
-      best-effort JSON parse)
-    - field-level metrics: `fields_total`, `fields_recognized`,
-      `fields_unknown_type`, `fields_failed`
+- **Repository data** is represented by `Repository` or its eligible
+  specialization `Service`. A service contains `Document` records; recognized
+  endpoint documents are represented by `Endpoint(Document)` and contain
+  their extracted `Section` records.
 
-- **Per-repo results** (`RepoScanResult`):
-  - `repo`, `branch`, `commit_hash` (head commit the scan saw),
-    `has_api_ref`, `scanner_version`
-  - `documents`, `non_endpoint_documents`, `excluded_documents`,
-    `documents_by_version`
+- **Scan results** are separate from entity data:
+  - `RepositoryScanResult.repository` references the repository or service;
+  - `document_results` contains one `DocumentScanResult` per scanned document;
+  - `section_results` contains one `SectionScanResult` per extracted section;
+  - entity data is not duplicated inside document or section diagnostics.
+
+- **Repository scan metadata**:
+  - `branch`, `commit_hash`, and `scanner_version` identify the scan;
+  - API-version counts are derived from `Service.endpoints`, not stored in a
+    parallel `documents_by_version` structure;
   - `incomplete` / `incomplete_reason` — set when the provider returned a
     truncated file tree, so a partial scan is never mistaken for a clean one
   - `error` — repo-level failure (e.g. file listing failed)
 
-- **Org-level** (`OrgScanResult`, top of the file):
+- **Legacy org-level adapter** (`OrgScanResult`):
   - `report_schema_version`, `scanner_version`, `org`, `branch`,
     `total_repos`, `eligible_repos`, `skipped_repos`
   - computed roll-ups: `total_documents`, `by_version`, and
