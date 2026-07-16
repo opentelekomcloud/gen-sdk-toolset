@@ -151,8 +151,16 @@ class ScannerService:
             )
             logger.warning("File listing for %s is incomplete (truncated)", repo)
 
-        included_paths = [p for p in listing.paths if not self._is_excluded(p)]
-        excluded_documents = [p for p in listing.paths if self._is_excluded(p)]
+        unique_paths = list(dict.fromkeys(listing.paths))
+        if len(unique_paths) != len(listing.paths):
+            logger.warning(
+                "Ignored %d duplicate path(s) returned for %s",
+                len(listing.paths) - len(unique_paths),
+                repo,
+            )
+
+        included_paths = [p for p in unique_paths if not self._is_excluded(p)]
+        excluded_documents = [p for p in unique_paths if self._is_excluded(p)]
         if excluded_documents:
             logger.info(
                 "Skipped %d excluded doc(s) in %s (segments=%s)",

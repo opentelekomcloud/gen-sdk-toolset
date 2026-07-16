@@ -202,6 +202,25 @@ def test_scan_repository_checks_eligibility_at_resolved_commit() -> None:
     ]
 
 
+def test_scan_repository_ignores_duplicate_provider_paths() -> None:
+    class DuplicatePathProvider(FakeDocProvider):
+        def list_files(self, repo: str, branch: str) -> FileListing:
+            listing = super().list_files(repo, branch)
+            return FileListing(paths=listing.paths * 2)
+
+    path = "api-ref/source/x.rst"
+    fake = DuplicatePathProvider(
+        repos={"o/cce": {path: load_fixture("style_a_cce_grid.rst")}}
+    )
+
+    result = make_scanner(fake).scan_repository("o/cce")
+
+    assert isinstance(result.repository, Service)
+    assert len(result.repository.documents) == 1
+    assert len(result.document_results) == 1
+    assert fake.calls.count(f"fetch_content:o/cce@{'0' * 40}:{path}") == 1
+
+
 def test_scan_repository_returns_ineligible_without_scanning() -> None:
     sha = "a" * 40
     fake = FakeDocProvider(
