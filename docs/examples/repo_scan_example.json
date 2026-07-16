@@ -1,8 +1,10 @@
 {
   "repository": {
+    "kind": "service",
     "repo": "opentelekomcloud-docs/anti-ddos",
     "documents": [
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/alarm_reminding_apis/querying_alarm_configuration.rst",
         "title": "Querying Alarm Configuration",
         "method": "GET",
@@ -80,6 +82,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/alarm_reminding_apis/updating_alarm_configuration.rst",
         "title": "Updating Alarm Configuration",
         "method": "POST",
@@ -161,6 +164,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/configuring_the_default_protection_policy_for_newly_purchased_public_ip_addresses.rst",
         "title": "Configuring the Default Protection Policy for Newly Purchased Public IP Addresses",
         "method": "POST",
@@ -283,6 +287,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_a_specified_api_version.rst",
         "title": "Querying a Specified API Version",
         "method": "GET",
@@ -362,10 +367,12 @@
         ]
       },
       {
+        "kind": "document",
         "path": "api-ref/source/api/anti-ddos_apis/querying_all_api_versions.rst",
         "title": null
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_anti-ddos_tasks.rst",
         "title": "Querying Anti-DDoS Tasks",
         "method": "GET",
@@ -443,6 +450,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_configured_anti-ddos_defense_policies.rst",
         "title": "Querying Configured Anti-DDoS Defense Policies",
         "method": "GET",
@@ -555,6 +563,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_events_of_a_specified_eip.rst",
         "title": "Querying Events of a Specified EIP",
         "method": "GET",
@@ -657,6 +666,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_optional_anti-ddos_defense_policies.rst",
         "title": "Querying Optional Anti-DDoS Defense Policies",
         "method": "GET",
@@ -908,6 +918,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_the_default_protection_policy_configured_for_the_newly_purchased_public_ip_addresses.rst",
         "title": "Querying the Default Protection Policy Configured for the Newly Purchased Public IP Addresses",
         "method": "GET",
@@ -979,6 +990,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_the_defense_status_of_a_specified_eip.rst",
         "title": "Querying the Defense Status of a Specified EIP",
         "method": "GET",
@@ -1046,6 +1058,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_the_list_of_eip_defense_statuses.rst",
         "title": "Querying the List of EIP Defense Statuses",
         "method": "GET",
@@ -1178,6 +1191,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_the_traffic_of_a_specified_eip.rst",
         "title": "Querying the Traffic of a Specified EIP",
         "method": "GET",
@@ -1243,6 +1257,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_weekly_defense_statistics.rst",
         "title": "Querying Weekly Defense Statistics",
         "method": "GET",
@@ -1376,6 +1391,7 @@
         ]
       },
       {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/updating_anti-ddos_defense_policies.rst",
         "title": "Updating Anti-DDoS Defense Policies",
         "method": "PUT",
@@ -1530,6 +1546,7 @@
   "document_results": [
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/alarm_reminding_apis/querying_alarm_configuration.rst",
         "title": "Querying Alarm Configuration",
         "method": "GET",
@@ -1610,6 +1627,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/alarm_reminding_apis/updating_alarm_configuration.rst",
         "title": "Updating Alarm Configuration",
         "method": "POST",
@@ -1694,6 +1712,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/configuring_the_default_protection_policy_for_newly_purchased_public_ip_addresses.rst",
         "title": "Configuring the Default Protection Policy for Newly Purchased Public IP Addresses",
         "method": "POST",
@@ -1819,6 +1838,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_a_specified_api_version.rst",
         "title": "Querying a Specified API Version",
         "method": "GET",
@@ -1901,6 +1921,7 @@
     },
     {
       "document": {
+        "kind": "document",
         "path": "api-ref/source/api/anti-ddos_apis/querying_all_api_versions.rst",
         "title": null
       },
@@ -1912,6 +1933,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_anti-ddos_tasks.rst",
         "title": "Querying Anti-DDoS Tasks",
         "method": "GET",
@@ -1992,6 +2014,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_configured_anti-ddos_defense_policies.rst",
         "title": "Querying Configured Anti-DDoS Defense Policies",
         "method": "GET",
@@ -2107,6 +2130,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_events_of_a_specified_eip.rst",
         "title": "Querying Events of a Specified EIP",
         "method": "GET",
@@ -2212,6 +2236,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_optional_anti-ddos_defense_policies.rst",
         "title": "Querying Optional Anti-DDoS Defense Policies",
         "method": "GET",
@@ -2466,6 +2491,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_the_default_protection_policy_configured_for_the_newly_purchased_public_ip_addresses.rst",
         "title": "Querying the Default Protection Policy Configured for the Newly Purchased Public IP Addresses",
         "method": "GET",
@@ -2540,6 +2566,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_the_defense_status_of_a_specified_eip.rst",
         "title": "Querying the Defense Status of a Specified EIP",
         "method": "GET",
@@ -2610,6 +2637,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_the_list_of_eip_defense_statuses.rst",
         "title": "Querying the List of EIP Defense Statuses",
         "method": "GET",
@@ -2745,6 +2773,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_the_traffic_of_a_specified_eip.rst",
         "title": "Querying the Traffic of a Specified EIP",
         "method": "GET",
@@ -2813,6 +2842,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/querying_weekly_defense_statistics.rst",
         "title": "Querying Weekly Defense Statistics",
         "method": "GET",
@@ -2949,6 +2979,7 @@
     },
     {
       "document": {
+        "kind": "endpoint",
         "path": "api-ref/source/api/anti-ddos_apis/updating_anti-ddos_defense_policies.rst",
         "title": "Updating Anti-DDoS Defense Policies",
         "method": "PUT",

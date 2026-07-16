@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import Field, model_validator
 from typing_extensions import Self
 
@@ -7,6 +9,7 @@ from .section import Section, SectionName
 
 
 class Endpoint(Document):
+    kind: Literal["endpoint"] = "endpoint"
     method: HttpMethod
     uri: str
     api_version: str | None = None

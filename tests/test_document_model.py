@@ -32,6 +32,7 @@ def test_endpoint_is_a_document_with_sections() -> None:
 def test_document_scan_result_restores_endpoint_subclass() -> None:
     payload = {
         "document": {
+            "kind": "endpoint",
             "path": "api-ref/source/create.rst",
             "title": "Create resource",
             "method": "POST",
@@ -54,6 +55,18 @@ def test_document_scan_result_restores_endpoint_subclass() -> None:
 
     assert isinstance(result.document, Endpoint)
     assert result.model_dump(mode="json") == payload
+
+
+def test_document_scan_result_rejects_unknown_kind() -> None:
+    with pytest.raises(ValidationError, match="operation"):
+        DocumentScanResult.model_validate(
+            {
+                "document": {
+                    "kind": "operation",
+                    "path": "api-ref/source/create.rst",
+                }
+            }
+        )
 
 
 def test_endpoint_rejects_section_from_another_document() -> None:

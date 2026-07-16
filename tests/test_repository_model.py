@@ -43,6 +43,7 @@ def test_repository_scan_result_restores_service_subclass() -> None:
         for name in SectionName
     ]
     endpoint_payload = {
+        "kind": "endpoint",
         "path": "api-ref/source/list.rst",
         "title": None,
         "method": "GET",
@@ -52,6 +53,7 @@ def test_repository_scan_result_restores_service_subclass() -> None:
     }
     payload = {
         "repository": {
+            "kind": "service",
             "repo": "org/service",
             "documents": [endpoint_payload],
         },
@@ -84,6 +86,16 @@ def test_repository_scan_result_restores_service_subclass() -> None:
     assert isinstance(result.repository, Service)
     assert isinstance(result.repository.documents[0], Endpoint)
     assert result.model_dump(mode="json") == payload
+
+
+def test_repository_scan_result_rejects_unknown_kind() -> None:
+    with pytest.raises(ValidationError, match="inventory"):
+        RepositoryScanResult.model_validate(
+            {
+                "repository": {"kind": "inventory", "repo": "org/service"},
+                "branch": "main",
+            }
+        )
 
 
 def test_document_results_reference_service_documents() -> None:

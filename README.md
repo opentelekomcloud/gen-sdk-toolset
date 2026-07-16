@@ -131,7 +131,8 @@ embedded in the JSON — they are computed by the pure functions in
 - **Repository data** is represented by `Repository` or its eligible
   specialization `Service`. A service contains `Document` records; recognized
   endpoint documents are represented by `Endpoint(Document)` and contain
-  their extracted `Section` records.
+  their extracted `Section` records. The `kind` discriminator identifies each
+  polymorphic entity as `repository`, `service`, `document`, or `endpoint`.
 
 - **Scan results** are separate from entity data:
   - `RepositoryScanResult.repository` references the repository or service;

@@ -3,21 +3,19 @@ from __future__ import annotations
 from pydantic import (
     BaseModel,
     Field,
-    field_serializer,
-    field_validator,
     model_validator,
 )
 from typing_extensions import Self
 
 from tools import __version__ as _SCANNER_VERSION
-from tools.shared.ir import Endpoint, Repository, Service
+from tools.shared.ir import Endpoint, RepositoryEntity, Service
 from tools.shared.report.document import DocumentScanResult
 from tools.shared.report.section import SectionScanResult
 from tools.shared.repository import RepositoryInterruption
 
 
 class RepositoryScanResult(BaseModel):
-    repository: Repository
+    repository: RepositoryEntity
     branch: str
     commit_hash: str | None = None
     scanner_version: str = _SCANNER_VERSION
@@ -32,17 +30,6 @@ class RepositoryScanResult(BaseModel):
     incomplete_reason: str | None = None
     error: str | None = None
     interruption: RepositoryInterruption | None = None
-
-    @field_validator("repository", mode="before")
-    @classmethod
-    def restore_service(cls, repository):
-        if isinstance(repository, dict) and "documents" in repository:
-            return Service.model_validate(repository)
-        return repository
-
-    @field_serializer("repository")
-    def serialize_repository(self, repository: Repository) -> dict:
-        return repository.model_dump(mode="json")
 
     @model_validator(mode="after")
     def validate_result_graph(self) -> Self:
