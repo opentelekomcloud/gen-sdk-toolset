@@ -362,6 +362,12 @@ def test_style_a_populates_sections() -> None:
     assert isinstance(doc.document, Endpoint)
     assert repo.repository.documents == [doc.document]
     sections = {section.name: section for section in doc.document.sections}
+    section_results = [
+        result
+        for result in repo.section_results
+        if result.section.endpoint_path == doc.document.path
+    ]
+    assert len(sections) == len(section_results) == 7
     assert "path_params" in sections
     assert "body" in sections
     assert "nested_objects" not in sections

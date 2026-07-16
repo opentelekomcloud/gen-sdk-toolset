@@ -29,6 +29,7 @@ from tools.shared.report import (
     NESTED_STRUCT,
     SECTION_EXAMPLE_REQUEST,
     SECTION_EXAMPLE_RESPONSE,
+    SECTION_NAMES,
     Issue,
     IssueCode,
     SectionScanResult,
@@ -218,7 +219,16 @@ class DocutilsParser(RstParser):
                     section.status = SectionStatus.PARTIAL
             results[key] = section
 
-        return list(results.values())
+        for name in SECTION_NAMES:
+            results.setdefault(
+                name,
+                SectionScanResult(
+                    section=Section(endpoint_path=endpoint_path, name=name),
+                    status=SectionStatus.MISSING,
+                ),
+            )
+
+        return [results[name] for name in SECTION_NAMES]
 
     # ---- parameter-bearing sections (URI / Request / Response) ------ #
     def _collect_parameter_tables(

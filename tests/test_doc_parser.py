@@ -6,7 +6,7 @@ import pytest
 
 from tools.scanner.parsers import DocutilsParser
 from tools.shared.exceptions import ParseFailure
-from tools.shared.ir import Example, HttpMethod, ParameterType
+from tools.shared.ir import Example, HttpMethod, ParameterType, SectionName
 from tools.shared.report import IssueCode, SectionStatus
 
 
@@ -207,16 +207,11 @@ def test_parser_section_keys_are_canonical(
         "iam.rst": iam_doc,
         "elb.rst": elb_list_doc,
     }
-    produced: set[str] = set()
     for path, content in docs.items():
-        produced.update(
-            result.section.name
-            for result in parser.parse(content, path).section_results
-        )
-
-    assert produced, "fixtures should exercise at least one section"
-    off_canon = produced - set(SECTION_NAMES)
-    assert not off_canon, f"parser produced non-canonical section keys: {off_canon}"
+        parsed = parser.parse(content, path)
+        produced = {result.section.name for result in parsed.section_results}
+        assert produced == set(SectionName)
+        assert len(parsed.endpoint.sections) == len(SECTION_NAMES) == 7
 
 
 # --------------------------------------------------------------------------- #

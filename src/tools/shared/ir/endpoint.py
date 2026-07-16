@@ -3,7 +3,7 @@ from typing_extensions import Self
 
 from .document import Document
 from .enums import HttpMethod
-from .section import Section
+from .section import Section, SectionName
 
 
 class Endpoint(Document):
@@ -17,6 +17,8 @@ class Endpoint(Document):
         names = [section.name for section in self.sections]
         if len(names) != len(set(names)):
             raise ValueError("endpoint section names must be unique")
+        if set(names) != set(SectionName):
+            raise ValueError("endpoint must contain all seven sections")
         if any(section.endpoint_path != self.path for section in self.sections):
             raise ValueError("section endpoint_path must match endpoint path")
         return self

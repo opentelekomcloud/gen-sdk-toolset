@@ -4,7 +4,7 @@ from .enums import HttpMethod, ParameterType
 from .example import Example
 from .parameter import Parameter
 from .repository import Repository
-from .section import Section
+from .section import Section, SectionName
 from .service import Service
 
 __all__ = [
@@ -16,5 +16,6 @@ __all__ = [
     "Example",
     "Repository",
     "Section",
+    "SectionName",
     "Service",
 ]

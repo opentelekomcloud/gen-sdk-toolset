@@ -2,8 +2,23 @@ import pytest
 from pydantic import ValidationError
 
 from tools import __version__
-from tools.shared.ir import Document, Endpoint, HttpMethod, Repository, Service
+from tools.shared.ir import (
+    Document,
+    Endpoint,
+    HttpMethod,
+    Repository,
+    Section,
+    SectionName,
+    Service,
+)
 from tools.shared.report import DocumentScanResult, RepositoryScanResult
+
+
+def _sections(endpoint_path: str) -> list[Section]:
+    return [
+        Section(endpoint_path=endpoint_path, name=name)
+        for name in SectionName
+    ]
 
 
 def test_service_reuses_repository_identity() -> None:
@@ -11,6 +26,7 @@ def test_service_reuses_repository_identity() -> None:
         path="api-ref/source/list.rst",
         method=HttpMethod.GET,
         uri="/v1/resources",
+        sections=_sections("api-ref/source/list.rst"),
     )
     service = Service(repo="org/service", documents=[endpoint])
 
@@ -20,13 +36,22 @@ def test_service_reuses_repository_identity() -> None:
 
 
 def test_repository_scan_result_restores_service_subclass() -> None:
+    section_payloads = [
+        {
+            "endpoint_path": "api-ref/source/list.rst",
+            "name": name.value,
+            "parameters": [],
+            "examples": [],
+        }
+        for name in SectionName
+    ]
     endpoint_payload = {
         "path": "api-ref/source/list.rst",
         "title": None,
         "method": "GET",
         "uri": "/v1/resources",
         "api_version": "v1",
-        "sections": [],
+        "sections": section_payloads,
     }
     payload = {
         "repository": {
@@ -40,7 +65,18 @@ def test_repository_scan_result_restores_service_subclass() -> None:
         "document_results": [
             {"document": endpoint_payload, "failure_reason": None}
         ],
-        "section_results": [],
+        "section_results": [
+            {
+                "section": section,
+                "status": "missing",
+                "issues": [],
+                "fields_total": 0,
+                "fields_recognized": 0,
+                "fields_unknown_type": 0,
+                "fields_failed": 0,
+            }
+            for section in section_payloads
+        ],
         "non_endpoint_documents": [],
         "excluded_documents": [],
         "incomplete": False,

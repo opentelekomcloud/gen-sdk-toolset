@@ -15,7 +15,7 @@ class SectionStatus(str, Enum):
     OK = "ok"  # fully extracted, no issues
     PARTIAL = "partial"  # extracted with one or more issues
     FAILED = "failed"  # section present in doc but extraction failed
-    MISSING = "missing"  # section legitimately absent (e.g. GET with no body)
+    MISSING = "missing"  # section not present in the source document
     SKIPPED = "skipped"  # parser doesn't handle this section in this doc
 
 

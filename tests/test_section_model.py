@@ -49,3 +49,8 @@ def test_example_is_section_data() -> None:
 
     assert result.section.examples == [example]
     assert "examples" not in SectionScanResult.model_fields
+
+
+def test_section_rejects_unknown_name() -> None:
+    with pytest.raises(ValidationError):
+        Section(endpoint_path="api-ref/source/create.rst", name="unknown")
