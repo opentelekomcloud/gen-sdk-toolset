@@ -24,12 +24,9 @@ from docutils.parsers.rst import roles
 
 from tools.scanner.interfaces import ParsedDocument, RstParser
 from tools.shared.exceptions import ParseFailure
-from tools.shared.ir import Endpoint, HttpMethod, Section
-from tools.shared.report import (
-    NESTED_STRUCT,
-    SECTION_EXAMPLE_REQUEST,
-    SECTION_EXAMPLE_RESPONSE,
-    SECTION_NAMES,
+from tools.shared.ir import Endpoint, HttpMethod, Section, SectionName
+from tools.shared.scan import (
+    DocumentScanResult,
     Issue,
     IssueCode,
     SectionScanResult,
@@ -39,7 +36,13 @@ from tools.shared.report import (
 from .example import extract_examples
 from .nesting import RefKind, RefTarget, resolve_nested
 from .patterns import URI_RE
-from .section import SectionKind, classify_section_title, classify_table_title
+from .section import (
+    SectionKind,
+    TableTarget,
+    classify_section_title,
+    classify_table_title,
+)
+from .style import extract_document_title
 from .table import DETAILS_MAX, TableExtraction, extract_parameter_table
 
 
@@ -99,20 +102,20 @@ class DocutilsParser(RstParser):
         )
 
         method, uri = self._extract_method_and_uri(content, path)
-        title = self._extract_title(doctree)
+        title = extract_document_title(content)
         api_version = self._extract_api_version(uri, path)
-        section_results = self._extract_sections(doctree, path)
+        sections = self._extract_sections(doctree)
 
         return ParsedDocument(
             endpoint=Endpoint(
                 path=path,
-                title=title or None,
+                title=title,
                 method=method,
                 uri=uri,
                 api_version=api_version,
-                sections=[result.section for result in section_results],
+                sections=sections,
+                scan_result=DocumentScanResult(),
             ),
-            section_results=section_results,
         )
 
     # ------------------------------------------------------------------ #
@@ -127,14 +130,6 @@ class DocutilsParser(RstParser):
                 details=f"No 'METHOD /path' line found in {path}",
             )
         return HttpMethod(match.group(1).upper()), match.group(2)
-
-    @staticmethod
-    def _extract_title(doctree: nodes.document) -> str:
-        for section in doctree.findall(nodes.section):
-            title_node = section.next_node(nodes.title)
-            if title_node:
-                return title_node.astext()
-        return ""
 
     @staticmethod
     def _extract_api_version(uri: str, source_path: str) -> str | None:
@@ -154,9 +149,7 @@ class DocutilsParser(RstParser):
     # ------------------------------------------------------------------ #
     # Content sections
     # ------------------------------------------------------------------ #
-    def _extract_sections(
-        self, doctree: nodes.document, endpoint_path: str
-    ) -> list[SectionScanResult]:
+    def _extract_sections(self, doctree: nodes.document) -> list[Section]:
         """Two-pass extraction over every section in the doc.
 
         Sections of interest (URI / Request / Response / Example*) are
@@ -172,8 +165,8 @@ class DocutilsParser(RstParser):
         resolves each section's object/array params against the registry,
         attaching any unresolved-ref issues to the owning section.
         """
-        results: dict[str, SectionScanResult] = {}
-        primary: dict[str, TableExtraction] = {}
+        results: dict[SectionName, Section] = {}
+        primary: dict[SectionName, TableExtraction] = {}
         registry: dict[str, RefTarget] = {}
 
         # Pass 1 — primary tables, the struct registry, and examples.
@@ -190,9 +183,7 @@ class DocutilsParser(RstParser):
                 SectionKind.EXAMPLE_RESPONSE,
                 SectionKind.EXAMPLE_COMBINED,
             ):
-                self._extract_example_section(
-                    section_node, kind, endpoint_path, results
-                )
+                self._extract_example_section(section_node, kind, results)
             # Other section kinds (article title, Function, Status Codes, …)
             # carry no data we currently extract — silently ignored.
 
@@ -212,30 +203,30 @@ class DocutilsParser(RstParser):
         # belongs to. Resolution is otherwise identical to one combined call.
         for key, extraction in primary.items():
             issues = resolve_nested({key: extraction}, registry, doc_id=doc_id)
-            section = _to_section_scan_result(extraction, key, endpoint_path)
+            section = _to_section(extraction, key)
             for issue in issues:
-                section.issues.append(issue)
-                if section.status is SectionStatus.OK:
-                    section.status = SectionStatus.PARTIAL
+                section.scan_result.issues.append(issue)
+                if section.scan_result.status is SectionStatus.OK:
+                    section.scan_result.status = SectionStatus.PARTIAL
             results[key] = section
 
-        for name in SECTION_NAMES:
+        for name in SectionName:
             results.setdefault(
                 name,
-                SectionScanResult(
-                    section=Section(endpoint_path=endpoint_path, name=name),
-                    status=SectionStatus.MISSING,
+                Section(
+                    name=name,
+                    scan_result=SectionScanResult(status=SectionStatus.MISSING),
                 ),
             )
 
-        return [results[name] for name in SECTION_NAMES]
+        return [results[name] for name in SectionName]
 
     # ---- parameter-bearing sections (URI / Request / Response) ------ #
     def _collect_parameter_tables(
         self,
         section_node: nodes.section,
         kind: SectionKind,
-        primary: dict[str, TableExtraction],
+        primary: dict[SectionName, TableExtraction],
         registry: dict[str, RefTarget],
     ) -> None:
         """Pass-1 collector: route each table to ``primary`` or ``registry``."""
@@ -244,7 +235,7 @@ class DocutilsParser(RstParser):
             if target_key is None:
                 # Status-code / non-parameter table — nothing to record.
                 continue
-            if target_key == NESTED_STRUCT:
+            if target_key is TableTarget.NESTED_STRUCT:
                 anchor = _table_label_id(table)
                 if anchor:
                     registry[anchor] = RefTarget(
@@ -258,19 +249,14 @@ class DocutilsParser(RstParser):
         self,
         section_node: nodes.section,
         kind: SectionKind,
-        endpoint_path: str,
-        results: dict[str, SectionScanResult],
+        results: dict[SectionName, Section],
     ) -> None:
         blocks = extract_examples(section_node)
 
         if kind is SectionKind.EXAMPLE_REQUEST:
-            _set_example_section(
-                results, SECTION_EXAMPLE_REQUEST, endpoint_path, blocks
-            )
+            _set_example_section(results, SectionName.EXAMPLE_REQUEST, blocks)
         elif kind is SectionKind.EXAMPLE_RESPONSE:
-            _set_example_section(
-                results, SECTION_EXAMPLE_RESPONSE, endpoint_path, blocks
-            )
+            _set_example_section(results, SectionName.EXAMPLE_RESPONSE, blocks)
         else:  # EXAMPLE_COMBINED — split by label
             req, resp = [], []
             guessed = False
@@ -299,15 +285,12 @@ class DocutilsParser(RstParser):
             if req:
                 _set_example_section(
                     results,
-                    SECTION_EXAMPLE_REQUEST,
-                    endpoint_path,
+                    SectionName.EXAMPLE_REQUEST,
                     req,
                     extra_issues=extra,
                 )
             if resp:
-                _set_example_section(
-                    results, SECTION_EXAMPLE_RESPONSE, endpoint_path, resp
-                )
+                _set_example_section(results, SectionName.EXAMPLE_RESPONSE, resp)
 
 
 # --------------------------------------------------------------------------- #
@@ -350,7 +333,9 @@ def _document_doc_id(doctree: nodes.document) -> str | None:
 
 
 def _accumulate(
-    primary: dict[str, TableExtraction], key: str, extraction: TableExtraction
+    primary: dict[SectionName, TableExtraction],
+    key: SectionName,
+    extraction: TableExtraction,
 ) -> None:
     """Merge an extraction into ``primary[key]``.
 
@@ -371,21 +356,18 @@ def _accumulate(
     existing.fields_failed += extraction.fields_failed
 
 
-def _to_section_scan_result(
-    extraction: TableExtraction, name: str, endpoint_path: str
-) -> SectionScanResult:
-    return SectionScanResult(
-        section=Section(
-            endpoint_path=endpoint_path,
-            name=name,
-            parameters=list(extraction.parameters),
+def _to_section(extraction: TableExtraction, name: SectionName) -> Section:
+    return Section(
+        name=name,
+        parameters=list(extraction.parameters),
+        scan_result=SectionScanResult(
+            status=_status_from_counters(extraction),
+            issues=list(extraction.issues),
+            fields_total=extraction.fields_total,
+            fields_recognized=extraction.fields_recognized,
+            fields_unknown_type=extraction.fields_unknown_type,
+            fields_failed=extraction.fields_failed,
         ),
-        status=_status_from_counters(extraction),
-        issues=list(extraction.issues),
-        fields_total=extraction.fields_total,
-        fields_recognized=extraction.fields_recognized,
-        fields_unknown_type=extraction.fields_unknown_type,
-        fields_failed=extraction.fields_failed,
     )
 
 
@@ -434,9 +416,8 @@ def _example_json_issues(blocks) -> list[Issue]:
 
 
 def _set_example_section(
-    results: dict[str, SectionScanResult],
-    key: str,
-    endpoint_path: str,
+    results: dict[SectionName, Section],
+    key: SectionName,
     blocks,
     *,
     extra_issues: list[Issue] | None = None,
@@ -455,20 +436,22 @@ def _set_example_section(
 
     existing = results.get(key)
     if existing is not None:
-        existing.section.examples.extend(blocks)
-        existing.issues.extend(json_issues)
-        existing.issues.extend(extra)
-        if any(i.code is IssueCode.EXAMPLE_INVALID_JSON for i in existing.issues):
-            existing.status = SectionStatus.PARTIAL
+        existing.examples.extend(blocks)
+        existing.scan_result.issues.extend(json_issues)
+        existing.scan_result.issues.extend(extra)
+        if any(
+            i.code is IssueCode.EXAMPLE_INVALID_JSON
+            for i in existing.scan_result.issues
+        ):
+            existing.scan_result.status = SectionStatus.PARTIAL
         return
 
     status = SectionStatus.PARTIAL if json_issues else SectionStatus.OK
-    results[key] = SectionScanResult(
-        section=Section(
-            endpoint_path=endpoint_path,
-            name=key,
-            examples=list(blocks),
+    results[key] = Section(
+        name=key,
+        examples=list(blocks),
+        scan_result=SectionScanResult(
+            status=status,
+            issues=[*json_issues, *extra],
         ),
-        status=status,
-        issues=[*json_issues, *extra],
     )

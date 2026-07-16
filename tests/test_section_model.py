@@ -2,35 +2,34 @@ import pytest
 from pydantic import ValidationError
 
 from tools.shared.ir import Example, Parameter, Section
-from tools.shared.report import Issue, IssueCode, SectionScanResult, SectionStatus
+from tools.shared.scan import (
+    Issue,
+    IssueCode,
+    SectionScanResult,
+    SectionStatus,
+)
 
 
-def test_section_data_is_separate_from_scan_diagnostics() -> None:
+def test_section_data_owns_its_scan_result() -> None:
     section = Section(
-        endpoint_path="api-ref/source/create.rst",
         name="path_params",
         parameters=[Parameter(name="project_id")],
+        scan_result=SectionScanResult(
+            status=SectionStatus.OK,
+            fields_total=1,
+            fields_recognized=1,
+        ),
     )
 
-    result = SectionScanResult(
-        section=section,
-        status=SectionStatus.OK,
-        fields_total=1,
-        fields_recognized=1,
-    )
-
-    assert result.section.parameters == [Parameter(name="project_id")]
-    assert "parameters" not in SectionScanResult.model_fields
-    assert "status" not in Section.model_fields
+    assert section.parameters == [Parameter(name="project_id")]
+    assert section.scan_result.status is SectionStatus.OK
+    assert "section" not in SectionScanResult.model_fields
+    assert "scan_result" in Section.model_fields
 
 
 def test_section_scan_result_rejects_inconsistent_field_metrics() -> None:
     with pytest.raises(ValidationError, match="must add up to fields_total"):
         SectionScanResult(
-            section=Section(
-                endpoint_path="api-ref/source/create.rst",
-                name="body",
-            ),
             status=SectionStatus.PARTIAL,
             fields_total=2,
             fields_recognized=1,
@@ -51,42 +50,29 @@ def test_section_scan_result_rejects_negative_field_metrics(
 ) -> None:
     with pytest.raises(ValidationError, match="greater than or equal to 0"):
         SectionScanResult(
-            section=Section(
-                endpoint_path="api-ref/source/create.rst",
-                name="body",
-            ),
             status=SectionStatus.PARTIAL,
             **{field_name: -1},
         )
 
 
 @pytest.mark.parametrize(
-    "section",
+    "section_data",
     [
-        Section(
-            endpoint_path="api-ref/source/create.rst",
-            name="body",
-            parameters=[Parameter(name="unexpected")],
-        ),
-        Section(
-            endpoint_path="api-ref/source/create.rst",
-            name="example_request",
-            examples=[Example(raw="unexpected")],
-        ),
+        {"name": "body", "parameters": [Parameter(name="unexpected")]},
+        {"name": "example_request", "examples": [Example(raw="unexpected")]},
     ],
 )
-def test_missing_section_rejects_extracted_data(section: Section) -> None:
+def test_missing_section_rejects_extracted_data(section_data: dict) -> None:
     with pytest.raises(ValidationError, match="cannot contain extracted data"):
-        SectionScanResult(section=section, status=SectionStatus.MISSING)
+        Section(
+            **section_data,
+            scan_result=SectionScanResult(status=SectionStatus.MISSING),
+        )
 
 
 def test_missing_section_rejects_field_metrics() -> None:
     with pytest.raises(ValidationError, match="cannot contain field metrics"):
         SectionScanResult(
-            section=Section(
-                endpoint_path="api-ref/source/create.rst",
-                name="body",
-            ),
             status=SectionStatus.MISSING,
             fields_total=1,
             fields_recognized=1,
@@ -95,33 +81,29 @@ def test_missing_section_rejects_field_metrics() -> None:
 
 def test_missing_section_may_explain_absence_with_issue() -> None:
     issue = Issue(code=IssueCode.TABLE_NOT_FOUND)
-
-    result = SectionScanResult(
-        section=Section(
-            endpoint_path="api-ref/source/create.rst",
-            name="body",
+    section = Section(
+        name="body",
+        scan_result=SectionScanResult(
+            status=SectionStatus.MISSING,
+            issues=[issue],
         ),
-        status=SectionStatus.MISSING,
-        issues=[issue],
     )
 
-    assert result.issues == [issue]
+    assert section.scan_result.issues == [issue]
 
 
 def test_example_is_section_data() -> None:
     example = Example(raw='{"name": "example"}', parsed={"name": "example"})
     section = Section(
-        endpoint_path="api-ref/source/create.rst",
         name="example_request",
         examples=[example],
+        scan_result=SectionScanResult(status=SectionStatus.OK),
     )
 
-    result = SectionScanResult(section=section, status=SectionStatus.OK)
-
-    assert result.section.examples == [example]
+    assert section.examples == [example]
     assert "examples" not in SectionScanResult.model_fields
 
 
 def test_section_rejects_unknown_name() -> None:
     with pytest.raises(ValidationError):
-        Section(endpoint_path="api-ref/source/create.rst", name="unknown")
+        Section(name="unknown")

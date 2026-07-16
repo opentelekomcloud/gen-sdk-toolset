@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import enum
 
-from tools.shared.report.enums import IssueCode
-from tools.shared.report.issue import Issue
+from tools.shared.scan import Issue, IssueCode
 
 
 class GenSdkError(Exception):

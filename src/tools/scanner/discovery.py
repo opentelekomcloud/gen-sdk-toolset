@@ -11,7 +11,7 @@ from tools.scanner.eligibility import (
 )
 from tools.scanner.interfaces import RepositoryDiscoveryProvider
 from tools.shared.exceptions import ProviderError
-from tools.shared.repository import RepositoryInterruption
+from tools.shared.scan import RepositoryInterruption
 
 
 @dataclass(frozen=True)

@@ -5,7 +5,8 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, computed_field
 
 from tools import __version__ as _SCANNER_VERSION
-from tools.shared.report import RepositoryScanResult
+from tools.shared.ir import Service
+from tools.shared.scan import RepositoryScanResult
 
 from . import analytics
 from .analytics import QualitySummary
@@ -31,7 +32,9 @@ class OrgScanResult(BaseModel):
     @property
     def total_documents(self) -> int:
         return sum(
-            analytics.count_documents(result.document_results) for result in self.repos
+            analytics.count_documents(result.repository.documents)
+            for result in self.repos
+            if isinstance(result.repository, Service)
         )
 
     @computed_field  # type: ignore[prop-decorator]

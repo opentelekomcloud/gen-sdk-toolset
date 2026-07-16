@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from tools.shared.ir import Parameter
-from tools.shared.report import Issue, IssueCode
+from tools.shared.scan import Issue, IssueCode
 
 from .table import TableExtraction
 

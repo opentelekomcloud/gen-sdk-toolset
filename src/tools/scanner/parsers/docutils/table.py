@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from docutils import nodes
 
 from tools.shared.ir import Parameter, ParameterType
-from tools.shared.report import Issue, IssueCode
+from tools.shared.scan import Issue, IssueCode
 
 # Max length of free-text `details` we attach to diagnostic issues.
 DETAILS_MAX = 80

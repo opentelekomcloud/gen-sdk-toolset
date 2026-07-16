@@ -15,14 +15,7 @@ from __future__ import annotations
 import re
 from enum import Enum
 
-from tools.shared.report import (
-    NESTED_STRUCT,
-    SECTION_BODY,
-    SECTION_HEADERS,
-    SECTION_PATH_PARAMS,
-    SECTION_QUERY_PARAMS,
-    SECTION_RESPONSE,
-)
+from tools.shared.ir import SectionName
 
 
 class SectionKind(str, Enum):
@@ -37,6 +30,13 @@ class SectionKind(str, Enum):
     STATUS_CODES = "status_codes"
     FUNCTION = "function"
     OTHER = "other"
+
+
+class TableTarget(str, Enum):
+    """Internal routing targets that are not endpoint sections."""
+
+    NESTED_STRUCT = "nested_struct"
+    STATUS_CODES = "status_codes"
 
 
 # Maps canonical SectionKind → set of literal heading variants seen in
@@ -77,57 +77,53 @@ def classify_section_title(title: str) -> SectionKind:
 # --------------------------------------------------------------------------- #
 # Internal marker for status-code tables: recognised so we don't misfile
 # them, but they are not parameter tables, so the classifier returns None.
-_STATUS_CODES = "status_codes"
-
 # Order matters: more specific patterns first. The classifier walks the
 # list and returns the first match.
-_TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+_TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], SectionName | TableTarget]] = [
     # Query parameters — must come before the generic path/URI catches so
     # "Query Parameters" tables don't fall through into path_param.
-    (re.compile(r"\bquery\s+param", re.IGNORECASE), SECTION_QUERY_PARAMS),
+    (re.compile(r"\bquery\s+param", re.IGNORECASE), SectionName.QUERY_PARAMS),
     (
         re.compile(r"\bparameters?\s+in\s+the\s+query", re.IGNORECASE),
-        SECTION_QUERY_PARAMS,
+        SectionName.QUERY_PARAMS,
     ),
     # URI / path
-    (re.compile(r"\bpath\s+param", re.IGNORECASE), SECTION_PATH_PARAMS),
-    (re.compile(r"\buri\s+param", re.IGNORECASE), SECTION_PATH_PARAMS),
+    (re.compile(r"\bpath\s+param", re.IGNORECASE), SectionName.PATH_PARAMS),
+    (re.compile(r"\buri\s+param", re.IGNORECASE), SectionName.PATH_PARAMS),
     # Request header
-    (re.compile(r"\brequest\s+header", re.IGNORECASE), SECTION_HEADERS),
+    (re.compile(r"\brequest\s+header", re.IGNORECASE), SectionName.HEADERS),
     (
         re.compile(r"\bparameters?\s+in\s+the\s+request\s+header", re.IGNORECASE),
-        SECTION_HEADERS,
+        SectionName.HEADERS,
     ),
-    (re.compile(r"\bheader\s+param", re.IGNORECASE), SECTION_HEADERS),
+    (re.compile(r"\bheader\s+param", re.IGNORECASE), SectionName.HEADERS),
     # Request body (must come after header patterns since "request" is
     # ambiguous on its own).
-    (re.compile(r"\brequest\s+body", re.IGNORECASE), SECTION_BODY),
+    (re.compile(r"\brequest\s+body", re.IGNORECASE), SectionName.BODY),
     (
         re.compile(r"\bparameters?\s+in\s+the\s+request\s+body", re.IGNORECASE),
-        SECTION_BODY,
+        SectionName.BODY,
     ),
     # Response body
-    (re.compile(r"\bresponse\s+body", re.IGNORECASE), SECTION_RESPONSE),
+    (re.compile(r"\bresponse\s+body", re.IGNORECASE), SectionName.RESPONSE),
     (
         re.compile(r"\bparameters?\s+in\s+the\s+response\s+body", re.IGNORECASE),
-        SECTION_RESPONSE,
+        SectionName.RESPONSE,
     ),
-    (re.compile(r"\bresponse\s+param", re.IGNORECASE), SECTION_RESPONSE),
+    (re.compile(r"\bresponse\s+param", re.IGNORECASE), SectionName.RESPONSE),
     # Generic catches go last
-    (re.compile(r"\brequest\s+param", re.IGNORECASE), SECTION_BODY),
-    (re.compile(r"\bstatus\s+code", re.IGNORECASE), _STATUS_CODES),
+    (re.compile(r"\brequest\s+param", re.IGNORECASE), SectionName.BODY),
+    (re.compile(r"\bstatus\s+code", re.IGNORECASE), TableTarget.STATUS_CODES),
 ]
 
 
-def classify_table_title(title: str, *, in_section: SectionKind) -> str | None:
+def classify_table_title(
+    title: str, *, in_section: SectionKind
+) -> SectionName | TableTarget | None:
     """Resolve a table title to a canonical section key.
 
-    Returns one of the strings in
-    :data:`tools.shared.report.SECTION_NAMES` when the table is a
-    primary section table (e.g. path / body / response). Returns
-    :data:`tools.shared.report.NESTED_STRUCT` when the title looks like a
-    referenced object definition (e.g. ``CreateFirewallOption`` or
-    ``metadata``).
+    Returns a canonical ``SectionName`` for primary parameter tables and
+    ``TableTarget.NESTED_STRUCT`` for referenced object definitions.
     Returns ``None`` for non-parameter tables (status codes, etc.).
 
     `in_section` provides context: a table in the URI section with a
@@ -136,7 +132,7 @@ def classify_table_title(title: str, *, in_section: SectionKind) -> str | None:
     """
     for pattern, key in _TABLE_TITLE_PATTERNS:
         if pattern.search(title):
-            if key == _STATUS_CODES:
+            if key is TableTarget.STATUS_CODES:
                 return None  # status code tables are not parameter tables
             return key
 
@@ -144,22 +140,22 @@ def classify_table_title(title: str, *, in_section: SectionKind) -> str | None:
     # somehow reached here must never default to path_params (review
     # item 5); send it to query_params regardless of section.
     if re.search(r"\bquery\b", title, re.IGNORECASE):
-        return SECTION_QUERY_PARAMS
+        return SectionName.QUERY_PARAMS
 
     # Fall back on enclosing section. A "Parameter description" table
     # directly under URI is path_params; under Request it's request body;
     # under Response it's response body.
-    fallback: dict[SectionKind, str] = {
-        SectionKind.URI: SECTION_PATH_PARAMS,
-        SectionKind.REQUEST: SECTION_BODY,
-        SectionKind.RESPONSE: SECTION_RESPONSE,
+    fallback: dict[SectionKind, SectionName] = {
+        SectionKind.URI: SectionName.PATH_PARAMS,
+        SectionKind.REQUEST: SectionName.BODY,
+        SectionKind.RESPONSE: SectionName.RESPONSE,
     }
     if in_section in fallback:
         # But only if the title looks "parameter-ish" — bare object
         # names like "CreateFirewallOption" are nested struct definitions.
         if _looks_like_parameter_table(title):
             return fallback[in_section]
-        return NESTED_STRUCT
+        return TableTarget.NESTED_STRUCT
 
     return None
 

@@ -1,29 +1,16 @@
 import logging
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 
 from tools.domain.report import OrgScanResult
 from tools.scanner.eligibility import check_repository_eligibility
 from tools.scanner.interfaces import DocProvider, RstParser
-from tools.scanner.parsers.docutils.style import DocStyle
+from tools.scanner.parsers.docutils.style import DocStyle, extract_document_title
 from tools.shared.exceptions import ParseFailure, ProviderError
 from tools.shared.ir import Document, Repository, Service
-from tools.shared.report import (
-    DocumentScanResult,
-    Issue,
-    IssueCode,
-    RepositoryScanResult,
-    SectionScanResult,
-)
+from tools.shared.scan import DocumentScanResult, Issue, IssueCode, RepositoryScanResult
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class _DocumentOutcome:
-    document_result: DocumentScanResult
-    section_results: list[SectionScanResult]
 
 
 class ScannerService:
@@ -179,99 +166,78 @@ class ScannerService:
                 )
             )
 
-        documents: list[Document] = []
-        document_results: list[DocumentScanResult] = []
-        section_results: list[SectionScanResult] = []
-        for outcome in doc_outcomes:
-            document_result = outcome.document_result
-            documents.append(document_result.document)
-            document_results.append(document_result)
-            section_results.extend(outcome.section_results)
-
         return RepositoryScanResult(
-            repository=Service(repo=repo, documents=documents),
+            repository=Service(repo=repo, documents=doc_outcomes),
             branch=branch,
             commit_hash=commit_hash,
-            document_results=document_results,
-            section_results=section_results,
             excluded_documents=excluded_documents,
             incomplete=incomplete,
             incomplete_reason=incomplete_reason,
         )
 
-    def _process_document(
-        self, repo: str, path: str, branch: str
-    ) -> _DocumentOutcome:
+    def _process_document(self, repo: str, path: str, branch: str) -> Document:
         """Fetch, classify and parse a document.
 
-        Endpoint data and section results remain separate in the returned
-        outcome. Gating failures produce a plain ``Document`` with a failure
-        reason and no section results. Non-endpoint docs produce a successful
-        plain ``Document`` with no section results.
+        The returned entity owns its scan result. Endpoint sections own their
+        section-level results. Gating failures produce a plain document with a
+        failure reason; non-endpoint docs produce a successful plain document.
         """
         try:
             content = self.doc_provider.fetch_content(repo, path, branch)
         except Exception as e:
             logger.warning("Fetch failed for %s/%s: %s", repo, path, e)
-            return _DocumentOutcome(
-                document_result=DocumentScanResult(
-                    document=Document(path=path),
-                    failure_reason=Issue(
-                        code=IssueCode.FETCH_FAILED,
-                        details=str(e),
-                    ),
+            return Document(
+                path=path,
+                scan_result=DocumentScanResult(
+                    failure_reason=Issue(code=IssueCode.FETCH_FAILED, details=str(e))
                 ),
-                section_results=[],
             )
 
+        title = extract_document_title(content)
         style = self.style_classifier(content)
 
         if style is DocStyle.NOT_ENDPOINT:
-            return _DocumentOutcome(
-                document_result=DocumentScanResult(document=Document(path=path)),
-                section_results=[],
+            return Document(
+                path=path,
+                title=title,
+                scan_result=DocumentScanResult(),
             )
 
         if style is DocStyle.S3_COMPATIBLE:
-            return _DocumentOutcome(
-                document_result=DocumentScanResult(
-                    document=Document(path=path),
+            return Document(
+                path=path,
+                title=title,
+                scan_result=DocumentScanResult(
                     failure_reason=Issue(
                         code=IssueCode.UNSUPPORTED_DOC_STYLE,
                         details="S3-style doc (Request Syntax / Sample Request layout)",
-                    ),
+                    )
                 ),
-                section_results=[],
             )
 
         try:
             parsed = self.parser.parse(content, path)
         except ParseFailure as e:
             logger.warning("Parse failed for %s/%s: %s", repo, path, e)
-            return _DocumentOutcome(
-                document_result=DocumentScanResult(
-                    document=Document(path=path),
-                    failure_reason=e.issue,
-                ),
-                section_results=[],
+            return Document(
+                path=path,
+                title=title,
+                scan_result=DocumentScanResult(failure_reason=e.issue),
             )
         except Exception as e:
             logger.exception("Unexpected parser error for %s/%s", repo, path)
-            return _DocumentOutcome(
-                document_result=DocumentScanResult(
-                    document=Document(path=path),
+            return Document(
+                path=path,
+                title=title,
+                scan_result=DocumentScanResult(
                     failure_reason=Issue(
                         code=IssueCode.PARSER_ERROR,
                         details=f"parser raised: {e}",
-                    ),
+                    )
                 ),
-                section_results=[],
             )
 
-        return _DocumentOutcome(
-            document_result=DocumentScanResult(document=parsed.endpoint),
-            section_results=parsed.section_results,
-        )
+        return parsed.endpoint
 
     def _is_excluded(self, path: str) -> bool:
         return any(seg in self.excluded_segments for seg in path.split("/"))

@@ -5,18 +5,16 @@ from .example import Example
 from .parameter import Parameter
 from .repository import Repository
 from .section import Section, SectionName
-from .service import DocumentEntity, RepositoryEntity, Service
+from .service import Service
 
 __all__ = [
     "HttpMethod",
     "ParameterType",
     "Document",
-    "DocumentEntity",
     "Endpoint",
     "Parameter",
     "Example",
     "Repository",
-    "RepositoryEntity",
     "Section",
     "SectionName",
     "Service",

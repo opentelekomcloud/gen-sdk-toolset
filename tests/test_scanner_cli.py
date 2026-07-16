@@ -11,7 +11,7 @@ from tools.config import Settings
 from tools.domain.report import OrgScanResult
 from tools.scanner import main as scanner_main
 from tools.shared.ir import Repository, Service
-from tools.shared.report import RepositoryScanResult
+from tools.shared.scan import RepositoryScanResult
 
 
 class FakeScanner:
@@ -146,7 +146,8 @@ def test_ineligible_repo_is_a_successful_empty_result(monkeypatch, capsys) -> No
     assert exit_code == scanner_main.EXIT_OK
     assert "documents" not in payload["repository"]
     assert payload["error"] is None
-    assert payload["document_results"] == []
+    assert "document_results" not in payload
+    assert "section_results" not in payload
 
 
 @pytest.mark.parametrize(

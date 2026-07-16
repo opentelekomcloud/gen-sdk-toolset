@@ -22,6 +22,6 @@ class Endpoint(Document):
             raise ValueError("endpoint section names must be unique")
         if set(names) != set(SectionName):
             raise ValueError("endpoint must contain all seven sections")
-        if any(section.endpoint_path != self.path for section in self.sections):
-            raise ValueError("section endpoint_path must match endpoint path")
+        if self.scan_result is not None and self.scan_result.failure_reason is not None:
+            raise ValueError("a recognized endpoint cannot have a gating failure")
         return self

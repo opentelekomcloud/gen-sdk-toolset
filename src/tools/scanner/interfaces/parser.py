@@ -10,10 +10,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from tools.shared.ir import Endpoint
-from tools.shared.report.section import SectionScanResult
 
 
 class ParsedDocument(BaseModel):
@@ -26,7 +25,6 @@ class ParsedDocument(BaseModel):
     """
 
     endpoint: Endpoint
-    section_results: list[SectionScanResult] = Field(default_factory=list)
 
 
 class RstParser(Protocol):

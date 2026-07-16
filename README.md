@@ -137,11 +137,13 @@ embedded in the JSON — they are computed by the pure functions in
   this classification is derived from the entity and is not stored in a
   parallel `non_endpoint_documents` field.
 
-- **Scan results** are separate from entity data:
-  - `RepositoryScanResult.repository` references the repository or service;
-  - `document_results` contains one `DocumentScanResult` per scanned document;
-  - `section_results` contains one `SectionScanResult` per extracted section;
-  - entity data is not duplicated inside document or section diagnostics.
+- **Scan results** are nested into the entities produced by that scan:
+  - every document carries one `DocumentScanResult` in `scan_result`;
+  - every endpoint section carries one `SectionScanResult` in `scan_result`;
+  - result payloads contain diagnostics only and do not repeat their document
+    or section;
+  - section ownership is expressed by nesting, so sections do not repeat an
+    `endpoint_path` foreign key in the JSON snapshot.
 
 - **Repository scan metadata**:
   - `branch`, `commit_hash`, and `scanner_version` identify the scan;
