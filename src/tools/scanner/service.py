@@ -80,23 +80,23 @@ class ScannerService:
     def scan_repository(self, repo: str, branch: str = "main") -> RepositoryScanResult:
         """Scan one repository and return per-document parse results."""
         logger.info("Scanning repo %s@%s", repo, branch)
-        result = RepositoryScanResult(
-            repository=Repository(repo=repo),
-            branch=branch,
-        )
 
         # Pin the snapshot to a commit before checking eligibility so the path
         # check and every content read observe the same repository snapshot.
         try:
-            result.commit_hash = self.doc_provider.get_commit_hash(repo, branch)
+            commit_hash = self.doc_provider.get_commit_hash(repo, branch)
         except ProviderError as e:
             # TODO(#70): let rate-limited ProviderError reach background-job
             # orchestration once durable retry state exists.
-            result.error = f"Could not resolve commit for {repo}@{branch}: {e}"
-            logger.error(result.error)
-            return result
+            error = f"Could not resolve commit for {repo}@{branch}: {e}"
+            logger.error(error)
+            return RepositoryScanResult(
+                repository=Repository(repo=repo),
+                branch=branch,
+                error=error,
+            )
 
-        ref = result.commit_hash or branch
+        ref = commit_hash or branch
         eligibility = check_repository_eligibility(
             self.doc_provider,
             repo=repo,
@@ -104,45 +104,59 @@ class ScannerService:
             api_ref_path=self.api_ref_path,
         )
         if eligibility.interruption is not None:
-            result.interruption = eligibility.interruption
-            result.error = (
+            error = (
                 f"Could not check eligibility for {repo}@{ref}: "
                 f"{eligibility.interruption.message}"
             )
-            logger.error(result.error)
-            return result
+            logger.error(error)
+            return RepositoryScanResult(
+                repository=Repository(repo=repo),
+                branch=branch,
+                commit_hash=commit_hash,
+                error=error,
+                interruption=eligibility.interruption,
+            )
 
         if not eligibility.has_api_ref:
-            if result.commit_hash is None:
-                result.error = (
+            error = None
+            if commit_hash is None:
+                error = (
                     f"Cannot confirm {repo}@{branch}: commit could not be resolved "
                     f"and {self.api_ref_path} was not found"
                 )
-                logger.error(result.error)
-            return result
-
-        result.repository = Service(repo=repo)
+                logger.error(error)
+            return RepositoryScanResult(
+                repository=Repository(repo=repo),
+                branch=branch,
+                commit_hash=commit_hash,
+                error=error,
+            )
 
         try:
             listing = self.doc_provider.list_files(repo, ref)
         except ProviderError as e:
             logger.error("Failed to list files for %s: %s", repo, e)
-            result.error = str(e)
-            return result
+            return RepositoryScanResult(
+                repository=Service(repo=repo),
+                branch=branch,
+                commit_hash=commit_hash,
+                error=str(e),
+            )
 
+        incomplete = listing.truncated
+        incomplete_reason = None
         if listing.truncated:
-            result.incomplete = True
-            result.incomplete_reason = (
+            incomplete_reason = (
                 listing.truncated_reason or "file tree truncated by provider"
             )
             logger.warning("File listing for %s is incomplete (truncated)", repo)
 
         included_paths = [p for p in listing.paths if not self._is_excluded(p)]
-        result.excluded_documents = [p for p in listing.paths if self._is_excluded(p)]
-        if result.excluded_documents:
+        excluded_documents = [p for p in listing.paths if self._is_excluded(p)]
+        if excluded_documents:
             logger.info(
                 "Skipped %d excluded doc(s) in %s (segments=%s)",
-                len(result.excluded_documents),
+                len(excluded_documents),
                 repo,
                 sorted(self.excluded_segments),
             )
@@ -157,18 +171,31 @@ class ScannerService:
                 )
             )
 
+        documents: list[Document] = []
+        document_results: list[DocumentScanResult] = []
+        section_results: list[SectionScanResult] = []
+        non_endpoint_documents: list[str] = []
         for path, outcome in zip(included_paths, doc_outcomes):
             if outcome is None:
-                result.non_endpoint_documents.append(path)
+                non_endpoint_documents.append(path)
                 continue
 
             document_result = outcome.document_result
-            result.document_results.append(document_result)
-            assert isinstance(result.repository, Service)
-            result.repository.documents.append(document_result.document)
-            result.section_results.extend(outcome.section_results)
+            documents.append(document_result.document)
+            document_results.append(document_result)
+            section_results.extend(outcome.section_results)
 
-        return RepositoryScanResult.model_validate(result.model_dump(mode="json"))
+        return RepositoryScanResult(
+            repository=Service(repo=repo, documents=documents),
+            branch=branch,
+            commit_hash=commit_hash,
+            document_results=document_results,
+            section_results=section_results,
+            non_endpoint_documents=non_endpoint_documents,
+            excluded_documents=excluded_documents,
+            incomplete=incomplete,
+            incomplete_reason=incomplete_reason,
+        )
 
     def _process_document(
         self, repo: str, path: str, branch: str
