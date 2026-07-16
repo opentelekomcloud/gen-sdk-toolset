@@ -77,7 +77,7 @@ The scanner reads its configuration from three sources, in order of precedence:
 The supported entrypoint is `uv run gen-sdk-scan`. Choose one target mode:
 
 ```bash
-# Scan one repository and print one raw RepoScanResult (no file written)
+# Scan one repository and print one raw RepositoryScanResult (no file written)
 uv run gen-sdk-scan \
   --repo opentelekomcloud-docs/anti-ddos \
   --output -
@@ -101,10 +101,10 @@ uv run gen-sdk-scan --config configs/staging.toml -v
 ```
 
 `--repo` requires exactly two non-empty components in `OWNER/NAME` form.
-`--repo` and `--org` are mutually exclusive. A repository without the
-configured API reference path is a normal, successful result with
-`has_api_ref=false` and empty document collections; a repository or ref that
-cannot be confirmed instead includes a diagnostic `error` and exits non-zero.
+`--repo` and `--org` are mutually exclusive. When the configured API reference
+path is absent, the scan succeeds with an empty result whose `repository`
+remains a plain `Repository`. A repository or ref that cannot be confirmed
+instead includes a diagnostic `error` and exits non-zero.
 
 ### Command-line flags
 
@@ -112,7 +112,7 @@ cannot be confirmed instead includes a diagnostic `error` and exits non-zero.
 |---|---|
 | `--config PATH` | Path to TOML config (default: `scan-config.toml`) |
 | `--output PATH` | Output JSON file path. `-` redirects to stdout instead |
-| `--repo OWNER/NAME` | Scan one repository and emit one `RepoScanResult` |
+| `--repo OWNER/NAME` | Scan one repository and emit one `RepositoryScanResult` |
 | `--org NAME` | Run the legacy organization scan; mutually exclusive with `--repo` |
 | `--branch NAME` | Branch name or fixed commit SHA to scan |
 | `--stdout` | Also print the JSON report to stdout (in addition to the file) |
@@ -121,7 +121,7 @@ cannot be confirmed instead includes a diagnostic `error` and exits non-zero.
 
 ### Output
 
-Repository mode produces one raw `RepoScanResult`. Legacy organization mode
+Repository mode produces one raw `RepositoryScanResult`. Legacy organization mode
 produces a quality report (`report_schema_version: 5`) containing repository
 results. Since schema v5 both forms carry **data only**: derived views
 (per-document overall status, completeness, flat issue lists) are no longer

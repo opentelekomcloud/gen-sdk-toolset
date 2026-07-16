@@ -53,7 +53,6 @@ def test_repository_scan_result_restores_service_subclass() -> None:
     payload = {
         "repository": {
             "repo": "org/service",
-            "included": True,
             "documents": [endpoint_payload],
         },
         "branch": "main",
