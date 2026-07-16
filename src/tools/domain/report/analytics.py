@@ -121,9 +121,7 @@ def count_by_status(
 ) -> dict[str, int]:
     section_results_by_key = _index_section_results(section_results)
     return dict(
-        Counter(
-            _doc_overall_status(doc, section_results_by_key).value for doc in docs
-        )
+        Counter(_doc_overall_status(doc, section_results_by_key).value for doc in docs)
     )
 
 
