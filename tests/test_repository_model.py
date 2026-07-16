@@ -98,6 +98,20 @@ def test_repository_scan_result_rejects_unknown_kind() -> None:
         )
 
 
+def test_repository_kind_rejects_service_fields() -> None:
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        RepositoryScanResult.model_validate(
+            {
+                "repository": {
+                    "kind": "repository",
+                    "repo": "org/service",
+                    "documents": [],
+                },
+                "branch": "main",
+            }
+        )
+
+
 def test_document_results_reference_service_documents() -> None:
     document = Document(path="api-ref/source/intro.rst")
     result = RepositoryScanResult(

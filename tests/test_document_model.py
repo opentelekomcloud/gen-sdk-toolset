@@ -69,6 +69,20 @@ def test_document_scan_result_rejects_unknown_kind() -> None:
         )
 
 
+def test_document_kind_rejects_endpoint_fields() -> None:
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        DocumentScanResult.model_validate(
+            {
+                "document": {
+                    "kind": "document",
+                    "path": "api-ref/source/create.rst",
+                    "method": "POST",
+                    "uri": "/v1/resources",
+                }
+            }
+        )
+
+
 def test_endpoint_rejects_section_from_another_document() -> None:
     sections = _sections("api-ref/source/create.rst")
     sections[0] = sections[0].model_copy(
