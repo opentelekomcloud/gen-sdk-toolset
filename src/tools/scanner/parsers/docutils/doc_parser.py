@@ -37,6 +37,7 @@ from .table import TableExtraction, extract_parameter_table
 
 @dataclass
 class _SectionExtraction:
+    http_method: HttpMethod
     sections: dict[SectionName, Section] = field(default_factory=dict)
     primary_tables: dict[SectionName, TableExtraction] = field(default_factory=dict)
     reference_targets: dict[str, RefTarget] = field(default_factory=dict)
@@ -68,6 +69,14 @@ def _ensure_roles() -> None:
 
 _VERSION_RE = re.compile(r"/(v\d+(?:\.\d+)?)(?:/|$)", re.IGNORECASE)
 
+_GENERIC_REQUEST_TARGETS = {
+    HttpMethod.GET: SectionName.QUERY_PARAMS,
+    HttpMethod.HEAD: SectionName.QUERY_PARAMS,
+    HttpMethod.POST: SectionName.BODY,
+    HttpMethod.PUT: SectionName.BODY,
+    HttpMethod.PATCH: SectionName.BODY,
+}
+
 
 class DocutilsParser(RstParser):
     _SILENT_DOCUTILS_SETTINGS = {
@@ -86,7 +95,7 @@ class DocutilsParser(RstParser):
         method, uri = self._extract_method_and_uri(content, path)
         title = extract_document_title(content)
         api_version = self._extract_api_version(uri, path)
-        sections = self._extract_sections(doctree)
+        sections = self._extract_sections(doctree, method)
 
         return Endpoint(
             path=path,
@@ -119,9 +128,13 @@ class DocutilsParser(RstParser):
             return match.group(1).lower()
         return None
 
-    def _extract_sections(self, doctree: nodes.document) -> list[Section]:
+    def _extract_sections(
+        self,
+        doctree: nodes.document,
+        http_method: HttpMethod,
+    ) -> list[Section]:
         """Collect document data first, then resolve cross-table references."""
-        extraction = _SectionExtraction()
+        extraction = _SectionExtraction(http_method=http_method)
         self._collect_section_data(doctree, extraction)
         _register_non_table_targets(doctree, extraction.reference_targets)
         self._resolve_parameter_sections(
@@ -195,6 +208,7 @@ class DocutilsParser(RstParser):
     ) -> None:
         title = _table_routing_title(table, section_kind=section_kind)
         target = classify_table_title(title, in_section=section_kind)
+        target = _resolve_generic_request_target(target, extraction.http_method)
 
         if target is TableTarget.INTENTIONALLY_IGNORED:
             return
@@ -321,9 +335,18 @@ def _table_title(table: nodes.table) -> str:
 
 def _table_routing_title(table: nodes.table, *, section_kind: SectionKind) -> str:
     title = _table_title(table)
-    if title or section_kind is not SectionKind.URI:
+    if title or section_kind not in (SectionKind.URI, SectionKind.REQUEST):
         return title
     return _list_item_label(table)
+
+
+def _resolve_generic_request_target(
+    target: SectionName | TableTarget,
+    http_method: HttpMethod,
+) -> SectionName | TableTarget:
+    if target is not TableTarget.GENERIC_REQUEST:
+        return target
+    return _GENERIC_REQUEST_TARGETS.get(http_method, TableTarget.UNMAPPED)
 
 
 def _list_item_label(table: nodes.table) -> str:

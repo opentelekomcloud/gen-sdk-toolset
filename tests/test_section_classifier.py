@@ -96,6 +96,15 @@ def test_request_body_table() -> None:
     )
 
 
+def test_generic_request_table_requires_method_routing() -> None:
+    assert (
+        classify_table_title(
+            "Table 1 Parameter description", in_section=SectionKind.REQUEST
+        )
+        is TableTarget.GENERIC_REQUEST
+    )
+
+
 def test_response_body_table() -> None:
     assert (
         classify_table_title(

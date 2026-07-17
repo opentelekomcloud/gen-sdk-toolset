@@ -36,6 +36,7 @@ class TableTarget(str, Enum):
     """Internal routing targets that are not endpoint sections."""
 
     NESTED_STRUCT = "nested_struct"
+    GENERIC_REQUEST = "generic_request"
     INTENTIONALLY_IGNORED = "intentionally_ignored"
     UNMAPPED = "unmapped"
 
@@ -117,7 +118,7 @@ _TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], SectionName | TableTarget]] =
     ),
     (re.compile(r"\bresponse\s+param", re.IGNORECASE), SectionName.RESPONSE),
     # Generic catches go last
-    (re.compile(r"\brequest\s+param", re.IGNORECASE), SectionName.BODY),
+    (re.compile(r"\brequest\s+param", re.IGNORECASE), TableTarget.GENERIC_REQUEST),
 ]
 
 _STATUS_CODE_TABLE_RE = re.compile(r"\bstatus\s+code", re.IGNORECASE)
@@ -163,6 +164,8 @@ def classify_table_title(
         # But only if the title looks "parameter-ish" — bare object
         # names like "CreateFirewallOption" are nested struct definitions.
         if _looks_like_parameter_table(title):
+            if in_section is SectionKind.REQUEST:
+                return TableTarget.GENERIC_REQUEST
             return _DEFAULT_TABLE_SECTIONS[in_section]
         if title:
             return TableTarget.NESTED_STRUCT

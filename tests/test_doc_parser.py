@@ -221,6 +221,25 @@ def test_anti_ddos_legacy_uri_table_becomes_path_parameters(
     assert path_params.scan_result.fields_total == 2
 
 
+def test_anti_ddos_get_request_parameters_become_query_parameters(
+    parser: DocutilsParser, anti_ddos_get_request_doc: str
+) -> None:
+    parsed = parser.parse(
+        anti_ddos_get_request_doc,
+        "api-ref/source/api/anti-ddos_apis/querying_anti-ddos_tasks.rst",
+    )
+    sections = _sections(parsed)
+
+    assert [parameter.name for parameter in sections["path_params"].parameters] == [
+        "project_id"
+    ]
+    assert [parameter.name for parameter in sections["query_params"].parameters] == [
+        "task_id"
+    ]
+    assert sections["query_params"].scan_result.status is SectionStatus.OK
+    assert sections["body"].scan_result.status is SectionStatus.MISSING
+
+
 def test_unmapped_table_degrades_an_extracted_section(parser: DocutilsParser) -> None:
     content = """
 Create Item
