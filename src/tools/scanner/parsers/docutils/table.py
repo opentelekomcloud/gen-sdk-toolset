@@ -52,6 +52,11 @@ def _classify_type(raw: str) -> ParameterType:
         return ParameterType.UNKNOWN
     lower = raw.strip().lower()
 
+    if lower == "list data structure":
+        return ParameterType.ARRAY_OF_OBJECTS
+    if lower == "data structure":
+        return ParameterType.OBJECT
+
     # Composite array types first (more specific).
     if re.search(r"\barray\s+of\s+strings?\b", lower):
         return ParameterType.ARRAY_OF_STRINGS
@@ -69,8 +74,8 @@ def _classify_type(raw: str) -> ParameterType:
     # Primitives — match the longest prefix word.
     for word, kind in (
         ("string", ParameterType.STRING),
-        ("integer", ParameterType.INTEGER),
         ("long", ParameterType.LONG),
+        ("integer", ParameterType.INTEGER),
         ("float", ParameterType.FLOAT),
         ("double", ParameterType.DOUBLE),
         ("boolean", ParameterType.BOOLEAN),
@@ -87,7 +92,10 @@ def _classify_type(raw: str) -> ParameterType:
 # name (e.g. "Array of RequestTag objects" -> "RequestTag"). A cell that is
 # only keywords ("object", "Array of objects") leaves nothing -> no type_name.
 # `\s+` tolerates irregular whitespace in "array of" (double spaces, newlines).
-_STRUCT_KEYWORDS_RE = re.compile(r"(?i)\barray\s+of\b|\bobjects?\b")
+_STRUCT_KEYWORDS_RE = re.compile(
+    r"(?i)\blist\s+data\s+structure\b|\bdata\s+structure\b|"
+    r"\barray\s+of\b|\bobjects?\b"
+)
 
 # Parameter types that carry a referenced struct name worth preserving.
 _STRUCT_TYPES = frozenset({ParameterType.OBJECT, ParameterType.ARRAY_OF_OBJECTS})
