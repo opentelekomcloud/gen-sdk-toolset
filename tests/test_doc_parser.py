@@ -204,10 +204,12 @@ def test_anti_ddos_root_endpoint_extracts_top_level_response_table(
         "updated",
         "version",
     ]
-    assert response.scan_result.status is SectionStatus.PARTIAL
-    assert any(
-        issue.code is IssueCode.UNMAPPED_TABLE for issue in response.scan_result.issues
+    links = next(
+        parameter for parameter in response.parameters if parameter.name == "links"
     )
+    assert [child.name for child in links.children] == ["href", "rel"]
+    assert response.scan_result.status is SectionStatus.OK
+    assert response.scan_result.issues == []
 
 
 def test_anti_ddos_direct_response_table_is_top_level(
@@ -225,6 +227,140 @@ def test_anti_ddos_direct_response_table_is_top_level(
         "task_id",
     ]
     assert response.scan_result.status is SectionStatus.OK
+
+
+def test_anti_ddos_label_based_request_structure_becomes_children(
+    parser: DocutilsParser,
+) -> None:
+    content = """
+Create Item
+===========
+
+URI
+---
+
+POST /v1/items
+
+Request
+-------
+
+-  Parameter description
+
+   =========== ========= ===================
+   Parameter   Mandatory Type
+   =========== ========= ===================
+   warn_config Yes       List data structure
+   topic_urn   Yes       String
+   =========== ========= ===================
+
+-  Data structure description of **warn_config**
+
+   =========== ========= =======
+   Parameter   Mandatory Type
+   =========== ========= =======
+   antiDDoS    No        Boolean
+   bruce_force No        Boolean
+   =========== ========= =======
+"""
+
+    parsed = parser.parse(content, "create_item.rst")
+    body = _sections(parsed)["body"]
+    warn_config = next(
+        parameter for parameter in body.parameters if parameter.name == "warn_config"
+    )
+
+    assert [parameter.name for parameter in body.parameters] == [
+        "warn_config",
+        "topic_urn",
+    ]
+    assert [child.name for child in warn_config.children] == [
+        "antiDDoS",
+        "bruce_force",
+    ]
+    assert body.scan_result.fields_total == 2
+    assert body.scan_result.status is SectionStatus.OK
+
+
+def test_label_based_nested_table_without_parent_is_reported(
+    parser: DocutilsParser,
+) -> None:
+    content = """
+Get Item
+========
+
+URI
+---
+
+GET /v1/items
+
+Response
+--------
+
+-  Data structure description of **missing_parent**
+
+   ===== ====== ===========
+   Name  Type   Description
+   ===== ====== ===========
+   value String Value
+   ===== ====== ===========
+"""
+
+    response = _sections(parser.parse(content, "get_item.rst"))["response"]
+
+    assert response.scan_result.status is SectionStatus.FAILED
+    assert [issue.code for issue in response.scan_result.issues] == [
+        IssueCode.NESTED_PARENT_NOT_FOUND
+    ]
+    assert response.scan_result.issues[0].location == "missing_parent"
+
+
+def test_duplicate_label_based_nested_table_is_reported(
+    parser: DocutilsParser,
+) -> None:
+    content = """
+Get Item
+========
+
+URI
+---
+
+GET /v1/items
+
+Response
+--------
+
+-  Response parameters
+
+   ===== ============== ===========
+   Name  Type           Description
+   ===== ============== ===========
+   links Data structure Links
+   ===== ============== ===========
+
+-  Data structure description of **links**
+
+   ==== ====== ===========
+   Name Type   Description
+   ==== ====== ===========
+   href String Link target
+   ==== ====== ===========
+
+-  Data structure description of **links**
+
+   ==== ====== ===========
+   Name Type   Description
+   ==== ====== ===========
+   rel  String Link relation
+   ==== ====== ===========
+"""
+
+    response = _sections(parser.parse(content, "get_item.rst"))["response"]
+
+    assert [child.name for child in response.parameters[0].children] == ["href"]
+    assert response.scan_result.status is SectionStatus.PARTIAL
+    assert [issue.code for issue in response.scan_result.issues] == [
+        IssueCode.UNMAPPED_TABLE
+    ]
 
 
 def test_anti_ddos_legacy_uri_table_becomes_path_parameters(

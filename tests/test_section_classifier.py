@@ -7,6 +7,7 @@ from tools.scanner.parsers.docutils.section import (
     TableTarget,
     classify_section_title,
     classify_table_title,
+    nested_parent_name,
 )
 
 
@@ -131,6 +132,13 @@ def test_named_struct_is_nested() -> None:
         classify_table_title("CreateFirewallOption", in_section=SectionKind.REQUEST)
         == "nested_struct"
     )
+
+
+def test_legacy_nested_label_exposes_parent_name() -> None:
+    assert nested_parent_name("Data structure description of warn_config") == (
+        "warn_config"
+    )
+    assert nested_parent_name("Parameter description") is None
 
 
 def test_status_code_is_intentionally_ignored() -> None:

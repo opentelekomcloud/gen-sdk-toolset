@@ -20,6 +20,7 @@ class IssueCode(str, Enum):
     UNKNOWN_TYPE_FORMAT = "unknown_type_format"
 
     NESTED_TABLE_NOT_FOUND = "nested_table_not_found"
+    NESTED_PARENT_NOT_FOUND = "nested_parent_not_found"
     NESTED_TABLE_EMPTY = "nested_table_empty"
     NESTED_CIRCULAR_REF = "nested_circular_ref"
     NESTED_REF_NOT_A_TABLE = "nested_ref_not_a_table"

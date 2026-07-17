@@ -122,6 +122,10 @@ _TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], SectionName | TableTarget]] =
 ]
 
 _STATUS_CODE_TABLE_RE = re.compile(r"\bstatus\s+code", re.IGNORECASE)
+_NESTED_LABEL_RE = re.compile(
+    r"^data\s+structure\s+description\s+of\s+(.+?)$",
+    re.IGNORECASE,
+)
 
 _DEFAULT_TABLE_SECTIONS = {
     SectionKind.URI: SectionName.PATH_PARAMS,
@@ -177,6 +181,11 @@ def classify_table_title(
 def default_table_section(kind: SectionKind) -> SectionName:
     """Return the canonical section that owns diagnostics for a table."""
     return _DEFAULT_TABLE_SECTIONS[kind]
+
+
+def nested_parent_name(title: str) -> str | None:
+    match = _NESTED_LABEL_RE.match(title.strip())
+    return match.group(1).strip() if match else None
 
 
 # Keywords that indicate a *primary* parameter table (header / body /

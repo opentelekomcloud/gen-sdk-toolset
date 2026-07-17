@@ -30,6 +30,7 @@ from .section import (
     classify_section_title,
     classify_table_title,
     default_table_section,
+    nested_parent_name,
 )
 from .style import extract_document_title
 from .table import TableExtraction, extract_parameter_table
@@ -41,6 +42,9 @@ class _SectionExtraction:
     sections: dict[SectionName, Section] = field(default_factory=dict)
     primary_tables: dict[SectionName, TableExtraction] = field(default_factory=dict)
     reference_targets: dict[str, RefTarget] = field(default_factory=dict)
+    label_tables: dict[SectionName, dict[str, TableExtraction]] = field(
+        default_factory=dict
+    )
     routing_issues: dict[SectionName, list[Issue]] = field(default_factory=dict)
 
 
@@ -180,12 +184,24 @@ class DocutilsParser(RstParser):
         *,
         doc_id: str | None,
     ) -> None:
-        for name, table in extraction.primary_tables.items():
-            section = _to_section(table, name)
+        section_names = dict.fromkeys(
+            (*extraction.primary_tables, *extraction.label_tables)
+        )
+        for name in section_names:
+            table = extraction.primary_tables.get(name)
+            section = (
+                _to_section(table, name)
+                if table is not None
+                else Section(
+                    name=name,
+                    scan_result=SectionScanResult(status=SectionStatus.FAILED),
+                )
+            )
             issues = resolve_nested(
-                {name: table},
+                {name: table} if table is not None else {},
                 extraction.reference_targets,
                 doc_id=doc_id,
+                label_tables=extraction.label_tables.get(name),
             )
             _append_issues(section, issues)
             extraction.sections[name] = section
@@ -224,6 +240,13 @@ class DocutilsParser(RstParser):
             return
         if target is TableTarget.NESTED_STRUCT and _register_reference_table(
             table, extraction.reference_targets
+        ):
+            return
+        if target is TableTarget.NESTED_STRUCT and _register_label_table(
+            table,
+            title=title,
+            section_kind=section_kind,
+            label_tables=extraction.label_tables,
         ):
             return
         if isinstance(target, TableTarget):
@@ -317,6 +340,24 @@ def _register_reference_table(
         kind=RefKind.TABLE,
         table=extract_parameter_table(table),
     )
+    return True
+
+
+def _register_label_table(
+    table: nodes.table,
+    *,
+    title: str,
+    section_kind: SectionKind,
+    label_tables: dict[SectionName, dict[str, TableExtraction]],
+) -> bool:
+    parent_name = nested_parent_name(title)
+    if parent_name is None:
+        return False
+    owner = default_table_section(section_kind)
+    section_tables = label_tables.setdefault(owner, {})
+    if parent_name in section_tables:
+        return False
+    section_tables[parent_name] = extract_parameter_table(table)
     return True
 
 

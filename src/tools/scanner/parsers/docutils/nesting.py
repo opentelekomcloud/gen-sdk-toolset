@@ -28,10 +28,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from tools.shared.ir import Parameter
+from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import Issue, IssueCode
 
 from .table import TableExtraction
+
+_NESTED_TYPES = frozenset({ParameterType.OBJECT, ParameterType.ARRAY_OF_OBJECTS})
 
 
 class RefKind(str, Enum):
@@ -53,30 +55,34 @@ class RefTarget:
     table: TableExtraction | None = None
 
 
+@dataclass(frozen=True)
+class _TargetMatch:
+    reference: str
+    target: RefTarget
+
+
 def resolve_nested(
     primary: dict[str, TableExtraction],
     registry: dict[str, RefTarget],
     doc_id: str | None = None,
+    label_tables: dict[str, TableExtraction] | None = None,
 ) -> list[Issue]:
-    """Populate ``children`` for every object/array param in ``primary``.
-
-    Mutates the parameters in ``primary`` in place (attaching resolved
-    ``children``) and returns the list of issues for anchors that could not
-    be resolved. ``registry`` maps a ref anchor to its :class:`RefTarget`.
-    ``doc_id`` is this document's own label; it lets an unresolved anchor
-    with a foreign docid be reported as external rather than dangling. With
-    no ``doc_id`` the external check is skipped (every miss is "not found").
-    """
+    """Attach children through explicit anchors or legacy parent-name labels."""
+    labels = label_tables or {}
+    used_labels: set[str] = set()
     issues: list[Issue] = []
     for extraction in primary.values():
         _resolve(
             extraction.parameters,
             extraction.ref_anchors,
             registry,
+            labels,
+            used_labels,
             doc_id=doc_id,
             visiting=frozenset(),
             issues=issues,
         )
+    issues.extend(_orphan_label_issues(labels, used_labels))
     return issues
 
 
@@ -84,47 +90,109 @@ def _resolve(
     params: list[Parameter],
     anchors: list[str | None],
     registry: dict[str, RefTarget],
+    label_tables: dict[str, TableExtraction],
+    used_labels: set[str],
     doc_id: str | None,
     visiting: frozenset[str],
     issues: list[Issue],
 ) -> None:
     for param, anchor in zip(params, anchors):
-        if anchor is None:
-            continue  # primitive / no ref → leaf
-
-        target = registry.get(anchor)
-        if target is None:
-            # Not a target in this document: either it points into another
-            # doc (foreign docid) or it is a genuine dangling ref.
-            code = (
-                IssueCode.NESTED_REF_EXTERNAL
-                if _is_external(anchor, doc_id)
-                else IssueCode.NESTED_TABLE_NOT_FOUND
-            )
-            _flag(issues, code, param, anchor)
+        match = _lookup_target(
+            param,
+            anchor,
+            registry=registry,
+            label_tables=label_tables,
+            used_labels=used_labels,
+            doc_id=doc_id,
+            issues=issues,
+        )
+        if match is None:
             continue
-        if target.kind is RefKind.NON_TABLE or target.table is None:
-            _flag(issues, IssueCode.NESTED_REF_NOT_A_TABLE, param, anchor)
-            continue
-        if not target.table.parameters:
-            _flag(issues, IssueCode.NESTED_TABLE_EMPTY, param, anchor)
-            continue
-        if anchor in visiting:  # cycle on the current path (A → … → A)
-            _flag(issues, IssueCode.NESTED_CIRCULAR_REF, param, anchor)
+        table = _target_table(match, param, visiting=visiting, issues=issues)
+        if table is None:
             continue
 
-        # Deep-copy so two params referencing the same struct get independent
-        # subtrees and nothing in the registry is mutated.
-        children = [child.model_copy(deep=True) for child in target.table.parameters]
+        children = [child.model_copy(deep=True) for child in table.parameters]
         param.children = children
         _resolve(
             children,
-            target.table.ref_anchors,
+            table.ref_anchors,
             registry,
+            label_tables,
+            used_labels,
             doc_id,
-            visiting | {anchor},
+            visiting | {match.reference},
             issues,
         )
+
+
+def _lookup_target(
+    param: Parameter,
+    anchor: str | None,
+    *,
+    registry: dict[str, RefTarget],
+    label_tables: dict[str, TableExtraction],
+    used_labels: set[str],
+    doc_id: str | None,
+    issues: list[Issue],
+) -> _TargetMatch | None:
+    if anchor is None:
+        if param.param_type not in _NESTED_TYPES:
+            return None
+        table = label_tables.get(param.name)
+        if table is None:
+            return None
+        used_labels.add(param.name)
+        return _TargetMatch(
+            reference=f"label:{param.name}",
+            target=RefTarget(kind=RefKind.TABLE, table=table),
+        )
+
+    target = registry.get(anchor)
+    if target is not None:
+        return _TargetMatch(reference=anchor, target=target)
+
+    code = (
+        IssueCode.NESTED_REF_EXTERNAL
+        if _is_external(anchor, doc_id)
+        else IssueCode.NESTED_TABLE_NOT_FOUND
+    )
+    _flag(issues, code, param, anchor)
+    return None
+
+
+def _target_table(
+    match: _TargetMatch,
+    param: Parameter,
+    *,
+    visiting: frozenset[str],
+    issues: list[Issue],
+) -> TableExtraction | None:
+    if match.target.kind is RefKind.NON_TABLE or match.target.table is None:
+        _flag(issues, IssueCode.NESTED_REF_NOT_A_TABLE, param, match.reference)
+        return None
+    if not match.target.table.parameters:
+        _flag(issues, IssueCode.NESTED_TABLE_EMPTY, param, match.reference)
+        return None
+    if match.reference in visiting:
+        _flag(issues, IssueCode.NESTED_CIRCULAR_REF, param, match.reference)
+        return None
+    return match.target.table
+
+
+def _orphan_label_issues(
+    label_tables: dict[str, TableExtraction],
+    used_labels: set[str],
+) -> list[Issue]:
+    return [
+        Issue(
+            code=IssueCode.NESTED_PARENT_NOT_FOUND,
+            location=parent_name,
+            details="nested table has no matching object or array parameter",
+        )
+        for parent_name in label_tables
+        if parent_name not in used_labels
+    ]
 
 
 def _is_external(anchor: str, doc_id: str | None) -> bool:

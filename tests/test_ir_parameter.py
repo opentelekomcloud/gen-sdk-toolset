@@ -36,6 +36,7 @@ def test_type_name_none_round_trips() -> None:
 
 def test_nested_issue_codes_exist() -> None:
     assert IssueCode.NESTED_TABLE_NOT_FOUND.value == "nested_table_not_found"
+    assert IssueCode.NESTED_PARENT_NOT_FOUND.value == "nested_parent_not_found"
     assert IssueCode.NESTED_TABLE_EMPTY.value == "nested_table_empty"
     assert IssueCode.NESTED_CIRCULAR_REF.value == "nested_circular_ref"
     assert IssueCode.NESTED_REF_NOT_A_TABLE.value == "nested_ref_not_a_table"
