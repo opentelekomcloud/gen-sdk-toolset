@@ -141,6 +141,53 @@ This page has no URI line.
     assert excinfo.value.issue.code is IssueCode.NO_URI_MATCH
 
 
+@pytest.mark.parametrize("uri_line", ["GET", "GET https://api.example.com"])
+def test_uri_without_slash_path_raises(
+    parser: DocutilsParser, uri_line: str
+) -> None:
+    content = f"""
+URI
+---
+
+{uri_line}
+"""
+    with pytest.raises(ParseFailure) as excinfo:
+        parser.parse(content, "empty-uri.rst")
+    assert excinfo.value.issue.code is IssueCode.NO_URI_MATCH
+
+
+# --------------------------------------------------------------------------- #
+# Anti-DDoS — root endpoint from querying_all_api_versions.rst
+# --------------------------------------------------------------------------- #
+def test_anti_ddos_root_endpoint(
+    parser: DocutilsParser, anti_ddos_root_doc: str
+) -> None:
+    parsed = parser.parse(
+        anti_ddos_root_doc,
+        "api-ref/source/api/anti-ddos_apis/querying_all_api_versions.rst",
+    )
+
+    assert parsed.title == "Querying All API Versions"
+    assert parsed.method is HttpMethod.GET
+    assert parsed.uri == "/"
+
+
+def test_anti_ddos_root_endpoint_preserves_examples(
+    parser: DocutilsParser, anti_ddos_root_doc: str
+) -> None:
+    parsed = parser.parse(
+        anti_ddos_root_doc,
+        "api-ref/source/api/anti-ddos_apis/querying_all_api_versions.rst",
+    )
+    sections = _sections(parsed)
+
+    assert [example.raw for example in sections["example_request"].examples] == [
+        "GET /"
+    ]
+    assert len(sections["example_response"].examples) == 1
+    assert sections["example_response"].examples[0].parsed is not None
+
+
 # --------------------------------------------------------------------------- #
 # ELB list endpoint — path vs query parameter separation
 # --------------------------------------------------------------------------- #

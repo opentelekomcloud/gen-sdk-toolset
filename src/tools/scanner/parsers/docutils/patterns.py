@@ -13,7 +13,7 @@ HTTP_METHODS_RE = "|".join(m.value for m in HttpMethod)
 #   POST /v3/{project_id}/configurations
 #   POST https://{Endpoint}/v3/{project_id}/configurations   (host form)
 URI_RE = re.compile(
-    rf"^\s*({HTTP_METHODS_RE})\s+(?:https?://[^/\s]+)?(/\S+)\s*$",
+    rf"^\s*({HTTP_METHODS_RE})\s+(?:https?://[^/\s]+)?(/\S*)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 
