@@ -142,9 +142,7 @@ This page has no URI line.
 
 
 @pytest.mark.parametrize("uri_line", ["GET", "GET https://api.example.com"])
-def test_uri_without_slash_path_raises(
-    parser: DocutilsParser, uri_line: str
-) -> None:
+def test_uri_without_slash_path_raises(parser: DocutilsParser, uri_line: str) -> None:
     content = f"""
 URI
 ---
@@ -186,6 +184,61 @@ def test_anti_ddos_root_endpoint_preserves_examples(
     ]
     assert len(sections["example_response"].examples) == 1
     assert sections["example_response"].examples[0].parsed is not None
+
+
+def test_anti_ddos_root_endpoint_reports_unmapped_response_tables(
+    parser: DocutilsParser, anti_ddos_root_doc: str
+) -> None:
+    parsed = parser.parse(
+        anti_ddos_root_doc,
+        "api-ref/source/api/anti-ddos_apis/querying_all_api_versions.rst",
+    )
+    response = _sections(parsed)["response"]
+
+    assert response.scan_result.status is SectionStatus.FAILED
+    assert response.scan_result.issues
+    assert all(
+        issue.code is IssueCode.UNMAPPED_TABLE for issue in response.scan_result.issues
+    )
+
+
+def test_unmapped_table_degrades_an_extracted_section(parser: DocutilsParser) -> None:
+    content = """
+Create Item
+===========
+
+URI
+---
+
+POST /v1/items
+
+Request
+-------
+
+.. table:: Request body parameters
+
+   ==== ====== ===========
+   Name Type   Description
+   ==== ====== ===========
+   name String Item name
+   ==== ====== ===========
+
+.. table::
+
+   ===== ====== ===========
+   Name  Type   Description
+   ===== ====== ===========
+   extra String Extra value
+   ===== ====== ===========
+"""
+
+    body = _sections(parser.parse(content, "create_item.rst"))["body"]
+
+    assert [parameter.name for parameter in body.parameters] == ["name"]
+    assert body.scan_result.status is SectionStatus.PARTIAL
+    assert [issue.code for issue in body.scan_result.issues] == [
+        IssueCode.UNMAPPED_TABLE
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -277,11 +330,11 @@ def test_two_body_tables_merge(
 # produce an invalid-JSON issue and degrade the section (review item 14).
 # --------------------------------------------------------------------------- #
 def test_example_extend_invalid_json_degrades() -> None:
-    from tools.scanner.parsers.docutils.doc_parser import _set_example_section
+    from tools.scanner.parsers.docutils.example import add_examples_to_section
 
     results: dict = {}
     # First call creates the section from a valid JSON example → OK.
-    _set_example_section(
+    add_examples_to_section(
         results,
         SectionName.EXAMPLE_REQUEST,
         [Example(raw='{"a": 1}', parsed={"a": 1})],
@@ -289,7 +342,7 @@ def test_example_extend_invalid_json_degrades() -> None:
     assert results[SectionName.EXAMPLE_REQUEST].scan_result.status is SectionStatus.OK
 
     # Second call extends the existing section with an unparseable example.
-    _set_example_section(
+    add_examples_to_section(
         results,
         SectionName.EXAMPLE_REQUEST,
         [Example(raw="not json", parsed=None)],

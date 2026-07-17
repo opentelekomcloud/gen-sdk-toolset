@@ -15,6 +15,7 @@ class IssueCode(str, Enum):
 
     MALFORMED_GRID_TABLE = "malformed_grid_table"
     UNEXPECTED_COLUMNS = "unexpected_columns"
+    UNMAPPED_TABLE = "unmapped_table"
 
     UNKNOWN_TYPE_FORMAT = "unknown_type_format"
 

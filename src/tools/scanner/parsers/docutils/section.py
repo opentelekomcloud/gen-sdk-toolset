@@ -36,6 +36,8 @@ class TableTarget(str, Enum):
     """Internal routing targets that are not endpoint sections."""
 
     NESTED_STRUCT = "nested_struct"
+    INTENTIONALLY_IGNORED = "intentionally_ignored"
+    UNMAPPED = "unmapped"
 
 
 # Maps canonical SectionKind → set of literal heading variants seen in
@@ -46,7 +48,13 @@ _SECTION_VARIANTS: dict[SectionKind, frozenset[str]] = {
         {"request", "request parameters", "request message", "requests"}
     ),
     SectionKind.RESPONSE: frozenset(
-        {"response", "response parameters", "response message", "responses"}
+        {
+            "response",
+            "response parameters",
+            "response message",
+            "response messages",
+            "responses",
+        }
     ),
     SectionKind.EXAMPLE_REQUEST: frozenset(
         {"example request", "example requests", "sample request"}
@@ -114,22 +122,29 @@ _TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], SectionName | TableTarget]] =
 
 _STATUS_CODE_TABLE_RE = re.compile(r"\bstatus\s+code", re.IGNORECASE)
 
+_DEFAULT_TABLE_SECTIONS = {
+    SectionKind.URI: SectionName.PATH_PARAMS,
+    SectionKind.REQUEST: SectionName.BODY,
+    SectionKind.RESPONSE: SectionName.RESPONSE,
+}
+
 
 def classify_table_title(
     title: str, *, in_section: SectionKind
-) -> SectionName | TableTarget | None:
+) -> SectionName | TableTarget:
     """Resolve a table title to a canonical section key.
 
     Returns a canonical ``SectionName`` for primary parameter tables and
     ``TableTarget.NESTED_STRUCT`` for referenced object definitions.
-    Returns ``None`` for non-parameter tables (status codes, etc.).
+    Returns ``TableTarget.INTENTIONALLY_IGNORED`` for known non-parameter
+    tables and ``TableTarget.UNMAPPED`` when no safe route can be inferred.
 
     `in_section` provides context: a table in the URI section with a
     generic title defaults to path_params; a table in Response with a
     generic title defaults to response.
     """
     if _STATUS_CODE_TABLE_RE.search(title):
-        return None
+        return TableTarget.INTENTIONALLY_IGNORED
 
     for pattern, key in _TABLE_TITLE_PATTERNS:
         if pattern.search(title):
@@ -144,19 +159,21 @@ def classify_table_title(
     # Fall back on enclosing section. A "Parameter description" table
     # directly under URI is path_params; under Request it's request body;
     # under Response it's response body.
-    fallback: dict[SectionKind, SectionName] = {
-        SectionKind.URI: SectionName.PATH_PARAMS,
-        SectionKind.REQUEST: SectionName.BODY,
-        SectionKind.RESPONSE: SectionName.RESPONSE,
-    }
-    if in_section in fallback:
+    if in_section in _DEFAULT_TABLE_SECTIONS:
         # But only if the title looks "parameter-ish" — bare object
         # names like "CreateFirewallOption" are nested struct definitions.
         if _looks_like_parameter_table(title):
-            return fallback[in_section]
-        return TableTarget.NESTED_STRUCT
+            return _DEFAULT_TABLE_SECTIONS[in_section]
+        if title:
+            return TableTarget.NESTED_STRUCT
+        return TableTarget.UNMAPPED
 
-    return None
+    return TableTarget.UNMAPPED
+
+
+def default_table_section(kind: SectionKind) -> SectionName:
+    """Return the canonical section that owns diagnostics for a table."""
+    return _DEFAULT_TABLE_SECTIONS[kind]
 
 
 # Keywords that indicate a *primary* parameter table (header / body /
