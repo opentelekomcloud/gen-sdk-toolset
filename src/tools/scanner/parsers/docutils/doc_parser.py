@@ -77,6 +77,12 @@ _GENERIC_REQUEST_TARGETS = {
     HttpMethod.PATCH: SectionName.BODY,
 }
 
+_DIRECT_UNTITLED_TARGETS = {
+    SectionKind.URI: SectionName.PATH_PARAMS,
+    SectionKind.REQUEST: TableTarget.GENERIC_REQUEST,
+    SectionKind.RESPONSE: SectionName.RESPONSE,
+}
+
 
 class DocutilsParser(RstParser):
     _SILENT_DOCUTILS_SETTINGS = {
@@ -207,7 +213,11 @@ class DocutilsParser(RstParser):
         extraction: _SectionExtraction,
     ) -> None:
         title = _table_routing_title(table, section_kind=section_kind)
-        target = classify_table_title(title, in_section=section_kind)
+        target = _classify_table_target(
+            table,
+            title=title,
+            section_kind=section_kind,
+        )
         target = _resolve_generic_request_target(target, extraction.http_method)
 
         if target is TableTarget.INTENTIONALLY_IGNORED:
@@ -335,9 +345,24 @@ def _table_title(table: nodes.table) -> str:
 
 def _table_routing_title(table: nodes.table, *, section_kind: SectionKind) -> str:
     title = _table_title(table)
-    if title or section_kind not in (SectionKind.URI, SectionKind.REQUEST):
+    if title or section_kind not in (
+        SectionKind.URI,
+        SectionKind.REQUEST,
+        SectionKind.RESPONSE,
+    ):
         return title
     return _list_item_label(table)
+
+
+def _classify_table_target(
+    table: nodes.table,
+    *,
+    title: str,
+    section_kind: SectionKind,
+) -> SectionName | TableTarget:
+    if not title and isinstance(table.parent, nodes.section):
+        return _DIRECT_UNTITLED_TARGETS[section_kind]
+    return classify_table_title(title, in_section=section_kind)
 
 
 def _resolve_generic_request_target(

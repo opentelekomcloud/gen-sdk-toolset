@@ -67,3 +67,8 @@ def anti_ddos_legacy_uri_doc() -> str:
 @pytest.fixture
 def anti_ddos_get_request_doc() -> str:
     return load_fixture("style_a_anti_ddos_get_request.rst")
+
+
+@pytest.fixture
+def anti_ddos_direct_response_doc() -> str:
+    return load_fixture("style_a_anti_ddos_direct_response.rst")

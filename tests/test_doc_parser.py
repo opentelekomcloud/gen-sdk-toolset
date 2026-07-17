@@ -186,7 +186,7 @@ def test_anti_ddos_root_endpoint_preserves_examples(
     assert sections["example_response"].examples[0].parsed is not None
 
 
-def test_anti_ddos_root_endpoint_reports_unmapped_response_tables(
+def test_anti_ddos_root_endpoint_extracts_top_level_response_table(
     parser: DocutilsParser, anti_ddos_root_doc: str
 ) -> None:
     parsed = parser.parse(
@@ -195,11 +195,36 @@ def test_anti_ddos_root_endpoint_reports_unmapped_response_tables(
     )
     response = _sections(parsed)["response"]
 
-    assert response.scan_result.status is SectionStatus.FAILED
-    assert response.scan_result.issues
-    assert all(
+    assert [parameter.name for parameter in response.parameters] == [
+        "versions",
+        "id",
+        "links",
+        "min_version",
+        "status",
+        "updated",
+        "version",
+    ]
+    assert response.scan_result.status is SectionStatus.PARTIAL
+    assert any(
         issue.code is IssueCode.UNMAPPED_TABLE for issue in response.scan_result.issues
     )
+
+
+def test_anti_ddos_direct_response_table_is_top_level(
+    parser: DocutilsParser, anti_ddos_direct_response_doc: str
+) -> None:
+    parsed = parser.parse(
+        anti_ddos_direct_response_doc,
+        "api-ref/source/api/alarm_reminding_apis/updating_alarm_configuration.rst",
+    )
+    response = _sections(parsed)["response"]
+
+    assert [parameter.name for parameter in response.parameters] == [
+        "error_code",
+        "error_msg",
+        "task_id",
+    ]
+    assert response.scan_result.status is SectionStatus.OK
 
 
 def test_anti_ddos_legacy_uri_table_becomes_path_parameters(
@@ -261,13 +286,15 @@ Request
    name String Item name
    ==== ====== ===========
 
-.. table::
+-  Extra structure
 
-   ===== ====== ===========
-   Name  Type   Description
-   ===== ====== ===========
-   extra String Extra value
-   ===== ====== ===========
+   .. table::
+
+      ===== ====== ===========
+      Name  Type   Description
+      ===== ====== ===========
+      extra String Extra value
+      ===== ====== ===========
 """
 
     body = _sections(parser.parse(content, "create_item.rst"))["body"]
