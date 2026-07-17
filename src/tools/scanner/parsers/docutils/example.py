@@ -91,12 +91,21 @@ def _extract_item_label(item: nodes.list_item) -> str | None:
 
 def _make_example(block: nodes.literal_block, *, label: str | None) -> Example:
     raw = block.astext()
-    language = block.get("language") or None
     return Example(
         raw=raw,
-        language=language,
+        language=_extract_language(block),
         parsed=_try_parse_json(raw),
         label=label,
+    )
+
+
+def _extract_language(block: nodes.literal_block) -> str | None:
+    language = block.get("language")
+    if language:
+        return language
+    return next(
+        (name for name in block.get("classes", []) if name != "code"),
+        None,
     )
 
 
@@ -121,8 +130,14 @@ def _example_json_issues(blocks: list[Example]) -> list[Issue]:
             details=(block.label or "")[:DETAILS_MAX] or None,
         )
         for index, block in enumerate(blocks, start=1)
-        if block.parsed is None
+        if block.parsed is None and _expects_json(block)
     ]
+
+
+def _expects_json(block: Example) -> bool:
+    if block.language:
+        return block.language.lower() in {"json", "application/json"}
+    return block.raw.lstrip().startswith(("{", "["))
 
 
 def _create_example_section(

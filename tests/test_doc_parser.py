@@ -182,6 +182,11 @@ def test_anti_ddos_root_endpoint_preserves_examples(
     assert [example.raw for example in sections["example_request"].examples] == [
         "GET /"
     ]
+    request = sections["example_request"]
+    assert request.examples[0].language == "text"
+    assert request.examples[0].parsed is None
+    assert request.scan_result.status is SectionStatus.OK
+    assert request.scan_result.issues == []
     assert len(sections["example_response"].examples) == 1
     assert sections["example_response"].examples[0].parsed is not None
 
@@ -527,8 +532,8 @@ def test_two_body_tables_merge(
 
 
 # --------------------------------------------------------------------------- #
-# Example section EXTEND path: an unparseable example arriving second must still
-# produce an invalid-JSON issue and degrade the section (review item 14).
+# Example section EXTEND path: malformed JSON arriving second must still
+# produce an issue and degrade the section.
 # --------------------------------------------------------------------------- #
 def test_example_extend_invalid_json_degrades() -> None:
     from tools.scanner.parsers.docutils.example import add_examples_to_section
@@ -546,12 +551,27 @@ def test_example_extend_invalid_json_degrades() -> None:
     add_examples_to_section(
         results,
         SectionName.EXAMPLE_REQUEST,
-        [Example(raw="not json", parsed=None)],
+        [Example(raw='{"a": ...}', parsed=None)],
     )
     sec = results[SectionName.EXAMPLE_REQUEST]
     assert len(sec.examples) == 2
     assert sec.scan_result.status is SectionStatus.PARTIAL
     assert any(i.code is IssueCode.EXAMPLE_INVALID_JSON for i in sec.scan_result.issues)
+
+
+def test_non_json_example_does_not_degrade() -> None:
+    from tools.scanner.parsers.docutils.example import add_examples_to_section
+
+    results: dict = {}
+    add_examples_to_section(
+        results,
+        SectionName.EXAMPLE_REQUEST,
+        [Example(raw="GET /v1/items", language="text")],
+    )
+
+    section = results[SectionName.EXAMPLE_REQUEST]
+    assert section.scan_result.status is SectionStatus.OK
+    assert section.scan_result.issues == []
 
 
 # --------------------------------------------------------------------------- #
