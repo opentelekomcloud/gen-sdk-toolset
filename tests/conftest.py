@@ -57,3 +57,8 @@ def two_body_tables_doc() -> str:
 @pytest.fixture
 def anti_ddos_root_doc() -> str:
     return load_fixture("style_a_anti_ddos_root_endpoint.rst")
+
+
+@pytest.fixture
+def anti_ddos_legacy_uri_doc() -> str:
+    return load_fixture("style_a_anti_ddos_legacy_uri.rst")

@@ -202,6 +202,25 @@ def test_anti_ddos_root_endpoint_reports_unmapped_response_tables(
     )
 
 
+def test_anti_ddos_legacy_uri_table_becomes_path_parameters(
+    parser: DocutilsParser, anti_ddos_legacy_uri_doc: str
+) -> None:
+    parsed = parser.parse(
+        anti_ddos_legacy_uri_doc,
+        "api-ref/source/api/anti-ddos_apis/updating_anti-ddos_defense_policies.rst",
+    )
+    path_params = _sections(parsed)["path_params"]
+
+    assert parsed.method is HttpMethod.PUT
+    assert parsed.uri == "/v1/{project_id}/antiddos/{floating_ip_id}"
+    assert [parameter.name for parameter in path_params.parameters] == [
+        "project_id",
+        "floating_ip_id",
+    ]
+    assert path_params.scan_result.status is SectionStatus.OK
+    assert path_params.scan_result.fields_total == 2
+
+
 def test_unmapped_table_degrades_an_extracted_section(parser: DocutilsParser) -> None:
     content = """
 Create Item

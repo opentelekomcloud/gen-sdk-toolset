@@ -193,7 +193,7 @@ class DocutilsParser(RstParser):
         section_kind: SectionKind,
         extraction: _SectionExtraction,
     ) -> None:
-        title = _table_title(table)
+        title = _table_routing_title(table, section_kind=section_kind)
         target = classify_table_title(title, in_section=section_kind)
 
         if target is TableTarget.INTENTIONALLY_IGNORED:
@@ -317,6 +317,28 @@ def _table_title(table: nodes.table) -> str:
     """Title text on a ``.. table:: <Title>`` directive (empty if absent)."""
     title_node = next(iter(table.findall(nodes.title)), None)
     return title_node.astext().strip() if title_node else ""
+
+
+def _table_routing_title(table: nodes.table, *, section_kind: SectionKind) -> str:
+    title = _table_title(table)
+    if title or section_kind is not SectionKind.URI:
+        return title
+    return _list_item_label(table)
+
+
+def _list_item_label(table: nodes.table) -> str:
+    ancestor = table.parent
+    while ancestor is not None and not isinstance(
+        ancestor, (nodes.list_item, nodes.section)
+    ):
+        ancestor = ancestor.parent
+    if not isinstance(ancestor, nodes.list_item):
+        return ""
+    paragraph = next(
+        (child for child in ancestor.children if isinstance(child, nodes.paragraph)),
+        None,
+    )
+    return paragraph.astext().strip() if paragraph else ""
 
 
 def _table_label_id(table: nodes.table) -> str | None:
