@@ -212,6 +212,12 @@ def test_anti_ddos_root_endpoint_extracts_top_level_response_table(
     links = next(
         parameter for parameter in response.parameters if parameter.name == "links"
     )
+    versions = next(
+        parameter for parameter in response.parameters if parameter.name == "versions"
+    )
+    assert versions.param_type is ParameterType.ARRAY
+    assert versions.children == []
+    assert links.param_type is ParameterType.ARRAY_OF_OBJECTS
     assert [child.name for child in links.children] == ["href", "rel"]
     assert response.scan_result.status is SectionStatus.OK
     assert response.scan_result.issues == []
@@ -282,6 +288,7 @@ Request
         "antiDDoS",
         "bruce_force",
     ]
+    assert warn_config.param_type is ParameterType.ARRAY_OF_OBJECTS
     assert body.scan_result.fields_total == 2
     assert body.scan_result.status is SectionStatus.OK
 

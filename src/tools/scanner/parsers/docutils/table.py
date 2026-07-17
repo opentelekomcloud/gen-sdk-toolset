@@ -52,9 +52,9 @@ def _classify_type(raw: str) -> ParameterType:
         return ParameterType.UNKNOWN
     lower = raw.strip().lower()
 
-    if lower == "list data structure":
-        return ParameterType.ARRAY_OF_OBJECTS
-    if lower == "data structure":
+    if lower in {"list", "list data structure"}:
+        return ParameterType.ARRAY
+    if lower in {"dictionary", "data structure"}:
         return ParameterType.OBJECT
 
     # Composite array types first (more specific).
@@ -94,11 +94,18 @@ def _classify_type(raw: str) -> ParameterType:
 # `\s+` tolerates irregular whitespace in "array of" (double spaces, newlines).
 _STRUCT_KEYWORDS_RE = re.compile(
     r"(?i)\blist\s+data\s+structure\b|\bdata\s+structure\b|"
+    r"\bdictionary\b|\blist\b|"
     r"\barray\s+of\b|\bobjects?\b"
 )
 
 # Parameter types that carry a referenced struct name worth preserving.
-_STRUCT_TYPES = frozenset({ParameterType.OBJECT, ParameterType.ARRAY_OF_OBJECTS})
+_STRUCT_TYPES = frozenset(
+    {
+        ParameterType.OBJECT,
+        ParameterType.ARRAY,
+        ParameterType.ARRAY_OF_OBJECTS,
+    }
+)
 
 
 @dataclass

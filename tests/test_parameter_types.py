@@ -13,6 +13,8 @@ Name                Type                Description
 =================== =================== ===========
 configuration       Data structure      Settings
 items               List data structure Nested items
+gateway              Dictionary          Nested gateway
+gateways             List                Gateway list
 period_start_date   Long integer        Start time
 =================== =================== ===========
 """
@@ -23,13 +25,17 @@ period_start_date   Long integer        Start time
 
     assert [parameter.param_type for parameter in extraction.parameters] == [
         ParameterType.OBJECT,
-        ParameterType.ARRAY_OF_OBJECTS,
+        ParameterType.ARRAY,
+        ParameterType.OBJECT,
+        ParameterType.ARRAY,
         ParameterType.LONG,
     ]
     assert [parameter.type_name for parameter in extraction.parameters] == [
         None,
         None,
         None,
+        None,
+        None,
     ]
-    assert extraction.fields_recognized == 3
+    assert extraction.fields_recognized == 5
     assert extraction.fields_unknown_type == 0

@@ -33,7 +33,13 @@ from tools.shared.scan import Issue, IssueCode
 
 from .table import TableExtraction
 
-_NESTED_TYPES = frozenset({ParameterType.OBJECT, ParameterType.ARRAY_OF_OBJECTS})
+_NESTED_TYPES = frozenset(
+    {
+        ParameterType.OBJECT,
+        ParameterType.ARRAY,
+        ParameterType.ARRAY_OF_OBJECTS,
+    }
+)
 
 
 class RefKind(str, Enum):
@@ -114,6 +120,8 @@ def _resolve(
 
         children = [child.model_copy(deep=True) for child in table.parameters]
         param.children = children
+        if param.param_type is ParameterType.ARRAY:
+            param.param_type = ParameterType.ARRAY_OF_OBJECTS
         _resolve(
             children,
             table.ref_anchors,
