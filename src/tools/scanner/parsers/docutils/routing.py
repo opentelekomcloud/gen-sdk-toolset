@@ -8,7 +8,6 @@ from docutils import nodes
 
 from tools.shared.ir import (
     HttpMethod,
-    Parameter,
     Section,
     SectionName,
 )
@@ -40,7 +39,6 @@ class _SectionExtraction:
     primary_tables: dict[SectionName, TableExtraction] = field(default_factory=dict)
     references: ReferenceRegistry = field(default_factory=ReferenceRegistry)
     routing_issues: dict[SectionName, list[Issue]] = field(default_factory=dict)
-    wrapper_candidates: dict[str, Parameter] = field(default_factory=dict)
 
 
 _GENERIC_REQUEST_TARGETS = {
@@ -75,7 +73,6 @@ class _SectionRouter:
         path_issues = reconcile_path_parameters(
             uri,
             extraction.primary_tables,
-            extraction.wrapper_candidates,
         )
         if path_issues:
             extraction.routing_issues.setdefault(SectionName.PATH_PARAMS, []).extend(

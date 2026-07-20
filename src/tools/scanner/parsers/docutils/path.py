@@ -12,7 +12,6 @@ from .table import TableExtraction, TableRow
 def reconcile_path_parameters(
     uri: str,
     primary_tables: dict[SectionName, TableExtraction],
-    wrapper_candidates: dict[str, Parameter],
 ) -> list[Issue]:
     placeholders = list(dict.fromkeys(URI_PLACEHOLDER_RE.findall(uri)))
     source = primary_tables.get(SectionName.PATH_PARAMS)
@@ -22,10 +21,6 @@ def reconcile_path_parameters(
     documented = (
         {parameter.name: parameter for parameter in source.parameters} if source else {}
     )
-    placeholder_names = set(placeholders)
-    for name, parameter in documented.items():
-        if name not in placeholder_names:
-            wrapper_candidates.setdefault(name, parameter)
     primary_tables[SectionName.PATH_PARAMS] = _path_extraction(
         placeholders,
         documented,

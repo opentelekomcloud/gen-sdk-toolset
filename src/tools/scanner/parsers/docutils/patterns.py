@@ -85,7 +85,10 @@ TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], SectionName | TableTarget]] = 
 
 NESTED_LABEL_PATTERNS = (
     re.compile(r"^data\s+structure\s+description\s+of\s+(.+?)$", re.IGNORECASE),
-    re.compile(r"^(?:table\s+\d+\s+)?description\s+of\s+(?:the\s+)?field\s+(.+?)$", re.IGNORECASE),
+    re.compile(
+        r"^(?:table\s+\d+\s+)?description\s+of\s+(?:the\s+)?field\s+(.+?)$",
+        re.IGNORECASE,
+    ),
 )
 
 PARAM_KEYWORDS = ("parameter", "header")

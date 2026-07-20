@@ -11,10 +11,10 @@ is stored by the scanner; it is a computed view, like the status roll-ups.
 
 from __future__ import annotations
 
-from tools.shared.ir import Endpoint, Section, SectionName
+from tools.shared.ir import Endpoint, Parameter, Section, SectionName
 from tools.shared.scan import Issue, IssueCode
 
-from .assemble import _PROOF_SECTIONS, example_root
+from .assemble import PROOF_SECTIONS, example_root
 
 
 def example_documentation_issues(
@@ -30,7 +30,7 @@ def example_documentation_issues(
     """
     sections = {section.name: section for section in endpoint.sections}
     found: dict[SectionName, list[Issue]] = {}
-    for parameter_name, example_name in _PROOF_SECTIONS.items():
+    for parameter_name, example_name in PROOF_SECTIONS.items():
         section = sections.get(parameter_name)
         example_section = sections.get(example_name)
         if section is None or example_section is None:
@@ -76,7 +76,7 @@ def _check_missing_wrapper(root_name: str) -> list[Issue]:
 
 
 def _check_flattened_siblings(
-    parameters: list, root_name: str, _fields: set[str]
+    parameters: list[Parameter], root_name: str, _fields: set[str]
 ) -> list[Issue]:
     root_param = next(p for p in parameters if p.name == root_name)
     if not root_param.children:

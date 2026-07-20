@@ -153,10 +153,11 @@ def test_binds_unmatched_table_as_root_wrapper() -> None:
 
     new_response = next(s for s in endpoint.sections if s.name == SectionName.RESPONSE)
 
-    assert len(new_response.parameters) == 1
-    new_wrapper = new_response.parameters[0]
+    assert len(new_response.parameters) == 2
+    assert new_response.parameters[0].name == "dummy"
 
-    assert new_wrapper.name == "widget"
-    assert new_wrapper.param_type is ParameterType.OBJECT
-    assert len(new_wrapper.children) == 2
-    assert {c.name for c in new_wrapper.children} == {"id", "name"}
+    wrapper = new_response.parameters[1]
+    assert wrapper.name == "widget"
+    assert wrapper.param_type is ParameterType.OBJECT
+    assert wrapper.mandatory is True
+    assert wrapper.children == [identifier, name]

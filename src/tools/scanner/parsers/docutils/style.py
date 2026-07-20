@@ -24,6 +24,7 @@ from .types import DocStyle
 # in Style-A docs by accident.
 _S3_THRESHOLD = 2
 
+
 def classify_doc_style(content: str) -> DocStyle:
     """Classify an RST doc as Style-A, S3-compatible, or non-endpoint."""
     s3_markers = len({match.lower() for match in S3_HEADING_RE.findall(content)})

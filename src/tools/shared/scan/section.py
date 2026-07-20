@@ -25,6 +25,9 @@ class SectionScanResult(BaseModel):
 
     status: SectionStatus
     issues: list[Issue] = Field(default_factory=list)
+    # Tables parsed during the scan that could not be wired to a parent parameter.
+    # The values are `list[Parameter]` (from tools.shared.ir), but typed as `list[Any]`
+    # here to avoid a circular dependency between the scan result schema and the IR.
     unmatched_tables: dict[str, list[Any]] | None = None
 
     fields_total: int = Field(default=0, ge=0)

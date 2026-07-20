@@ -26,6 +26,7 @@ class TableTarget(str, Enum):
 
 class DocStyle(str, Enum):
     """Layout classification of an RST doc, mapped to report semantics."""
+
     STYLE_A = "style_a"
     S3_COMPATIBLE = "s3_compatible"
     NOT_ENDPOINT = "not_endpoint"

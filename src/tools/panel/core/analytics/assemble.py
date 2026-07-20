@@ -17,7 +17,7 @@ from tools.shared.ir import (
     SectionName,
 )
 
-_PROOF_SECTIONS = {
+PROOF_SECTIONS = {
     SectionName.BODY: SectionName.EXAMPLE_REQUEST,
     SectionName.RESPONSE: SectionName.EXAMPLE_RESPONSE,
 }
@@ -68,7 +68,7 @@ def assemble_nesting_from_examples(endpoint: Endpoint) -> Endpoint:
     """
     endpoint = endpoint.model_copy(deep=True)
     sections = {section.name: section for section in endpoint.sections}
-    for parameter_name, example_name in _PROOF_SECTIONS.items():
+    for parameter_name, example_name in PROOF_SECTIONS.items():
         _wrap_section(sections.get(parameter_name), sections.get(example_name))
     return endpoint
 
@@ -99,29 +99,42 @@ def _wrap_section(section: Section | None, example_section: Section | None) -> N
 def _synthesize_wrapper(
     section: Section, root_name: str, example_fields: set[str], documented: set[str]
 ) -> None:
+    """Wrap the section's fields under a synthesized ``root_name`` object.
+
+    Children come from a referenced (unmatched) table when one matches the
+    example; otherwise from the documented flat fields named in the example.
+    """
     unmatched_children = _find_matching_unmatched_table(section, example_fields)
     if unmatched_children is not None:
-        section.parameters = [
-            Parameter(
-                name=root_name,
-                param_type=ParameterType.OBJECT,
-                mandatory=True,
-                description="",
-                children=unmatched_children,
-            )
-        ]
+        _wrap_parameters(section, root_name, unmatched_children)
         return
 
     if example_fields & documented:
-        section.parameters = [
-            Parameter(
-                name=root_name,
-                param_type=ParameterType.OBJECT,
-                mandatory=True,
-                description="",
-                children=list(section.parameters),
-            )
-        ]
+        flat_children = [p for p in section.parameters if p.name in example_fields]
+        _wrap_parameters(section, root_name, flat_children)
+
+
+def _wrap_parameters(
+    section: Section, root_name: str, children: list[Parameter]
+) -> None:
+    """Move ``children`` under a new ``root_name`` object parameter.
+
+    Any existing top-level parameter whose name matches a wrapper child is
+    dropped, so a field never appears both flat and nested. Unrelated
+    parameters keep their order; the wrapper is appended at the end.
+    """
+    child_names = {child.name for child in children}
+    remaining = [p for p in section.parameters if p.name not in child_names]
+    remaining.append(
+        Parameter(
+            name=root_name,
+            param_type=ParameterType.OBJECT,
+            mandatory=True,
+            description="",
+            children=children,
+        )
+    )
+    section.parameters = remaining
 
 
 def _group_siblings_under_wrapper(
