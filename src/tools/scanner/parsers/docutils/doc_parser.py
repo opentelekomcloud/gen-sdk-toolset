@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 
 from tools.scanner.interfaces import RstParser
@@ -15,11 +14,9 @@ from .context import (
     build_repository_context,
     parse_doctree,
 )
-from .patterns import URI_RE
+from .patterns import API_VERSION_RE, URI_RE
 from .routing import extract_sections
-from .style import extract_document_title
-
-_VERSION_RE = re.compile(r"/(v\d+(?:\.\d+)?)(?:/|$)", re.IGNORECASE)
+from .title import extract_document_title
 
 
 class DocutilsParser(RstParser):
@@ -63,10 +60,10 @@ class DocutilsParser(RstParser):
     @staticmethod
     def _extract_api_version(uri: str, source_path: str) -> str | None:
         """Read an API version from the URI, then fall back to the source path."""
-        match = _VERSION_RE.search(uri)
+        match = API_VERSION_RE.search(uri)
         if match:
             return match.group(1).lower()
-        match = _VERSION_RE.search("/" + source_path)
+        match = API_VERSION_RE.search("/" + source_path)
         if match:
             return match.group(1).lower()
         return None

@@ -12,10 +12,10 @@ from docutils import nodes
 from docutils.core import publish_doctree
 
 from tools.scanner.parsers.docutils.context import ensure_roles
+from tools.scanner.parsers.docutils.field_type import extract_struct_type_name
 from tools.scanner.parsers.docutils.table import (
     TableExtraction,
     TableRow,
-    _struct_type_name,
     extract_parameter_table,
 )
 from tools.shared.ir import Parameter, ParameterType
@@ -153,4 +153,4 @@ def test_iam_named_object_anchor_on_name_cell() -> None:
     ],
 )
 def test_struct_type_name(raw_type: str, expected: str | None) -> None:
-    assert _struct_type_name(raw_type) == expected
+    assert extract_struct_type_name(raw_type) == expected

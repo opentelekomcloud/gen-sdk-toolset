@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 from tools.domain.report import OrgScanResult
 from tools.scanner.interfaces import DocProvider, RepositoryContextParser, RstParser
-from tools.scanner.parsers.docutils.style import DocStyle, extract_document_title
+from tools.scanner.parsers import DocutilsParser, classify_doc_style, extract_document_title
+from tools.scanner.parsers.docutils.types import DocStyle
 from tools.scanner.repositories import check_repository_eligibility
 from tools.shared.exceptions import ParseFailure, ProviderError
 from tools.shared.ir import Document, Repository, Service

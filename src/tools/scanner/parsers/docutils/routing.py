@@ -20,22 +20,17 @@ from tools.shared.scan import (
 )
 
 from .context import RepositoryParseContext
-from .example import (
-    add_examples_to_section,
-    extract_examples,
-    split_combined_examples,
-)
+from .example import process_example_section
 from .nesting import resolve_nested
 from .path import reconcile_path_parameters
 from .references import ReferenceRegistry, document_id
 from .section import (
-    SectionKind,
-    TableTarget,
     classify_section_title,
     classify_table_title,
     default_table_section,
 )
 from .table import TableExtraction, extract_parameter_table
+from .types import SectionKind, TableTarget
 
 
 @dataclass
@@ -120,7 +115,7 @@ class _SectionRouter:
                 SectionKind.EXAMPLE_RESPONSE,
                 SectionKind.EXAMPLE_COMBINED,
             ):
-                self._extract_example_section(
+                process_example_section(
                     section_node,
                     kind,
                     extraction.sections,
@@ -232,32 +227,6 @@ class _SectionRouter:
             target,
             extract_parameter_table(table),
         )
-
-    def _extract_example_section(
-        self,
-        section_node: nodes.section,
-        kind: SectionKind,
-        sections: dict[SectionName, Section],
-    ) -> None:
-        blocks = extract_examples(section_node)
-
-        if kind is SectionKind.EXAMPLE_REQUEST:
-            add_examples_to_section(sections, SectionName.EXAMPLE_REQUEST, blocks)
-            return
-        if kind is SectionKind.EXAMPLE_RESPONSE:
-            add_examples_to_section(sections, SectionName.EXAMPLE_RESPONSE, blocks)
-            return
-
-        request, response, issues = split_combined_examples(blocks)
-        if request:
-            add_examples_to_section(
-                sections,
-                SectionName.EXAMPLE_REQUEST,
-                request,
-                extra_issues=issues,
-            )
-        if response:
-            add_examples_to_section(sections, SectionName.EXAMPLE_RESPONSE, response)
 
 
 def extract_sections(

@@ -111,24 +111,50 @@ def _resolve(
         if table is None:
             continue
 
-        used_tables.add(id(table))
-        children = [child.model_copy(deep=True) for child in table.parameters]
-        param.children = children
-        if param.param_type is ParameterType.ARRAY:
-            param.param_type = ParameterType.ARRAY_OF_OBJECTS
-        _resolve(
-            [
-                TableRow(child, source.ref_anchor)
-                for child, source in zip(children, table.rows)
-            ],
+        _attach_and_recurse(
+            param,
+            table,
+            match.reference,
             registry,
             label_tables,
             used_labels,
             used_tables,
             doc_id,
-            visiting | {match.reference},
+            visiting,
             issues,
         )
+
+
+def _attach_and_recurse(
+    param: Parameter,
+    table: TableExtraction,
+    match_reference: str,
+    registry: dict[str, RefTarget],
+    label_tables: dict[str, TableExtraction],
+    used_labels: set[str],
+    used_tables: set[int],
+    doc_id: str | None,
+    visiting: frozenset[str],
+    issues: list[Issue],
+) -> None:
+    used_tables.add(id(table))
+    children = [child.model_copy(deep=True) for child in table.parameters]
+    param.children = children
+    if param.param_type is ParameterType.ARRAY:
+        param.param_type = ParameterType.ARRAY_OF_OBJECTS
+    _resolve(
+        [
+            TableRow(child, source.ref_anchor)
+            for child, source in zip(children, table.rows)
+        ],
+        registry,
+        label_tables,
+        used_labels,
+        used_tables,
+        doc_id,
+        visiting | {match_reference},
+        issues,
+    )
 
 
 def _lookup_target(
@@ -142,17 +168,34 @@ def _lookup_target(
     issues: list[Issue],
 ) -> _TargetMatch | None:
     if anchor is None:
-        if not param.param_type.supports_children:
-            return None
-        table = label_tables.get(param.name)
-        if table is None:
-            return None
-        used_labels.add(param.name)
-        return _TargetMatch(
-            reference=f"label:{param.name}",
-            target=RefTarget(kind=RefKind.TABLE, table=table),
-        )
+        return _lookup_label(param, label_tables, used_labels)
+    return _lookup_anchor(param, anchor, doc_id, registry, issues)
 
+
+def _lookup_label(
+    param: Parameter,
+    label_tables: dict[str, TableExtraction],
+    used_labels: set[str],
+) -> _TargetMatch | None:
+    if not param.param_type.supports_children:
+        return None
+    table = label_tables.get(param.name)
+    if table is None:
+        return None
+    used_labels.add(param.name)
+    return _TargetMatch(
+        reference=f"label:{param.name}",
+        target=RefTarget(kind=RefKind.TABLE, table=table),
+    )
+
+
+def _lookup_anchor(
+    param: Parameter,
+    anchor: str,
+    doc_id: str | None,
+    registry: dict[str, RefTarget],
+    issues: list[Issue],
+) -> _TargetMatch | None:
     target = registry.get(anchor)
     if target is not None:
         return _TargetMatch(reference=anchor, target=target)

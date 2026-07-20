@@ -26,86 +26,16 @@ from docutils import nodes
 from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import Issue, IssueCode
 
+from .field_type import (
+    STRUCT_TYPES,
+    classify_type,
+    extract_struct_type_name,
+    parse_mandatory,
+)
+from .patterns import HEADER_ALIASES
+
 # Max length of free-text `details` we attach to diagnostic issues.
 DETAILS_MAX = 80
-
-# Column-header aliases mapped to canonical column keys. Comparison is
-# case-insensitive on whitespace-stripped text.
-_HEADER_ALIASES: dict[str, str] = {
-    "parameter": "name",
-    "name": "name",
-    "header": "name",  # OBS header tables
-    "mandatory": "mandatory",
-    "mandatory (yes/no)": "mandatory",
-    "required": "mandatory",
-    "type": "type",
-    "description": "description",
-}
-
-
-# Type-text → ParameterType. Loose matching on lower-cased text. Sphinx
-# :ref: markup is already resolved to its visible label at parse time by the
-# passthrough role registered in context (ensure_roles), so no stripping
-# is needed here — see tests/test_ref_resolution.py.
-def _classify_type(raw: str) -> ParameterType:
-    if not raw:
-        return ParameterType.UNKNOWN
-    lower = raw.strip().lower()
-
-    if lower in {"list", "list data structure"}:
-        return ParameterType.ARRAY
-    if lower in {"dictionary", "data structure"}:
-        return ParameterType.OBJECT
-
-    # Composite array types first (more specific).
-    if re.search(r"\barray\s+of\s+strings?\b", lower):
-        return ParameterType.ARRAY_OF_STRINGS
-    if re.search(r"\barray\s+of\s+integers?\b", lower):
-        return ParameterType.ARRAY_OF_INTEGERS
-    if re.search(r"\barray\s+of\s+", lower) and "object" in lower:
-        return ParameterType.ARRAY_OF_OBJECTS
-    if lower.startswith("array of "):
-        return ParameterType.ARRAY_OF_OBJECTS  # named struct → object array
-
-    # Bare composites
-    if lower == "array" or lower.startswith("array "):
-        return ParameterType.ARRAY
-
-    # Primitives — match the longest prefix word.
-    for word, kind in (
-        ("string", ParameterType.STRING),
-        ("long", ParameterType.LONG),
-        ("integer", ParameterType.INTEGER),
-        ("float", ParameterType.FLOAT),
-        ("double", ParameterType.DOUBLE),
-        ("boolean", ParameterType.BOOLEAN),
-        ("bool", ParameterType.BOOLEAN),
-        ("object", ParameterType.OBJECT),
-    ):
-        if re.search(rf"\b{word}\b", lower):
-            return ParameterType.OBJECT if "object" in lower else kind
-
-    return ParameterType.UNKNOWN
-
-
-# Struct/array keywords stripped from a type cell to leave the bare struct
-# name (e.g. "Array of RequestTag objects" -> "RequestTag"). A cell that is
-# only keywords ("object", "Array of objects") leaves nothing -> no type_name.
-# `\s+` tolerates irregular whitespace in "array of" (double spaces, newlines).
-_STRUCT_KEYWORDS_RE = re.compile(
-    r"(?i)\blist\s+data\s+structure\b|\bdata\s+structure\b|"
-    r"\bdictionary\b|\blist\b|"
-    r"\barray\s+of\b|\bobjects?\b"
-)
-
-# Parameter types that carry a referenced struct name worth preserving.
-_STRUCT_TYPES = frozenset(
-    {
-        ParameterType.OBJECT,
-        ParameterType.ARRAY,
-        ParameterType.ARRAY_OF_OBJECTS,
-    }
-)
 
 
 @dataclass
@@ -221,15 +151,15 @@ def _extract_parameter_row(
 
     type_raw = cells[column_map["type"]].strip() if "type" in column_map else ""
     mandatory = (
-        _parse_mandatory(cells[column_map["mandatory"]])
+        parse_mandatory(cells[column_map["mandatory"]])
         if "mandatory" in column_map
         else False
     )
     description = (
         cells[column_map["description"]].strip() if "description" in column_map else ""
     )
-    param_type = _classify_type(type_raw)
-    is_struct = param_type in _STRUCT_TYPES
+    param_type = classify_type(type_raw)
+    is_struct = param_type in STRUCT_TYPES
     return (
         TableRow(
             parameter=Parameter(
@@ -237,7 +167,7 @@ def _extract_parameter_row(
                 param_type=param_type,
                 mandatory=mandatory,
                 description=description,
-                type_name=_struct_type_name(type_raw) if is_struct else None,
+                type_name=extract_struct_type_name(type_raw) if is_struct else None,
             ),
             ref_anchor=_struct_anchor(entries, column_map) if is_struct else None,
         ),
@@ -260,7 +190,7 @@ def _build_column_map(table: nodes.table) -> dict[str, int] | None:
     column_map: dict[str, int] = {}
     for idx, entry in enumerate(header_row.children):
         text = _cell_text(entry).strip().lower()
-        canonical = _HEADER_ALIASES.get(text)
+        canonical = HEADER_ALIASES.get(text)
         if canonical is not None and canonical not in column_map:
             column_map[canonical] = idx
     return column_map
@@ -280,11 +210,7 @@ def _cell_text(entry: nodes.Element) -> str:
 
 
 def _ref_anchor(entry: nodes.Element) -> str | None:
-    """First ``ref_target`` on an inline node in a cell, else ``None``.
-
-    The passthrough role (see doc_parser) attaches ``ref_target`` to the
-    inline node it emits for a ``:ref:``. One struct ref per cell in practice.
-    """
+    """First ``ref_target`` on an inline node in a cell, else ``None``."""
     for inline in entry.findall(nodes.inline):
         anchor = inline.get("ref_target")
         if anchor:
@@ -295,11 +221,7 @@ def _ref_anchor(entry: nodes.Element) -> str | None:
 def _struct_anchor(
     entries: list[nodes.Element], column_map: dict[str, int]
 ) -> str | None:
-    """Struct ref anchor for a row: type cell first, then name cell.
-
-    Type-cell refs (VPC) win over name-cell refs (IAM) when both exist, so a
-    ``:ref:`` on the type always takes precedence.
-    """
+    """Struct ref anchor for a row: type cell first, then name cell."""
     for column in ("type", "name"):
         idx = column_map.get(column)
         if idx is None:
@@ -308,23 +230,6 @@ def _struct_anchor(
         if anchor:
             return anchor
     return None
-
-
-def _struct_type_name(raw_type: str) -> str | None:
-    """Bare struct name from an object/array type cell, or ``None``.
-
-    ``"CreateFirewallOption object"`` -> ``"CreateFirewallOption"``;
-    ``"Array of RequestTag objects"`` -> ``"RequestTag"``; a cell that is
-    only structural keywords (``"object"``, ``"Array of objects"``) -> ``None``.
-    """
-    name = _STRUCT_KEYWORDS_RE.sub(" ", raw_type)
-    name = re.sub(r"\s+", " ", name).strip()
-    return name or None
-
-
-def _parse_mandatory(text: str) -> bool:
-    cleaned = text.strip().lower()
-    return cleaned in {"yes", "true", "required"}
 
 
 def _header_preview(table: nodes.table) -> str:

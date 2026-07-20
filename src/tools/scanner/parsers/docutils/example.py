@@ -9,8 +9,35 @@ from docutils import nodes
 from tools.shared.ir import Example, Section, SectionName
 from tools.shared.scan import Issue, IssueCode, SectionScanResult, SectionStatus
 
-from .patterns import HTTP_PREFIX_RE
+from .patterns import EXAMPLE_HTTP_PREFIX_RE
 from .table import DETAILS_MAX
+from .types import SectionKind
+
+
+def process_example_section(
+    section_node: nodes.section,
+    kind: SectionKind,
+    sections: dict[SectionName, Section],
+) -> None:
+    blocks = extract_examples(section_node)
+
+    if kind is SectionKind.EXAMPLE_REQUEST:
+        add_examples_to_section(sections, SectionName.EXAMPLE_REQUEST, blocks)
+        return
+    if kind is SectionKind.EXAMPLE_RESPONSE:
+        add_examples_to_section(sections, SectionName.EXAMPLE_RESPONSE, blocks)
+        return
+
+    request, response, issues = split_combined_examples(blocks)
+    if request:
+        add_examples_to_section(
+            sections,
+            SectionName.EXAMPLE_REQUEST,
+            request,
+            extra_issues=issues,
+        )
+    if response:
+        add_examples_to_section(sections, SectionName.EXAMPLE_RESPONSE, response)
 
 
 def extract_examples(section: nodes.section) -> list[Example]:
@@ -129,7 +156,7 @@ def _extract_language(block: nodes.literal_block) -> str | None:
 
 
 def _try_parse_json(raw: str) -> dict | list | None:
-    candidate = HTTP_PREFIX_RE.sub("", raw, count=1).strip()
+    candidate = EXAMPLE_HTTP_PREFIX_RE.sub("", raw, count=1).strip()
     if not candidate:
         return None
     try:

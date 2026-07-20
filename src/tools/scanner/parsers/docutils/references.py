@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -13,13 +12,10 @@ from tools.shared.ir import SectionName
 from tools.shared.scan import Issue, IssueCode
 
 from .nesting import RefKind, RefTarget
-from .section import SectionKind, default_table_section, nested_parent_name
+from .patterns import FIELD_DETAILS_RE
+from .section import default_table_section, nested_parent_name
 from .table import TableExtraction, extract_parameter_table
-
-_FIELD_DETAILS_RE = re.compile(
-    r"\bdetails\s+about\s+the\s+([A-Za-z0-9_.-]+)\s+field\b",
-    re.IGNORECASE,
-)
+from .types import SectionKind
 
 
 @dataclass
@@ -74,24 +70,29 @@ class ReferenceRegistry:
         parameter_names = {parameter.name for parameter in primary.parameters}
 
         for paragraph in section_node.findall(nodes.paragraph):
-            match = _FIELD_DETAILS_RE.search(paragraph.astext())
-            if match is None:
-                continue
-            parent_name = match.group(1)
-            anchor = _first_ref_target(paragraph)
-            target = self.targets.get(anchor) if anchor else None
-            if (
-                target is None
-                or target.kind is not RefKind.TABLE
-                or target.table is None
-            ):
-                continue
-            referenced_table = deepcopy(target.table)
-            if parent_name not in parameter_names:
-                self.unmatched_tables.setdefault(owner, {}).setdefault(
-                    parent_name, referenced_table
-                )
-                continue
+            self._process_field_details_paragraph(paragraph, parameter_names, owner)
+
+    def _process_field_details_paragraph(
+        self,
+        paragraph: nodes.paragraph,
+        parameter_names: set[str],
+        owner: SectionName,
+    ) -> None:
+        match = FIELD_DETAILS_RE.search(paragraph.astext())
+        if match is None:
+            return
+        parent_name = match.group(1)
+        anchor = _first_ref_target(paragraph)
+        target = self.targets.get(anchor) if anchor else None
+        if target is None or target.kind is not RefKind.TABLE or target.table is None:
+            return
+
+        referenced_table = deepcopy(target.table)
+        if parent_name not in parameter_names:
+            self.unmatched_tables.setdefault(owner, {}).setdefault(
+                parent_name, referenced_table
+            )
+        else:
             self.label_tables.setdefault(owner, {}).setdefault(
                 parent_name, referenced_table
             )

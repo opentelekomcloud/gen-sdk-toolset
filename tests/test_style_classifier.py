@@ -1,7 +1,8 @@
 """Tests for document style and title detection."""
 
-from tools.scanner.parsers import classify_doc_style, extract_document_title
-from tools.scanner.parsers.docutils.style import DocStyle
+from tools.scanner.parsers.docutils.style import classify_doc_style
+from tools.scanner.parsers.docutils.title import extract_document_title
+from tools.scanner.parsers.docutils.types import DocStyle
 
 
 def test_cce_is_style_a(cce_doc: str) -> None:

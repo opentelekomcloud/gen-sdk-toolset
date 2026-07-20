@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import io
 import logging
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -16,6 +15,7 @@ from docutils import nodes
 from docutils.core import publish_doctree
 from docutils.parsers.rst import roles
 
+from .patterns import SPHINX_ANCHOR_RE, SPHINX_LABEL_RE
 from .table import TableExtraction, extract_parameter_table
 
 logger = logging.getLogger(__name__)
@@ -36,9 +36,9 @@ class RepositoryParseContext:
 
 def _passthrough_role(name, rawtext, text, lineno, inliner, options=None, content=None):
     """Preserve Sphinx role text and expose its target to the table parser."""
-    match = re.search(r"<([^>]+)>\s*$", text)
+    match = SPHINX_ANCHOR_RE.search(text)
     anchor = match.group(1).strip() if match else None
-    label = re.sub(r"\s*<[^>]+>\s*$", "", text).strip()
+    label = SPHINX_LABEL_RE.sub("", text).strip()
     node = nodes.inline(label, label)
     if anchor:
         node["ref_target"] = anchor
@@ -70,20 +70,26 @@ def build_repository_context(
     for path, content in documents.items():
         doctree = parse_doctree(content)
         doctrees[path] = doctree
-        for table in doctree.findall(nodes.table):
-            names = table.get("names")
-            if not names:
-                continue
-            extracted = extract_parameter_table(table)
-            if extracted.parameters:
-                anchor = names[0]
-                if anchor in tables:
-                    logger.warning(
-                        "Duplicate table anchor %r in %s; keeping first, "
-                        "ignoring the later table",
-                        anchor,
-                        path,
-                    )
-                    continue
-                tables[anchor] = extracted
+        _collect_document_tables(doctree, path, tables)
     return RepositoryParseContext(tables=tables, doctrees=doctrees)
+
+
+def _collect_document_tables(
+    doctree: nodes.document, path: str, tables: dict[str, TableExtraction]
+) -> None:
+    for table in doctree.findall(nodes.table):
+        names = table.get("names")
+        if not names:
+            continue
+        extracted = extract_parameter_table(table)
+        if extracted.parameters:
+            anchor = names[0]
+            if anchor in tables:
+                logger.warning(
+                    "Duplicate table anchor %r in %s; keeping first, "
+                    "ignoring the later table",
+                    anchor,
+                    path,
+                )
+                continue
+            tables[anchor] = extracted
