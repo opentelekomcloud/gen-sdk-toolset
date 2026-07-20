@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-from copy import deepcopy
 from dataclasses import dataclass, field
 
 from docutils import nodes
@@ -29,15 +27,15 @@ from .example import (
     split_combined_examples,
 )
 from .inference import infer_documented_example_nesting
-from .nesting import RefKind, RefTarget, resolve_nested
+from .nesting import resolve_nested
 from .patterns import URI_PLACEHOLDER_RE
+from .references import ReferenceRegistry, document_id
 from .section import (
     SectionKind,
     TableTarget,
     classify_section_title,
     classify_table_title,
     default_table_section,
-    nested_parent_name,
 )
 from .table import TableExtraction, extract_parameter_table
 
@@ -47,16 +45,9 @@ class _SectionExtraction:
     http_method: HttpMethod
     sections: dict[SectionName, Section] = field(default_factory=dict)
     primary_tables: dict[SectionName, TableExtraction] = field(default_factory=dict)
-    reference_targets: dict[str, RefTarget] = field(default_factory=dict)
-    reference_table_sections: dict[str, SectionName] = field(default_factory=dict)
-    label_tables: dict[SectionName, dict[str, TableExtraction]] = field(
-        default_factory=dict
-    )
+    references: ReferenceRegistry = field(default_factory=ReferenceRegistry)
     routing_issues: dict[SectionName, list[Issue]] = field(default_factory=dict)
     wrapper_candidates: dict[str, Parameter] = field(default_factory=dict)
-    unmatched_reference_tables: dict[
-        SectionName, dict[str, TableExtraction]
-    ] = field(default_factory=dict)
 
 
 _GENERIC_REQUEST_TARGETS = {
@@ -73,12 +64,6 @@ _DIRECT_UNTITLED_TARGETS = {
     SectionKind.RESPONSE: SectionName.RESPONSE,
 }
 
-_FIELD_DETAILS_RE = re.compile(
-    r"\bdetails\s+about\s+the\s+([A-Za-z0-9_.-]+)\s+field\b",
-    re.IGNORECASE,
-)
-
-
 class _SectionRouter:
     def extract(
         self,
@@ -91,25 +76,20 @@ class _SectionRouter:
         """Collect document data first, then resolve cross-table references."""
         extraction = _SectionExtraction(http_method=http_method)
         if context is not None:
-            extraction.reference_targets.update(
-                {
-                    anchor: RefTarget(kind=RefKind.TABLE, table=table)
-                    for anchor, table in context.tables.items()
-                }
-            )
+            extraction.references.add_repository_tables(context.tables)
         self._collect_section_data(doctree, extraction, context=context)
         _reconcile_path_parameters(uri, extraction)
         infer_documented_example_nesting(
             extraction.primary_tables,
             extraction.wrapper_candidates,
             extraction.sections,
-            extraction.label_tables,
-            extraction.unmatched_reference_tables,
+            extraction.references.label_tables,
+            extraction.references.unmatched_tables,
         )
-        _register_non_table_targets(doctree, extraction.reference_targets)
+        extraction.references.register_non_table_targets(doctree)
         self._resolve_parameter_sections(
             extraction,
-            doc_id=_document_doc_id(doctree),
+            doc_id=document_id(doctree),
         )
         _apply_routing_issues(extraction.sections, extraction.routing_issues)
         return _complete_sections(extraction.sections)
@@ -130,7 +110,11 @@ class _SectionRouter:
             if kind in (SectionKind.URI, SectionKind.REQUEST, SectionKind.RESPONSE):
                 self._collect_parameter_tables(section_node, kind, extraction)
                 if context is not None:
-                    _register_explicit_field_tables(section_node, kind, extraction)
+                    extraction.references.register_explicit_field_tables(
+                        section_node,
+                        kind,
+                        extraction.primary_tables,
+                    )
             elif kind in (
                 SectionKind.EXAMPLE_REQUEST,
                 SectionKind.EXAMPLE_RESPONSE,
@@ -150,7 +134,7 @@ class _SectionRouter:
     ) -> None:
         used_tables: set[int] = set()
         section_names = dict.fromkeys(
-            (*extraction.primary_tables, *extraction.label_tables)
+            (*extraction.primary_tables, *extraction.references.label_tables)
         )
         for name in section_names:
             table = extraction.primary_tables.get(name)
@@ -164,14 +148,17 @@ class _SectionRouter:
             )
             issues = resolve_nested(
                 {name: table} if table is not None else {},
-                extraction.reference_targets,
+                extraction.references.targets,
                 doc_id=doc_id,
-                label_tables=extraction.label_tables.get(name),
+                label_tables=extraction.references.label_tables.get(name),
                 used_tables=used_tables,
             )
             _append_issues(section, issues)
             extraction.sections[name] = section
-        _report_unused_reference_tables(extraction, used_tables)
+        extraction.references.report_unused_tables(
+            used_tables,
+            extraction.routing_issues,
+        )
 
     def _collect_parameter_tables(
         self,
@@ -206,11 +193,10 @@ class _SectionRouter:
         if target is TableTarget.INTENTIONALLY_IGNORED:
             return
         if target is TableTarget.NESTED_STRUCT:
-            if _register_nested_table(
+            if extraction.references.register_nested_table(
                 table,
                 title=title,
                 section_kind=section_kind,
-                extraction=extraction,
             ):
                 return
         if isinstance(target, TableTarget):
@@ -381,123 +367,6 @@ def _path_parameter_issues(
     ]
 
 
-def _register_nested_table(
-    table: nodes.table,
-    *,
-    title: str,
-    section_kind: SectionKind,
-    extraction: _SectionExtraction,
-) -> bool:
-    table_extraction = extract_parameter_table(table)
-    by_reference = _register_reference_table(
-        table,
-        table_extraction,
-        section_kind=section_kind,
-        targets=extraction.reference_targets,
-        table_sections=extraction.reference_table_sections,
-    )
-    by_label = _register_label_table(
-        table_extraction,
-        title=title,
-        section_kind=section_kind,
-        label_tables=extraction.label_tables,
-    )
-    return by_reference or by_label
-
-
-def _register_reference_table(
-    table: nodes.table,
-    table_extraction: TableExtraction,
-    *,
-    section_kind: SectionKind,
-    targets: dict[str, RefTarget],
-    table_sections: dict[str, SectionName],
-) -> bool:
-    anchor = _table_label_id(table)
-    if not anchor:
-        return False
-    targets[anchor] = RefTarget(
-        kind=RefKind.TABLE,
-        table=table_extraction,
-    )
-    table_sections[anchor] = default_table_section(section_kind)
-    return True
-
-
-def _register_explicit_field_tables(
-    section_node: nodes.section,
-    section_kind: SectionKind,
-    extraction: _SectionExtraction,
-) -> None:
-    owner = default_table_section(section_kind)
-    primary = extraction.primary_tables.get(owner)
-    if primary is None:
-        return
-    parameter_names = {parameter.name for parameter in primary.parameters}
-
-    for paragraph in section_node.findall(nodes.paragraph):
-        match = _FIELD_DETAILS_RE.search(paragraph.astext())
-        if match is None:
-            continue
-        parent_name = match.group(1)
-        anchor = _first_ref_target(paragraph)
-        target = extraction.reference_targets.get(anchor) if anchor else None
-        if target is None or target.kind is not RefKind.TABLE or target.table is None:
-            continue
-        referenced_table = deepcopy(target.table)
-        if parent_name not in parameter_names:
-            extraction.unmatched_reference_tables.setdefault(owner, {}).setdefault(
-                parent_name, referenced_table
-            )
-            continue
-        extraction.label_tables.setdefault(owner, {}).setdefault(
-            parent_name, referenced_table
-        )
-
-
-def _first_ref_target(node: nodes.Element) -> str | None:
-    for inline in node.findall(nodes.inline):
-        target = inline.get("ref_target")
-        if target:
-            return str(target)
-    return None
-
-
-def _register_label_table(
-    table: TableExtraction,
-    *,
-    title: str,
-    section_kind: SectionKind,
-    label_tables: dict[SectionName, dict[str, TableExtraction]],
-) -> bool:
-    parent_name = nested_parent_name(title)
-    if parent_name is None:
-        return False
-    owner = default_table_section(section_kind)
-    section_tables = label_tables.setdefault(owner, {})
-    if parent_name in section_tables:
-        return False
-    section_tables[parent_name] = table
-    return True
-
-
-def _report_unused_reference_tables(
-    extraction: _SectionExtraction,
-    used_tables: set[int],
-) -> None:
-    for anchor, section_name in extraction.reference_table_sections.items():
-        target = extraction.reference_targets[anchor]
-        if target.table is not None and id(target.table) in used_tables:
-            continue
-        extraction.routing_issues.setdefault(section_name, []).append(
-            Issue(
-                code=IssueCode.NESTED_PARENT_NOT_FOUND,
-                location=anchor,
-                details="nested table is not used by any parameter",
-            )
-        )
-
-
 def _add_unmapped_table_issue(
     issues_by_section: dict[SectionName, list[Issue]],
     *,
@@ -567,30 +436,6 @@ def _list_item_label(table: nodes.table) -> str:
     return paragraph.astext().strip() if paragraph else ""
 
 
-def _table_label_id(table: nodes.table) -> str | None:
-    """Ref anchor of a struct table: the label from its ``.. _anchor:`` target.
-
-    We read ``names`` (the authored label, underscore-preserving) rather than
-    ``ids`` (which docutils normalises to hyphens) so it matches the raw
-    anchors captured from ``:ref:`` type cells in :mod:`.table`.
-    """
-    names = table.get("names")
-    return names[0] if names else None
-
-
-def _document_doc_id(doctree: nodes.document) -> str | None:
-    """Return the authored document label rather than its title-derived name."""
-    top = next(iter(doctree.findall(nodes.section)), None)
-    if top is None:
-        return None
-    title_node = top.next_node(nodes.title)
-    title_name = nodes.fully_normalize_name(title_node.astext()) if title_node else None
-    for name in top.get("names", ()):
-        if name != title_name:
-            return name
-    return None
-
-
 def _accumulate(
     primary_tables: dict[SectionName, TableExtraction],
     name: SectionName,
@@ -628,22 +473,6 @@ def _to_section(extraction: TableExtraction, name: SectionName) -> Section:
             fields_failed=extraction.fields_failed,
         ),
     )
-
-
-def _register_non_table_targets(
-    doctree: nodes.document, targets: dict[str, RefTarget]
-) -> None:
-    """Record every named non-table node as a ``NON_TABLE`` target.
-
-    A type-cell ref pointing at a section or paragraph then resolves to
-    ``NESTED_REF_NOT_A_TABLE`` instead of looking absent. ``setdefault`` keeps
-    struct tables (registered first, in pass 1) winning their own anchor.
-    """
-    for node in doctree.findall(nodes.Element):
-        if isinstance(node, nodes.table):
-            continue
-        for name in node.get("names", ()):
-            targets.setdefault(name, RefTarget(kind=RefKind.NON_TABLE))
 
 
 def _status_from_counters(counters: TableExtraction) -> SectionStatus:
