@@ -76,3 +76,26 @@ def test_does_not_invent_wrapper_from_example() -> None:
     )
 
     assert body.parameters == [name]
+
+
+def test_promotes_documented_array_when_example_confirms_object_items() -> None:
+    wrapper = Parameter(name="widgets", param_type=ParameterType.ARRAY)
+    name = Parameter(name="name", param_type=ParameterType.STRING)
+    response = _table(wrapper, name)
+    labels = {}
+
+    infer_top_level_wrappers(
+        {SectionName.RESPONSE: response},
+        {},
+        {
+            SectionName.EXAMPLE_RESPONSE: Section(
+                name=SectionName.EXAMPLE_RESPONSE,
+                examples=[Example(raw="", parsed={"widgets": [{"name": "demo"}]})],
+            )
+        },
+        labels,
+    )
+
+    assert response.parameters == [wrapper]
+    assert wrapper.param_type is ParameterType.ARRAY_OF_OBJECTS
+    assert labels[SectionName.RESPONSE]["widgets"].parameters == [name]

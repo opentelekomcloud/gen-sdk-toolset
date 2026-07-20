@@ -106,12 +106,14 @@ def _apply_top_level_wrapper(
         if existing_index is not None
         else candidate
     )
-    if (
-        wrapper is None
-        or wrapper.children
-        or wrapper.param_type is not ParameterType.OBJECT
-        or is_array
-    ):
+    if wrapper is None or wrapper.children or not wrapper.param_type.supports_children:
+        return None
+    if is_array and wrapper.param_type not in {
+        ParameterType.ARRAY,
+        ParameterType.ARRAY_OF_OBJECTS,
+    }:
+        return None
+    if not is_array and wrapper.param_type is not ParameterType.OBJECT:
         return None
 
     children = [
@@ -129,6 +131,8 @@ def _apply_top_level_wrapper(
         if index != existing_index
     ]
     anchor = table.ref_anchors[existing_index] if existing_index is not None else None
+    if wrapper.param_type is ParameterType.ARRAY:
+        wrapper.param_type = ParameterType.ARRAY_OF_OBJECTS
     table.parameters = [wrapper]
     table.ref_anchors = [anchor]
     return TableExtraction(
