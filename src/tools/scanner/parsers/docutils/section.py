@@ -122,9 +122,15 @@ _TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], SectionName | TableTarget]] =
 ]
 
 _STATUS_CODE_TABLE_RE = re.compile(r"\bstatus\s+code", re.IGNORECASE)
-_NESTED_LABEL_RE = re.compile(
-    r"^data\s+structure\s+description\s+of\s+(.+?)$",
-    re.IGNORECASE,
+_NESTED_LABEL_PATTERNS = (
+    re.compile(
+        r"^data\s+structure\s+description\s+of\s+(.+?)$",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"^(?:table\s+\d+\s+)?description\s+of\s+(?:the\s+)?field\s+(.+?)$",
+        re.IGNORECASE,
+    ),
 )
 
 _DEFAULT_TABLE_SECTIONS = {
@@ -184,8 +190,12 @@ def default_table_section(kind: SectionKind) -> SectionName:
 
 
 def nested_parent_name(title: str) -> str | None:
-    match = _NESTED_LABEL_RE.match(title.strip())
-    return match.group(1).strip() if match else None
+    cleaned = title.strip()
+    for pattern in _NESTED_LABEL_PATTERNS:
+        match = pattern.match(cleaned)
+        if match:
+            return match.group(1).strip()
+    return None
 
 
 # Keywords that indicate a *primary* parameter table (header / body /

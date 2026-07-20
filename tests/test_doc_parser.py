@@ -240,7 +240,7 @@ def test_anti_ddos_direct_response_table_is_top_level(
     assert response.scan_result.status is SectionStatus.OK
 
 
-def test_anti_ddos_label_based_request_structure_becomes_children(
+def test_caption_based_request_structure_becomes_children(
     parser: DocutilsParser,
 ) -> None:
     content = """
@@ -264,7 +264,7 @@ Request
    topic_urn   Yes       String
    =========== ========= ===================
 
--  Data structure description of **warn_config**
+.. table:: **Table 2** Description of field **warn_config**
 
    =========== ========= =======
    Parameter   Mandatory Type

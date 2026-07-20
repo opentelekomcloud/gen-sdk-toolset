@@ -201,6 +201,27 @@ def test_empty_struct_table(parser: DocutilsParser) -> None:
     assert IssueCode.NESTED_TABLE_EMPTY in _body_issue_codes(parser, content)
 
 
+def test_unreferenced_struct_table_is_reported(parser: DocutilsParser) -> None:
+    content = _doc(
+        _simple_table(
+            "**Table 1** Request body parameters",
+            ["Parameter", "Type", "Description"],
+            [["name", "String", "a name"]],
+        ),
+        ".. _unused_struct:\n",
+        _simple_table(
+            "**Table 2** Unused",
+            ["Parameter", "Type", "Description"],
+            [["value", "String", "a value"]],
+        ),
+    )
+
+    body = _sections(parser.parse(content, "x.rst"))["body"]
+
+    assert body.scan_result.status is SectionStatus.PARTIAL
+    assert IssueCode.NESTED_PARENT_NOT_FOUND in _body_issue_codes(parser, content)
+
+
 def test_external_cross_doc_ref(parser: DocutilsParser) -> None:
     # This doc's label is `thisdoc`; the ref's docid `otherdoc` differs, so it
     # points into another document -> external (not a dangling in-doc ref).

@@ -72,10 +72,12 @@ def resolve_nested(
     registry: dict[str, RefTarget],
     doc_id: str | None = None,
     label_tables: dict[str, TableExtraction] | None = None,
+    used_tables: set[int] | None = None,
 ) -> list[Issue]:
     """Attach children through explicit anchors or legacy parent-name labels."""
     labels = label_tables or {}
     used_labels: set[str] = set()
+    resolved_tables = used_tables if used_tables is not None else set()
     issues: list[Issue] = []
     for extraction in primary.values():
         _resolve(
@@ -84,6 +86,7 @@ def resolve_nested(
             registry,
             labels,
             used_labels,
+            resolved_tables,
             doc_id=doc_id,
             visiting=frozenset(),
             issues=issues,
@@ -98,6 +101,7 @@ def _resolve(
     registry: dict[str, RefTarget],
     label_tables: dict[str, TableExtraction],
     used_labels: set[str],
+    used_tables: set[int],
     doc_id: str | None,
     visiting: frozenset[str],
     issues: list[Issue],
@@ -118,6 +122,7 @@ def _resolve(
         if table is None:
             continue
 
+        used_tables.add(id(table))
         children = [child.model_copy(deep=True) for child in table.parameters]
         param.children = children
         if param.param_type is ParameterType.ARRAY:
@@ -128,6 +133,7 @@ def _resolve(
             registry,
             label_tables,
             used_labels,
+            used_tables,
             doc_id,
             visiting | {match.reference},
             issues,

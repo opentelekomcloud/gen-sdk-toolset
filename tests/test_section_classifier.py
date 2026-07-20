@@ -138,6 +138,9 @@ def test_legacy_nested_label_exposes_parent_name() -> None:
     assert nested_parent_name("Data structure description of warn_config") == (
         "warn_config"
     )
+    assert nested_parent_name("Table 3 Description of field direct_connect") == (
+        "direct_connect"
+    )
     assert nested_parent_name("Parameter description") is None
 
 

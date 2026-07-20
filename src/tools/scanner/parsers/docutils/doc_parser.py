@@ -42,6 +42,7 @@ class _SectionExtraction:
     sections: dict[SectionName, Section] = field(default_factory=dict)
     primary_tables: dict[SectionName, TableExtraction] = field(default_factory=dict)
     reference_targets: dict[str, RefTarget] = field(default_factory=dict)
+    reference_table_sections: dict[str, SectionName] = field(default_factory=dict)
     label_tables: dict[SectionName, dict[str, TableExtraction]] = field(
         default_factory=dict
     )
@@ -184,6 +185,7 @@ class DocutilsParser(RstParser):
         *,
         doc_id: str | None,
     ) -> None:
+        used_tables: set[int] = set()
         section_names = dict.fromkeys(
             (*extraction.primary_tables, *extraction.label_tables)
         )
@@ -202,9 +204,11 @@ class DocutilsParser(RstParser):
                 extraction.reference_targets,
                 doc_id=doc_id,
                 label_tables=extraction.label_tables.get(name),
+                used_tables=used_tables,
             )
             _append_issues(section, issues)
             extraction.sections[name] = section
+        _report_unused_reference_tables(extraction, used_tables)
 
     def _collect_parameter_tables(
         self,
@@ -238,17 +242,14 @@ class DocutilsParser(RstParser):
 
         if target is TableTarget.INTENTIONALLY_IGNORED:
             return
-        if target is TableTarget.NESTED_STRUCT and _register_reference_table(
-            table, extraction.reference_targets
-        ):
-            return
-        if target is TableTarget.NESTED_STRUCT and _register_label_table(
-            table,
-            title=title,
-            section_kind=section_kind,
-            label_tables=extraction.label_tables,
-        ):
-            return
+        if target is TableTarget.NESTED_STRUCT:
+            if _register_nested_table(
+                table,
+                title=title,
+                section_kind=section_kind,
+                extraction=extraction,
+            ):
+                return
         if isinstance(target, TableTarget):
             _add_unmapped_table_issue(
                 extraction.routing_issues,
@@ -329,22 +330,51 @@ def _complete_sections(sections: dict[SectionName, Section]) -> list[Section]:
     return [sections[name] for name in SectionName]
 
 
+def _register_nested_table(
+    table: nodes.table,
+    *,
+    title: str,
+    section_kind: SectionKind,
+    extraction: _SectionExtraction,
+) -> bool:
+    table_extraction = extract_parameter_table(table)
+    by_reference = _register_reference_table(
+        table,
+        table_extraction,
+        section_kind=section_kind,
+        targets=extraction.reference_targets,
+        table_sections=extraction.reference_table_sections,
+    )
+    by_label = _register_label_table(
+        table_extraction,
+        title=title,
+        section_kind=section_kind,
+        label_tables=extraction.label_tables,
+    )
+    return by_reference or by_label
+
+
 def _register_reference_table(
     table: nodes.table,
+    table_extraction: TableExtraction,
+    *,
+    section_kind: SectionKind,
     targets: dict[str, RefTarget],
+    table_sections: dict[str, SectionName],
 ) -> bool:
     anchor = _table_label_id(table)
-    if not anchor:
+    if not anchor or anchor in targets:
         return False
     targets[anchor] = RefTarget(
         kind=RefKind.TABLE,
-        table=extract_parameter_table(table),
+        table=table_extraction,
     )
+    table_sections[anchor] = default_table_section(section_kind)
     return True
 
 
 def _register_label_table(
-    table: nodes.table,
+    table: TableExtraction,
     *,
     title: str,
     section_kind: SectionKind,
@@ -357,8 +387,25 @@ def _register_label_table(
     section_tables = label_tables.setdefault(owner, {})
     if parent_name in section_tables:
         return False
-    section_tables[parent_name] = extract_parameter_table(table)
+    section_tables[parent_name] = table
     return True
+
+
+def _report_unused_reference_tables(
+    extraction: _SectionExtraction,
+    used_tables: set[int],
+) -> None:
+    for anchor, section_name in extraction.reference_table_sections.items():
+        target = extraction.reference_targets[anchor]
+        if target.table is not None and id(target.table) in used_tables:
+            continue
+        extraction.routing_issues.setdefault(section_name, []).append(
+            Issue(
+                code=IssueCode.NESTED_PARENT_NOT_FOUND,
+                location=anchor,
+                details="nested table is not used by any parameter",
+            )
+        )
 
 
 def _add_unmapped_table_issue(
