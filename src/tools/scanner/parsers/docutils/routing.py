@@ -1,0 +1,654 @@
+"""Route docutils nodes into canonical endpoint sections."""
+
+from __future__ import annotations
+
+import re
+from copy import deepcopy
+from dataclasses import dataclass, field
+
+from docutils import nodes
+
+from tools.shared.ir import (
+    HttpMethod,
+    Parameter,
+    ParameterType,
+    Section,
+    SectionName,
+)
+from tools.shared.scan import (
+    Issue,
+    IssueCode,
+    SectionScanResult,
+    SectionStatus,
+)
+
+from .context import RepositoryParseContext
+from .example import (
+    add_examples_to_section,
+    extract_examples,
+    split_combined_examples,
+)
+from .inference import infer_documented_example_nesting
+from .nesting import RefKind, RefTarget, resolve_nested
+from .patterns import URI_PLACEHOLDER_RE
+from .section import (
+    SectionKind,
+    TableTarget,
+    classify_section_title,
+    classify_table_title,
+    default_table_section,
+    nested_parent_name,
+)
+from .table import TableExtraction, extract_parameter_table
+
+
+@dataclass
+class _SectionExtraction:
+    http_method: HttpMethod
+    sections: dict[SectionName, Section] = field(default_factory=dict)
+    primary_tables: dict[SectionName, TableExtraction] = field(default_factory=dict)
+    reference_targets: dict[str, RefTarget] = field(default_factory=dict)
+    reference_table_sections: dict[str, SectionName] = field(default_factory=dict)
+    label_tables: dict[SectionName, dict[str, TableExtraction]] = field(
+        default_factory=dict
+    )
+    routing_issues: dict[SectionName, list[Issue]] = field(default_factory=dict)
+    wrapper_candidates: dict[str, Parameter] = field(default_factory=dict)
+    unmatched_reference_tables: dict[
+        SectionName, dict[str, TableExtraction]
+    ] = field(default_factory=dict)
+
+
+_GENERIC_REQUEST_TARGETS = {
+    HttpMethod.GET: SectionName.QUERY_PARAMS,
+    HttpMethod.HEAD: SectionName.QUERY_PARAMS,
+    HttpMethod.POST: SectionName.BODY,
+    HttpMethod.PUT: SectionName.BODY,
+    HttpMethod.PATCH: SectionName.BODY,
+}
+
+_DIRECT_UNTITLED_TARGETS = {
+    SectionKind.URI: SectionName.PATH_PARAMS,
+    SectionKind.REQUEST: TableTarget.GENERIC_REQUEST,
+    SectionKind.RESPONSE: SectionName.RESPONSE,
+}
+
+_FIELD_DETAILS_RE = re.compile(
+    r"\bdetails\s+about\s+the\s+([A-Za-z0-9_.-]+)\s+field\b",
+    re.IGNORECASE,
+)
+
+
+class _SectionRouter:
+    def extract(
+        self,
+        doctree: nodes.document,
+        http_method: HttpMethod,
+        uri: str,
+        *,
+        context: RepositoryParseContext | None,
+    ) -> list[Section]:
+        """Collect document data first, then resolve cross-table references."""
+        extraction = _SectionExtraction(http_method=http_method)
+        if context is not None:
+            extraction.reference_targets.update(
+                {
+                    anchor: RefTarget(kind=RefKind.TABLE, table=table)
+                    for anchor, table in context.tables.items()
+                }
+            )
+        self._collect_section_data(doctree, extraction, context=context)
+        _reconcile_path_parameters(uri, extraction)
+        infer_documented_example_nesting(
+            extraction.primary_tables,
+            extraction.wrapper_candidates,
+            extraction.sections,
+            extraction.label_tables,
+            extraction.unmatched_reference_tables,
+        )
+        _register_non_table_targets(doctree, extraction.reference_targets)
+        self._resolve_parameter_sections(
+            extraction,
+            doc_id=_document_doc_id(doctree),
+        )
+        _apply_routing_issues(extraction.sections, extraction.routing_issues)
+        return _complete_sections(extraction.sections)
+
+    def _collect_section_data(
+        self,
+        doctree: nodes.document,
+        extraction: _SectionExtraction,
+        *,
+        context: RepositoryParseContext | None,
+    ) -> None:
+        for section_node in doctree.findall(nodes.section):
+            title_node = section_node.next_node(nodes.title)
+            if title_node is None:
+                continue
+            kind = classify_section_title(title_node.astext())
+
+            if kind in (SectionKind.URI, SectionKind.REQUEST, SectionKind.RESPONSE):
+                self._collect_parameter_tables(section_node, kind, extraction)
+                if context is not None:
+                    _register_explicit_field_tables(section_node, kind, extraction)
+            elif kind in (
+                SectionKind.EXAMPLE_REQUEST,
+                SectionKind.EXAMPLE_RESPONSE,
+                SectionKind.EXAMPLE_COMBINED,
+            ):
+                self._extract_example_section(
+                    section_node,
+                    kind,
+                    extraction.sections,
+                )
+
+    @staticmethod
+    def _resolve_parameter_sections(
+        extraction: _SectionExtraction,
+        *,
+        doc_id: str | None,
+    ) -> None:
+        used_tables: set[int] = set()
+        section_names = dict.fromkeys(
+            (*extraction.primary_tables, *extraction.label_tables)
+        )
+        for name in section_names:
+            table = extraction.primary_tables.get(name)
+            section = (
+                _to_section(table, name)
+                if table is not None
+                else Section(
+                    name=name,
+                    scan_result=SectionScanResult(status=SectionStatus.FAILED),
+                )
+            )
+            issues = resolve_nested(
+                {name: table} if table is not None else {},
+                extraction.reference_targets,
+                doc_id=doc_id,
+                label_tables=extraction.label_tables.get(name),
+                used_tables=used_tables,
+            )
+            _append_issues(section, issues)
+            extraction.sections[name] = section
+        _report_unused_reference_tables(extraction, used_tables)
+
+    def _collect_parameter_tables(
+        self,
+        section_node: nodes.section,
+        kind: SectionKind,
+        extraction: _SectionExtraction,
+    ) -> None:
+        for table_index, table in enumerate(section_node.findall(nodes.table), start=1):
+            self._route_parameter_table(
+                table,
+                index=table_index,
+                section_kind=kind,
+                extraction=extraction,
+            )
+
+    @staticmethod
+    def _route_parameter_table(
+        table: nodes.table,
+        *,
+        index: int,
+        section_kind: SectionKind,
+        extraction: _SectionExtraction,
+    ) -> None:
+        title = _table_routing_title(table, section_kind=section_kind)
+        target = _classify_table_target(
+            table,
+            title=title,
+            section_kind=section_kind,
+        )
+        target = _resolve_generic_request_target(target, extraction.http_method)
+
+        if target is TableTarget.INTENTIONALLY_IGNORED:
+            return
+        if target is TableTarget.NESTED_STRUCT:
+            if _register_nested_table(
+                table,
+                title=title,
+                section_kind=section_kind,
+                extraction=extraction,
+            ):
+                return
+        if isinstance(target, TableTarget):
+            _add_unmapped_table_issue(
+                extraction.routing_issues,
+                section_kind=section_kind,
+                table_index=index,
+                title=title,
+            )
+            return
+
+        _accumulate(
+            extraction.primary_tables,
+            target,
+            extract_parameter_table(table),
+        )
+
+    def _extract_example_section(
+        self,
+        section_node: nodes.section,
+        kind: SectionKind,
+        sections: dict[SectionName, Section],
+    ) -> None:
+        blocks = extract_examples(section_node)
+
+        if kind is SectionKind.EXAMPLE_REQUEST:
+            add_examples_to_section(sections, SectionName.EXAMPLE_REQUEST, blocks)
+            return
+        if kind is SectionKind.EXAMPLE_RESPONSE:
+            add_examples_to_section(sections, SectionName.EXAMPLE_RESPONSE, blocks)
+            return
+
+        request, response, issues = split_combined_examples(blocks)
+        if request:
+            add_examples_to_section(
+                sections,
+                SectionName.EXAMPLE_REQUEST,
+                request,
+                extra_issues=issues,
+            )
+        if response:
+            add_examples_to_section(sections, SectionName.EXAMPLE_RESPONSE, response)
+
+
+def extract_sections(
+    doctree: nodes.document,
+    http_method: HttpMethod,
+    uri: str,
+    *,
+    context: RepositoryParseContext | None,
+) -> list[Section]:
+    return _SectionRouter().extract(
+        doctree,
+        http_method,
+        uri,
+        context=context,
+    )
+
+
+def _append_issues(section: Section, issues: list[Issue]) -> None:
+    if not issues:
+        return
+    section.scan_result.issues.extend(issues)
+    if section.scan_result.status is SectionStatus.OK:
+        section.scan_result.status = SectionStatus.PARTIAL
+
+
+def _apply_routing_issues(
+    sections: dict[SectionName, Section],
+    issues_by_section: dict[SectionName, list[Issue]],
+) -> None:
+    for name, issues in issues_by_section.items():
+        section = sections.get(name)
+        if section is None:
+            sections[name] = Section(
+                name=name,
+                scan_result=SectionScanResult(
+                    status=SectionStatus.FAILED,
+                    issues=issues,
+                ),
+            )
+            continue
+        _append_issues(section, issues)
+
+
+def _complete_sections(sections: dict[SectionName, Section]) -> list[Section]:
+    for name in SectionName:
+        sections.setdefault(
+            name,
+            Section(
+                name=name,
+                scan_result=SectionScanResult(status=SectionStatus.MISSING),
+            ),
+        )
+    return [sections[name] for name in SectionName]
+
+
+def _reconcile_path_parameters(uri: str, extraction: _SectionExtraction) -> None:
+    placeholders = list(dict.fromkeys(URI_PLACEHOLDER_RE.findall(uri)))
+    source = extraction.primary_tables.get(SectionName.PATH_PARAMS)
+    if source is None and not placeholders:
+        return
+
+    documented = (
+        {parameter.name: parameter for parameter in source.parameters} if source else {}
+    )
+    placeholder_names = set(placeholders)
+    for name, parameter in documented.items():
+        if name not in placeholder_names:
+            extraction.wrapper_candidates.setdefault(name, parameter)
+    extraction.primary_tables[SectionName.PATH_PARAMS] = _path_extraction(
+        placeholders,
+        documented,
+        source,
+    )
+    issues = _path_parameter_issues(uri, placeholders, documented)
+    if issues:
+        extraction.routing_issues.setdefault(SectionName.PATH_PARAMS, []).extend(issues)
+
+
+def _path_extraction(
+    placeholders: list[str],
+    documented: dict[str, Parameter],
+    source: TableExtraction | None,
+) -> TableExtraction:
+    parameters = [
+        Parameter(
+            name=name,
+            param_type=ParameterType.STRING,
+            mandatory=True,
+            description=documented[name].description if name in documented else "",
+        )
+        for name in placeholders
+    ]
+    return TableExtraction(
+        parameters=parameters,
+        ref_anchors=[None] * len(parameters),
+        issues=(
+            [
+                issue
+                for issue in source.issues
+                if issue.code is not IssueCode.UNKNOWN_TYPE_FORMAT
+            ]
+            if source
+            else []
+        ),
+        fields_total=len(parameters),
+        fields_recognized=len(parameters),
+        fields_unknown_type=0,
+        fields_failed=0,
+    )
+
+
+def _path_parameter_issues(
+    uri: str,
+    placeholders: list[str],
+    documented: dict[str, Parameter],
+) -> list[Issue]:
+    placeholder_names = set(placeholders)
+    return [
+        Issue(
+            code=IssueCode.PATH_PARAMETER_NOT_IN_URI,
+            location=name,
+            details=uri,
+        )
+        for name in documented
+        if name not in placeholder_names
+    ]
+
+
+def _register_nested_table(
+    table: nodes.table,
+    *,
+    title: str,
+    section_kind: SectionKind,
+    extraction: _SectionExtraction,
+) -> bool:
+    table_extraction = extract_parameter_table(table)
+    by_reference = _register_reference_table(
+        table,
+        table_extraction,
+        section_kind=section_kind,
+        targets=extraction.reference_targets,
+        table_sections=extraction.reference_table_sections,
+    )
+    by_label = _register_label_table(
+        table_extraction,
+        title=title,
+        section_kind=section_kind,
+        label_tables=extraction.label_tables,
+    )
+    return by_reference or by_label
+
+
+def _register_reference_table(
+    table: nodes.table,
+    table_extraction: TableExtraction,
+    *,
+    section_kind: SectionKind,
+    targets: dict[str, RefTarget],
+    table_sections: dict[str, SectionName],
+) -> bool:
+    anchor = _table_label_id(table)
+    if not anchor:
+        return False
+    targets[anchor] = RefTarget(
+        kind=RefKind.TABLE,
+        table=table_extraction,
+    )
+    table_sections[anchor] = default_table_section(section_kind)
+    return True
+
+
+def _register_explicit_field_tables(
+    section_node: nodes.section,
+    section_kind: SectionKind,
+    extraction: _SectionExtraction,
+) -> None:
+    owner = default_table_section(section_kind)
+    primary = extraction.primary_tables.get(owner)
+    if primary is None:
+        return
+    parameter_names = {parameter.name for parameter in primary.parameters}
+
+    for paragraph in section_node.findall(nodes.paragraph):
+        match = _FIELD_DETAILS_RE.search(paragraph.astext())
+        if match is None:
+            continue
+        parent_name = match.group(1)
+        anchor = _first_ref_target(paragraph)
+        target = extraction.reference_targets.get(anchor) if anchor else None
+        if target is None or target.kind is not RefKind.TABLE or target.table is None:
+            continue
+        referenced_table = deepcopy(target.table)
+        if parent_name not in parameter_names:
+            extraction.unmatched_reference_tables.setdefault(owner, {}).setdefault(
+                parent_name, referenced_table
+            )
+            continue
+        extraction.label_tables.setdefault(owner, {}).setdefault(
+            parent_name, referenced_table
+        )
+
+
+def _first_ref_target(node: nodes.Element) -> str | None:
+    for inline in node.findall(nodes.inline):
+        target = inline.get("ref_target")
+        if target:
+            return str(target)
+    return None
+
+
+def _register_label_table(
+    table: TableExtraction,
+    *,
+    title: str,
+    section_kind: SectionKind,
+    label_tables: dict[SectionName, dict[str, TableExtraction]],
+) -> bool:
+    parent_name = nested_parent_name(title)
+    if parent_name is None:
+        return False
+    owner = default_table_section(section_kind)
+    section_tables = label_tables.setdefault(owner, {})
+    if parent_name in section_tables:
+        return False
+    section_tables[parent_name] = table
+    return True
+
+
+def _report_unused_reference_tables(
+    extraction: _SectionExtraction,
+    used_tables: set[int],
+) -> None:
+    for anchor, section_name in extraction.reference_table_sections.items():
+        target = extraction.reference_targets[anchor]
+        if target.table is not None and id(target.table) in used_tables:
+            continue
+        extraction.routing_issues.setdefault(section_name, []).append(
+            Issue(
+                code=IssueCode.NESTED_PARENT_NOT_FOUND,
+                location=anchor,
+                details="nested table is not used by any parameter",
+            )
+        )
+
+
+def _add_unmapped_table_issue(
+    issues_by_section: dict[SectionName, list[Issue]],
+    *,
+    section_kind: SectionKind,
+    table_index: int,
+    title: str,
+) -> None:
+    owner = default_table_section(section_kind)
+    issues_by_section.setdefault(owner, []).append(
+        Issue(
+            code=IssueCode.UNMAPPED_TABLE,
+            location=f"{section_kind.value} table {table_index}",
+            details=title or "untitled table",
+        )
+    )
+
+
+def _table_title(table: nodes.table) -> str:
+    """Title text on a ``.. table:: <Title>`` directive (empty if absent)."""
+    title_node = next(iter(table.findall(nodes.title)), None)
+    return title_node.astext().strip() if title_node else ""
+
+
+def _table_routing_title(table: nodes.table, *, section_kind: SectionKind) -> str:
+    title = _table_title(table)
+    if title or section_kind not in (
+        SectionKind.URI,
+        SectionKind.REQUEST,
+        SectionKind.RESPONSE,
+    ):
+        return title
+    return _list_item_label(table)
+
+
+def _classify_table_target(
+    table: nodes.table,
+    *,
+    title: str,
+    section_kind: SectionKind,
+) -> SectionName | TableTarget:
+    if not title and isinstance(table.parent, nodes.section):
+        return _DIRECT_UNTITLED_TARGETS[section_kind]
+    return classify_table_title(title, in_section=section_kind)
+
+
+def _resolve_generic_request_target(
+    target: SectionName | TableTarget,
+    http_method: HttpMethod,
+) -> SectionName | TableTarget:
+    if target is not TableTarget.GENERIC_REQUEST:
+        return target
+    return _GENERIC_REQUEST_TARGETS.get(http_method, TableTarget.UNMAPPED)
+
+
+def _list_item_label(table: nodes.table) -> str:
+    ancestor = table.parent
+    while ancestor is not None and not isinstance(
+        ancestor, (nodes.list_item, nodes.section)
+    ):
+        ancestor = ancestor.parent
+    if not isinstance(ancestor, nodes.list_item):
+        return ""
+    paragraph = next(
+        (child for child in ancestor.children if isinstance(child, nodes.paragraph)),
+        None,
+    )
+    return paragraph.astext().strip() if paragraph else ""
+
+
+def _table_label_id(table: nodes.table) -> str | None:
+    """Ref anchor of a struct table: the label from its ``.. _anchor:`` target.
+
+    We read ``names`` (the authored label, underscore-preserving) rather than
+    ``ids`` (which docutils normalises to hyphens) so it matches the raw
+    anchors captured from ``:ref:`` type cells in :mod:`.table`.
+    """
+    names = table.get("names")
+    return names[0] if names else None
+
+
+def _document_doc_id(doctree: nodes.document) -> str | None:
+    """Return the authored document label rather than its title-derived name."""
+    top = next(iter(doctree.findall(nodes.section)), None)
+    if top is None:
+        return None
+    title_node = top.next_node(nodes.title)
+    title_name = nodes.fully_normalize_name(title_node.astext()) if title_node else None
+    for name in top.get("names", ()):
+        if name != title_name:
+            return name
+    return None
+
+
+def _accumulate(
+    primary_tables: dict[SectionName, TableExtraction],
+    name: SectionName,
+    extraction: TableExtraction,
+) -> None:
+    """Merge an extraction into ``primary_tables[name]``.
+
+    A request can carry both a header table and a body table; tables sharing a
+    target key are concatenated. ``ref_anchors`` is extended in lockstep with
+    ``parameters`` so the 1:1 alignment the resolver relies on is preserved.
+    """
+    existing = primary_tables.get(name)
+    if existing is None:
+        primary_tables[name] = extraction
+        return
+    existing.parameters.extend(extraction.parameters)
+    existing.ref_anchors.extend(extraction.ref_anchors)
+    existing.issues.extend(extraction.issues)
+    existing.fields_total += extraction.fields_total
+    existing.fields_recognized += extraction.fields_recognized
+    existing.fields_unknown_type += extraction.fields_unknown_type
+    existing.fields_failed += extraction.fields_failed
+
+
+def _to_section(extraction: TableExtraction, name: SectionName) -> Section:
+    return Section(
+        name=name,
+        parameters=list(extraction.parameters),
+        scan_result=SectionScanResult(
+            status=_status_from_counters(extraction),
+            issues=list(extraction.issues),
+            fields_total=extraction.fields_total,
+            fields_recognized=extraction.fields_recognized,
+            fields_unknown_type=extraction.fields_unknown_type,
+            fields_failed=extraction.fields_failed,
+        ),
+    )
+
+
+def _register_non_table_targets(
+    doctree: nodes.document, targets: dict[str, RefTarget]
+) -> None:
+    """Record every named non-table node as a ``NON_TABLE`` target.
+
+    A type-cell ref pointing at a section or paragraph then resolves to
+    ``NESTED_REF_NOT_A_TABLE`` instead of looking absent. ``setdefault`` keeps
+    struct tables (registered first, in pass 1) winning their own anchor.
+    """
+    for node in doctree.findall(nodes.Element):
+        if isinstance(node, nodes.table):
+            continue
+        for name in node.get("names", ()):
+            targets.setdefault(name, RefTarget(kind=RefKind.NON_TABLE))
+
+
+def _status_from_counters(counters: TableExtraction) -> SectionStatus:
+    if counters.fields_total == 0:
+        return SectionStatus.FAILED
+    if counters.fields_failed or counters.fields_unknown_type:
+        return SectionStatus.PARTIAL
+    return SectionStatus.OK
