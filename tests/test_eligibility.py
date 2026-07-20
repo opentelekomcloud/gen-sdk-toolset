@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tools.scanner.eligibility import EligibilityResult, check_repository_eligibility
+from tools.scanner.repositories import EligibilityResult, check_repository_eligibility
 from tools.shared.exceptions import ProviderError, ProviderErrorKind
 from tools.shared.scan import RepositoryInterruptionKind
 

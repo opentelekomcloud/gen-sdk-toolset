@@ -4,9 +4,9 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 from tools.domain.report import OrgScanResult
-from tools.scanner.eligibility import check_repository_eligibility
 from tools.scanner.interfaces import DocProvider, RepositoryContextParser, RstParser
 from tools.scanner.parsers.docutils.style import DocStyle, extract_document_title
+from tools.scanner.repositories import check_repository_eligibility
 from tools.shared.exceptions import ParseFailure, ProviderError
 from tools.shared.ir import Document, Repository, Service
 from tools.shared.scan import DocumentScanResult, Issue, IssueCode, RepositoryScanResult
