@@ -68,11 +68,12 @@ class PanelSection(BaseModel):
 
 
 class Settings(BaseSettings):
-    github_token: SecretStr = Field(
-        default=...,
+    github_token: SecretStr | None = Field(
+        default=None,
         description=(
             "GitHub personal access token. Must come from env or .env — "
-            "never from the TOML config file."
+            "never from the TOML config file. Required only for scanning; "
+            "the panel/DB layer does not need it."
         ),
     )
     github: GitHubSection = Field(default_factory=GitHubSection)
@@ -133,3 +134,18 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
         )
 
     return _ScopedSettings()
+
+
+def require_github_token(settings: Settings) -> SecretStr:
+    """Return the configured GitHub token, or raise if scanning without one.
+
+    The token is optional at the settings level so the panel/DB layer and
+    migrations never depend on it. Callers that actually reach GitHub (the
+    scanner composition root) enforce its presence here.
+    """
+    if settings.github_token is None:
+        raise RuntimeError(
+            "GITHUB_TOKEN is not set. Provide it via the GITHUB_TOKEN "
+            "environment variable or a .env file to scan repositories."
+        )
+    return settings.github_token

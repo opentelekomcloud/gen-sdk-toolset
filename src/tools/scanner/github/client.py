@@ -96,8 +96,18 @@ class GitHubDocProvider(DocProvider):
         resp = self._get(url, repo=repo, resource=path, params={"ref": branch})
 
         payload = resp.json()
-        encoded = payload.get("content", "")
-        return base64.b64decode(encoded).decode("utf-8")
+        encoding = payload.get("encoding")
+        if encoding != "base64":
+            # Files larger than 1 MB come back with encoding "none" and an
+            # empty content field (they require the blobs API). Fail loudly
+            # rather than silently returning an empty document.
+            raise ProviderError(
+                f"Unexpected content encoding {encoding!r} for {path} in {repo}"
+                " (file may exceed the contents-API 1 MB limit)",
+                kind=ProviderErrorKind.unexpected_response,
+                resource=path,
+            )
+        return base64.b64decode(payload.get("content", "")).decode("utf-8")
 
     def get_commit_hash(self, repo: str, branch: str) -> str | None:
         """Head commit SHA of `branch`, or None if the ref can't be resolved.

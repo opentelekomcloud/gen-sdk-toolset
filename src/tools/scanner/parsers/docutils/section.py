@@ -96,26 +96,16 @@ _TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], SectionName | TableTarget]] =
     # URI / path
     (re.compile(r"\bpath\s+param", re.IGNORECASE), SectionName.PATH_PARAMS),
     (re.compile(r"\buri\s+param", re.IGNORECASE), SectionName.PATH_PARAMS),
-    # Request header
+    # Request header. (The broad "request header" catch already matches
+    # titles like "Parameters in the request header", so no separate pattern
+    # for that phrasing is needed.)
     (re.compile(r"\brequest\s+header", re.IGNORECASE), SectionName.HEADERS),
-    (
-        re.compile(r"\bparameters?\s+in\s+the\s+request\s+header", re.IGNORECASE),
-        SectionName.HEADERS,
-    ),
     (re.compile(r"\bheader\s+param", re.IGNORECASE), SectionName.HEADERS),
     # Request body (must come after header patterns since "request" is
     # ambiguous on its own).
     (re.compile(r"\brequest\s+body", re.IGNORECASE), SectionName.BODY),
-    (
-        re.compile(r"\bparameters?\s+in\s+the\s+request\s+body", re.IGNORECASE),
-        SectionName.BODY,
-    ),
     # Response body
     (re.compile(r"\bresponse\s+body", re.IGNORECASE), SectionName.RESPONSE),
-    (
-        re.compile(r"\bparameters?\s+in\s+the\s+response\s+body", re.IGNORECASE),
-        SectionName.RESPONSE,
-    ),
     (re.compile(r"\bresponse\s+param", re.IGNORECASE), SectionName.RESPONSE),
     # Generic catches go last
     (re.compile(r"\brequest\s+param", re.IGNORECASE), TableTarget.GENERIC_REQUEST),

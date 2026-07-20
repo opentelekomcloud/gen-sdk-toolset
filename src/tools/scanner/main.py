@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
-from tools.config import Settings, load_settings
+from tools.config import Settings, load_settings, require_github_token
 from tools.domain.report import OrgScanResult, OverallStatus
 from tools.scanner.github.client import GitHubDocProvider
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
@@ -132,7 +132,7 @@ def _load_settings_or_exit(config_path: str | None) -> Settings:
 def _build_scanner(settings: Settings) -> ScannerService:
     """Composition root: wire the adapters into a :class:`ScannerService`."""
     github_provider = GitHubDocProvider(
-        token=settings.github_token.get_secret_value(),
+        token=require_github_token(settings).get_secret_value(),
         api_url=settings.github.api_url,
         prefix=settings.scanner.rst_source_prefix,
     )
@@ -206,7 +206,11 @@ def main(argv: list[str] | None = None) -> int:
 
     branch = args.branch or settings.github.branch
     output_path = args.output or settings.output.path
-    scanner = _build_scanner(settings)
+    try:
+        scanner = _build_scanner(settings)
+    except RuntimeError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USAGE_ERROR
 
     # Single-repo mode returns one RepositoryScanResult.
     if args.repo:

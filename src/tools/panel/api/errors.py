@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+logger = logging.getLogger(__name__)
 
 
 def _envelope(code: str, message: str) -> dict:
@@ -38,6 +42,9 @@ async def _validation_exception_handler(
 async def _unhandled_exception_handler(
     request: Request, exc: Exception
 ) -> JSONResponse:
+    logger.exception(
+        "Unhandled error on %s %s", request.method, request.url.path
+    )
     return JSONResponse(
         status_code=500,
         content=_envelope("internal_error", "Internal server error"),

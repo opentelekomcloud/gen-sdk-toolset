@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ from docutils.core import publish_doctree
 from docutils.parsers.rst import roles
 
 from .table import TableExtraction, extract_parameter_table
+
+logger = logging.getLogger(__name__)
 
 _SILENT_DOCUTILS_SETTINGS = {
     "report_level": 5,
@@ -69,5 +72,17 @@ def build_repository_context(
                 continue
             extracted = extract_parameter_table(table)
             if extracted.parameters:
-                tables.setdefault(names[0], extracted)
+                anchor = names[0]
+                if anchor in tables:
+                    # Repo-global anchors are expected to be unique (Sphinx
+                    # cross-refs rely on it); a collision means a duplicate
+                    # label authored across docs. Keep the first, but surface it.
+                    logger.warning(
+                        "Duplicate table anchor %r in %s; keeping first, "
+                        "ignoring the later table",
+                        anchor,
+                        path,
+                    )
+                    continue
+                tables[anchor] = extracted
     return RepositoryParseContext(tables=tables, doctrees=doctrees)

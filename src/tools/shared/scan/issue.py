@@ -2,7 +2,7 @@
 
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class IssueCode(str, Enum):
@@ -33,6 +33,8 @@ class IssueCode(str, Enum):
 
 class Issue(BaseModel):
     """A single problem encountered while processing a document."""
+
+    model_config = ConfigDict(extra="forbid")
 
     code: IssueCode
     location: str | None = None

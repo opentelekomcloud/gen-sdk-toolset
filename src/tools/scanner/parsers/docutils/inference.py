@@ -271,7 +271,11 @@ def _apply_top_level_wrapper(
     wrapper = (
         table.rows[existing_index].parameter
         if existing_index is not None
-        else candidate
+        # Copy the candidate: it is owned by wrapper_candidates and must not be
+        # mutated in place (its param_type is repurposed below).
+        else candidate.model_copy(deep=True)
+        if candidate is not None
+        else None
     )
     if wrapper is None or wrapper.children or not wrapper.param_type.supports_children:
         return None

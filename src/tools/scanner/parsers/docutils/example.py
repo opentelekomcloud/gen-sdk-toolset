@@ -26,16 +26,17 @@ def extract_examples(section: nodes.section) -> list[Example]:
             visited.add(id(code))
             blocks.append(_make_example(code, label=label))
 
-    for code in section.findall(nodes.literal_block):
-        if id(code) in visited:
-            continue
-        visited.add(id(code))
-        blocks.append(
-            _make_example(
-                code,
-                label=_nearest_example_label(section, code),
-            )
-        )
+    # Remaining top-level blocks, in one walk: carry the nearest preceding
+    # example-label paragraph forward instead of re-scanning per block.
+    current_label: str | None = None
+    for node in section.findall(nodes.Element):
+        if isinstance(node, nodes.paragraph):
+            text = node.astext().strip()
+            if _is_example_label(text):
+                current_label = text
+        elif isinstance(node, nodes.literal_block) and id(node) not in visited:
+            visited.add(id(node))
+            blocks.append(_make_example(node, label=current_label))
 
     return blocks
 
@@ -92,22 +93,6 @@ def _extract_item_label(item: nodes.list_item) -> str | None:
         return None
     text = paragraph.astext().strip()
     return text or None
-
-
-def _nearest_example_label(
-    section: nodes.section,
-    block: nodes.literal_block,
-) -> str | None:
-    label = None
-    for node in section.findall(nodes.Element):
-        if node is block:
-            break
-        if not isinstance(node, nodes.paragraph):
-            continue
-        text = node.astext().strip()
-        if _is_example_label(text):
-            label = text
-    return label
 
 
 def _is_example_label(text: str) -> bool:

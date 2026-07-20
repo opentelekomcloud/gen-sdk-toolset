@@ -94,7 +94,7 @@ def extract_document_title(content: str) -> str | None:
 
 def classify_doc_style(content: str) -> DocStyle:
     """Classify an RST doc as Style-A, S3-compatible, or non-endpoint."""
-    s3_markers = len(_S3_HEADING_RE.findall(content))
+    s3_markers = len({match.lower() for match in _S3_HEADING_RE.findall(content)})
     if s3_markers >= _S3_THRESHOLD:
         return DocStyle.S3_COMPATIBLE
 
