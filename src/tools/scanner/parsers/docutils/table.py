@@ -12,7 +12,7 @@ tables don't have one).
 
 The parser returns:
 
-* a list of :class:`tools.domain.ir.Parameter` (one per body row), and
+* a list of :class:`tools.shared.ir.Parameter` (one per body row), and
 * counters that feed :class:`SectionScanResult` field-level metrics.
 """
 
@@ -45,7 +45,7 @@ _HEADER_ALIASES: dict[str, str] = {
 
 # Type-text → ParameterType. Loose matching on lower-cased text. Sphinx
 # :ref: markup is already resolved to its visible label at parse time by the
-# passthrough role registered in doc_parser (_ensure_roles), so no stripping
+# passthrough role registered in context (ensure_roles), so no stripping
 # is needed here — see tests/test_ref_resolution.py.
 def _classify_type(raw: str) -> ParameterType:
     if not raw:

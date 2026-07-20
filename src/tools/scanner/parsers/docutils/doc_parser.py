@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import io
 import re
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 
 from docutils import nodes
-from docutils.core import publish_doctree
-from docutils.parsers.rst import roles
 
 from tools.scanner.interfaces import RstParser
 from tools.shared.exceptions import ParseFailure
@@ -30,6 +27,11 @@ from tools.shared.scan import (
     SectionStatus,
 )
 
+from .context import (
+    RepositoryParseContext,
+    build_repository_context,
+    parse_doctree,
+)
 from .example import (
     add_examples_to_section,
     extract_examples,
@@ -67,37 +69,6 @@ class _SectionExtraction:
     ] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
-class RepositoryParseContext:
-    """Parameter tables addressable by authored RST anchors in a repository."""
-
-    tables: Mapping[str, TableExtraction]
-    doctrees: Mapping[str, nodes.document]
-
-
-def _passthrough_role(name, rawtext, text, lineno, inliner, options=None, content=None):
-    """Preserve Sphinx role text and expose its target to the table parser."""
-    match = re.search(r"<([^>]+)>\s*$", text)
-    anchor = match.group(1).strip() if match else None
-    label = re.sub(r"\s*<[^>]+>\s*$", "", text).strip()
-    node = nodes.inline(label, label)
-    if anchor:
-        node["ref_target"] = anchor
-    return [node], []
-
-
-_roles_registered = False
-
-
-def _ensure_roles() -> None:
-    global _roles_registered
-    if _roles_registered:
-        return
-    for role_name in ("ref", "doc", "term"):
-        roles.register_local_role(role_name, _passthrough_role)
-    _roles_registered = True
-
-
 _VERSION_RE = re.compile(r"/(v\d+(?:\.\d+)?)(?:/|$)", re.IGNORECASE)
 
 _GENERIC_REQUEST_TARGETS = {
@@ -121,32 +92,10 @@ _FIELD_DETAILS_RE = re.compile(
 
 
 class DocutilsParser(RstParser):
-    _SILENT_DOCUTILS_SETTINGS = {
-        "report_level": 5,
-        "warning_stream": io.StringIO(),
-    }
-
-    def __init__(self) -> None:
-        _ensure_roles()
-
     def build_repository_context(
         self, documents: Mapping[str, str]
     ) -> RepositoryParseContext:
-        tables: dict[str, TableExtraction] = {}
-        doctrees: dict[str, nodes.document] = {}
-        for path, content in documents.items():
-            doctree = publish_doctree(
-                content, settings_overrides=self._SILENT_DOCUTILS_SETTINGS
-            )
-            doctrees[path] = doctree
-            for table in doctree.findall(nodes.table):
-                anchor = _table_label_id(table)
-                if anchor is None:
-                    continue
-                extracted = extract_parameter_table(table)
-                if extracted.parameters:
-                    tables.setdefault(anchor, extracted)
-        return RepositoryParseContext(tables=tables, doctrees=doctrees)
+        return build_repository_context(documents)
 
     def parse(
         self,
@@ -157,9 +106,7 @@ class DocutilsParser(RstParser):
     ) -> Endpoint:
         doctree = context.doctrees.get(path) if context is not None else None
         if doctree is None:
-            doctree = publish_doctree(
-                content, settings_overrides=self._SILENT_DOCUTILS_SETTINGS
-            )
+            doctree = parse_doctree(content)
 
         method, uri = self._extract_method_and_uri(content, path)
         title = extract_document_title(content)

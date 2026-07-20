@@ -12,15 +12,13 @@ consumes it.
 
 Registry shape
 --------------
-The registry classifies each *in-document* anchor as either a struct table
+The registry classifies every known anchor as either a struct table
 (:attr:`RefKind.TABLE`) or a non-table node (:attr:`RefKind.NON_TABLE`) — a
-plain ``TableExtraction`` cannot express the latter. Two more outcomes are
-decided *without* the registry, at the ``target is None`` branch: OTC anchors
-are ``<docid>__<local>`` where ``docid`` is the document's own label, so an
-anchor whose docid differs from this document's points into another document
-(``NESTED_REF_EXTERNAL``); otherwise it is a genuine dangling ref
-(``NESTED_TABLE_NOT_FOUND``). ``primary`` stays a ``dict[str, TableExtraction]``
-(one per parameter-bearing section) since those are always real tables.
+plain ``TableExtraction`` cannot express the latter. Repository context adds
+cross-document tables to this registry before resolution. An unresolved OTC
+anchor whose docid differs from the current document is reported as
+``NESTED_REF_EXTERNAL``; other unresolved anchors are reported as
+``NESTED_TABLE_NOT_FOUND``.
 """
 
 from __future__ import annotations
@@ -37,8 +35,8 @@ from .table import TableExtraction
 class RefKind(str, Enum):
     """What an in-document ref anchor resolves to, classified by the wire-in.
 
-    Cross-document refs are not registry entries — they are detected from the
-    anchor's docid at lookup time (see :func:`_is_external`).
+    Repository context can contribute cross-document table entries. Missing
+    cross-document refs are detected from the anchor's docid at lookup time.
     """
 
     TABLE = "table"  # a struct definition table in this document

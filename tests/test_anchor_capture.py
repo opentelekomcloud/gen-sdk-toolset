@@ -12,7 +12,7 @@ import pytest
 from docutils import nodes
 from docutils.core import publish_doctree
 
-from tools.scanner.parsers.docutils.doc_parser import _ensure_roles
+from tools.scanner.parsers.docutils.context import ensure_roles
 from tools.scanner.parsers.docutils.table import (
     _struct_type_name,
     extract_parameter_table,
@@ -24,7 +24,7 @@ from .conftest import load_fixture
 
 def _tables_by_title(content: str) -> dict[str, nodes.table]:
     """Map each ``.. table::`` title to its docutils node for a fixture."""
-    _ensure_roles()
+    ensure_roles()
     doctree = publish_doctree(content, settings_overrides={"report_level": 5})
     out: dict[str, nodes.table] = {}
     for table in doctree.findall(nodes.table):
