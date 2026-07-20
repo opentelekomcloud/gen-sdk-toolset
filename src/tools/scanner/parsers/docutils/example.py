@@ -317,7 +317,12 @@ def extract_examples(section: nodes.section) -> list[Example]:
         if id(code) in visited:
             continue
         visited.add(id(code))
-        blocks.append(_make_example(code, label=None))
+        blocks.append(
+            _make_example(
+                code,
+                label=_nearest_example_label(section, code),
+            )
+        )
 
     return blocks
 
@@ -374,6 +379,29 @@ def _extract_item_label(item: nodes.list_item) -> str | None:
         return None
     text = p.astext().strip()
     return text or None
+
+
+def _nearest_example_label(
+    section: nodes.section,
+    block: nodes.literal_block,
+) -> str | None:
+    label = None
+    for node in section.findall(nodes.Element):
+        if node is block:
+            break
+        if not isinstance(node, nodes.paragraph):
+            continue
+        text = node.astext().strip()
+        if _is_example_label(text):
+            label = text
+    return label
+
+
+def _is_example_label(text: str) -> bool:
+    normalized = text.lower()
+    return (
+        "example" in normalized or "sample" in normalized
+    ) and ("request" in normalized or "response" in normalized)
 
 
 def _make_example(block: nodes.literal_block, *, label: str | None) -> Example:

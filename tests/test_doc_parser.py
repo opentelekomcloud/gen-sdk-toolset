@@ -675,6 +675,36 @@ Examples
     assert request.examples[0].parsed == {"widget": {"name": "demo"}}
 
 
+def test_recovers_label_for_code_block_outside_its_list_item(
+    parser: DocutilsParser,
+) -> None:
+    content = """Demo
+====
+
+URI
+---
+
+DELETE /v1/widgets/{widget_id}
+
+Examples
+--------
+
+- Example request
+
+.. code-block:: text
+
+   DELETE /v1/widgets/{widget_id}
+"""
+
+    parsed = parser.parse(content, "demo.rst")
+    request = next(
+        section for section in parsed.sections if section.name == "example_request"
+    )
+
+    assert request.examples[0].label == "Example request"
+    assert request.scan_result.issues == []
+
+
 # --------------------------------------------------------------------------- #
 # api_version falls back to the source file path when the URI carries no
 # version segment, and the captured version is lower-cased (review item 15).
