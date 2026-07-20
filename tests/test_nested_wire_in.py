@@ -236,3 +236,35 @@ def test_external_cross_doc_ref(parser: DocutilsParser) -> None:
     parsed = parser.parse(content, "x.rst")
     assert _sections(parsed)["body"].scan_result.status is SectionStatus.PARTIAL
     assert IssueCode.NESTED_REF_EXTERNAL in _body_issue_codes(parser, content)
+
+
+def test_explicit_cross_document_field_table(parser: DocutilsParser) -> None:
+    overview = (
+        "Overview\n========\n\n"
+        ".. _connection_fields:\n\n"
+        + _simple_table(
+            "**Table 1** Connection fields",
+            ["Parameter", "Type", "Description"],
+            [["id", "String", "connection ID"], ["name", "String", "name"]],
+        )
+    )
+    endpoint = (
+        "Demo\n====\n\nURI\n---\n\nGET /v1/test\n\n"
+        "Response\n--------\n\n"
+        + _simple_table(
+            "**Table 1** Response parameters",
+            ["Parameter", "Type", "Description"],
+            [["connection", "Object", "connection object"]],
+        )
+        + "\nFor details about the **connection** field, "
+        "see :ref:`Table 1 <connection_fields>`.\n"
+    )
+
+    context = parser.build_repository_context({"overview.rst": overview})
+    response = _sections(
+        parser.parse(endpoint, "endpoint.rst", context=context)
+    )["response"]
+
+    connection = response.parameters[0]
+    assert [child.name for child in connection.children] == ["id", "name"]
+    assert response.scan_result.status is SectionStatus.OK

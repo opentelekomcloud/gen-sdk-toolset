@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from docutils import nodes
@@ -56,6 +57,13 @@ class _SectionExtraction:
     routing_issues: dict[SectionName, list[Issue]] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class RepositoryParseContext:
+    """Parameter tables addressable by authored RST anchors in a repository."""
+
+    tables: Mapping[str, TableExtraction]
+
+
 def _passthrough_role(name, rawtext, text, lineno, inliner, options=None, content=None):
     """Preserve Sphinx role text and expose its target to the table parser."""
     match = re.search(r"<([^>]+)>\s*$", text)
@@ -95,6 +103,11 @@ _DIRECT_UNTITLED_TARGETS = {
     SectionKind.RESPONSE: SectionName.RESPONSE,
 }
 
+_FIELD_DETAILS_RE = re.compile(
+    r"\bdetails\s+about\s+the\s+([A-Za-z0-9_.-]+)\s+field\b",
+    re.IGNORECASE,
+)
+
 
 class DocutilsParser(RstParser):
     _SILENT_DOCUTILS_SETTINGS = {
@@ -105,7 +118,30 @@ class DocutilsParser(RstParser):
     def __init__(self) -> None:
         _ensure_roles()
 
-    def parse(self, content: str, path: str) -> Endpoint:
+    def build_repository_context(
+        self, documents: Mapping[str, str]
+    ) -> RepositoryParseContext:
+        tables: dict[str, TableExtraction] = {}
+        for content in documents.values():
+            doctree = publish_doctree(
+                content, settings_overrides=self._SILENT_DOCUTILS_SETTINGS
+            )
+            for table in doctree.findall(nodes.table):
+                anchor = _table_label_id(table)
+                if anchor is None:
+                    continue
+                extracted = extract_parameter_table(table)
+                if extracted.parameters:
+                    tables.setdefault(anchor, extracted)
+        return RepositoryParseContext(tables=tables)
+
+    def parse(
+        self,
+        content: str,
+        path: str,
+        *,
+        context: RepositoryParseContext | None = None,
+    ) -> Endpoint:
         doctree = publish_doctree(
             content, settings_overrides=self._SILENT_DOCUTILS_SETTINGS
         )
@@ -113,7 +149,7 @@ class DocutilsParser(RstParser):
         method, uri = self._extract_method_and_uri(content, path)
         title = extract_document_title(content)
         api_version = self._extract_api_version(uri, path)
-        sections = self._extract_sections(doctree, method, uri)
+        sections = self._extract_sections(doctree, method, uri, context=context)
 
         return Endpoint(
             path=path,
@@ -151,10 +187,19 @@ class DocutilsParser(RstParser):
         doctree: nodes.document,
         http_method: HttpMethod,
         uri: str,
+        *,
+        context: RepositoryParseContext | None,
     ) -> list[Section]:
         """Collect document data first, then resolve cross-table references."""
         extraction = _SectionExtraction(http_method=http_method)
-        self._collect_section_data(doctree, extraction)
+        if context is not None:
+            extraction.reference_targets.update(
+                {
+                    anchor: RefTarget(kind=RefKind.TABLE, table=table)
+                    for anchor, table in context.tables.items()
+                }
+            )
+        self._collect_section_data(doctree, extraction, context=context)
         _reconcile_path_parameters(uri, extraction)
         _register_non_table_targets(doctree, extraction.reference_targets)
         self._resolve_parameter_sections(
@@ -168,6 +213,8 @@ class DocutilsParser(RstParser):
         self,
         doctree: nodes.document,
         extraction: _SectionExtraction,
+        *,
+        context: RepositoryParseContext | None,
     ) -> None:
         for section_node in doctree.findall(nodes.section):
             title_node = section_node.next_node(nodes.title)
@@ -177,6 +224,8 @@ class DocutilsParser(RstParser):
 
             if kind in (SectionKind.URI, SectionKind.REQUEST, SectionKind.RESPONSE):
                 self._collect_parameter_tables(section_node, kind, extraction)
+                if context is not None:
+                    _register_explicit_field_tables(section_node, kind, extraction)
             elif kind in (
                 SectionKind.EXAMPLE_REQUEST,
                 SectionKind.EXAMPLE_RESPONSE,
@@ -441,7 +490,7 @@ def _register_reference_table(
     table_sections: dict[str, SectionName],
 ) -> bool:
     anchor = _table_label_id(table)
-    if not anchor or anchor in targets:
+    if not anchor:
         return False
     targets[anchor] = RefTarget(
         kind=RefKind.TABLE,
@@ -449,6 +498,41 @@ def _register_reference_table(
     )
     table_sections[anchor] = default_table_section(section_kind)
     return True
+
+
+def _register_explicit_field_tables(
+    section_node: nodes.section,
+    section_kind: SectionKind,
+    extraction: _SectionExtraction,
+) -> None:
+    owner = default_table_section(section_kind)
+    primary = extraction.primary_tables.get(owner)
+    if primary is None:
+        return
+    parameter_names = {parameter.name for parameter in primary.parameters}
+
+    for paragraph in section_node.findall(nodes.paragraph):
+        match = _FIELD_DETAILS_RE.search(paragraph.astext())
+        if match is None:
+            continue
+        parent_name = match.group(1)
+        if parent_name not in parameter_names:
+            continue
+        anchor = _first_ref_target(paragraph)
+        target = extraction.reference_targets.get(anchor) if anchor else None
+        if target is None or target.kind is not RefKind.TABLE or target.table is None:
+            continue
+        extraction.label_tables.setdefault(owner, {}).setdefault(
+            parent_name, target.table
+        )
+
+
+def _first_ref_target(node: nodes.Element) -> str | None:
+    for inline in node.findall(nodes.inline):
+        target = inline.get("ref_target")
+        if target:
+            return str(target)
+    return None
 
 
 def _register_label_table(
