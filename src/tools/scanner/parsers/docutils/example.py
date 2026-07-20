@@ -24,6 +24,9 @@ def infer_documented_example_nesting(
     wrapper_candidates: dict[str, Parameter],
     sections: dict[SectionName, Section],
     label_tables: dict[SectionName, dict[str, TableExtraction]],
+    unmatched_reference_tables: dict[
+        SectionName, dict[str, TableExtraction]
+    ] | None = None,
 ) -> None:
     """Group documented fields when parsed examples prove their nesting."""
     for parameter_section, example_section in _EXAMPLE_SECTIONS.items():
@@ -47,6 +50,16 @@ def infer_documented_example_nesting(
             )
             if nested_table is not None:
                 section_labels.setdefault(root_name, nested_table)
+            _bind_referenced_root(
+                table,
+                root_name=root_name,
+                is_array=is_array,
+                example_fields=example_fields,
+                candidates=(unmatched_reference_tables or {}).get(
+                    parameter_section, {}
+                ),
+                label_tables=section_labels,
+            )
 
         for documented_table in [table, *list(section_labels.values())]:
             _infer_nested_arrays(
@@ -54,6 +67,44 @@ def infer_documented_example_nesting(
                 parsed_examples,
                 section_labels,
             )
+
+
+def _bind_referenced_root(
+    table: TableExtraction,
+    *,
+    root_name: str,
+    is_array: bool,
+    example_fields: set[str],
+    candidates: dict[str, TableExtraction],
+    label_tables: dict[str, TableExtraction],
+) -> None:
+    if root_name in label_tables:
+        return
+    wrapper = next(
+        (parameter for parameter in table.parameters if parameter.name == root_name),
+        None,
+    )
+    if wrapper is None or wrapper.children:
+        return
+    if is_array and wrapper.param_type not in {
+        ParameterType.ARRAY,
+        ParameterType.ARRAY_OF_OBJECTS,
+    }:
+        return
+    if not is_array and wrapper.param_type is not ParameterType.OBJECT:
+        return
+
+    matches: dict[int, TableExtraction] = {}
+    for candidate in candidates.values():
+        documented = {parameter.name for parameter in candidate.parameters}
+        if len(documented.intersection(example_fields)) >= 2:
+            matches.setdefault(id(candidate), candidate)
+    if len(matches) != 1:
+        return
+
+    if wrapper.param_type is ParameterType.ARRAY:
+        wrapper.param_type = ParameterType.ARRAY_OF_OBJECTS
+    label_tables[root_name] = next(iter(matches.values()))
 
 
 def _valid_parsed_examples(section: Section) -> list[dict | list]:

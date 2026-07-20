@@ -61,6 +61,9 @@ class _SectionExtraction:
     )
     routing_issues: dict[SectionName, list[Issue]] = field(default_factory=dict)
     wrapper_candidates: dict[str, Parameter] = field(default_factory=dict)
+    unmatched_reference_tables: dict[
+        SectionName, dict[str, TableExtraction]
+    ] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -217,6 +220,7 @@ class DocutilsParser(RstParser):
             extraction.wrapper_candidates,
             extraction.sections,
             extraction.label_tables,
+            extraction.unmatched_reference_tables,
         )
         _register_non_table_targets(doctree, extraction.reference_targets)
         self._resolve_parameter_sections(
@@ -537,11 +541,14 @@ def _register_explicit_field_tables(
         if match is None:
             continue
         parent_name = match.group(1)
-        if parent_name not in parameter_names:
-            continue
         anchor = _first_ref_target(paragraph)
         target = extraction.reference_targets.get(anchor) if anchor else None
         if target is None or target.kind is not RefKind.TABLE or target.table is None:
+            continue
+        if parent_name not in parameter_names:
+            extraction.unmatched_reference_tables.setdefault(owner, {}).setdefault(
+                parent_name, target.table
+            )
             continue
         extraction.label_tables.setdefault(owner, {}).setdefault(
             parent_name, target.table

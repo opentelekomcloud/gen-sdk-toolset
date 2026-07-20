@@ -136,3 +136,33 @@ def test_groups_documented_array_children_inside_undocumented_json_wrapper() -> 
     assert response.parameters == [identifier, links, status]
     assert links.param_type is ParameterType.ARRAY_OF_OBJECTS
     assert labels[SectionName.RESPONSE]["links"].parameters == [href, rel]
+
+
+def test_binds_misnamed_explicit_reference_when_json_confirms_root() -> None:
+    wrapper = Parameter(name="widgets", param_type=ParameterType.ARRAY)
+    response = _table(wrapper)
+    identifier = Parameter(name="id", param_type=ParameterType.STRING)
+    name = Parameter(name="name", param_type=ParameterType.STRING)
+    referenced = _table(identifier, name)
+    labels = {}
+
+    infer_documented_example_nesting(
+        {SectionName.RESPONSE: response},
+        {},
+        {
+            SectionName.EXAMPLE_RESPONSE: Section(
+                name=SectionName.EXAMPLE_RESPONSE,
+                examples=[
+                    Example(
+                        raw="",
+                        parsed={"widgets": [{"id": "1", "name": "demo"}]},
+                    )
+                ],
+            )
+        },
+        labels,
+        {SectionName.RESPONSE: {"widget": referenced}},
+    )
+
+    assert wrapper.param_type is ParameterType.ARRAY_OF_OBJECTS
+    assert labels[SectionName.RESPONSE]["widgets"] is referenced
