@@ -35,11 +35,11 @@ def example_documentation_issues(
         example_section = sections.get(example_name)
         if section is None or example_section is None:
             continue
-            
+
         issues = _validate_section_nesting(section, example_section)
         if issues:
             found[parameter_name] = issues
-            
+
     return found
 
 
@@ -52,10 +52,10 @@ def _validate_section_nesting(
     root = example_root(parsed_examples)
     if root is None:
         return []
-        
+
     root_name, _fields = root
     documented = {parameter.name for parameter in section.parameters}
-    
+
     if root_name not in documented:
         return _check_missing_wrapper(root_name)
 
@@ -80,9 +80,7 @@ def _check_flattened_siblings(
 ) -> list[Issue]:
     root_param = next(p for p in parameters if p.name == root_name)
     if not root_param.children:
-        siblings = [
-            p for p in parameters if p.name != root_name and p.name in _fields
-        ]
+        siblings = [p for p in parameters if p.name != root_name and p.name in _fields]
         if siblings:
             return [
                 Issue(
