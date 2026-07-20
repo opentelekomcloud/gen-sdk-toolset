@@ -11,7 +11,7 @@ is stored by the scanner; it is a computed view, like the status roll-ups.
 
 from __future__ import annotations
 
-from tools.shared.ir import Endpoint, SectionName
+from tools.shared.ir import Endpoint, Section, SectionName
 from tools.shared.scan import Issue, IssueCode
 
 from .assemble import _PROOF_SECTIONS, example_root
