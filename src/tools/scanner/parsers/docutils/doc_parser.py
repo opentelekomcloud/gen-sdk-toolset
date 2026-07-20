@@ -12,7 +12,14 @@ from docutils.parsers.rst import roles
 
 from tools.scanner.interfaces import RstParser
 from tools.shared.exceptions import ParseFailure
-from tools.shared.ir import Endpoint, HttpMethod, Section, SectionName
+from tools.shared.ir import (
+    Endpoint,
+    HttpMethod,
+    Parameter,
+    ParameterType,
+    Section,
+    SectionName,
+)
 from tools.shared.scan import (
     DocumentScanResult,
     Issue,
@@ -23,7 +30,7 @@ from tools.shared.scan import (
 
 from .example import add_examples_to_section, extract_examples, split_combined_examples
 from .nesting import RefKind, RefTarget, resolve_nested
-from .patterns import URI_RE
+from .patterns import URI_PLACEHOLDER_RE, URI_RE
 from .section import (
     SectionKind,
     TableTarget,
@@ -106,7 +113,7 @@ class DocutilsParser(RstParser):
         method, uri = self._extract_method_and_uri(content, path)
         title = extract_document_title(content)
         api_version = self._extract_api_version(uri, path)
-        sections = self._extract_sections(doctree, method)
+        sections = self._extract_sections(doctree, method, uri)
 
         return Endpoint(
             path=path,
@@ -143,10 +150,12 @@ class DocutilsParser(RstParser):
         self,
         doctree: nodes.document,
         http_method: HttpMethod,
+        uri: str,
     ) -> list[Section]:
         """Collect document data first, then resolve cross-table references."""
         extraction = _SectionExtraction(http_method=http_method)
         self._collect_section_data(doctree, extraction)
+        _reconcile_path_parameters(uri, extraction)
         _register_non_table_targets(doctree, extraction.reference_targets)
         self._resolve_parameter_sections(
             extraction,
@@ -328,6 +337,75 @@ def _complete_sections(sections: dict[SectionName, Section]) -> list[Section]:
             ),
         )
     return [sections[name] for name in SectionName]
+
+
+def _reconcile_path_parameters(uri: str, extraction: _SectionExtraction) -> None:
+    placeholders = list(dict.fromkeys(URI_PLACEHOLDER_RE.findall(uri)))
+    source = extraction.primary_tables.get(SectionName.PATH_PARAMS)
+    if source is None and not placeholders:
+        return
+
+    documented = (
+        {parameter.name: parameter for parameter in source.parameters} if source else {}
+    )
+    extraction.primary_tables[SectionName.PATH_PARAMS] = _path_extraction(
+        placeholders,
+        documented,
+        source,
+    )
+    issues = _path_parameter_issues(uri, placeholders, documented)
+    if issues:
+        extraction.routing_issues.setdefault(SectionName.PATH_PARAMS, []).extend(issues)
+
+
+def _path_extraction(
+    placeholders: list[str],
+    documented: dict[str, Parameter],
+    source: TableExtraction | None,
+) -> TableExtraction:
+    parameters = [
+        Parameter(
+            name=name,
+            param_type=ParameterType.STRING,
+            mandatory=True,
+            description=documented[name].description if name in documented else "",
+        )
+        for name in placeholders
+    ]
+    return TableExtraction(
+        parameters=parameters,
+        ref_anchors=[None] * len(parameters),
+        issues=(
+            [
+                issue
+                for issue in source.issues
+                if issue.code is not IssueCode.UNKNOWN_TYPE_FORMAT
+            ]
+            if source
+            else []
+        ),
+        fields_total=len(parameters),
+        fields_recognized=len(parameters),
+        fields_unknown_type=0,
+        fields_failed=0,
+    )
+
+
+def _path_parameter_issues(
+    uri: str,
+    placeholders: list[str],
+    documented: dict[str, Parameter],
+) -> list[Issue]:
+    placeholder_names = set(placeholders)
+    return [
+        Issue(
+            code=IssueCode.PATH_PARAMETER_NOT_IN_URI,
+            location=name,
+            details=uri,
+        )
+        for name in documented
+        if name not in placeholder_names
+    ]
 
 
 def _register_nested_table(

@@ -17,6 +17,8 @@ URI_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
+URI_PLACEHOLDER_RE = re.compile(r"\{([^{}]+)\}")
+
 # Leading HTTP-wire-format request line inside an example block, e.g.
 # "POST https://{Endpoint}/v3/..." followed by a JSON body. Stripped so a
 # best-effort JSON parse has a chance on what follows.

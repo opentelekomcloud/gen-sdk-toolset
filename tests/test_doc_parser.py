@@ -154,6 +154,75 @@ URI
     assert excinfo.value.issue.code is IssueCode.NO_URI_MATCH
 
 
+def test_uri_placeholder_creates_path_parameter_without_table(
+    parser: DocutilsParser,
+) -> None:
+    content = """
+Get Item
+========
+
+Function
+--------
+
+Returns an item.
+
+URI
+---
+
+GET /v1/items/{item_id}
+"""
+
+    path_params = _sections(parser.parse(content, "get_item.rst"))["path_params"]
+
+    assert len(path_params.parameters) == 1
+    parameter = path_params.parameters[0]
+    assert parameter.name == "item_id"
+    assert parameter.param_type is ParameterType.STRING
+    assert parameter.mandatory is True
+    assert parameter.description == ""
+    assert path_params.scan_result.status is SectionStatus.OK
+
+
+def test_uri_table_only_enriches_matching_placeholders(
+    parser: DocutilsParser,
+) -> None:
+    content = """
+Get Item
+========
+
+Function
+--------
+
+Returns an item.
+
+URI
+---
+
+GET /v1/items/{item_id}
+
+.. table:: Parameter description
+
+   ======= ========== ============
+   Name    Type       Description
+   ======= ========== ============
+   item_id Integer    Item ID
+   payload Dictionary Request data
+   ======= ========== ============
+"""
+
+    path_params = _sections(parser.parse(content, "get_item.rst"))["path_params"]
+
+    assert [parameter.name for parameter in path_params.parameters] == ["item_id"]
+    assert path_params.parameters[0].param_type is ParameterType.STRING
+    assert path_params.parameters[0].mandatory is True
+    assert path_params.parameters[0].description == "Item ID"
+    assert path_params.scan_result.status is SectionStatus.PARTIAL
+    assert [issue.code for issue in path_params.scan_result.issues] == [
+        IssueCode.PATH_PARAMETER_NOT_IN_URI
+    ]
+    assert path_params.scan_result.issues[0].location == "payload"
+
+
 # --------------------------------------------------------------------------- #
 # Anti-DDoS — root endpoint from querying_all_api_versions.rst
 # --------------------------------------------------------------------------- #
