@@ -6,8 +6,6 @@ from sqlalchemy.orm import sessionmaker
 
 from tools.config import load_settings
 
-# Bound lazily by get_engine() so importing this module has no side effects
-# and does not require any scanner configuration (e.g. GITHUB_TOKEN).
 SessionLocal = sessionmaker()
 
 

@@ -228,9 +228,7 @@ class ScannerService:
             )
         return _FetchedDocument(path=path, content=content)
 
-    def _build_parser_context(
-        self, documents: list[_FetchedDocument]
-    ) -> object | None:
+    def _build_parser_context(self, documents: list[_FetchedDocument]) -> object | None:
         if not isinstance(self.parser, RepositoryContextParser):
             return None
         contents = {

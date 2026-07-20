@@ -25,7 +25,6 @@ from .example import (
     extract_examples,
     split_combined_examples,
 )
-from .inference import infer_documented_example_nesting
 from .nesting import resolve_nested
 from .path import reconcile_path_parameters
 from .references import ReferenceRegistry, document_id
@@ -63,6 +62,7 @@ _DIRECT_UNTITLED_TARGETS = {
     SectionKind.RESPONSE: SectionName.RESPONSE,
 }
 
+
 class _SectionRouter:
     def extract(
         self,
@@ -83,16 +83,9 @@ class _SectionRouter:
             extraction.wrapper_candidates,
         )
         if path_issues:
-            extraction.routing_issues.setdefault(
-                SectionName.PATH_PARAMS, []
-            ).extend(path_issues)
-        infer_documented_example_nesting(
-            extraction.primary_tables,
-            extraction.wrapper_candidates,
-            extraction.sections,
-            extraction.references.label_tables,
-            extraction.references.unmatched_tables,
-        )
+            extraction.routing_issues.setdefault(SectionName.PATH_PARAMS, []).extend(
+                path_issues
+            )
         extraction.references.register_non_table_targets(doctree)
         self._resolve_parameter_sections(
             extraction,
@@ -144,28 +137,47 @@ class _SectionRouter:
             (*extraction.primary_tables, *extraction.references.label_tables)
         )
         for name in section_names:
-            table = extraction.primary_tables.get(name)
-            section = (
-                _to_section(table, name)
-                if table is not None
-                else Section(
-                    name=name,
-                    scan_result=SectionScanResult(status=SectionStatus.FAILED),
-                )
+            _SectionRouter._resolve_single_section(
+                name, extraction, used_tables, doc_id
             )
-            issues = resolve_nested(
-                {name: table} if table is not None else {},
-                extraction.references.targets,
-                doc_id=doc_id,
-                label_tables=extraction.references.label_tables.get(name),
-                used_tables=used_tables,
-            )
-            _append_issues(section, issues)
-            extraction.sections[name] = section
         extraction.references.report_unused_tables(
             used_tables,
             extraction.routing_issues,
         )
+
+    @staticmethod
+    def _resolve_single_section(
+        name: SectionName,
+        extraction: _SectionExtraction,
+        used_tables: set[int],
+        doc_id: str | None,
+    ) -> None:
+        table = extraction.primary_tables.get(name)
+        section = (
+            _to_section(table, name)
+            if table is not None
+            else Section(
+                name=name,
+                scan_result=SectionScanResult(status=SectionStatus.FAILED),
+            )
+        )
+        issues = resolve_nested(
+            {name: table} if table is not None else {},
+            extraction.references.targets,
+            doc_id=doc_id,
+            label_tables=extraction.references.label_tables.get(name),
+            used_tables=used_tables,
+        )
+        _append_issues(section, issues)
+
+        unmatched = extraction.references.unmatched_tables.get(name)
+        if unmatched and section.scan_result is not None:
+            section.scan_result.unmatched_tables = {
+                key: unmatched_table.parameters
+                for key, unmatched_table in unmatched.items()
+            }
+
+        extraction.sections[name] = section
 
     def _collect_parameter_tables(
         self,

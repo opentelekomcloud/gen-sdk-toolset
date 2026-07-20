@@ -30,6 +30,8 @@ class IssueCode(str, Enum):
     EXAMPLE_INVALID_JSON = "example_invalid_json"
     EXAMPLE_UNLABELED = "example_unlabeled"
 
+    NESTING_ONLY_IN_EXAMPLE = "nesting_only_in_example"
+
 
 class Issue(BaseModel):
     """A single problem encountered while processing a document."""

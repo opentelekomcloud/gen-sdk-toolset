@@ -67,6 +67,7 @@ def test_service_restores_endpoint_subclass() -> None:
                     "fields_recognized": 0,
                     "fields_unknown_type": 0,
                     "fields_failed": 0,
+                    "unmatched_tables": None,
                 },
             }
             for name in SectionName

@@ -1,4 +1,8 @@
-"""Docutils setup and repository-wide parse context."""
+"""Docutils setup and repository-wide parse context.
+
+Acts as a repository global memory for pre-analysis and storing
+shared global state for RST files.
+"""
 
 from __future__ import annotations
 
@@ -74,9 +78,6 @@ def build_repository_context(
             if extracted.parameters:
                 anchor = names[0]
                 if anchor in tables:
-                    # Repo-global anchors are expected to be unique (Sphinx
-                    # cross-refs rely on it); a collision means a duplicate
-                    # label authored across docs. Keep the first, but surface it.
                     logger.warning(
                         "Duplicate table anchor %r in %s; keeping first, "
                         "ignoring the later table",

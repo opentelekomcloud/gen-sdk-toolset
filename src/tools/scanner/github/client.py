@@ -98,9 +98,6 @@ class GitHubDocProvider(DocProvider):
         payload = resp.json()
         encoding = payload.get("encoding")
         if encoding != "base64":
-            # Files larger than 1 MB come back with encoding "none" and an
-            # empty content field (they require the blobs API). Fail loudly
-            # rather than silently returning an empty document.
             raise ProviderError(
                 f"Unexpected content encoding {encoding!r} for {path} in {repo}"
                 " (file may exceed the contents-API 1 MB limit)",

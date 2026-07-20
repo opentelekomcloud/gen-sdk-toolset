@@ -29,13 +29,11 @@ class ReferenceRegistry:
     label_tables: dict[SectionName, dict[str, TableExtraction]] = field(
         default_factory=dict
     )
-    unmatched_tables: dict[
-        SectionName, dict[str, TableExtraction]
-    ] = field(default_factory=dict)
+    unmatched_tables: dict[SectionName, dict[str, TableExtraction]] = field(
+        default_factory=dict
+    )
 
-    def add_repository_tables(
-        self, tables: Mapping[str, TableExtraction]
-    ) -> None:
+    def add_repository_tables(self, tables: Mapping[str, TableExtraction]) -> None:
         self.targets.update(
             {
                 anchor: RefTarget(kind=RefKind.TABLE, table=table)

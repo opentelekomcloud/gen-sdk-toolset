@@ -269,10 +269,8 @@ def test_anti_ddos_root_endpoint_extracts_top_level_response_table(
     )
     response = _sections(parsed)["response"]
 
-    assert [parameter.name for parameter in response.parameters] == ["versions"]
-    versions = response.parameters[0]
-    assert versions.param_type is ParameterType.ARRAY_OF_OBJECTS
-    assert [child.name for child in versions.children] == [
+    assert [parameter.name for parameter in response.parameters] == [
+        "versions",
         "id",
         "links",
         "min_version",
@@ -280,7 +278,10 @@ def test_anti_ddos_root_endpoint_extracts_top_level_response_table(
         "updated",
         "version",
     ]
-    links = next(child for child in versions.children if child.name == "links")
+    versions = response.parameters[0]
+    assert versions.param_type is ParameterType.ARRAY
+    assert not versions.children
+    links = next(child for child in response.parameters if child.name == "links")
     assert links.param_type is ParameterType.ARRAY_OF_OBJECTS
     assert [child.name for child in links.children] == ["href", "rel"]
     assert response.scan_result.status is SectionStatus.OK

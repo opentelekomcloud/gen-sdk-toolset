@@ -60,8 +60,6 @@ class LoggingSection(BaseModel):
 class DatabaseSection(BaseModel):
     url: str = "sqlite:///./panel.db"
 
-class PanelSection(BaseModel):
-    frontend_origin: str = "http://localhost:5173"
 
 class PanelSection(BaseModel):
     frontend_origin: str = "http://localhost:5173"

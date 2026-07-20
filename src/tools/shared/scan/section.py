@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import Self
@@ -24,6 +25,7 @@ class SectionScanResult(BaseModel):
 
     status: SectionStatus
     issues: list[Issue] = Field(default_factory=list)
+    unmatched_tables: dict[str, list[Any]] | None = None
 
     fields_total: int = Field(default=0, ge=0)
     fields_recognized: int = Field(default=0, ge=0)

@@ -37,8 +37,7 @@ def _tables_by_title(content: str) -> dict[str, nodes.table]:
 
 def _rows_by_name(extraction):
     return {
-        row.parameter.name: (row.parameter, row.ref_anchor)
-        for row in extraction.rows
+        row.parameter.name: (row.parameter, row.ref_anchor) for row in extraction.rows
     }
 
 
@@ -62,9 +61,7 @@ def test_table_extraction_extends_complete_rows() -> None:
 
     first.extend(second)
 
-    assert [
-        (row.parameter.name, row.ref_anchor) for row in first.rows
-    ] == [
+    assert [(row.parameter.name, row.ref_anchor) for row in first.rows] == [
         ("first", "first_anchor"),
         ("second", "second_anchor"),
     ]

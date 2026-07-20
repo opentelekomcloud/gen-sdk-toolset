@@ -15,9 +15,14 @@ from .table import DETAILS_MAX
 
 def extract_examples(section: nodes.section) -> list[Example]:
     """Return every code or literal block inside a section."""
-    blocks: list[Example] = []
     visited: set[int] = set()
+    blocks = _extract_from_lists(section, visited)
+    blocks.extend(_extract_sequential(section, visited))
+    return blocks
 
+
+def _extract_from_lists(section: nodes.section, visited: set[int]) -> list[Example]:
+    blocks: list[Example] = []
     for item in section.findall(nodes.list_item):
         label = _extract_item_label(item)
         for code in item.findall(nodes.literal_block):
@@ -25,9 +30,11 @@ def extract_examples(section: nodes.section) -> list[Example]:
                 continue
             visited.add(id(code))
             blocks.append(_make_example(code, label=label))
+    return blocks
 
-    # Remaining top-level blocks, in one walk: carry the nearest preceding
-    # example-label paragraph forward instead of re-scanning per block.
+
+def _extract_sequential(section: nodes.section, visited: set[int]) -> list[Example]:
+    blocks: list[Example] = []
     current_label: str | None = None
     for node in section.findall(nodes.Element):
         if isinstance(node, nodes.paragraph):
@@ -37,7 +44,6 @@ def extract_examples(section: nodes.section) -> list[Example]:
         elif isinstance(node, nodes.literal_block) and id(node) not in visited:
             visited.add(id(node))
             blocks.append(_make_example(node, label=current_label))
-
     return blocks
 
 
@@ -97,9 +103,9 @@ def _extract_item_label(item: nodes.list_item) -> str | None:
 
 def _is_example_label(text: str) -> bool:
     normalized = text.lower()
-    return (
-        "example" in normalized or "sample" in normalized
-    ) and ("request" in normalized or "response" in normalized)
+    return ("example" in normalized or "sample" in normalized) and (
+        "request" in normalized or "response" in normalized
+    )
 
 
 def _make_example(block: nodes.literal_block, *, label: str | None) -> Example:

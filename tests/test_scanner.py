@@ -441,9 +441,7 @@ def test_successful_endpoint_title_is_extracted_only_by_parser(monkeypatch) -> N
     fake = FakeDocProvider(
         repos={
             "o/svc": {
-                "api-ref/source/endpoint.rst": load_fixture(
-                    "style_a_cce_grid.rst"
-                )
+                "api-ref/source/endpoint.rst": load_fixture("style_a_cce_grid.rst")
             }
         }
     )
@@ -564,9 +562,7 @@ def test_repository_context_failure_is_not_silently_ignored() -> None:
         repos={"o/svc": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
     )
 
-    result = make_scanner(fake, parser=CrashingContextParser()).scan_repository(
-        "o/svc"
-    )
+    result = make_scanner(fake, parser=CrashingContextParser()).scan_repository("o/svc")
 
     assert isinstance(result.repository, Service)
     assert result.repository.documents == []

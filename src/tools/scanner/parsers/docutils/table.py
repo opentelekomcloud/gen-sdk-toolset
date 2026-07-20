@@ -226,9 +226,7 @@ def _extract_parameter_row(
         else False
     )
     description = (
-        cells[column_map["description"]].strip()
-        if "description" in column_map
-        else ""
+        cells[column_map["description"]].strip() if "description" in column_map else ""
     )
     param_type = _classify_type(type_raw)
     is_struct = param_type in _STRUCT_TYPES
