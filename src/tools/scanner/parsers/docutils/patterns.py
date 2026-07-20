@@ -23,6 +23,6 @@ URI_PLACEHOLDER_RE = re.compile(r"\{([^{}]+)\}")
 # "POST https://{Endpoint}/v3/..." followed by a JSON body. Stripped so a
 # best-effort JSON parse has a chance on what follows.
 HTTP_PREFIX_RE = re.compile(
-    rf"^\s*({HTTP_METHODS_RE})\s+https?://\S+\s*\n",
+    rf"^\s*({HTTP_METHODS_RE})\s+(?:https?://[^/\s]+)?/\S+\s*\n",
     re.IGNORECASE,
 )

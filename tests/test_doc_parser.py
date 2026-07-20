@@ -650,6 +650,36 @@ def test_non_json_example_does_not_degrade() -> None:
     assert section.scan_result.issues == []
 
 
+def test_relative_request_uri_is_removed_before_parsing_example_json(
+    parser: DocutilsParser,
+) -> None:
+    content = """Demo
+====
+
+URI
+---
+
+POST /v1/widgets
+
+Examples
+--------
+
+- Example request
+
+  .. code-block:: text
+
+     POST /v1/widgets
+     {"widget": {"name": "demo"}}
+"""
+
+    parsed = parser.parse(content, "demo.rst")
+    request = next(
+        section for section in parsed.sections if section.name == "example_request"
+    )
+
+    assert request.examples[0].parsed == {"widget": {"name": "demo"}}
+
+
 # --------------------------------------------------------------------------- #
 # api_version falls back to the source file path when the URI carries no
 # version segment, and the captured version is lower-cased (review item 15).
