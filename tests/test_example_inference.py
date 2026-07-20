@@ -1,12 +1,11 @@
 from tools.scanner.parsers.docutils.inference import infer_documented_example_nesting
-from tools.scanner.parsers.docutils.table import TableExtraction
+from tools.scanner.parsers.docutils.table import TableExtraction, TableRow
 from tools.shared.ir import Example, Parameter, ParameterType, Section, SectionName
 
 
 def _table(*parameters: Parameter) -> TableExtraction:
     return TableExtraction(
-        parameters=list(parameters),
-        ref_anchors=[None] * len(parameters),
+        rows=[TableRow(parameter) for parameter in parameters],
         issues=[],
         fields_total=len(parameters),
         fields_recognized=len(parameters),

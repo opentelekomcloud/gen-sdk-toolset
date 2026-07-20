@@ -1,9 +1,9 @@
 """Anchor-based resolution of nested object/array struct references.
 
-A parameter whose type is an object or array-of-objects carries a ``:ref:``
-anchor (captured by :mod:`.table` as ``TableExtraction.ref_anchors``) that
-points at the struct's definition table elsewhere in the same document. This
-module follows those anchors and populates :attr:`Parameter.children`.
+A parameter whose type is an object or array-of-objects can carry a ``:ref:``
+anchor. :mod:`.table` keeps that authored anchor in the same ``TableRow`` as
+the parameter. This module follows those anchors and populates
+:attr:`Parameter.children`.
 
 The resolver is **pure**: it takes the already-extracted primary tables and a
 registry of ref targets, and returns the issues it found. Walking the doctree
@@ -29,7 +29,7 @@ from enum import Enum
 from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import Issue, IssueCode
 
-from .table import TableExtraction
+from .table import TableExtraction, TableRow
 
 
 class RefKind(str, Enum):
@@ -71,8 +71,7 @@ def resolve_nested(
     issues: list[Issue] = []
     for extraction in primary.values():
         _resolve(
-            extraction.parameters,
-            extraction.ref_anchors,
+            extraction.rows,
             registry,
             labels,
             used_labels,
@@ -86,8 +85,7 @@ def resolve_nested(
 
 
 def _resolve(
-    params: list[Parameter],
-    anchors: list[str | None],
+    rows: list[TableRow],
     registry: dict[str, RefTarget],
     label_tables: dict[str, TableExtraction],
     used_labels: set[str],
@@ -96,10 +94,11 @@ def _resolve(
     visiting: frozenset[str],
     issues: list[Issue],
 ) -> None:
-    for param, anchor in zip(params, anchors):
+    for row in rows:
+        param = row.parameter
         match = _lookup_target(
             param,
-            anchor,
+            row.ref_anchor,
             registry=registry,
             label_tables=label_tables,
             used_labels=used_labels,
@@ -118,8 +117,10 @@ def _resolve(
         if param.param_type is ParameterType.ARRAY:
             param.param_type = ParameterType.ARRAY_OF_OBJECTS
         _resolve(
-            children,
-            table.ref_anchors,
+            [
+                TableRow(child, source.ref_anchor)
+                for child, source in zip(children, table.rows)
+            ],
             registry,
             label_tables,
             used_labels,

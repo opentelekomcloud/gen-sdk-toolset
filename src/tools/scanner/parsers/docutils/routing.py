@@ -378,20 +378,13 @@ def _accumulate(
     """Merge an extraction into ``primary_tables[name]``.
 
     A request can carry both a header table and a body table; tables sharing a
-    target key are concatenated. ``ref_anchors`` is extended in lockstep with
-    ``parameters`` so the 1:1 alignment the resolver relies on is preserved.
+    target key are concatenated.
     """
     existing = primary_tables.get(name)
     if existing is None:
         primary_tables[name] = extraction
         return
-    existing.parameters.extend(extraction.parameters)
-    existing.ref_anchors.extend(extraction.ref_anchors)
-    existing.issues.extend(extraction.issues)
-    existing.fields_total += extraction.fields_total
-    existing.fields_recognized += extraction.fields_recognized
-    existing.fields_unknown_type += extraction.fields_unknown_type
-    existing.fields_failed += extraction.fields_failed
+    existing.extend(extraction)
 
 
 def _to_section(extraction: TableExtraction, name: SectionName) -> Section:

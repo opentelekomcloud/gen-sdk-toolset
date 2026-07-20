@@ -109,18 +109,35 @@ _STRUCT_TYPES = frozenset(
 
 
 @dataclass
+class TableRow:
+    """A parsed parameter kept together with its authored struct anchor."""
+
+    parameter: Parameter
+    ref_anchor: str | None = None
+
+
+@dataclass
 class TableExtraction:
     """Result of parsing one parameter table."""
 
-    parameters: list[Parameter]
-    # Struct ref anchor (`:ref:` target) for each parameter, aligned 1:1 with
-    # ``parameters``. ``None`` for primitives / rows without a struct ref.
-    ref_anchors: list[str | None]
+    rows: list[TableRow]
     issues: list[Issue]
     fields_total: int
     fields_recognized: int
     fields_unknown_type: int
     fields_failed: int
+
+    @property
+    def parameters(self) -> list[Parameter]:
+        return [row.parameter for row in self.rows]
+
+    def extend(self, other: TableExtraction) -> None:
+        self.rows.extend(other.rows)
+        self.issues.extend(other.issues)
+        self.fields_total += other.fields_total
+        self.fields_recognized += other.fields_recognized
+        self.fields_unknown_type += other.fields_unknown_type
+        self.fields_failed += other.fields_failed
 
 
 def extract_parameter_table(table: nodes.table) -> TableExtraction:
@@ -130,8 +147,7 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
     (no header row, unrecognised header layout) without raising.
     """
     issues: list[Issue] = []
-    parameters: list[Parameter] = []
-    ref_anchors: list[str | None] = []
+    rows: list[TableRow] = []
 
     column_map = _build_column_map(table)
     if column_map is None or "name" not in column_map:
@@ -144,8 +160,7 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
             )
         )
         return TableExtraction(
-            parameters=[],
-            ref_anchors=[],
+            rows=[],
             issues=issues,
             fields_total=0,
             fields_recognized=0,
@@ -201,16 +216,18 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
             # unrelated name-cell ref.
             anchor = _struct_anchor(entries, column_map) if is_struct else None
 
-            parameters.append(
-                Parameter(
-                    name=name,
-                    param_type=param_type,
-                    mandatory=mandatory,
-                    description=description,
-                    type_name=type_name,
+            rows.append(
+                TableRow(
+                    parameter=Parameter(
+                        name=name,
+                        param_type=param_type,
+                        mandatory=mandatory,
+                        description=description,
+                        type_name=type_name,
+                    ),
+                    ref_anchor=anchor,
                 )
             )
-            ref_anchors.append(anchor)
 
             if not type_raw:
                 # Recognised (we have a name) but no type cell at all.
@@ -237,16 +254,8 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
                 )
             )
 
-    # ref_anchors is appended in lockstep with parameters, so the resolver
-    # (S5) can zip them safely. Guard the invariant rather than trust it.
-    assert len(ref_anchors) == len(parameters), (
-        f"ref_anchors ({len(ref_anchors)}) misaligned with "
-        f"parameters ({len(parameters)})"
-    )
-
     return TableExtraction(
-        parameters=parameters,
-        ref_anchors=ref_anchors,
+        rows=rows,
         issues=issues,
         fields_total=fields_total,
         fields_recognized=fields_recognized,

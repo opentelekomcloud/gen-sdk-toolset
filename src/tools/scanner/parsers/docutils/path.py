@@ -6,7 +6,7 @@ from tools.shared.ir import Parameter, ParameterType, SectionName
 from tools.shared.scan import Issue, IssueCode
 
 from .patterns import URI_PLACEHOLDER_RE
-from .table import TableExtraction
+from .table import TableExtraction, TableRow
 
 
 def reconcile_path_parameters(
@@ -49,8 +49,7 @@ def _path_extraction(
         for name in placeholders
     ]
     return TableExtraction(
-        parameters=parameters,
-        ref_anchors=[None] * len(parameters),
+        rows=[TableRow(parameter) for parameter in parameters],
         issues=(
             [
                 issue

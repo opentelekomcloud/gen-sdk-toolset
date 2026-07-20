@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from tools.shared.ir import Parameter, ParameterType, Section, SectionName
 from tools.shared.scan import IssueCode
 
-from .table import TableExtraction
+from .table import TableExtraction, TableRow
 
 _EXAMPLE_SECTIONS = {
     SectionName.BODY: SectionName.EXAMPLE_REQUEST,
@@ -218,24 +218,19 @@ def _move_named_children(
     parent: Parameter,
     child_names: set[str],
 ) -> TableExtraction | None:
-    rows = list(zip(table.parameters, table.ref_anchors))
     child_rows = [
-        (parameter, anchor)
-        for parameter, anchor in rows
-        if parameter is not parent and parameter.name in child_names
+        row
+        for row in table.rows
+        if row.parameter is not parent and row.parameter.name in child_names
     ]
     if not child_rows:
         return None
-    child_ids = {id(parameter) for parameter, _ in child_rows}
-    table.parameters = [
-        parameter for parameter, _ in rows if id(parameter) not in child_ids
-    ]
-    table.ref_anchors = [
-        anchor for parameter, anchor in rows if id(parameter) not in child_ids
+    child_ids = {id(row.parameter) for row in child_rows}
+    table.rows = [
+        row for row in table.rows if id(row.parameter) not in child_ids
     ]
     return TableExtraction(
-        parameters=[parameter for parameter, _ in child_rows],
-        ref_anchors=[anchor for _, anchor in child_rows],
+        rows=child_rows,
         issues=[],
         fields_total=len(child_rows),
         fields_recognized=len(child_rows),
@@ -268,13 +263,13 @@ def _apply_top_level_wrapper(
     existing_index = next(
         (
             index
-            for index, parameter in enumerate(table.parameters)
-            if parameter.name == root_name
+            for index, row in enumerate(table.rows)
+            if row.parameter.name == root_name
         ),
         None,
     )
     wrapper = (
-        table.parameters[existing_index]
+        table.rows[existing_index].parameter
         if existing_index is not None
         else candidate
     )
@@ -288,31 +283,26 @@ def _apply_top_level_wrapper(
     if not is_array and wrapper.param_type is not ParameterType.OBJECT:
         return None
 
-    children = [
-        parameter
-        for index, parameter in enumerate(table.parameters)
-        if index != existing_index
+    child_rows = [
+        row for index, row in enumerate(table.rows) if index != existing_index
     ]
-    documented_names = {child.name for child in children}
-    if not children or not example_fields.intersection(documented_names):
+    documented_names = {row.parameter.name for row in child_rows}
+    if not child_rows or not example_fields.intersection(documented_names):
         return None
 
-    child_anchors = [
-        anchor
-        for index, anchor in enumerate(table.ref_anchors)
-        if index != existing_index
-    ]
-    anchor = table.ref_anchors[existing_index] if existing_index is not None else None
+    anchor = (
+        table.rows[existing_index].ref_anchor
+        if existing_index is not None
+        else None
+    )
     if wrapper.param_type is ParameterType.ARRAY:
         wrapper.param_type = ParameterType.ARRAY_OF_OBJECTS
-    table.parameters = [wrapper]
-    table.ref_anchors = [anchor]
+    table.rows = [TableRow(wrapper, anchor)]
     return TableExtraction(
-        parameters=children,
-        ref_anchors=child_anchors,
+        rows=child_rows,
         issues=[],
-        fields_total=len(children),
-        fields_recognized=len(children),
+        fields_total=len(child_rows),
+        fields_recognized=len(child_rows),
         fields_unknown_type=0,
         fields_failed=0,
     )
