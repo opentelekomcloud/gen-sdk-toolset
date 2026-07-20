@@ -1,152 +1,104 @@
-"""Pure counting/roll-up functions over the scan result forms.
-
-Logic lives here, the forms stay data-only and delegate to these
-functions.
-
-Model types are needed only in annotations, so they are imported under
-``TYPE_CHECKING`` — a runtime import would be circular (the model
-modules import this one to delegate).
-"""
+"""Pure counting and roll-up functions over nested scan results."""
 
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from tools.shared.report.enums import IssueCode, OverallStatus, SectionStatus
+from tools.shared.ir import Document, Endpoint, Section, Service
+from tools.shared.scan import IssueCode, SectionStatus
 
 if TYPE_CHECKING:
-    from tools.shared.report.document import DocumentScanResult
-    from tools.shared.report.issue import Issue
-    from tools.shared.report.repo import RepoScanResult
+    from tools.shared.scan import Issue, RepositoryScanResult
+
+from .enums import OverallStatus
 
 _TOP_ISSUES_LIMIT = 20
+_UNVERSIONED_KEY = "unversioned"
 
 
 class QualitySummary(BaseModel):
-    """Org-wide quality roll-up — drives Phase-3 Jinja-vs-LLM decisions."""
-
     by_overall_status: dict[str, int] = Field(default_factory=dict)
-    # section_name → status → count, e.g. {"body": {"ok": 1200, "partial": 200}}.
     by_section_status: dict[str, dict[str, int]] = Field(default_factory=dict)
-    # Top issue codes across the entire org, by frequency.
-    # Each entry: {"code": "<IssueCode.value>", "count": N}
     top_issues: list[dict] = Field(default_factory=list)
 
 
-# --------------------------------------------------------------------------- #
-# Per-document analytics
-# --------------------------------------------------------------------------- #
-def doc_service(doc: DocumentScanResult) -> str:
-    """Service slug derived from `repo` ("org/svc" → "svc")."""
-    return doc.repo.rsplit("/", 1)[-1]
+def _document_sections(document: Document) -> list[Section]:
+    if not isinstance(document, Endpoint):
+        return []
+    return [section for section in document.sections if section.scan_result is not None]
 
 
-def doc_overall_status(doc: DocumentScanResult) -> OverallStatus:
-    """Roll-up of gating + per-section results."""
-    if doc.failure_reason is not None:
-        if doc.failure_reason.code is IssueCode.UNSUPPORTED_DOC_STYLE:
+def doc_overall_status(document: Document) -> OverallStatus | None:
+    if document.scan_result is None:
+        return None
+    failure = document.scan_result.failure_reason
+    if failure is not None:
+        if failure.code is IssueCode.UNSUPPORTED_DOC_STYLE:
             return OverallStatus.UNSUPPORTED
         return OverallStatus.FAILED
-    # No gating failure → look at sections. MISSING is fine (legitimately
-    # absent). Anything PARTIAL/FAILED degrades the doc to partial. SKIPPED
-    # also degrades because it means we know there's something we didn't
-    # parse.
-    degrading = {SectionStatus.PARTIAL, SectionStatus.FAILED, SectionStatus.SKIPPED}
-    if any(s.status in degrading for s in doc.sections.values()):
+    if not isinstance(document, Endpoint):
+        return None
+
+    degrading = {SectionStatus.PARTIAL, SectionStatus.FAILED}
+    if any(
+        section.scan_result.status in degrading
+        for section in _document_sections(document)
+    ):
         return OverallStatus.PARTIAL
     return OverallStatus.OK
 
 
-def doc_completeness(doc: DocumentScanResult) -> float | None:
-    """0.0–1.0 measure of how much of the doc we extracted.
-
-    Uses field-level metrics when they are populated (the parameter
-    sections), falling back to section-level OK/total accounting
-    when no field-level numbers are available.
-
-    Returns ``None`` when gating failed — there's no meaningful
-    completeness for a doc we couldn't even read.
-    """
-    if doc.failure_reason is not None:
-        return None
-
-    # Prefer field-level when any section has populated counters.
-    total = sum(s.fields_total for s in doc.sections.values())
-    if total > 0:
-        recognized = sum(s.fields_recognized for s in doc.sections.values())
-        return recognized / total
-
-    # Fall back to section status: OK / non-MISSING ratio.
-    present = [
-        s for s in doc.sections.values() if s.status is not SectionStatus.MISSING
-    ]
-    if not present:
-        return None
-    ok_count = sum(1 for s in present if s.status is SectionStatus.OK)
-    return ok_count / len(present)
+def doc_all_issues(document: Document) -> list[Issue]:
+    issues: list[Issue] = []
+    if document.scan_result is None:
+        return issues
+    if document.scan_result.failure_reason is not None:
+        issues.append(document.scan_result.failure_reason)
+    for section in _document_sections(document):
+        for issue in section.scan_result.issues:
+            name = section.name.value
+            location = f"{name}/{issue.location}" if issue.location else name
+            issues.append(issue.model_copy(update={"location": location}))
+    return issues
 
 
-def doc_all_issues(doc: DocumentScanResult) -> list[Issue]:
-    """Flat view of every issue affecting this doc, gating + content.
-
-    Useful when you want "what's wrong with this doc?" in one list.
-    Section context is preserved in each entry's `location` field.
-    """
-    out: list[Issue] = []
-    if doc.failure_reason is not None:
-        out.append(doc.failure_reason)
-    for name, section in doc.sections.items():
-        for iss in section.issues:
-            location = f"{name}/{iss.location}" if iss.location else name
-            out.append(iss.model_copy(update={"location": location}))
-    return out
-
-
-# --------------------------------------------------------------------------- #
-# Collection analytics
-# --------------------------------------------------------------------------- #
-def count_documents(docs: Sequence[DocumentScanResult]) -> int:
-    return len(docs)
-
-
-def count_by_status(docs: Iterable[DocumentScanResult]) -> dict[str, int]:
-    """Distribution of overall_status across the given documents."""
-    return dict(Counter(doc_overall_status(d).value for d in docs))
-
-
-def count_by_version(repos: Iterable[RepoScanResult]) -> dict[str, int]:
-    """Count of parsed/partial documents per API version.
-
-    Aggregated from each repo's ``documents_by_version`` so the fact
-    lives in exactly one place. Ordered by descending count.
-    """
+def count_by_version(repos: Iterable[RepositoryScanResult]) -> dict[str, int]:
     counts: Counter[str] = Counter()
-    for repo in repos:
-        for version, docs in repo.documents_by_version.items():
-            counts[version] += len(docs)
+    for result in repos:
+        if not isinstance(result.repository, Service):
+            continue
+        for endpoint in result.repository.endpoints:
+            counts[endpoint.api_version or _UNVERSIONED_KEY] += 1
     return dict(counts.most_common())
 
 
-def compute_quality_summary(docs: Iterable[DocumentScanResult]) -> QualitySummary:
-    """Compute the org-wide quality roll-up from per-doc results."""
+def compute_quality_summary(repos: Iterable[RepositoryScanResult]) -> QualitySummary:
     by_overall: Counter[str] = Counter()
     by_section: dict[str, Counter[str]] = {}
     issue_counter: Counter[str] = Counter()
 
-    for doc in docs:
-        by_overall[doc_overall_status(doc).value] += 1
-        for section_name, section in doc.sections.items():
-            by_section.setdefault(section_name, Counter())[section.status.value] += 1
-        for iss in doc_all_issues(doc):
-            issue_counter[iss.code.value] += 1
+    for repo in repos:
+        if not isinstance(repo.repository, Service):
+            continue
+        for document in repo.repository.documents:
+            for section in _document_sections(document):
+                by_section.setdefault(section.name.value, Counter())[
+                    section.scan_result.status.value
+                ] += 1
+
+            status = doc_overall_status(document)
+            if status is not None:
+                by_overall[status.value] += 1
+            for issue in doc_all_issues(document):
+                issue_counter[issue.code.value] += 1
 
     top = issue_counter.most_common(_TOP_ISSUES_LIMIT)
     return QualitySummary(
         by_overall_status=dict(by_overall),
-        by_section_status={k: dict(v) for k, v in by_section.items()},
+        by_section_status={key: dict(value) for key, value in by_section.items()},
         top_issues=[{"code": code, "count": count} for code, count in top],
     )

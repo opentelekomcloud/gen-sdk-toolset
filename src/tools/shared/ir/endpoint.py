@@ -1,30 +1,27 @@
-from __future__ import annotations
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field, model_validator
+from typing_extensions import Self
 
-from .enums import HttpMethod, ParameterType
-
-
-class Parameter(BaseModel):
-    name: str
-    param_type: ParameterType = ParameterType.UNKNOWN
-    mandatory: bool = False
-    description: str = ""
-    children: list[Parameter] = Field(default_factory=list)
-    type_name: str | None = None
+from .document import Document
+from .enums import HttpMethod
+from .section import Section, SectionName
 
 
-class Endpoint(BaseModel):
-    title: str = ""
-    description: str = ""
-    api_version: str = ""
-    # -- URI section --------------------------------------------------------
+class Endpoint(Document):
+    kind: Literal["endpoint"] = "endpoint"
     method: HttpMethod
-    path: str
-    # -- Parameters ---------------------------------------------------------
-    path_parameters: list[Parameter] = Field(default_factory=list)
-    query_parameters: list[Parameter] = Field(default_factory=list)
-    # request_headers: list[Parameter]
+    uri: str
+    api_version: str | None = None
+    sections: list[Section] = Field(default_factory=list)
 
-    request_body: list[Parameter] = Field(default_factory=list)
-    response_body: list[Parameter] = Field(default_factory=list)
+    @model_validator(mode="after")
+    def validate_sections(self) -> Self:
+        names = [section.name for section in self.sections]
+        if len(names) != len(set(names)):
+            raise ValueError("endpoint section names must be unique")
+        if set(names) != set(SectionName):
+            raise ValueError(f"endpoint must contain all {len(SectionName)} sections")
+        if self.scan_result is not None and self.scan_result.failure_reason is not None:
+            raise ValueError("a recognized endpoint cannot have a gating failure")
+        return self

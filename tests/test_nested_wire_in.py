@@ -12,12 +12,16 @@ from __future__ import annotations
 import pytest
 
 from tools.scanner.parsers import DocutilsParser
-from tools.shared.report import IssueCode, SectionStatus
+from tools.shared.scan import IssueCode, SectionStatus
 
 
 @pytest.fixture
 def parser() -> DocutilsParser:
     return DocutilsParser()
+
+
+def _sections(parsed) -> dict:
+    return {section.name: section for section in parsed.sections}
 
 
 # --------------------------------------------------------------------------- #
@@ -52,15 +56,15 @@ def _doc(*blocks: str, doc_label: str | None = None) -> str:
 
 def _body_issue_codes(parser: DocutilsParser, content: str) -> list[IssueCode]:
     parsed = parser.parse(content, "x.rst")
-    return [i.code for i in parsed.sections["body"].issues]
+    return [i.code for i in _sections(parsed)["body"].scan_result.issues]
 
 
 # --------------------------------------------------------------------------- #
 # Happy path — VPC recursive chain
 # --------------------------------------------------------------------------- #
 def test_vpc_request_resolves_recursively(parser: DocutilsParser, vpc_doc: str) -> None:
-    body = parser.parse(vpc_doc, "vpc.rst").sections["body"]
-    assert body.status is SectionStatus.OK  # everything resolved, no issues
+    body = _sections(parser.parse(vpc_doc, "vpc.rst"))["body"]
+    assert body.scan_result.status is SectionStatus.OK
 
     firewall = next(p for p in body.parameters if p.name == "firewall")
     assert firewall.type_name == "CreateFirewallOption"
@@ -74,7 +78,7 @@ def test_vpc_request_resolves_recursively(parser: DocutilsParser, vpc_doc: str) 
 def test_vpc_response_resolves_recursively(
     parser: DocutilsParser, vpc_doc: str
 ) -> None:
-    resp = parser.parse(vpc_doc, "vpc.rst").sections["response"]
+    resp = _sections(parser.parse(vpc_doc, "vpc.rst"))["response"]
     firewall = next(p for p in resp.parameters if p.name == "firewall")
     detail = {c.name for c in firewall.children}
     assert {"tags", "associations", "ingress_rules", "egress_rules"} <= detail
@@ -90,11 +94,12 @@ def test_iam_same_named_structs_bind_to_their_own_tables(
     parser: DocutilsParser, iam_doc: str
 ) -> None:
     parsed = parser.parse(iam_doc, "iam.rst")
+    sections = _sections(parsed)
     req_policy = next(
-        p for p in parsed.sections["body"].parameters if p.name == "protect_policy"
+        p for p in sections["body"].parameters if p.name == "protect_policy"
     )
     resp_policy = next(
-        p for p in parsed.sections["response"].parameters if p.name == "protect_policy"
+        p for p in sections["response"].parameters if p.name == "protect_policy"
     )
 
     req_fields = {c.name for c in req_policy.children}
@@ -116,8 +121,8 @@ def test_iam_same_named_structs_bind_to_their_own_tables(
     }
     assert resp_allow.children  # bound to Table 8, its own table
 
-    assert parsed.sections["body"].status is SectionStatus.OK
-    assert parsed.sections["response"].status is SectionStatus.OK
+    assert sections["body"].scan_result.status is SectionStatus.OK
+    assert sections["response"].scan_result.status is SectionStatus.OK
 
 
 # --------------------------------------------------------------------------- #
@@ -132,7 +137,7 @@ def test_dangling_anchor(parser: DocutilsParser) -> None:
         )
     )
     parsed = parser.parse(content, "x.rst")
-    assert parsed.sections["body"].status is SectionStatus.PARTIAL
+    assert _sections(parsed)["body"].scan_result.status is SectionStatus.PARTIAL
     assert IssueCode.NESTED_TABLE_NOT_FOUND in _body_issue_codes(parser, content)
 
 
@@ -151,10 +156,11 @@ def test_circular_ref(parser: DocutilsParser) -> None:
         ),
     )
     parsed = parser.parse(content, "x.rst")
-    assert parsed.sections["body"].status is SectionStatus.PARTIAL
+    sections = _sections(parsed)
+    assert sections["body"].scan_result.status is SectionStatus.PARTIAL
     assert IssueCode.NESTED_CIRCULAR_REF in _body_issue_codes(parser, content)
     # First level resolved; recursion stopped at the repeat.
-    node = parsed.sections["body"].parameters[0]
+    node = sections["body"].parameters[0]
     assert [c.name for c in node.children] == ["child"]
     assert node.children[0].children == []
 
@@ -169,7 +175,7 @@ def test_non_table_target(parser: DocutilsParser) -> None:
         ".. _foo_para:\n\nThis paragraph is not a table.\n",
     )
     parsed = parser.parse(content, "x.rst")
-    assert parsed.sections["body"].status is SectionStatus.PARTIAL
+    assert _sections(parsed)["body"].scan_result.status is SectionStatus.PARTIAL
     assert IssueCode.NESTED_REF_NOT_A_TABLE in _body_issue_codes(parser, content)
 
 
@@ -191,7 +197,7 @@ def test_empty_struct_table(parser: DocutilsParser) -> None:
         empty_table,
     )
     parsed = parser.parse(content, "x.rst")
-    assert parsed.sections["body"].status is SectionStatus.PARTIAL
+    assert _sections(parsed)["body"].scan_result.status is SectionStatus.PARTIAL
     assert IssueCode.NESTED_TABLE_EMPTY in _body_issue_codes(parser, content)
 
 
@@ -207,5 +213,5 @@ def test_external_cross_doc_ref(parser: DocutilsParser) -> None:
         doc_label="thisdoc",
     )
     parsed = parser.parse(content, "x.rst")
-    assert parsed.sections["body"].status is SectionStatus.PARTIAL
+    assert _sections(parsed)["body"].scan_result.status is SectionStatus.PARTIAL
     assert IssueCode.NESTED_REF_EXTERNAL in _body_issue_codes(parser, content)

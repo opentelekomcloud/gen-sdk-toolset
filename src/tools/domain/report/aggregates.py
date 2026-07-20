@@ -5,12 +5,14 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, computed_field
 
 from tools import __version__ as _SCANNER_VERSION
-from tools.shared.report import RepoScanResult
+from tools.shared.ir import Service
+from tools.shared.scan import RepositoryScanResult
 
 from . import analytics
 from .analytics import QualitySummary
 
-REPORT_SCHEMA_VERSION = 5
+# TODO: Start bumping this version after the MVP contract is stabilized.
+REPORT_SCHEMA_VERSION = 1
 
 
 class OrgScanResult(BaseModel):
@@ -25,12 +27,16 @@ class OrgScanResult(BaseModel):
     total_repos: int = 0
     eligible_repos: int = 0
     skipped_repos: list[str] = Field(default_factory=list)
-    repos: list[RepoScanResult] = Field(default_factory=list)
+    repos: list[RepositoryScanResult] = Field(default_factory=list)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def total_documents(self) -> int:
-        return sum(analytics.count_documents(r.documents) for r in self.repos)
+        return sum(
+            len(result.repository.documents)
+            for result in self.repos
+            if isinstance(result.repository, Service)
+        )
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -41,6 +47,4 @@ class OrgScanResult(BaseModel):
     @property
     def quality_summary(self) -> QualitySummary:
         """Compute the org-wide quality roll-up from per-doc results."""
-        return analytics.compute_quality_summary(
-            d for r in self.repos for d in r.documents
-        )
+        return analytics.compute_quality_summary(self.repos)

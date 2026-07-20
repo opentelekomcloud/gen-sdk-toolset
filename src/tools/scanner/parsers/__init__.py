@@ -12,6 +12,6 @@ together with its private helpers.
 from __future__ import annotations
 
 from .docutils.doc_parser import DocutilsParser
-from .docutils.style import classify_doc_style
+from .docutils.style import classify_doc_style, extract_document_title
 
-__all__ = ["DocutilsParser", "classify_doc_style"]
+__all__ = ["DocutilsParser", "classify_doc_style", "extract_document_title"]

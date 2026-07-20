@@ -11,12 +11,11 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 
 from tools.config import Settings, load_settings
-from tools.domain.report import OrgScanResult
+from tools.domain.report import OrgScanResult, OverallStatus
 from tools.scanner.github.client import GitHubDocProvider
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
 from tools.shared.exceptions import ProviderError
-from tools.shared.report import OverallStatus
 
 # Exit codes
 EXIT_OK = 0
@@ -157,7 +156,7 @@ def _print_human_summary(
     logger.info("  Total repos discovered : %d", result.total_repos)
     logger.info("  Eligible (%s)   : %d", api_ref_path, result.eligible_repos)
     logger.info("  Skipped repos          : %d", len(result.skipped_repos))
-    logger.info("  Total API documents    : %d", result.total_documents)
+    logger.info("  Total scanned documents: %d", result.total_documents)
     for status in OverallStatus:
         if status.value in status_counts:
             logger.info("  %-22s : %d", status.value, status_counts[status.value])
@@ -209,15 +208,15 @@ def main(argv: list[str] | None = None) -> int:
     output_path = args.output or settings.output.path
     scanner = _build_scanner(settings)
 
-    # Single-repo mode: scan one repo → one repos[]-shaped RepoScanResult.
+    # Single-repo mode returns one RepositoryScanResult.
     if args.repo:
         logger.info("Scanning repository %s@%s", args.repo, branch)
         repo_result = scanner.scan_repository(repo=args.repo, branch=branch)
         _emit_report(
             repo_result, output_path, args.stdout, settings.output.indent, logger
         )
-        if repo_result.error:
-            logger.error("Repo scan reported an error: %s", repo_result.error)
+        if repo_result.failure_message:
+            logger.error("Repo scan reported an error: %s", repo_result.failure_message)
             return EXIT_RUNTIME_ERROR
         return EXIT_OK
 

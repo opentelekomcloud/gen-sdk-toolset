@@ -13,7 +13,7 @@ tables don't have one).
 The parser returns:
 
 * a list of :class:`tools.domain.ir.Parameter` (one per body row), and
-* counters that feed :class:`SectionResult` field-level metrics.
+* counters that feed :class:`SectionScanResult` field-level metrics.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from docutils import nodes
 
 from tools.shared.ir import Parameter, ParameterType
-from tools.shared.report import Issue, IssueCode
+from tools.shared.scan import Issue, IssueCode
 
 # Max length of free-text `details` we attach to diagnostic issues.
 DETAILS_MAX = 80

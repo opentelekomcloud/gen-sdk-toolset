@@ -1,14 +1,30 @@
-from pydantic import BaseModel, Field
+from typing import Any, Literal
 
+from pydantic import Field, SerializeAsAny, field_validator
+
+from .document import Document
 from .endpoint import Endpoint
+from .repository import Repository
 
 
-class Service(BaseModel):
-    """A logical group of endpoints belonging to one OTC service.
+class Service(Repository):
+    kind: Literal["service"] = "service"
+    documents: list[SerializeAsAny[Document]] = Field(default_factory=list)
 
-    Pure IR — describes the *API*, not the scanner's progress. Scan-time
-    statistics live on :class:`tools.shared.report.RepoScanResult`.
-    """
+    @field_validator("documents", mode="before")
+    @classmethod
+    def restore_endpoint_subclasses(cls, documents: Any) -> Any:
+        if not isinstance(documents, list):
+            return documents
+        return [
+            Endpoint.model_validate(document)
+            if isinstance(document, dict) and document.get("kind") == "endpoint"
+            else document
+            for document in documents
+        ]
 
-    service_name: str
-    endpoints: list[Endpoint] = Field(default_factory=list)
+    @property
+    def endpoints(self) -> list[Endpoint]:
+        return [
+            document for document in self.documents if isinstance(document, Endpoint)
+        ]

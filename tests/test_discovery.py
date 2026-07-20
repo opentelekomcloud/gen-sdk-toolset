@@ -6,7 +6,7 @@ import pytest
 
 from tools.scanner.discovery import DiscoveredRepository, discover_repositories
 from tools.shared.exceptions import ProviderError, ProviderErrorKind
-from tools.shared.repository import RepositoryInterruptionKind
+from tools.shared.scan import RepositoryInterruptionKind
 
 
 class _Provider:

@@ -14,5 +14,5 @@ uv run gen-sdk-scan \
 ```
 
 This committed example intentionally passes a full commit SHA through
-`--branch` to make regeneration reproducible. `RepoScanResult.branch` may
-contain a normal branch name in regular scans.
+`--branch` to make regeneration reproducible. `RepositoryScanResult.branch`
+may contain a normal branch name in regular scans.

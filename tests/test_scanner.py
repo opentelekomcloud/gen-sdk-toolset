@@ -7,8 +7,12 @@ from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
 from tools.shared.exceptions import ProviderError, ProviderErrorKind
-from tools.shared.report import IssueCode
-from tools.shared.repository import RepositoryInterruptionKind
+from tools.shared.ir import Endpoint, Service
+from tools.shared.scan import (
+    IssueCode,
+    RepositoryInterruptionKind,
+    RepositoryScanResult,
+)
 
 from .conftest import load_fixture
 
@@ -94,7 +98,7 @@ def test_skips_repo_without_api_ref() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
     assert result.skipped_repos == ["o/svc-b"]
-    assert {r.repo for r in result.repos} == {"o/svc-a"}
+    assert {r.repository.repo for r in result.repos} == {"o/svc-a"}
     assert [call for call in fake.calls if call.startswith("path_exists:")] == [
         "path_exists:o/svc-a@" + "0" * 40 + ":api-ref/source",
         "path_exists:o/svc-b@" + "0" * 40 + ":api-ref/source",
@@ -138,9 +142,8 @@ def test_commit_hash_error_stops_before_eligibility_and_scan() -> None:
     result = make_scanner(fake).scan_organization(org="o")
     repo = result.repos[0]
     assert repo.commit_hash is None
-    assert repo.has_api_ref is False
+    assert not isinstance(repo.repository, Service)
     assert repo.error == "Could not resolve commit for o/cce@main: commit lookup failed"
-    assert repo.documents == []
     assert fake.calls == ["list_repos:o", "get_commit_hash:o/cce@main"]
 
 
@@ -190,15 +193,33 @@ def test_scan_repository_checks_eligibility_at_resolved_commit() -> None:
 
     result = make_scanner(fake).scan_repository("o/cce", branch="main")
 
-    assert result.has_api_ref is True
+    assert isinstance(result.repository, Service)
     assert result.commit_hash == sha
-    assert result.documents
+    assert result.repository.documents
     assert fake.calls == [
         "get_commit_hash:o/cce@main",
         f"path_exists:o/cce@{sha}:api-ref/source",
         f"list_files:o/cce@{sha}",
         f"fetch_content:o/cce@{sha}:{path}",
     ]
+
+
+def test_scan_repository_ignores_duplicate_provider_paths() -> None:
+    class DuplicatePathProvider(FakeDocProvider):
+        def list_files(self, repo: str, branch: str) -> FileListing:
+            listing = super().list_files(repo, branch)
+            return FileListing(paths=listing.paths * 2)
+
+    path = "api-ref/source/x.rst"
+    fake = DuplicatePathProvider(
+        repos={"o/cce": {path: load_fixture("style_a_cce_grid.rst")}}
+    )
+
+    result = make_scanner(fake).scan_repository("o/cce")
+
+    assert isinstance(result.repository, Service)
+    assert len(result.repository.documents) == 1
+    assert fake.calls.count(f"fetch_content:o/cce@{'0' * 40}:{path}") == 1
 
 
 def test_scan_repository_returns_ineligible_without_scanning() -> None:
@@ -211,11 +232,8 @@ def test_scan_repository_returns_ineligible_without_scanning() -> None:
 
     result = make_scanner(fake).scan_repository("o/empty")
 
-    assert result.has_api_ref is False
+    assert not isinstance(result.repository, Service)
     assert result.error is None
-    assert result.documents == []
-    assert result.documents_by_version == {}
-    assert result.non_endpoint_documents == []
     assert result.excluded_documents == []
     assert fake.calls == [
         "get_commit_hash:o/empty@main",
@@ -232,7 +250,7 @@ def test_unresolved_commit_and_missing_path_is_not_normal_ineligible() -> None:
 
     result = make_scanner(fake).scan_repository("o/missing", branch="bad-ref")
 
-    assert result.has_api_ref is False
+    assert not isinstance(result.repository, Service)
     assert result.commit_hash is None
     assert result.error == (
         "Cannot confirm o/missing@bad-ref: commit could not be resolved and "
@@ -253,9 +271,9 @@ def test_unresolved_commit_with_existing_path_scans_original_ref() -> None:
 
     result = make_scanner(fake).scan_repository("o/cce", branch="develop")
 
-    assert result.has_api_ref is True
+    assert isinstance(result.repository, Service)
     assert result.commit_hash is None
-    assert result.documents
+    assert result.repository.documents
     assert fake.calls == [
         "get_commit_hash:o/cce@develop",
         "path_exists:o/cce@develop:api-ref/source",
@@ -274,10 +292,9 @@ def test_eligibility_error_stops_before_file_listing() -> None:
 
     result = make_scanner(fake).scan_repository("o/cce")
 
-    assert result.has_api_ref is False
-    assert result.error == (
-        f"Could not check eligibility for o/cce@{sha}: eligibility lookup failed"
-    )
+    assert not isinstance(result.repository, Service)
+    assert result.error is None
+    assert result.failure_message == "eligibility lookup failed"
     assert result.interruption is not None
     assert result.interruption.kind is RepositoryInterruptionKind.repository_failure
     assert result.interruption.repository == "o/cce"
@@ -318,9 +335,9 @@ def test_scan_repository_matches_repos_element_shape() -> None:
     assert repo_result.model_dump(mode="json").keys() == (
         org.repos[0].model_dump(mode="json").keys()
     )
-    assert repo_result.repo == "o/cce"
-    assert repo_result.has_api_ref is True
-    assert len(repo_result.documents) == 1
+    assert repo_result.repository.repo == "o/cce"
+    assert isinstance(repo_result.repository, Service)
+    assert len(repo_result.repository.documents) == 1
 
 
 def test_scan_repository_captures_error_without_raising() -> None:
@@ -335,7 +352,8 @@ def test_scan_repository_captures_error_without_raising() -> None:
     scanner = make_scanner(ListFailProvider(repos={"o/x": {}}))
     repo_result = scanner.scan_repository(repo="o/x", branch="main")
     assert repo_result.error == "tree fetch failed"
-    assert repo_result.documents == []
+    assert isinstance(repo_result.repository, Service)
+    assert repo_result.repository.documents == []
 
 
 # --------------------------------------------------------------------------- #
@@ -351,17 +369,22 @@ def test_style_a_populates_sections() -> None:
     )
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
-    docs = result.repos[0].documents
+    repo = result.repos[0]
+    assert isinstance(repo.repository, Service)
+    docs = repo.repository.documents
     assert len(docs) == 1
     doc = docs[0]
-    assert doc.failure_reason is None
+    assert doc.scan_result.failure_reason is None
     # CCE's `metadata` object resolves to its struct table, so the doc is fully
     # extracted now (no deferred-nesting partial) and emits no nested_objects.
     assert doc_overall_status(doc) == "ok"
-    assert "path_params" in doc.sections
-    assert "body" in doc.sections
-    assert "nested_objects" not in doc.sections
-    metadata = doc.sections["body"].parameters[0]
+    assert isinstance(doc, Endpoint)
+    sections = {section.name: section for section in doc.sections}
+    assert len(sections) == 7
+    assert "path_params" in sections
+    assert "body" in sections
+    assert "nested_objects" not in sections
+    metadata = sections["body"].parameters[0]
     assert metadata.name == "metadata"
     assert [c.name for c in metadata.children] == ["name"]
     assert doc.api_version == "v3"
@@ -373,14 +396,16 @@ def test_obs_marked_unsupported() -> None:
     )
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
-    doc = result.repos[0].documents[0]
-    assert doc.failure_reason is not None
-    assert doc.failure_reason.code is IssueCode.UNSUPPORTED_DOC_STYLE
+    repo = result.repos[0]
+    assert isinstance(repo.repository, Service)
+    doc = repo.repository.documents[0]
+    assert doc.scan_result.failure_reason is not None
+    assert doc.scan_result.failure_reason.code is IssueCode.UNSUPPORTED_DOC_STYLE
     assert doc_overall_status(doc) == "unsupported"
-    assert doc.sections == {}
+    assert not isinstance(doc, Endpoint)
 
 
-def test_non_endpoint_recorded() -> None:
+def test_non_endpoint_materialized_as_document() -> None:
     fake = FakeDocProvider(
         repos={
             "o/svc": {
@@ -392,9 +417,17 @@ def test_non_endpoint_recorded() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
-    assert repo.non_endpoint_documents == ["api-ref/source/intro.rst"]
-    assert len(repo.documents) == 1
-    assert repo.documents[0].document == "api-ref/source/real.rst"
+    assert "non_endpoint_documents" not in RepositoryScanResult.model_fields
+    assert isinstance(repo.repository, Service)
+    assert len(repo.repository.documents) == 2
+    documents = {document.path: document for document in repo.repository.documents}
+    intro = documents["api-ref/source/intro.rst"]
+    assert not isinstance(intro, Endpoint)
+    assert intro.title == "Intro"
+    assert intro.scan_result.failure_reason is None
+    assert isinstance(documents["api-ref/source/real.rst"], Endpoint)
+    assert result.total_documents == 2
+    assert result.quality_summary.by_overall_status == {"ok": 1}
 
 
 def test_fetch_failure_is_gating() -> None:
@@ -407,9 +440,11 @@ def test_fetch_failure_is_gating() -> None:
     )
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
-    doc = result.repos[0].documents[0]
-    assert doc.failure_reason is not None
-    assert doc.failure_reason.code is IssueCode.FETCH_FAILED
+    repo = result.repos[0]
+    assert isinstance(repo.repository, Service)
+    doc = repo.repository.documents[0]
+    assert doc.scan_result.failure_reason is not None
+    assert doc.scan_result.failure_reason.code is IssueCode.FETCH_FAILED
     assert doc_overall_status(doc) == "failed"
 
 
@@ -426,9 +461,11 @@ def test_parser_crash_is_parser_error() -> None:
     )
     scanner = make_scanner(fake, parser=CrashingParser())
     result = scanner.scan_organization(org="o")
-    doc = result.repos[0].documents[0]
-    assert doc.failure_reason is not None
-    assert doc.failure_reason.code is IssueCode.PARSER_ERROR
+    repo = result.repos[0]
+    assert isinstance(repo.repository, Service)
+    doc = repo.repository.documents[0]
+    assert doc.scan_result.failure_reason is not None
+    assert doc.scan_result.failure_reason.code is IssueCode.PARSER_ERROR
     assert doc_overall_status(doc) == "failed"
 
 
@@ -444,10 +481,11 @@ def test_endpoint_doc_without_uri_is_failed() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
-    assert repo.non_endpoint_documents == []
-    doc = repo.documents[0]
-    assert doc.failure_reason is not None
-    assert doc.failure_reason.code is IssueCode.NO_URI_MATCH
+    assert isinstance(repo.repository, Service)
+    doc = repo.repository.documents[0]
+    assert doc.title == "Some Endpoint"
+    assert doc.scan_result.failure_reason is not None
+    assert doc.scan_result.failure_reason.code is IssueCode.NO_URI_MATCH
     assert doc_overall_status(doc) == "failed"
 
 
@@ -466,9 +504,12 @@ def test_excluded_segments_drop_paths() -> None:
     scanner = make_scanner(fake, excluded_segments=["out-of-date_apis"])
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
+    assert isinstance(repo.repository, Service)
     # Excluded file is not parsed, not counted as a non_endpoint doc...
-    assert all("out-of-date_apis" not in d.document for d in repo.documents)
-    assert "out-of-date_apis" not in str(repo.non_endpoint_documents)
+    assert all(
+        "out-of-date_apis" not in document.path
+        for document in repo.repository.documents
+    )
     assert repo.excluded_documents == ["api-ref/source/out-of-date_apis/old.rst"]
 
 
@@ -499,12 +540,13 @@ def test_truncated_tree_marks_repo_incomplete() -> None:
     repo = result.repos[0]
     assert repo.incomplete is True
     assert repo.incomplete_reason
+    assert "incomplete" not in repo.model_dump(mode="json")
 
 
 # --------------------------------------------------------------------------- #
-# documents_by_version
+# API version analytics
 # --------------------------------------------------------------------------- #
-def test_by_version_groups_parsed() -> None:
+def test_by_version_is_derived_from_endpoints() -> None:
     fake = FakeDocProvider(
         repos={
             "o/cce": {
@@ -514,15 +556,11 @@ def test_by_version_groups_parsed() -> None:
     )
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
-    repo = result.repos[0]
-    assert "v3" in repo.documents_by_version
-    assert len(repo.documents_by_version["v3"]) == 1
-    # Org-level computed aggregation mirrors the per-repo grouping (item 12).
+    assert "documents_by_version" not in RepositoryScanResult.model_fields
     assert result.by_version == {"v3": 1}
 
 
-def test_by_version_excludes_failed() -> None:
-    """Failed/unsupported docs do not appear in documents_by_version."""
+def test_by_version_excludes_non_endpoints() -> None:
     fake = FakeDocProvider(
         repos={
             "o/svc": {
@@ -532,7 +570,7 @@ def test_by_version_excludes_failed() -> None:
     )
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
-    assert result.repos[0].documents_by_version == {}
+    assert result.by_version == {}
 
 
 # --------------------------------------------------------------------------- #
@@ -561,8 +599,7 @@ def test_quality_summary_counts() -> None:
 # Scanner version stamped on the report (review addition A)
 # --------------------------------------------------------------------------- #
 def test_report_stamps_scanner_version() -> None:
-    """Every report carries the scanner version + bumped schema version, so
-    report diffing can tell 'docs changed' from 'parser improved'."""
+    """Every report carries scanner and fixed MVP schema versions."""
     from tools import __version__
     from tools.domain.report import REPORT_SCHEMA_VERSION
 
@@ -572,7 +609,7 @@ def test_report_stamps_scanner_version() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
 
-    assert result.report_schema_version == REPORT_SCHEMA_VERSION >= 3
+    assert result.report_schema_version == REPORT_SCHEMA_VERSION == 1
     assert result.scanner_version == __version__
     assert result.repos[0].scanner_version == __version__
     # Present in the serialized JSON, not just the model.

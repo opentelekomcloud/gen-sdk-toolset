@@ -77,7 +77,7 @@ The scanner reads its configuration from three sources, in order of precedence:
 The supported entrypoint is `uv run gen-sdk-scan`. Choose one target mode:
 
 ```bash
-# Scan one repository and print one raw RepoScanResult (no file written)
+# Scan one repository and print one raw RepositoryScanResult (no file written)
 uv run gen-sdk-scan \
   --repo opentelekomcloud-docs/anti-ddos \
   --output -
@@ -101,10 +101,10 @@ uv run gen-sdk-scan --config configs/staging.toml -v
 ```
 
 `--repo` requires exactly two non-empty components in `OWNER/NAME` form.
-`--repo` and `--org` are mutually exclusive. A repository without the
-configured API reference path is a normal, successful result with
-`has_api_ref=false` and empty document collections; a repository or ref that
-cannot be confirmed instead includes a diagnostic `error` and exits non-zero.
+`--repo` and `--org` are mutually exclusive. When the configured API reference
+path is absent, the scan succeeds with an empty result whose `repository`
+remains a plain `Repository`. A repository or ref that cannot be confirmed
+instead includes a diagnostic `error` and exits non-zero.
 
 ### Command-line flags
 
@@ -112,7 +112,7 @@ cannot be confirmed instead includes a diagnostic `error` and exits non-zero.
 |---|---|
 | `--config PATH` | Path to TOML config (default: `scan-config.toml`) |
 | `--output PATH` | Output JSON file path. `-` redirects to stdout instead |
-| `--repo OWNER/NAME` | Scan one repository and emit one `RepoScanResult` |
+| `--repo OWNER/NAME` | Scan one repository and emit one `RepositoryScanResult` |
 | `--org NAME` | Run the legacy organization scan; mutually exclusive with `--repo` |
 | `--branch NAME` | Branch name or fixed commit SHA to scan |
 | `--stdout` | Also print the JSON report to stdout (in addition to the file) |
@@ -121,39 +121,40 @@ cannot be confirmed instead includes a diagnostic `error` and exits non-zero.
 
 ### Output
 
-Repository mode produces one raw `RepoScanResult`. Legacy organization mode
-produces a quality report (`report_schema_version: 5`) containing repository
-results. Since schema v5 both forms carry **data only**: derived views
-(per-document overall status, completeness, flat issue lists) are no longer
+Repository mode produces one raw `RepositoryScanResult`. Legacy organization mode
+produces a quality report (`report_schema_version: 1`) containing repository
+results. During MVP the schema version remains `1`; version bumps start after the
+contract is stabilized. Both forms carry **data only**: derived views
+(per-document overall status and flat issue lists) are no longer
 embedded in the JSON — they are computed by the pure functions in
 `tools.domain.report.analytics`.
 
-- **Per-document results** (`DocumentScanResult`) — for every endpoint
-  doc encountered:
-  - `document`, `repo`, `method`, `uri`, `title`, `api_version`
-  - `failure_reason: Issue | null` — populated for gating failures (fetch
-    failed, no URI line found, unsupported doc style)
-  - `sections: dict[str, SectionResult]` — keyed by `path_params`,
-    `query_params`, `headers`, `body`, `response`, `example_request`,
-    `example_response`, `nested_objects`. Each section carries:
-    - `status` — `ok` / `partial` / `failed` / `missing` / `skipped`
-    - `issues` — structured `[{code, location, details}]` entries
-    - `parameters` — extracted `Parameter` objects
-    - `examples` — extracted `ExampleBlock` objects (raw text +
-      best-effort JSON parse)
-    - field-level metrics: `fields_total`, `fields_recognized`,
-      `fields_unknown_type`, `fields_failed`
+- **Repository data** is represented by `Repository` or its eligible
+  specialization `Service`. A service contains `Document` records; recognized
+  endpoint documents are represented by `Endpoint(Document)` and contain
+  their extracted `Section` records. The `kind` discriminator identifies each
+  polymorphic entity as `repository`, `service`, `document`, or `endpoint`.
+  A plain `Document` without a failure is a successfully scanned non-endpoint;
+  this classification is derived from the entity and is not stored in a
+  parallel `non_endpoint_documents` field.
 
-- **Per-repo results** (`RepoScanResult`):
-  - `repo`, `branch`, `commit_hash` (head commit the scan saw),
-    `has_api_ref`, `scanner_version`
-  - `documents`, `non_endpoint_documents`, `excluded_documents`,
-    `documents_by_version`
-  - `incomplete` / `incomplete_reason` — set when the provider returned a
-    truncated file tree, so a partial scan is never mistaken for a clean one
+- **Scan results** are nested into the entities produced by that scan:
+  - every document carries one `DocumentScanResult` in `scan_result`;
+  - every endpoint section carries one `SectionScanResult` in `scan_result`;
+  - result payloads contain diagnostics only and do not repeat their document
+    or section;
+  - section ownership is expressed by nesting, so sections do not repeat an
+    `endpoint_path` foreign key in the JSON snapshot.
+
+- **Repository scan metadata**:
+  - `branch`, `commit_hash`, and `scanner_version` identify the scan;
+  - API-version counts are derived from `Service.endpoints`, not stored in a
+    parallel `documents_by_version` structure;
+  - `incomplete_reason` — set when the provider returned a truncated file tree,
+    so a partial scan is never mistaken for a clean one
   - `error` — repo-level failure (e.g. file listing failed)
 
-- **Org-level** (`OrgScanResult`, top of the file):
+- **Legacy org-level adapter** (`OrgScanResult`):
   - `report_schema_version`, `scanner_version`, `org`, `branch`,
     `total_repos`, `eligible_repos`, `skipped_repos`
   - computed roll-ups: `total_documents`, `by_version`, and

@@ -42,7 +42,7 @@ on its peers.
 ```
 gen-sdk-tooling/
 └── src/tools/
-    ├── shared/        # IR, IssueCode, SectionResult, exceptions — type contracts
+    ├── shared/        # IR, IssueCode, SectionScanResult, exceptions — type contracts
     ├── scanner/       # RST → IR + ScanReport
     ├── generator/     # IR → Python files (via Jinja2)
     └── llm/           # FIXME placeholders → resolved (via Ollama)
@@ -59,8 +59,8 @@ gen-sdk-tooling/
 ### What lives in `shared/`
 
 - **IR models** (`Endpoint`, `Parameter`, nested object structures)
-- **Report models** (`SectionResult`, `SectionStatus`, `IssueCode`,
-  `DocumentScanResult`, `RepoScanResult`, `OrgScanResult`)
+- **Report models** (`SectionScanResult`, `SectionStatus`, `IssueCode`,
+  `DocumentScanResult`, `RepositoryScanResult`)
 - **Exception hierarchy** (`GenSdkError`, `RepositoryError`, etc.)
 - **Common enums** (`HttpMethod`, `ParameterType`)
 
@@ -220,11 +220,11 @@ Produces two outputs from RST:
 - **IR** (`ir.json`) — the data the generator consumes (`Endpoint`,
   `Parameter`, nested objects).
 - **ScanReport** (`report.json`) — metadata about parsing quality
-  (`SectionResult` per section, with `IssueCode` for problems found).
+  (`SectionScanResult` per section, with `IssueCode` for problems found).
 
 The scanner does not generate code. It parses and reports.
 
-Detailed scanner internals and the `SectionResult` / `IssueCode` model are
+Detailed scanner internals and the `SectionScanResult` / `IssueCode` model are
 covered in a separate design issue in `gen-sdk-tooling`.
 
 ### Panel (control plane)

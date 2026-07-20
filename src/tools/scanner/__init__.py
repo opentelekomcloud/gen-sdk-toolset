@@ -1,6 +1,6 @@
 """Scanner entrypoints."""
 
-from tools.shared.repository import (
+from tools.shared.scan import (
     RepositoryInterruption,
     RepositoryInterruptionKind,
 )

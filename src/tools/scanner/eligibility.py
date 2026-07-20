@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from tools.scanner.interfaces import RepositoryEligibilityProvider
 from tools.shared.exceptions import ProviderError, ProviderErrorKind
-from tools.shared.repository import (
+from tools.shared.scan import (
     RepositoryInterruption,
     RepositoryInterruptionKind,
 )

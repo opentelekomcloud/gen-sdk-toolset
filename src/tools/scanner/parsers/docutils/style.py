@@ -47,6 +47,8 @@ _S3_THRESHOLD = 2
 # method+path line from it — see classify_doc_style.
 _URI_HEADING_RE = re.compile(r"^URI[ \t]*\n[-=~^\"'`#*+]+\s*$", re.MULTILINE)
 
+_RST_TITLE_UNDERLINE_CHARS = frozenset("=-~^\"'`#*+")
+
 
 class DocStyle(str, Enum):
     """Layout classification of an RST doc, mapped to report semantics.
@@ -59,13 +61,35 @@ class DocStyle(str, Enum):
     * ``S3_COMPATIBLE`` — OBS/S3 layout; recognised but not yet extractable →
       gating failure ``UNSUPPORTED_DOC_STYLE`` → ``overall_status``
       ``"unsupported"``.
-    * ``NOT_ENDPOINT``  — no endpoint signal; excluded from quality metrics,
-      recorded in ``RepoScanResult.non_endpoint_documents``.
+    * ``NOT_ENDPOINT``  — no endpoint signal; represented as a successful
+      ``Document`` and excluded from endpoint quality metrics.
     """
 
     STYLE_A = "style_a"
     S3_COMPATIBLE = "s3_compatible"
     NOT_ENDPOINT = "not_endpoint"
+
+
+def extract_document_title(content: str) -> str | None:
+    """Return the first RST overline-free heading in a document."""
+    lines = content.splitlines()
+    for title_line, underline_line in zip(lines, lines[1:]):
+        if (
+            title_line != title_line.lstrip()
+            or underline_line != underline_line.lstrip()
+        ):
+            continue
+        title = title_line.rstrip()
+        underline = underline_line.rstrip()
+        if not title or len(underline) < 3:
+            continue
+        if len(underline) < len(title):
+            continue
+        if len(set(underline)) != 1:
+            continue
+        if underline[0] in _RST_TITLE_UNDERLINE_CHARS:
+            return title
+    return None
 
 
 def classify_doc_style(content: str) -> DocStyle:
