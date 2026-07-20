@@ -529,6 +529,24 @@ def test_parser_crash_is_parser_error() -> None:
     assert doc_overall_status(doc) == "failed"
 
 
+def test_repository_context_failure_is_not_silently_ignored() -> None:
+    class CrashingContextParser(DocutilsParser):
+        def build_repository_context(self, documents):
+            raise RuntimeError("broken shared schema")
+
+    fake = FakeDocProvider(
+        repos={"o/svc": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
+    )
+
+    result = make_scanner(fake, parser=CrashingContextParser()).scan_repository(
+        "o/svc"
+    )
+
+    assert isinstance(result.repository, Service)
+    assert result.repository.documents == []
+    assert result.error == "Failed to build parser context: broken shared schema"
+
+
 def test_endpoint_doc_without_uri_is_failed() -> None:
     """A doc with a URI section heading but no extractable method+path must
     surface as failed/no_uri_match, not silently drop into non_endpoint."""

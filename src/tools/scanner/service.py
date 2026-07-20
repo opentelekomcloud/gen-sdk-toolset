@@ -177,7 +177,19 @@ class ScannerService:
                     included_paths,
                 )
             )
-            parser_context = self._build_parser_context(fetched_documents)
+            try:
+                parser_context = self._build_parser_context(fetched_documents)
+            except Exception as e:
+                error = f"Failed to build parser context: {e}"
+                logger.exception("%s for %s", error, repo)
+                return RepositoryScanResult(
+                    repository=Service(repo=repo),
+                    branch=branch,
+                    commit_hash=commit_hash,
+                    excluded_documents=excluded_documents,
+                    incomplete_reason=incomplete_reason,
+                    error=error,
+                )
             doc_outcomes = list(
                 pool.map(
                     lambda document: self._process_document(
@@ -226,11 +238,7 @@ class ScannerService:
             for document in documents
             if document.content is not None
         }
-        try:
-            return self.parser.build_repository_context(contents)
-        except Exception:
-            logger.exception("Failed to build repository parser context")
-            return None
+        return self.parser.build_repository_context(contents)
 
     def _process_document(
         self,

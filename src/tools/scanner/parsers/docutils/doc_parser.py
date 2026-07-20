@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import re
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 
 from docutils import nodes
@@ -32,9 +33,9 @@ from tools.shared.scan import (
 from .example import (
     add_examples_to_section,
     extract_examples,
-    infer_documented_example_nesting,
     split_combined_examples,
 )
+from .inference import infer_documented_example_nesting
 from .nesting import RefKind, RefTarget, resolve_nested
 from .patterns import URI_PLACEHOLDER_RE, URI_RE
 from .section import (
@@ -545,13 +546,14 @@ def _register_explicit_field_tables(
         target = extraction.reference_targets.get(anchor) if anchor else None
         if target is None or target.kind is not RefKind.TABLE or target.table is None:
             continue
+        referenced_table = deepcopy(target.table)
         if parent_name not in parameter_names:
             extraction.unmatched_reference_tables.setdefault(owner, {}).setdefault(
-                parent_name, target.table
+                parent_name, referenced_table
             )
             continue
         extraction.label_tables.setdefault(owner, {}).setdefault(
-            parent_name, target.table
+            parent_name, referenced_table
         )
 
 

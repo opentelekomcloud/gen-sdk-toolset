@@ -1,4 +1,4 @@
-from tools.scanner.parsers.docutils.example import infer_documented_example_nesting
+from tools.scanner.parsers.docutils.inference import infer_documented_example_nesting
 from tools.scanner.parsers.docutils.table import TableExtraction
 from tools.shared.ir import Example, Parameter, ParameterType, Section, SectionName
 

@@ -268,3 +268,53 @@ def test_explicit_cross_document_field_table(parser: DocutilsParser) -> None:
     connection = response.parameters[0]
     assert [child.name for child in connection.children] == ["id", "name"]
     assert response.scan_result.status is SectionStatus.OK
+
+
+def test_cross_document_inference_does_not_mutate_repository_context(
+    parser: DocutilsParser,
+) -> None:
+    overview = (
+        "Overview\n========\n\n"
+        ".. _shared_model:\n\n"
+        + _simple_table(
+            "**Table 1** Shared model",
+            ["Parameter", "Type", "Description"],
+            [
+                ["items", "Array", "items"],
+                ["status", "String", "status"],
+                ["id", "String", "item ID"],
+                ["name", "String", "item name"],
+            ],
+        )
+    )
+    endpoint = (
+        "Demo\n====\n\nURI\n---\n\nGET /v1/test\n\n"
+        "Response\n--------\n\n"
+        + _simple_table(
+            "**Table 1** Response parameters",
+            ["Parameter", "Type", "Description"],
+            [["model", "Object", "result"]],
+        )
+        + "\nFor details about the **model** field, "
+        "see :ref:`Table 1 <shared_model>`.\n\n"
+        "Examples\n--------\n\n- Example response\n\n"
+        "  .. code-block:: json\n\n"
+        '     {"model": {"items": [{"id": "1", "name": "demo"}], '
+        '"status": "ok"}}\n'
+    )
+    context = parser.build_repository_context({"overview.rst": overview})
+    shared = context.tables["shared_model"]
+
+    parsed = parser.parse(endpoint, "endpoint.rst", context=context)
+
+    response = _sections(parsed)["response"]
+    model = response.parameters[0]
+    items = next(child for child in model.children if child.name == "items")
+    assert [child.name for child in items.children] == ["id", "name"]
+    assert [parameter.name for parameter in shared.parameters] == [
+        "items",
+        "status",
+        "id",
+        "name",
+    ]
+    assert shared.parameters[0].param_type.value == "Array"
