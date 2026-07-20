@@ -1,16 +1,24 @@
 import logging
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 
 from tools.domain.report import OrgScanResult
 from tools.scanner.eligibility import check_repository_eligibility
-from tools.scanner.interfaces import DocProvider, RstParser
+from tools.scanner.interfaces import DocProvider, RepositoryContextParser, RstParser
 from tools.scanner.parsers.docutils.style import DocStyle, extract_document_title
 from tools.shared.exceptions import ParseFailure, ProviderError
 from tools.shared.ir import Document, Repository, Service
 from tools.shared.scan import DocumentScanResult, Issue, IssueCode, RepositoryScanResult
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _FetchedDocument:
+    path: str
+    content: str | None = None
+    failure: Document | None = None
 
 
 class ScannerService:
@@ -163,10 +171,21 @@ class ScannerService:
         logger.debug("%s: %d candidate RST files", repo, len(included_paths))
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
+            fetched_documents = list(
+                pool.map(
+                    lambda path: self._fetch_document(repo, path, ref),
+                    included_paths,
+                )
+            )
+            parser_context = self._build_parser_context(fetched_documents)
             doc_outcomes = list(
                 pool.map(
-                    lambda p: self._process_document(repo, p, ref),
-                    included_paths,
+                    lambda document: self._process_document(
+                        repo,
+                        document,
+                        parser_context,
+                    ),
+                    fetched_documents,
                 )
             )
 
@@ -178,23 +197,60 @@ class ScannerService:
             incomplete_reason=incomplete_reason,
         )
 
-    def _process_document(self, repo: str, path: str, branch: str) -> Document:
-        """Fetch, classify and parse a document.
+    def _fetch_document(self, repo: str, path: str, ref: str) -> _FetchedDocument:
+        try:
+            content = self.doc_provider.fetch_content(repo, path, ref)
+        except Exception as e:
+            logger.warning("Fetch failed for %s/%s: %s", repo, path, e)
+            return _FetchedDocument(
+                path=path,
+                failure=Document(
+                    path=path,
+                    scan_result=DocumentScanResult(
+                        failure_reason=Issue(
+                            code=IssueCode.FETCH_FAILED,
+                            details=str(e),
+                        )
+                    ),
+                ),
+            )
+        return _FetchedDocument(path=path, content=content)
+
+    def _build_parser_context(
+        self, documents: list[_FetchedDocument]
+    ) -> object | None:
+        if not isinstance(self.parser, RepositoryContextParser):
+            return None
+        contents = {
+            document.path: document.content
+            for document in documents
+            if document.content is not None
+        }
+        try:
+            return self.parser.build_repository_context(contents)
+        except Exception:
+            logger.exception("Failed to build repository parser context")
+            return None
+
+    def _process_document(
+        self,
+        repo: str,
+        document: _FetchedDocument,
+        parser_context: object | None,
+    ) -> Document:
+        """Classify and parse an already fetched document.
 
         The returned entity owns its scan result. Endpoint sections own their
         section-level results. Gating failures produce a plain document with a
         failure reason; non-endpoint docs produce a successful plain document.
         """
-        try:
-            content = self.doc_provider.fetch_content(repo, path, branch)
-        except Exception as e:
-            logger.warning("Fetch failed for %s/%s: %s", repo, path, e)
-            return Document(
-                path=path,
-                scan_result=DocumentScanResult(
-                    failure_reason=Issue(code=IssueCode.FETCH_FAILED, details=str(e))
-                ),
-            )
+        if document.failure is not None:
+            return document.failure
+
+        path = document.path
+        content = document.content
+        if content is None:  # pragma: no cover - guarded by _fetch_document
+            raise ValueError(f"document content is missing for {path}")
 
         title = extract_document_title(content)
         style = self.style_classifier(content)
@@ -219,7 +275,10 @@ class ScannerService:
             )
 
         try:
-            parsed = self.parser.parse(content, path)
+            if isinstance(self.parser, RepositoryContextParser):
+                parsed = self.parser.parse(content, path, context=parser_context)
+            else:
+                parsed = self.parser.parse(content, path)
         except ParseFailure as e:
             logger.warning("Parse failed for %s/%s: %s", repo, path, e)
             return Document(

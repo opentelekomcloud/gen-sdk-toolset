@@ -430,6 +430,66 @@ def test_non_endpoint_materialized_as_document() -> None:
     assert result.quality_summary.by_overall_status == {"ok": 1}
 
 
+def test_repository_context_resolves_table_from_non_endpoint_document() -> None:
+    overview = """Overview
+========
+
+.. _shared_fields:
+
+.. table:: Shared fields
+
+   =========  ======  ===========
+   Parameter  Type    Description
+   =========  ======  ===========
+   id         String  object ID
+   name       String  object name
+   =========  ======  ===========
+"""
+    endpoint = """Query object
+============
+
+URI
+---
+
+GET /v1/objects/{id}
+
+Response
+--------
+
+.. table:: Response parameters
+
+   =========  ======  ===========
+   Parameter  Type    Description
+   =========  ======  ===========
+   object     Object  result
+   =========  ======  ===========
+
+For details about the **object** field, see :ref:`Shared <shared_fields>`.
+"""
+    fake = FakeDocProvider(
+        repos={
+            "o/svc": {
+                "api-ref/source/overview.rst": overview,
+                "api-ref/source/query.rst": endpoint,
+            }
+        }
+    )
+
+    result = make_scanner(fake).scan_repository("o/svc")
+
+    assert isinstance(result.repository, Service)
+    parsed = next(
+        document
+        for document in result.repository.documents
+        if document.path.endswith("query.rst")
+    )
+    assert isinstance(parsed, Endpoint)
+    response = next(
+        section for section in parsed.sections if section.name == "response"
+    )
+    assert [child.name for child in response.parameters[0].children] == ["id", "name"]
+
+
 def test_fetch_failure_is_gating() -> None:
     class FailingProvider(FakeDocProvider):
         def fetch_content(self, repo: str, path: str, branch: str) -> str:
@@ -453,7 +513,7 @@ def test_parser_crash_is_parser_error() -> None:
     no_uri_match."""
 
     class CrashingParser(DocutilsParser):
-        def parse(self, content: str, path: str):
+        def parse(self, content: str, path: str, *, context=None):
             raise RuntimeError("boom")
 
     fake = FakeDocProvider(

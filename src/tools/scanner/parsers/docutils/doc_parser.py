@@ -62,6 +62,7 @@ class RepositoryParseContext:
     """Parameter tables addressable by authored RST anchors in a repository."""
 
     tables: Mapping[str, TableExtraction]
+    doctrees: Mapping[str, nodes.document]
 
 
 def _passthrough_role(name, rawtext, text, lineno, inliner, options=None, content=None):
@@ -122,10 +123,12 @@ class DocutilsParser(RstParser):
         self, documents: Mapping[str, str]
     ) -> RepositoryParseContext:
         tables: dict[str, TableExtraction] = {}
-        for content in documents.values():
+        doctrees: dict[str, nodes.document] = {}
+        for path, content in documents.items():
             doctree = publish_doctree(
                 content, settings_overrides=self._SILENT_DOCUTILS_SETTINGS
             )
+            doctrees[path] = doctree
             for table in doctree.findall(nodes.table):
                 anchor = _table_label_id(table)
                 if anchor is None:
@@ -133,7 +136,7 @@ class DocutilsParser(RstParser):
                 extracted = extract_parameter_table(table)
                 if extracted.parameters:
                     tables.setdefault(anchor, extracted)
-        return RepositoryParseContext(tables=tables)
+        return RepositoryParseContext(tables=tables, doctrees=doctrees)
 
     def parse(
         self,
@@ -142,9 +145,11 @@ class DocutilsParser(RstParser):
         *,
         context: RepositoryParseContext | None = None,
     ) -> Endpoint:
-        doctree = publish_doctree(
-            content, settings_overrides=self._SILENT_DOCUTILS_SETTINGS
-        )
+        doctree = context.doctrees.get(path) if context is not None else None
+        if doctree is None:
+            doctree = publish_doctree(
+                content, settings_overrides=self._SILENT_DOCUTILS_SETTINGS
+            )
 
         method, uri = self._extract_method_and_uri(content, path)
         title = extract_document_title(content)
