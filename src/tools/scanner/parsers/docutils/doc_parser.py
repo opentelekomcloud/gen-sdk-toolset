@@ -32,7 +32,7 @@ from tools.shared.scan import (
 from .example import (
     add_examples_to_section,
     extract_examples,
-    infer_top_level_wrappers,
+    infer_documented_example_nesting,
     split_combined_examples,
 )
 from .nesting import RefKind, RefTarget, resolve_nested
@@ -212,7 +212,7 @@ class DocutilsParser(RstParser):
             )
         self._collect_section_data(doctree, extraction, context=context)
         _reconcile_path_parameters(uri, extraction)
-        infer_top_level_wrappers(
+        infer_documented_example_nesting(
             extraction.primary_tables,
             extraction.wrapper_candidates,
             extraction.sections,

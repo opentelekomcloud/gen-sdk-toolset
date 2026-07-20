@@ -1,4 +1,4 @@
-from tools.scanner.parsers.docutils.example import infer_top_level_wrappers
+from tools.scanner.parsers.docutils.example import infer_documented_example_nesting
 from tools.scanner.parsers.docutils.table import TableExtraction
 from tools.shared.ir import Example, Parameter, ParameterType, Section, SectionName
 
@@ -35,7 +35,7 @@ def test_reuses_documented_wrapper_from_another_table() -> None:
     body = _table(name, description)
     labels = {}
 
-    infer_top_level_wrappers(
+    infer_documented_example_nesting(
         {SectionName.BODY: body},
         {"widget": wrapper},
         _request_example({"widget": {"name": "demo"}}),
@@ -53,7 +53,7 @@ def test_moves_sibling_fields_under_existing_wrapper() -> None:
     body = _table(wrapper, name)
     labels = {}
 
-    infer_top_level_wrappers(
+    infer_documented_example_nesting(
         {SectionName.BODY: body},
         {},
         _request_example({"widget": {"name": "demo"}}),
@@ -68,7 +68,7 @@ def test_does_not_invent_wrapper_from_example() -> None:
     name = Parameter(name="name", param_type=ParameterType.STRING)
     body = _table(name)
 
-    infer_top_level_wrappers(
+    infer_documented_example_nesting(
         {SectionName.BODY: body},
         {},
         _request_example({"widget": {"name": "demo"}}),
@@ -84,7 +84,7 @@ def test_promotes_documented_array_when_example_confirms_object_items() -> None:
     response = _table(wrapper, name)
     labels = {}
 
-    infer_top_level_wrappers(
+    infer_documented_example_nesting(
         {SectionName.RESPONSE: response},
         {},
         {
@@ -99,3 +99,40 @@ def test_promotes_documented_array_when_example_confirms_object_items() -> None:
     assert response.parameters == [wrapper]
     assert wrapper.param_type is ParameterType.ARRAY_OF_OBJECTS
     assert labels[SectionName.RESPONSE]["widgets"].parameters == [name]
+
+
+def test_groups_documented_array_children_inside_undocumented_json_wrapper() -> None:
+    identifier = Parameter(name="id", param_type=ParameterType.STRING)
+    links = Parameter(name="links", param_type=ParameterType.ARRAY)
+    href = Parameter(name="href", param_type=ParameterType.STRING)
+    rel = Parameter(name="rel", param_type=ParameterType.STRING)
+    status = Parameter(name="status", param_type=ParameterType.STRING)
+    response = _table(identifier, links, href, rel, status)
+    labels = {}
+
+    infer_documented_example_nesting(
+        {SectionName.RESPONSE: response},
+        {},
+        {
+            SectionName.EXAMPLE_RESPONSE: Section(
+                name=SectionName.EXAMPLE_RESPONSE,
+                examples=[
+                    Example(
+                        raw="",
+                        parsed={
+                            "version": {
+                                "id": "v2",
+                                "links": [{"href": "/v2", "rel": "self"}],
+                                "status": "CURRENT",
+                            }
+                        },
+                    )
+                ],
+            )
+        },
+        labels,
+    )
+
+    assert response.parameters == [identifier, links, status]
+    assert links.param_type is ParameterType.ARRAY_OF_OBJECTS
+    assert labels[SectionName.RESPONSE]["links"].parameters == [href, rel]
