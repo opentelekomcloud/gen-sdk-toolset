@@ -9,7 +9,6 @@ from docutils import nodes
 from tools.shared.ir import (
     HttpMethod,
     Parameter,
-    ParameterType,
     Section,
     SectionName,
 )
@@ -28,7 +27,7 @@ from .example import (
 )
 from .inference import infer_documented_example_nesting
 from .nesting import resolve_nested
-from .patterns import URI_PLACEHOLDER_RE
+from .path import reconcile_path_parameters
 from .references import ReferenceRegistry, document_id
 from .section import (
     SectionKind,
@@ -78,7 +77,15 @@ class _SectionRouter:
         if context is not None:
             extraction.references.add_repository_tables(context.tables)
         self._collect_section_data(doctree, extraction, context=context)
-        _reconcile_path_parameters(uri, extraction)
+        path_issues = reconcile_path_parameters(
+            uri,
+            extraction.primary_tables,
+            extraction.wrapper_candidates,
+        )
+        if path_issues:
+            extraction.routing_issues.setdefault(
+                SectionName.PATH_PARAMS, []
+            ).extend(path_issues)
         infer_documented_example_nesting(
             extraction.primary_tables,
             extraction.wrapper_candidates,
@@ -292,79 +299,6 @@ def _complete_sections(sections: dict[SectionName, Section]) -> list[Section]:
             ),
         )
     return [sections[name] for name in SectionName]
-
-
-def _reconcile_path_parameters(uri: str, extraction: _SectionExtraction) -> None:
-    placeholders = list(dict.fromkeys(URI_PLACEHOLDER_RE.findall(uri)))
-    source = extraction.primary_tables.get(SectionName.PATH_PARAMS)
-    if source is None and not placeholders:
-        return
-
-    documented = (
-        {parameter.name: parameter for parameter in source.parameters} if source else {}
-    )
-    placeholder_names = set(placeholders)
-    for name, parameter in documented.items():
-        if name not in placeholder_names:
-            extraction.wrapper_candidates.setdefault(name, parameter)
-    extraction.primary_tables[SectionName.PATH_PARAMS] = _path_extraction(
-        placeholders,
-        documented,
-        source,
-    )
-    issues = _path_parameter_issues(uri, placeholders, documented)
-    if issues:
-        extraction.routing_issues.setdefault(SectionName.PATH_PARAMS, []).extend(issues)
-
-
-def _path_extraction(
-    placeholders: list[str],
-    documented: dict[str, Parameter],
-    source: TableExtraction | None,
-) -> TableExtraction:
-    parameters = [
-        Parameter(
-            name=name,
-            param_type=ParameterType.STRING,
-            mandatory=True,
-            description=documented[name].description if name in documented else "",
-        )
-        for name in placeholders
-    ]
-    return TableExtraction(
-        parameters=parameters,
-        ref_anchors=[None] * len(parameters),
-        issues=(
-            [
-                issue
-                for issue in source.issues
-                if issue.code is not IssueCode.UNKNOWN_TYPE_FORMAT
-            ]
-            if source
-            else []
-        ),
-        fields_total=len(parameters),
-        fields_recognized=len(parameters),
-        fields_unknown_type=0,
-        fields_failed=0,
-    )
-
-
-def _path_parameter_issues(
-    uri: str,
-    placeholders: list[str],
-    documented: dict[str, Parameter],
-) -> list[Issue]:
-    placeholder_names = set(placeholders)
-    return [
-        Issue(
-            code=IssueCode.PATH_PARAMETER_NOT_IN_URI,
-            location=name,
-            details=uri,
-        )
-        for name in documented
-        if name not in placeholder_names
-    ]
 
 
 def _add_unmapped_table_issue(
