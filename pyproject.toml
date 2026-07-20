@@ -22,6 +22,8 @@ dev = [
     "pytest>=9,<10",
     "ruff>=0.15",
     "import-linter>=2.0",
+    "pytest-cov>=6,<8",
+    "diff-cover[toml]>=9,<10",
 ]
 panel = ["fastapi", "sqlalchemy>=2.0", "alembic", "uvicorn"]
 
@@ -37,6 +39,12 @@ type = "forbidden"
 source_modules = ["tools.domain"]
 forbidden_modules = ["tools.scanner"]
 
+[[tool.importlinter.contracts]]
+name = "shared is a leaf (imports nothing internal)"
+type = "forbidden"
+source_modules = ["tools.shared"]
+forbidden_modules = ["tools.domain", "tools.scanner", "tools.panel"]
+
 [tool.ruff]
 line-length = 88
 target-version = "py310"
@@ -47,6 +55,21 @@ select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["tools"]
+
+[tool.coverage.report]
+fail_under = 75
+precision = 2
+show_missing = true
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+[tool.diff_cover]
+fail_under = 80
 
 [project.scripts]
 gen-sdk-scan = "tools.scanner.main:main"

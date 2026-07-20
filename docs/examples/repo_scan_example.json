@@ -1,0 +1,2433 @@
+{
+  "repository": {
+    "kind": "service",
+    "repo": "opentelekomcloud-docs/anti-ddos",
+    "documents": [
+      {
+        "kind": "document",
+        "path": "api-ref/source/api/alarm_reminding_apis/index.rst",
+        "title": "Alarm Reminding APIs",
+        "scan_result": {
+          "failure_reason": null
+        }
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/alarm_reminding_apis/querying_alarm_configuration.rst",
+        "title": "Querying Alarm Configuration",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "GET",
+        "uri": "/v2/{project_id}/warnalert/alertconfig/query",
+        "api_version": "v2",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "GET /v2/67641fe6886f43fcb78edbbf0ad0b99f/warnalert/alertconfig/query",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n   \"warn_config\":    {\n      \"antiDDoS\": true,\n      \"bruce_force\": false,\n      \"remote_login\": false,\n      \"weak_password\": false,\n      \"high_privilege\": false,\n      \"back_doors\": false,\n      \"waf\": false\n   },\n   \"topic_urn\": \"urn:smn:eu-de:67641fe6886f43fcb78edbbf0ad0b99f:test_soft\",\n   \"display_name\": \"group_1\"\n}",
+                "language": null,
+                "parsed": {
+                  "warn_config": {
+                    "antiDDoS": true,
+                    "bruce_force": false,
+                    "remote_login": false,
+                    "weak_password": false,
+                    "high_privilege": false,
+                    "back_doors": false,
+                    "waf": false
+                  },
+                  "topic_urn": "urn:smn:eu-de:67641fe6886f43fcb78edbbf0ad0b99f:test_soft",
+                  "display_name": "group_1"
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/alarm_reminding_apis/updating_alarm_configuration.rst",
+        "title": "Updating Alarm Configuration",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "POST",
+        "uri": "/v2/{project_id}/warnalert/alertconfig/update",
+        "api_version": "v2",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n   \"warn_config\":    {\n      \"antiDDoS\": true,\n      \"bruce_force\": false,\n      \"remote_login\": false,\n      \"weak_password\": false,\n      \"high_privilege\": false,\n      \"back_doors\": false,\n      \"waf\": false\n   },\n   \"topic_urn\": \"urn:smn:eu-de:67641fe6886f43fcb78edbbf0ad0b99f:test_soft\",\n   \"display_name\": \"group_1\"\n}",
+                "language": null,
+                "parsed": {
+                  "warn_config": {
+                    "antiDDoS": true,
+                    "bruce_force": false,
+                    "remote_login": false,
+                    "weak_password": false,
+                    "high_privilege": false,
+                    "back_doors": false,
+                    "waf": false
+                  },
+                  "topic_urn": "urn:smn:eu-de:67641fe6886f43fcb78edbbf0ad0b99f:test_soft",
+                  "display_name": "group_1"
+                },
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n  \"error_code\" : \"10000000\",\n  \"error_msg\" : \"Ok\",\n  \"task_id\" : \"\"\n}",
+                "language": null,
+                "parsed": {
+                  "error_code": "10000000",
+                  "error_msg": "Ok",
+                  "task_id": ""
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/configuring_the_default_protection_policy_for_newly_purchased_public_ip_addresses.rst",
+        "title": "Configuring the Default Protection Policy for Newly Purchased Public IP Addresses",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "POST",
+        "uri": "/v1/{project_id}/antiddos/default-config",
+        "api_version": "v1",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [
+              {
+                "name": "enable_L7",
+                "param_type": "Boolean",
+                "mandatory": true,
+                "description": "Whether to enable layer-7 protection.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "traffic_pos_id",
+                "param_type": "Integer",
+                "mandatory": true,
+                "description": "Position ID of traffic. The value ranges from 1 to 9, or 99, or 33 to 36.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "http_request_pos_id",
+                "param_type": "Integer",
+                "mandatory": true,
+                "description": "Position ID of number of HTTP requests. The value ranges from 1 to 15 and 33 to 36.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "cleaning_access_pos_id",
+                "param_type": "Integer",
+                "mandatory": true,
+                "description": "Position ID of access limit during cleaning. The value ranges from 1 to 8, or 99, or 33 to 36.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "app_type_id",
+                "param_type": "Integer",
+                "mandatory": true,
+                "description": "Application type ID. Possible values:\n\n0\n\n1",
+                "children": [],
+                "type_name": null
+              }
+            ],
+            "examples": [],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 5,
+              "fields_recognized": 5,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "POST /v1/67641fe6886f43fcb78edbbf0ad0b99f/antiddos/default-config",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              },
+              {
+                "raw": "{\n    \"enable_L7\":true,\n    \"traffic_pos_id\":1,\n    \"http_request_pos_id\":1,\n    \"cleaning_access_pos_id\":1,\n    \"app_type_id\":1\n}",
+                "language": null,
+                "parsed": {
+                  "enable_L7": true,
+                  "traffic_pos_id": 1,
+                  "http_request_pos_id": 1,
+                  "cleaning_access_pos_id": 1,
+                  "app_type_id": 1
+                },
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n    \"statusCode\": 0,\n    \"body\": null,\n    \"header\": null\n}",
+                "language": null,
+                "parsed": {
+                  "statusCode": 0,
+                  "body": null,
+                  "header": null
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/api/anti-ddos_apis/index.rst",
+        "title": "Anti-DDoS APIs",
+        "scan_result": {
+          "failure_reason": null
+        }
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/querying_a_specified_api_version.rst",
+        "title": "Querying a Specified API Version",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "GET",
+        "uri": "/{version_id}",
+        "api_version": null,
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "GET /v1",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n  \"version\":\n   {\n      \"id\": \"v1\",\n      \"links\": [\n        {\n          \"href\": \"https://antiddos.eu-de.otc.t-systems.com/v1/\",\n          \"rel\": \"self\"\n        }\n      ],\n      \"min_version\": \"\",\n      \"status\": \"CURRENT\",\n      \"updated\": \"2016-10-29T00:00:00Z\",\n      \"version\": \"\"\n   }\n}",
+                "language": null,
+                "parsed": {
+                  "version": {
+                    "id": "v1",
+                    "links": [
+                      {
+                        "href": "https://antiddos.eu-de.otc.t-systems.com/v1/",
+                        "rel": "self"
+                      }
+                    ],
+                    "min_version": "",
+                    "status": "CURRENT",
+                    "updated": "2016-10-29T00:00:00Z",
+                    "version": ""
+                  }
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/api/anti-ddos_apis/querying_all_api_versions.rst",
+        "title": "Querying All API Versions",
+        "scan_result": {
+          "failure_reason": {
+            "code": "no_uri_match",
+            "location": null,
+            "details": "No 'METHOD /path' line found in api-ref/source/api/anti-ddos_apis/querying_all_api_versions.rst"
+          }
+        }
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/querying_anti-ddos_tasks.rst",
+        "title": "Querying Anti-DDoS Tasks",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "GET",
+        "uri": "/v1/{project_id}/query_task_status",
+        "api_version": "v1",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [
+              {
+                "name": "task_id",
+                "param_type": "String",
+                "mandatory": true,
+                "description": "Task ID (nonnegative integer) character string",
+                "children": [],
+                "type_name": null
+              }
+            ],
+            "examples": [],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 1,
+              "fields_recognized": 1,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "GET /v1/67641fe6886f43fcb78edbbf0ad0b99f/query_task_status?task_id=4a4fefe7-34a1-40e2-a87c-16932af3ac4a",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n   \"task_status\": \"running\",\n   \"task_msg\": \"\"\n}",
+                "language": null,
+                "parsed": {
+                  "task_status": "running",
+                  "task_msg": ""
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/querying_configured_anti-ddos_defense_policies.rst",
+        "title": "Querying Configured Anti-DDoS Defense Policies",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "GET",
+        "uri": "/v1/{project_id}/antiddos/{floating_ip_id}",
+        "api_version": "v1",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [
+              {
+                "name": "enable_L7",
+                "param_type": "Boolean",
+                "mandatory": false,
+                "description": "Whether L7 defense has been enabled.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "traffic_pos_id",
+                "param_type": "Integer",
+                "mandatory": false,
+                "description": "Position ID of traffic. The value ranges from 1 to 9, or 99, or 33 to 36.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "http_request_pos_id",
+                "param_type": "Integer",
+                "mandatory": false,
+                "description": "Position ID of number of HTTP requests. The value ranges from 1 to 15 and 33 to 36.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "cleaning_access_pos_id",
+                "param_type": "Integer",
+                "mandatory": false,
+                "description": "Position ID of access limit during cleaning. The value ranges from 1 to 8, or 99, or 33 to 36.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "app_type_id",
+                "param_type": "Integer",
+                "mandatory": false,
+                "description": "Application type ID. Possible values:\n\n0\n\n1",
+                "children": [],
+                "type_name": null
+              }
+            ],
+            "examples": [],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 5,
+              "fields_recognized": 5,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "GET /v1/67641fe6886f43fcb78edbbf0ad0b99f/antiddos/1df977c2-fdc6-4483-bc1c-ba46829f57b8",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n   \"enable_L7\": true,\n   \"traffic_pos_id\": 1,\n   \"http_request_pos_id\": 1,\n   \"cleaning_access_pos_id\": 1,\n   \"app_type_id\": 1\n}",
+                "language": null,
+                "parsed": {
+                  "enable_L7": true,
+                  "traffic_pos_id": 1,
+                  "http_request_pos_id": 1,
+                  "cleaning_access_pos_id": 1,
+                  "app_type_id": 1
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/querying_events_of_a_specified_eip.rst",
+        "title": "Querying Events of a Specified EIP",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "GET",
+        "uri": "/v1/{project_id}/antiddos/{floating_ip_id}/logs",
+        "api_version": "v1",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [
+              {
+                "name": "limit",
+                "param_type": "Integer",
+                "mandatory": false,
+                "description": "Limit of number of returned results or the maximum number of returned results of a query. The value ranges from 1 to 100, and this parameter is used together with the offset parameter.\n\nIf neither limit nor offset is used, query results of all ECSs are returned.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "offset",
+                "param_type": "Integer",
+                "mandatory": false,
+                "description": "Offset. This parameter is valid only when used together with the limit parameter.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "sort_dir",
+                "param_type": "String",
+                "mandatory": false,
+                "description": "Possible values:\n\ndesc: indicates that query results are given and sorted by time in descending order.\n\nasc: indicates that query results are given and sorted by time in ascending order.\n\nThe default value is desc.",
+                "children": [],
+                "type_name": null
+              }
+            ],
+            "examples": [],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 3,
+              "fields_recognized": 3,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "GET /v1/67641fe6886f43fcb78edbbf0ad0b99f/antiddos/1df977c2-fdc6-4483-bc1c-ba46829f57b8/logs",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n   \"total\": 1,\n   \"logs\": [\n      {\n         \"start_time\": 1473217200000,\n         \"end_time\": 1473242400000,\n         \"status\": 1,\n         \"trigger_bps\": 51106,\n         \"trigger_pps\": 2600,\n         \"trigger_http_pps\": 3589\n      }\n   ]\n}",
+                "language": null,
+                "parsed": {
+                  "total": 1,
+                  "logs": [
+                    {
+                      "start_time": 1473217200000,
+                      "end_time": 1473242400000,
+                      "status": 1,
+                      "trigger_bps": 51106,
+                      "trigger_pps": 2600,
+                      "trigger_http_pps": 3589
+                    }
+                  ]
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/querying_optional_anti-ddos_defense_policies.rst",
+        "title": "Querying Optional Anti-DDoS Defense Policies",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "GET",
+        "uri": "/v1/{project_id}/antiddos/query_config_list",
+        "api_version": "v1",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "GET /v1/67641fe6886f43fcb78edbbf0ad0b99f/antiddos/query_config_list",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n  \"traffic_limited_list\": [\n    {\n      \"traffic_pos_id\": 1,\n      \"traffic_per_second\": 10,\n      \"packet_per_second\": 2000\n    },\n    {\n      \"traffic_pos_id\": 2,\n      \"traffic_per_second\": 30,\n      \"packet_per_second\": 6000\n    },\n    {\n      \"traffic_pos_id\": 3,\n      \"traffic_per_second\": 50,\n      \"packet_per_second\": 10000\n    },\n    {\n      \"traffic_pos_id\": 4,\n      \"traffic_per_second\": 70,\n      \"packet_per_second\": 15000\n    },\n    {\n      \"traffic_pos_id\": 5,\n      \"traffic_per_second\": 100,\n      \"packet_per_second\": 20000\n    },\n    {\n      \"traffic_pos_id\": 6,\n      \"traffic_per_second\": 150,\n      \"packet_per_second\": 25000\n    },\n    {\n      \"traffic_pos_id\": 7,\n      \"traffic_per_second\": 200,\n      \"packet_per_second\": 35000\n    },\n    {\n      \"traffic_pos_id\": 8,\n      \"traffic_per_second\": 250,\n      \"packet_per_second\": 50000\n    },\n    {\n      \"traffic_pos_id\": 9,\n      \"traffic_per_second\": 300,\n      \"packet_per_second\": 70000\n    }\n  ],\n  \"http_limited_list\": [\n    {\n      \"http_request_pos_id\": 1,\n      \"http_packet_per_second\": 100\n    },\n    {\n      \"http_request_pos_id\": 2,\n      \"http_packet_per_second\": 150\n    },\n    {\n      \"http_request_pos_id\": 3,\n      \"http_packet_per_second\": 240\n    },\n    {\n      \"http_request_pos_id\": 4,\n      \"http_packet_per_second\": 350\n    },\n    {\n      \"http_request_pos_id\": 5,\n      \"http_packet_per_second\": 480\n    },\n    {\n      \"http_request_pos_id\": 6,\n      \"http_packet_per_second\": 550\n    },\n    {\n      \"http_request_pos_id\": 7,\n      \"http_packet_per_second\": 700\n    },\n    {\n      \"http_request_pos_id\": 8,\n      \"http_packet_per_second\": 850\n    },\n    {\n      \"http_request_pos_id\": 9,\n      \"http_packet_per_second\": 1000\n    },\n    {\n      \"http_request_pos_id\": 10,\n      \"http_packet_per_second\": 1500\n    },\n    {\n      \"http_request_pos_id\": 11,\n      \"http_packet_per_second\": 2000\n    },\n    {\n      \"http_request_pos_id\": 12,\n      \"http_packet_per_second\": 3000\n    },\n    {\n      \"http_request_pos_id\": 13,\n      \"http_packet_per_second\": 5000\n    },\n    {\n      \"http_request_pos_id\": 14,\n      \"http_packet_per_second\": 10000\n    },\n    {\n      \"http_request_pos_id\": 15,\n      \"http_packet_per_second\": 20000\n    }\n  ],\n  \"connection_limited_list\": [\n    {\n      \"cleaning_access_pos_id\": 1,\n      \"new_connection_limited\": 10,\n      \"total_connection_limited\": 30\n    },\n    {\n      \"cleaning_access_pos_id\": 2,\n      \"new_connection_limited\": 20,\n      \"total_connection_limited\": 100\n    },\n    {\n      \"cleaning_access_pos_id\": 3,\n      \"new_connection_limited\": 30,\n      \"total_connection_limited\": 200\n    },\n    {\n      \"cleaning_access_pos_id\": 4,\n      \"new_connection_limited\": 40,\n      \"total_connection_limited\": 250\n    },\n    {\n      \"cleaning_access_pos_id\": 5,\n      \"new_connection_limited\": 50,\n      \"total_connection_limited\": 300\n    },\n    {\n      \"cleaning_access_pos_id\": 6,\n      \"new_connection_limited\": 60,\n      \"total_connection_limited\": 500\n    },\n    {\n      \"cleaning_access_pos_id\": 7,\n      \"new_connection_limited\": 70,\n      \"total_connection_limited\": 600\n    },\n    {\n      \"cleaning_access_pos_id\": 8,\n      \"new_connection_limited\": 80,\n      \"total_connection_limited\": 700\n    }\n  ],\n  \"extend_ddos_config\": [\n    {\n      \"new_connection_limited\": 80,\n      \"total_connection_limited\": 700,\n      \"http_packet_per_second\": 500000,\n      \"traffic_per_second\": 1000,\n      \"packet_per_second\": 200000,\n      \"setID\": 33\n    },\n    {\n      \"new_connection_limited\": 80,\n      \"total_connection_limited\": 700,\n      \"http_packet_per_second\": 500000,\n      \"traffic_per_second\": 2000,\n      \"packet_per_second\": 200000,\n      \"setID\": 34\n    },\n    {\n      \"new_connection_limited\": 80,\n      \"total_connection_limited\": 700,\n      \"http_packet_per_second\": 500000,\n      \"traffic_per_second\": 5000,\n      \"packet_per_second\": 400000,\n      \"setID\": 35\n    },\n    {\n      \"new_connection_limited\": 80,\n      \"total_connection_limited\": 700,\n      \"http_packet_per_second\": 0,\n      \"traffic_per_second\": 0,\n      \"packet_per_second\": 0,\n      \"setID\": 36\n    }\n  ]\n}",
+                "language": null,
+                "parsed": {
+                  "traffic_limited_list": [
+                    {
+                      "traffic_pos_id": 1,
+                      "traffic_per_second": 10,
+                      "packet_per_second": 2000
+                    },
+                    {
+                      "traffic_pos_id": 2,
+                      "traffic_per_second": 30,
+                      "packet_per_second": 6000
+                    },
+                    {
+                      "traffic_pos_id": 3,
+                      "traffic_per_second": 50,
+                      "packet_per_second": 10000
+                    },
+                    {
+                      "traffic_pos_id": 4,
+                      "traffic_per_second": 70,
+                      "packet_per_second": 15000
+                    },
+                    {
+                      "traffic_pos_id": 5,
+                      "traffic_per_second": 100,
+                      "packet_per_second": 20000
+                    },
+                    {
+                      "traffic_pos_id": 6,
+                      "traffic_per_second": 150,
+                      "packet_per_second": 25000
+                    },
+                    {
+                      "traffic_pos_id": 7,
+                      "traffic_per_second": 200,
+                      "packet_per_second": 35000
+                    },
+                    {
+                      "traffic_pos_id": 8,
+                      "traffic_per_second": 250,
+                      "packet_per_second": 50000
+                    },
+                    {
+                      "traffic_pos_id": 9,
+                      "traffic_per_second": 300,
+                      "packet_per_second": 70000
+                    }
+                  ],
+                  "http_limited_list": [
+                    {
+                      "http_request_pos_id": 1,
+                      "http_packet_per_second": 100
+                    },
+                    {
+                      "http_request_pos_id": 2,
+                      "http_packet_per_second": 150
+                    },
+                    {
+                      "http_request_pos_id": 3,
+                      "http_packet_per_second": 240
+                    },
+                    {
+                      "http_request_pos_id": 4,
+                      "http_packet_per_second": 350
+                    },
+                    {
+                      "http_request_pos_id": 5,
+                      "http_packet_per_second": 480
+                    },
+                    {
+                      "http_request_pos_id": 6,
+                      "http_packet_per_second": 550
+                    },
+                    {
+                      "http_request_pos_id": 7,
+                      "http_packet_per_second": 700
+                    },
+                    {
+                      "http_request_pos_id": 8,
+                      "http_packet_per_second": 850
+                    },
+                    {
+                      "http_request_pos_id": 9,
+                      "http_packet_per_second": 1000
+                    },
+                    {
+                      "http_request_pos_id": 10,
+                      "http_packet_per_second": 1500
+                    },
+                    {
+                      "http_request_pos_id": 11,
+                      "http_packet_per_second": 2000
+                    },
+                    {
+                      "http_request_pos_id": 12,
+                      "http_packet_per_second": 3000
+                    },
+                    {
+                      "http_request_pos_id": 13,
+                      "http_packet_per_second": 5000
+                    },
+                    {
+                      "http_request_pos_id": 14,
+                      "http_packet_per_second": 10000
+                    },
+                    {
+                      "http_request_pos_id": 15,
+                      "http_packet_per_second": 20000
+                    }
+                  ],
+                  "connection_limited_list": [
+                    {
+                      "cleaning_access_pos_id": 1,
+                      "new_connection_limited": 10,
+                      "total_connection_limited": 30
+                    },
+                    {
+                      "cleaning_access_pos_id": 2,
+                      "new_connection_limited": 20,
+                      "total_connection_limited": 100
+                    },
+                    {
+                      "cleaning_access_pos_id": 3,
+                      "new_connection_limited": 30,
+                      "total_connection_limited": 200
+                    },
+                    {
+                      "cleaning_access_pos_id": 4,
+                      "new_connection_limited": 40,
+                      "total_connection_limited": 250
+                    },
+                    {
+                      "cleaning_access_pos_id": 5,
+                      "new_connection_limited": 50,
+                      "total_connection_limited": 300
+                    },
+                    {
+                      "cleaning_access_pos_id": 6,
+                      "new_connection_limited": 60,
+                      "total_connection_limited": 500
+                    },
+                    {
+                      "cleaning_access_pos_id": 7,
+                      "new_connection_limited": 70,
+                      "total_connection_limited": 600
+                    },
+                    {
+                      "cleaning_access_pos_id": 8,
+                      "new_connection_limited": 80,
+                      "total_connection_limited": 700
+                    }
+                  ],
+                  "extend_ddos_config": [
+                    {
+                      "new_connection_limited": 80,
+                      "total_connection_limited": 700,
+                      "http_packet_per_second": 500000,
+                      "traffic_per_second": 1000,
+                      "packet_per_second": 200000,
+                      "setID": 33
+                    },
+                    {
+                      "new_connection_limited": 80,
+                      "total_connection_limited": 700,
+                      "http_packet_per_second": 500000,
+                      "traffic_per_second": 2000,
+                      "packet_per_second": 200000,
+                      "setID": 34
+                    },
+                    {
+                      "new_connection_limited": 80,
+                      "total_connection_limited": 700,
+                      "http_packet_per_second": 500000,
+                      "traffic_per_second": 5000,
+                      "packet_per_second": 400000,
+                      "setID": 35
+                    },
+                    {
+                      "new_connection_limited": 80,
+                      "total_connection_limited": 700,
+                      "http_packet_per_second": 0,
+                      "traffic_per_second": 0,
+                      "packet_per_second": 0,
+                      "setID": 36
+                    }
+                  ]
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/querying_the_default_protection_policy_configured_for_the_newly_purchased_public_ip_addresses.rst",
+        "title": "Querying the Default Protection Policy Configured for the Newly Purchased Public IP Addresses",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "GET",
+        "uri": "/v1/{project_id}/antiddos/default-config",
+        "api_version": "v1",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "GET /v1/67641fe6886f43fcb78edbbf0ad0b99f/antiddos/default-config",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n    \"enable_L7\":true,\n    \"traffic_pos_id\":1,\n    \"http_request_pos_id\":1,\n    \"cleaning_access_pos_id\":1,\n    \"app_type_id\":1\n}",
+                "language": null,
+                "parsed": {
+                  "enable_L7": true,
+                  "traffic_pos_id": 1,
+                  "http_request_pos_id": 1,
+                  "cleaning_access_pos_id": 1,
+                  "app_type_id": 1
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/querying_the_defense_status_of_a_specified_eip.rst",
+        "title": "Querying the Defense Status of a Specified EIP",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "GET",
+        "uri": "/v1/{project_id}/antiddos/{floating_ip_id}/status",
+        "api_version": "v1",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "GET /v1/67641fe6886f43fcb78edbbf0ad0b99f/antiddos/1df977c2-fdc6-4483-bc1c-ba46829f57b8/status",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\"status\": \"normal\"}",
+                "language": null,
+                "parsed": {
+                  "status": "normal"
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/querying_the_list_of_eip_defense_statuses.rst",
+        "title": "Querying the List of EIP Defense Statuses",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "GET",
+        "uri": "/v1/{project_id}/antiddos",
+        "api_version": "v1",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [
+              {
+                "name": "status",
+                "param_type": "String",
+                "mandatory": false,
+                "description": "Possible values:\n\nnormal: indicates that the defense status is normal.\n\nconfiguring: indicates that defense is being configured.\n\nnotConfig: indicates that defense is not configured.\n\npacketcleaning: indicates that traffic cleaning is underway.\n\npacketdropping: indicates that traffic is discarded.\n\nIf this parameter is not used, the defense statuses of all ECSs are displayed in the Neutron-queried order by default.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "limit",
+                "param_type": "Integer",
+                "mandatory": false,
+                "description": "Maximum number of returned results. The value ranges from 1 to 100.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "offset",
+                "param_type": "Integer",
+                "mandatory": false,
+                "description": "Offset. The value ranges from 0 to 2147483647.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "ip",
+                "param_type": "String",
+                "mandatory": false,
+                "description": "IP address. Both IPv4 and IPv6 addresses are supported. For example, if you enter ?ip=192.168, the defense status of EIPs corresponding to 192.168.111.1 and 10.192.168.8 is returned.",
+                "children": [],
+                "type_name": null
+              }
+            ],
+            "examples": [],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 4,
+              "fields_recognized": 4,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "GET /v1/67641fe6886f43fcb78edbbf0ad0b99f/antiddos?status=packetdropping",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n   \"total\": 5,\n   \"ddosStatus\": [\n      {\n         \"floating_ip_id\": \"1867f954-fc11-4202-8247-6af2144867ea\",\n         \"floating_ip_address\": \"192.168.42.221\",\n         \"network_type\": \"EIP\",\n         \"status\": \"notConfig\"\n      },\n      {\n         \"floating_ip_id\": \"49c6af49-9ace-42e6-ab89-1eee1f4ac821\",\n         \"floating_ip_address\": \"192.168.35.152\",\n         \"network_type\": \"EIP\",\n         \"status\": \"normal\"\n      },\n      {\n         \"floating_ip_id\": \"7a8dc957-083b-499d-b7cf-6fa48f4880c5\",\n         \"floating_ip_address\": \"192.168.42.222\",\n         \"network_type\": \"EIP\",\n         \"status\": \"notConfig\"\n      },\n      {\n         \"floating_ip_id\": \"7c6676a0-b281-4163-9d0d-cb6485ae9860\",\n         \"floating_ip_address\": \"192.168.44.69\",\n         \"network_type\": \"EIP\",\n         \"status\": \"normal\"\n      },\n      {\n         \"floating_ip_id\": \"969c1d48-6a92-4ef1-b66c-b17c7e7d7ce7\",\n         \"floating_ip_address\": \"192.168.47.192\",\n         \"network_type\": \"EIP\",\n         \"status\": \"notConfig\"\n      }\n   ]\n}",
+                "language": null,
+                "parsed": {
+                  "total": 5,
+                  "ddosStatus": [
+                    {
+                      "floating_ip_id": "1867f954-fc11-4202-8247-6af2144867ea",
+                      "floating_ip_address": "192.168.42.221",
+                      "network_type": "EIP",
+                      "status": "notConfig"
+                    },
+                    {
+                      "floating_ip_id": "49c6af49-9ace-42e6-ab89-1eee1f4ac821",
+                      "floating_ip_address": "192.168.35.152",
+                      "network_type": "EIP",
+                      "status": "normal"
+                    },
+                    {
+                      "floating_ip_id": "7a8dc957-083b-499d-b7cf-6fa48f4880c5",
+                      "floating_ip_address": "192.168.42.222",
+                      "network_type": "EIP",
+                      "status": "notConfig"
+                    },
+                    {
+                      "floating_ip_id": "7c6676a0-b281-4163-9d0d-cb6485ae9860",
+                      "floating_ip_address": "192.168.44.69",
+                      "network_type": "EIP",
+                      "status": "normal"
+                    },
+                    {
+                      "floating_ip_id": "969c1d48-6a92-4ef1-b66c-b17c7e7d7ce7",
+                      "floating_ip_address": "192.168.47.192",
+                      "network_type": "EIP",
+                      "status": "notConfig"
+                    }
+                  ]
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/querying_the_traffic_of_a_specified_eip.rst",
+        "title": "Querying the Traffic of a Specified EIP",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "GET",
+        "uri": "/v1/{project_id}/antiddos/{floating_ip_id}/daily",
+        "api_version": "v1",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "GET /v1/67641fe6886f43fcb78edbbf0ad0b99f/antiddos/1df977c2-fdc6-4483-bc1c-ba46829f57b8/daily",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\"data\": [\n      {\n      \"period_start\": 1472713370609,\n      \"bps_in\": 0,\n      \"bps_attack\": 0,\n      \"total_bps\": 0,\n      \"pps_in\": 0,\n      \"pps_attack\": 0,\n      \"total_pps\": 0\n   },\n\n\n   ...\n\n\n      {\n      \"period_start\": 1472713670609,\n      \"bps_in\": 0,\n      \"bps_attack\": 0,\n      \"total_bps\": 0,\n      \"pps_in\": 0,\n      \"pps_attack\": 0,\n      \"total_pps\": 0\n   }]\n}",
+                "language": null,
+                "parsed": null,
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example response"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/querying_weekly_defense_statistics.rst",
+        "title": "Querying Weekly Defense Statistics",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "GET",
+        "uri": "/v1/{project_id}/antiddos/weekly",
+        "api_version": "v1",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [
+              {
+                "name": "period_start_date",
+                "param_type": "String",
+                "mandatory": false,
+                "description": "Start date of a seven-day period",
+                "children": [],
+                "type_name": null
+              }
+            ],
+            "examples": [],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 1,
+              "fields_recognized": 1,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "GET /v1/67641fe6886f43fcb78edbbf0ad0b99f/antiddos/weekly?period_start_date=1006510306",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n   \"ddos_intercept_times\": 23,\n   \"weekdata\": [\n      {\n         \"ddos_intercept_times\": 0,\n         \"ddos_blackhole_times\": 0,\n         \"max_attack_bps\": 0,\n         \"max_attack_conns\": 0,\n         \"period_start_date\": 1474214461651\n      },\n      {\n         \"ddos_intercept_times\": 0,\n         \"ddos_blackhole_times\": 0,\n         \"max_attack_bps\": 0,\n         \"max_attack_conns\": 0,\n         \"period_start_date\": 1474300861651\n      },\n      {\n         \"ddos_intercept_times\": 0,\n         \"ddos_blackhole_times\": 0,\n         \"max_attack_bps\": 0,\n         \"max_attack_conns\": 0,\n         \"period_start_date\": 1474387261651\n      },\n      {\n         \"ddos_intercept_times\": 0,\n         \"ddos_blackhole_times\": 0,\n         \"max_attack_bps\": 0,\n         \"max_attack_conns\": 0,\n         \"period_start_date\": 1474473661651\n      },\n      {\n         \"ddos_intercept_times\": 0,\n         \"ddos_blackhole_times\": 0,\n         \"max_attack_bps\": 0,\n         \"max_attack_conns\": 0,\n         \"period_start_date\": 1474560061651\n      },\n      {\n         \"ddos_intercept_times\": 2,\n         \"ddos_blackhole_times\": 0,\n         \"max_attack_bps\": 16375,\n         \"max_attack_conns\": 0,\n         \"period_start_date\": 1474646461651\n      },\n      {\n         \"ddos_intercept_times\": 1,\n         \"ddos_blackhole_times\": 0,\n         \"max_attack_bps\": 0,\n         \"max_attack_conns\": 0,\n         \"period_start_date\": 1474732861651\n      }\n   ],\n   \"top10\": [\n      {\n         \"floating_ip_address\": \"192.168.44.69\",\n         \"times\": 23\n      }\n   ]\n}",
+                "language": null,
+                "parsed": {
+                  "ddos_intercept_times": 23,
+                  "weekdata": [
+                    {
+                      "ddos_intercept_times": 0,
+                      "ddos_blackhole_times": 0,
+                      "max_attack_bps": 0,
+                      "max_attack_conns": 0,
+                      "period_start_date": 1474214461651
+                    },
+                    {
+                      "ddos_intercept_times": 0,
+                      "ddos_blackhole_times": 0,
+                      "max_attack_bps": 0,
+                      "max_attack_conns": 0,
+                      "period_start_date": 1474300861651
+                    },
+                    {
+                      "ddos_intercept_times": 0,
+                      "ddos_blackhole_times": 0,
+                      "max_attack_bps": 0,
+                      "max_attack_conns": 0,
+                      "period_start_date": 1474387261651
+                    },
+                    {
+                      "ddos_intercept_times": 0,
+                      "ddos_blackhole_times": 0,
+                      "max_attack_bps": 0,
+                      "max_attack_conns": 0,
+                      "period_start_date": 1474473661651
+                    },
+                    {
+                      "ddos_intercept_times": 0,
+                      "ddos_blackhole_times": 0,
+                      "max_attack_bps": 0,
+                      "max_attack_conns": 0,
+                      "period_start_date": 1474560061651
+                    },
+                    {
+                      "ddos_intercept_times": 2,
+                      "ddos_blackhole_times": 0,
+                      "max_attack_bps": 16375,
+                      "max_attack_conns": 0,
+                      "period_start_date": 1474646461651
+                    },
+                    {
+                      "ddos_intercept_times": 1,
+                      "ddos_blackhole_times": 0,
+                      "max_attack_bps": 0,
+                      "max_attack_conns": 0,
+                      "period_start_date": 1474732861651
+                    }
+                  ],
+                  "top10": [
+                    {
+                      "floating_ip_address": "192.168.44.69",
+                      "times": 23
+                    }
+                  ]
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "endpoint",
+        "path": "api-ref/source/api/anti-ddos_apis/updating_anti-ddos_defense_policies.rst",
+        "title": "Updating Anti-DDoS Defense Policies",
+        "scan_result": {
+          "failure_reason": null
+        },
+        "method": "PUT",
+        "uri": "/v1/{project_id}/antiddos/{floating_ip_id}",
+        "api_version": "v1",
+        "sections": [
+          {
+            "name": "path_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "query_params",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "headers",
+            "parameters": [],
+            "examples": [],
+            "scan_result": {
+              "status": "missing",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "body",
+            "parameters": [
+              {
+                "name": "enable_L7",
+                "param_type": "Boolean",
+                "mandatory": false,
+                "description": "Whether to enable L7 defense",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "traffic_pos_id",
+                "param_type": "Integer",
+                "mandatory": true,
+                "description": "Position ID of traffic. The value ranges from 1 to 9, or 99, or 33 to 36.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "http_request_pos_id",
+                "param_type": "Integer",
+                "mandatory": true,
+                "description": "Position ID of number of HTTP requests. The value ranges from 1 to 15 and 33 to 36.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "cleaning_access_pos_id",
+                "param_type": "Integer",
+                "mandatory": true,
+                "description": "Position ID of access limit during cleaning. The value ranges from 1 to 8, or 99, or 33 to 36.",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "app_type_id",
+                "param_type": "Integer",
+                "mandatory": false,
+                "description": "Application type ID. Possible values:\n\n0\n\n1",
+                "children": [],
+                "type_name": null
+              }
+            ],
+            "examples": [],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 5,
+              "fields_recognized": 5,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "response",
+            "parameters": [
+              {
+                "name": "error_code",
+                "param_type": "String",
+                "mandatory": false,
+                "description": "Internal error code",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "error_description",
+                "param_type": "String",
+                "mandatory": false,
+                "description": "Internal error description",
+                "children": [],
+                "type_name": null
+              },
+              {
+                "name": "task_id",
+                "param_type": "String",
+                "mandatory": false,
+                "description": "ID of a task. This ID can be used to query the status of the task.\n\nThis field is reserved for use in task auditing later. It is temporarily unused.",
+                "children": [],
+                "type_name": null
+              }
+            ],
+            "examples": [],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 3,
+              "fields_recognized": 3,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_request",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "PUT /v1/67641fe6886f43fcb78edbbf0ad0b99f/antiddos/ee0c854e-082f-499e-b7d8-1b42c22781af",
+                "language": null,
+                "parsed": null,
+                "label": "Example request"
+              },
+              {
+                "raw": "{\n    \"enable_L7\":false,\n    \"traffic_pos_id\":2,\n    \"http_request_pos_id\":1,\n    \"cleaning_access_pos_id\":1,\n    \"app_type_id\":1\n}",
+                "language": null,
+                "parsed": {
+                  "enable_L7": false,
+                  "traffic_pos_id": 2,
+                  "http_request_pos_id": 1,
+                  "cleaning_access_pos_id": 1,
+                  "app_type_id": 1
+                },
+                "label": "Example request"
+              }
+            ],
+            "scan_result": {
+              "status": "partial",
+              "issues": [
+                {
+                  "code": "example_invalid_json",
+                  "location": "example 1",
+                  "details": "Example request"
+                }
+              ],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          },
+          {
+            "name": "example_response",
+            "parameters": [],
+            "examples": [
+              {
+                "raw": "{\n   \"error_code\": \"10000000\",\n   \"error_description\": \"Task has been received and is being processed.\",\n   \"task_id\": \"4a4fefe7-34a1-40e2-a87c-16932af3ac4a\"\n}",
+                "language": null,
+                "parsed": {
+                  "error_code": "10000000",
+                  "error_description": "Task has been received and is being processed.",
+                  "task_id": "4a4fefe7-34a1-40e2-a87c-16932af3ac4a"
+                },
+                "label": "Example response"
+              }
+            ],
+            "scan_result": {
+              "status": "ok",
+              "issues": [],
+              "fields_total": 0,
+              "fields_recognized": 0,
+              "fields_unknown_type": 0,
+              "fields_failed": 0
+            }
+          }
+        ]
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/api/index.rst",
+        "title": "API",
+        "scan_result": {
+          "failure_reason": null
+        }
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/api_usage_guidelines.rst",
+        "title": "API Usage Guidelines",
+        "scan_result": {
+          "failure_reason": null
+        }
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/appendix/index.rst",
+        "title": "Appendix",
+        "scan_result": {
+          "failure_reason": null
+        }
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/appendix/status_code.rst",
+        "title": "Status Code",
+        "scan_result": {
+          "failure_reason": null
+        }
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/change_history.rst",
+        "title": "Change History",
+        "scan_result": {
+          "failure_reason": null
+        }
+      },
+      {
+        "kind": "document",
+        "path": "api-ref/source/index.rst",
+        "title": "Anti-DDoS - API Reference",
+        "scan_result": {
+          "failure_reason": null
+        }
+      }
+    ]
+  },
+  "branch": "8ff5254f6b7d669170bdacbdf5058e9adcfbe75f",
+  "commit_hash": "8ff5254f6b7d669170bdacbdf5058e9adcfbe75f",
+  "scanner_version": "0.1.0",
+  "excluded_documents": [],
+  "incomplete_reason": null,
+  "error": null,
+  "interruption": null
+}

@@ -20,14 +20,24 @@ class FileListing:
     truncated_reason: str | None = None
 
 
-class DocProvider(Protocol):
-    def list_repos(self, org: str) -> list[str]:
-        """Return list of repositories (full_name) belonging to an organization."""
-        ...
+class RepositoryEligibilityProvider(Protocol):
+    """Minimal provider contract required to check one repository."""
 
     def path_exists(self, repo: str, branch: str, path: str) -> bool:
         """Return True if the given path exists in the repo at the given branch."""
         ...
+
+
+class RepositoryDiscoveryProvider(RepositoryEligibilityProvider, Protocol):
+    """Provider contract required to discover repository eligibility."""
+
+    def list_repos(self, org: str) -> list[str]:
+        """Return list of repositories (full_name) belonging to an organization."""
+        ...
+
+
+class DocProvider(RepositoryDiscoveryProvider, Protocol):
+    """Full provider contract required to scan repository content."""
 
     def list_files(self, repo: str, branch: str) -> FileListing:
         """Return the RST file paths in the repo plus a truncation flag."""
@@ -35,4 +45,8 @@ class DocProvider(Protocol):
 
     def fetch_content(self, repo: str, path: str, branch: str) -> str:
         """Return the textual content of a file in the repo at the given branch."""
+        ...
+
+    def get_commit_hash(self, repo: str, branch: str) -> str | None:
+        """Return the head commit SHA of `branch`, or None if unavailable."""
         ...

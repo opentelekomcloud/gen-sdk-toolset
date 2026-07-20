@@ -23,19 +23,19 @@ import json
 
 from docutils import nodes
 
-from tools.domain.report import ExampleBlock
+from tools.shared.ir import Example
 
 from .patterns import HTTP_PREFIX_RE
 
 
-def extract_examples(section: nodes.section) -> list[ExampleBlock]:
+def extract_examples(section: nodes.section) -> list[Example]:
     """Return every code/literal block inside a section.
 
-    Each :class:`ExampleBlock` has its `label` set when the block sits
+    Each :class:`Example` has its `label` set when the block sits
     under a labelled bullet (``- Example request``), and ``None``
     otherwise.
     """
-    blocks: list[ExampleBlock] = []
+    blocks: list[Example] = []
     visited: set[int] = set()
 
     # First pass: bulleted-list layout (each bullet labels its blocks).
@@ -69,10 +69,10 @@ def _extract_item_label(item: nodes.list_item) -> str | None:
     return text or None
 
 
-def _make_example(block: nodes.literal_block, *, label: str | None) -> ExampleBlock:
+def _make_example(block: nodes.literal_block, *, label: str | None) -> Example:
     raw = block.astext()
     language = block.get("language") or None
-    return ExampleBlock(
+    return Example(
         raw=raw,
         language=language,
         parsed=_try_parse_json(raw),

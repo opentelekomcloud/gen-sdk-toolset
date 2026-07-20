@@ -7,14 +7,14 @@ and termination on cyclic input.
 
 from __future__ import annotations
 
-from tools.domain.ir import Parameter, ParameterType
-from tools.domain.report import IssueCode
 from tools.scanner.parsers.docutils.nesting import (
     RefKind,
     RefTarget,
     resolve_nested,
 )
 from tools.scanner.parsers.docutils.table import TableExtraction
+from tools.shared.ir import Parameter, ParameterType
+from tools.shared.scan import IssueCode
 
 
 def _extraction(rows: list[tuple[Parameter, str | None]]) -> TableExtraction:

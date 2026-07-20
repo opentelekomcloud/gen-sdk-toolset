@@ -61,10 +61,7 @@ docker compose down
 ```bash
 git clone git@github.com:opentelekomcloud/gen-sdk-toolset.git
 cd gen-sdk-toolset
-
-python -m venv .venv #change to uv
-source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync --extra dev
 ```
 
 ### Configuration
@@ -77,25 +74,37 @@ The scanner reads its configuration from three sources, in order of precedence:
 3. **`scan-config.toml`** in the current working directory, or a custom path
    via `--config <path>`
 
+The supported entrypoint is `uv run gen-sdk-scan`. Choose one target mode:
+
 ```bash
-# Scan with defaults from scan-config.toml; report written to scan-output.json
-gen-sdk-scan
+# Scan one repository and print one raw RepositoryScanResult (no file written)
+uv run gen-sdk-scan \
+  --repo opentelekomcloud-docs/anti-ddos \
+  --output -
 
-# Scan a different branch, write report to a custom path
-gen-sdk-scan --branch develop --output reports/develop.json
+# A branch name or a fixed commit SHA can select the snapshot
+uv run gen-sdk-scan \
+  --repo opentelekomcloud-docs/anti-ddos \
+  --branch 8ff5254f6b7d669170bdacbdf5058e9adcfbe75f \
+  --output reports/anti-ddos.json
 
-# Print the report to stdout in addition to writing it
-gen-sdk-scan --stdout
+# Run the legacy organization scan
+uv run gen-sdk-scan \
+  --org opentelekomcloud-docs \
+  --output reports/organization.json
 
-# Pipe-only output (no file written)
-gen-sdk-scan --output - | jq '.summary'
+# Write to a file and also print the same JSON to stdout
+uv run gen-sdk-scan --repo OWNER/NAME --output report.json --stdout
 
-# Use a non-default config file
-gen-sdk-scan --config configs/staging.toml
-
-# Verbose logging
-gen-sdk-scan -v
+# Use a non-default config file or enable verbose logging
+uv run gen-sdk-scan --config configs/staging.toml -v
 ```
+
+`--repo` requires exactly two non-empty components in `OWNER/NAME` form.
+`--repo` and `--org` are mutually exclusive. When the configured API reference
+path is absent, the scan succeeds with an empty result whose `repository`
+remains a plain `Repository`. A repository or ref that cannot be confirmed
+instead includes a diagnostic `error` and exits non-zero.
 
 ### Command-line flags
 
@@ -103,43 +112,56 @@ gen-sdk-scan -v
 |---|---|
 | `--config PATH` | Path to TOML config (default: `scan-config.toml`) |
 | `--output PATH` | Output JSON file path. `-` redirects to stdout instead |
-| `--org NAME` | Override `[github].org` |
-| `--branch NAME` | Override `[github].branch` |
+| `--repo OWNER/NAME` | Scan one repository and emit one `RepositoryScanResult` |
+| `--org NAME` | Run the legacy organization scan; mutually exclusive with `--repo` |
+| `--branch NAME` | Branch name or fixed commit SHA to scan |
 | `--stdout` | Also print the JSON report to stdout (in addition to the file) |
 | `-v`, `--verbose` | DEBUG-level logging |
 | `-q`, `--quiet` | WARNING-level logging |
 
 ### Output
 
-The scan produces a single JSON file structured as a *quality report*:
+Repository mode produces one raw `RepositoryScanResult`. Legacy organization mode
+produces a quality report (`report_schema_version: 1`) containing repository
+results. During MVP the schema version remains `1`; version bumps start after the
+contract is stabilized. Both forms carry **data only**: derived views
+(per-document overall status and flat issue lists) are no longer
+embedded in the JSON — they are computed by the pure functions in
+`tools.domain.report.analytics`.
 
-- **Per-document results** — for every endpoint doc encountered:
-  - `document`, `repo`, `service`, `method`, `uri`, `title`, `api_version`
-  - `failure_reason: Issue | null` — populated for gating failures (fetch
-    failed, no URI line found, unsupported doc style)
-  - `sections: dict[str, SectionResult]` — keyed by `path_params`,
-    `query_params`, `headers`, `body`, `response`, `example_request`,
-    `example_response`, `nested_objects`. Each section carries:
-    - `status` — `ok` / `partial` / `failed` / `missing` / `skipped`
-    - `issues` — structured `[{code, location, details}]` entries
-    - `parameters` — extracted `Parameter` objects
-    - `examples` — extracted `ExampleBlock` objects (raw text +
-      best-effort JSON parse)
-    - field-level metrics: `fields_total`, `fields_recognized`,
-      `fields_unknown_type`, `fields_failed`
-  - Computed fields: `overall_status` (`ok` / `partial` / `failed` /
-    `unsupported`), `completeness` (0.0–1.0), `all_issues` (flat list
-    aggregating gating + per-section issues)
+- **Repository data** is represented by `Repository` or its eligible
+  specialization `Service`. A service contains `Document` records; recognized
+  endpoint documents are represented by `Endpoint(Document)` and contain
+  their extracted `Section` records. The `kind` discriminator identifies each
+  polymorphic entity as `repository`, `service`, `document`, or `endpoint`.
+  A plain `Document` without a failure is a successfully scanned non-endpoint;
+  this classification is derived from the entity and is not stored in a
+  parallel `non_endpoint_documents` field.
 
-- **Per-repo rollups** (`RepoScanResult`):
-  - `documents`, `non_endpoint_documents`, `documents_by_version`,
-    `total_documents`, `status_counts`
+- **Scan results** are nested into the entities produced by that scan:
+  - every document carries one `DocumentScanResult` in `scan_result`;
+  - every endpoint section carries one `SectionScanResult` in `scan_result`;
+  - result payloads contain diagnostics only and do not repeat their document
+    or section;
+  - section ownership is expressed by nesting, so sections do not repeat an
+    `endpoint_path` foreign key in the JSON snapshot.
 
-- **Org-level `quality_summary`** — the headline numbers:
-  - `by_overall_status` — `{"ok": N, "partial": N, "failed": N, "unsupported": N}`
-  - `by_section_status` — distribution per section
-  - `top_issues` — most frequent issue codes across the org
-  - plus `report_schema_version: 1`
+- **Repository scan metadata**:
+  - `branch`, `commit_hash`, and `scanner_version` identify the scan;
+  - API-version counts are derived from `Service.endpoints`, not stored in a
+    parallel `documents_by_version` structure;
+  - `incomplete_reason` — set when the provider returned a truncated file tree,
+    so a partial scan is never mistaken for a clean one
+  - `error` — repo-level failure (e.g. file listing failed)
+
+- **Legacy org-level adapter** (`OrgScanResult`):
+  - `report_schema_version`, `scanner_version`, `org`, `branch`,
+    `total_repos`, `eligible_repos`, `skipped_repos`
+  - computed roll-ups: `total_documents`, `by_version`, and
+    `quality_summary` — the headline numbers:
+    - `by_overall_status` — `{"ok": N, "partial": N, "failed": N, "unsupported": N}`
+    - `by_section_status` — distribution per section
+    - `top_issues` — most frequent issue codes across the org
 
 ### `scan-config.toml`
 
@@ -167,9 +189,30 @@ level = "INFO"
 
 ## Development
 
+### Python tests and coverage
+
+Run the test suite and create `coverage.xml` in the repository root:
+
 ```bash
-pytest                  # 66 tests covering style/section classifiers,
-                        # parser end-to-end on real OTC fixtures, scanner
+uv run pytest \
+  --cov \
+  --cov-report=term-missing \
+  --cov-report=xml
+```
+
+The current baseline is **77.48%** and total coverage must remain at least
+**75%**. New and changed executable Python code must have at least **80%**
+coverage. Check it against `origin/main` with:
+
+```bash
+uv run diff-cover coverage.xml \
+  --config-file pyproject.toml \
+  --compare-branch=origin/main
+```
+
+### Code quality
+
+```bash
 ruff check src/         # lint
 ruff format src/        # auto-format
 ```

@@ -3,13 +3,8 @@ import logging
 
 import requests
 
-from tools.domain.exceptions import (
-    AuthenticationError,
-    NotFoundError,
-    RateLimitError,
-    RepositoryError,
-)
-from tools.domain.interfaces.doc_provider import DocProvider, FileListing
+from tools.scanner.interfaces import DocProvider, FileListing
+from tools.shared.exceptions import ProviderError, ProviderErrorKind
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +56,9 @@ class GitHubDocProvider(DocProvider):
         url = f"{self.api_url}/repos/{repo}/contents/{path.rstrip('/')}"
         try:
             self._get(url, repo=repo, resource=path, params={"ref": branch})
-        except NotFoundError:
+        except ProviderError as error:
+            if error.kind is not ProviderErrorKind.not_found:
+                raise
             return False
         return True
 
@@ -102,6 +99,29 @@ class GitHubDocProvider(DocProvider):
         encoded = payload.get("content", "")
         return base64.b64decode(encoded).decode("utf-8")
 
+    def get_commit_hash(self, repo: str, branch: str) -> str | None:
+        """Head commit SHA of `branch`, or None if the ref can't be resolved.
+
+        Uses the commits listing capped at one entry so the response stays
+        small (the single-commit endpoint would carry the full diff).
+        """
+        url = f"{self.api_url}/repos/{repo}/commits"
+        try:
+            resp = self._get(
+                url,
+                repo=repo,
+                resource=f"commits@{branch}",
+                params={"sha": branch, "per_page": 1},
+            )
+        except ProviderError as error:
+            if error.kind is not ProviderErrorKind.not_found:
+                raise
+            return None
+        commits = resp.json()
+        if isinstance(commits, list) and commits:
+            return commits[0].get("sha")
+        return None
+
     # ------------------------------------------------------------------ #
     # Helpers
     # ------------------------------------------------------------------ #
@@ -110,17 +130,20 @@ class GitHubDocProvider(DocProvider):
     ) -> requests.Response:
         """Issue a GET, mapping transport + HTTP errors to domain exceptions.
 
-        One place wraps the ``requests.RequestException`` → ``RepositoryError``
-        translation and the status-code check.
+        One place wraps the ``requests.RequestException`` → ``ProviderError``
+        translation and the status-code check. Rate-limit responses are exposed
+        immediately so the caller can own any retry policy.
         """
         try:
             resp = self.session.get(url, timeout=_TIMEOUT, **kwargs)
         except requests.RequestException as e:
-            raise RepositoryError(
+            raise ProviderError(
                 f"GitHub request for {resource} in {repo} failed: {e}",
-                repo=repo,
+                kind=ProviderErrorKind.connection_error,
+                resource=resource,
                 cause=e,
             ) from e
+
         self._raise_for_status(resp, repo=repo, resource=resource)
         return resp
 
@@ -129,19 +152,47 @@ class GitHubDocProvider(DocProvider):
         """Translate HTTP errors to typed domain exceptions."""
         if resp.status_code < 400:
             return
-        if resp.status_code == 404:
-            raise NotFoundError(resource=resource, repo=repo)
+        if resp.status_code in (404, 409):
+            raise ProviderError(
+                f"Not found: {resource}",
+                kind=ProviderErrorKind.not_found,
+                status_code=resp.status_code,
+                resource=resource,
+            )
         if resp.status_code == 401:
-            raise AuthenticationError("Invalid or missing GitHub token", repo=repo)
-        if resp.status_code == 403:
-            # Distinguish rate-limit vs forbidden
+            raise ProviderError(
+                "Invalid or missing GitHub token",
+                kind=ProviderErrorKind.authentication,
+                status_code=resp.status_code,
+                resource=resource,
+            )
+        if resp.status_code in (403, 429):
             remaining = resp.headers.get("X-RateLimit-Remaining")
-            if remaining == "0":
+            rate_limited = (
+                resp.status_code == 429
+                or remaining == "0"
+                or "Retry-After" in resp.headers
+                or "rate limit" in resp.text.lower()
+            )
+            if rate_limited:
                 reset = int(resp.headers.get("X-RateLimit-Reset", 0))
-                raise RateLimitError(reset_time=reset)
-            raise AuthenticationError(f"Forbidden when accessing {resource}", repo=repo)
-        raise RepositoryError(
+                raise ProviderError(
+                    "GitHub API rate limit exceeded",
+                    kind=ProviderErrorKind.rate_limit,
+                    status_code=resp.status_code,
+                    resource=resource,
+                    reset_time=reset or None,
+                )
+            raise ProviderError(
+                f"Forbidden when accessing {resource}",
+                kind=ProviderErrorKind.permission_denied,
+                status_code=resp.status_code,
+                resource=resource,
+            )
+        raise ProviderError(
             f"Unexpected HTTP {resp.status_code} for {resource}: "
             f"{resp.text[:_ERROR_BODY_MAX]}",
-            repo=repo,
+            kind=ProviderErrorKind.unexpected_response,
+            status_code=resp.status_code,
+            resource=resource,
         )

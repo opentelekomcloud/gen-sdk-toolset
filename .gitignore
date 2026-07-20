@@ -212,3 +212,6 @@ scan-output.json
 scan.json
 
 *.db
+
+node_modules/
+tasks/
