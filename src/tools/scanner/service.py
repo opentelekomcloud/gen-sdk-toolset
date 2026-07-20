@@ -260,20 +260,19 @@ class ScannerService:
         if content is None:  # pragma: no cover - guarded by _fetch_document
             raise ValueError(f"document content is missing for {path}")
 
-        title = extract_document_title(content)
         style = self.style_classifier(content)
 
         if style is DocStyle.NOT_ENDPOINT:
             return Document(
                 path=path,
-                title=title,
+                title=extract_document_title(content),
                 scan_result=DocumentScanResult(),
             )
 
         if style is DocStyle.S3_COMPATIBLE:
             return Document(
                 path=path,
-                title=title,
+                title=extract_document_title(content),
                 scan_result=DocumentScanResult(
                     failure_reason=Issue(
                         code=IssueCode.UNSUPPORTED_DOC_STYLE,
@@ -289,25 +288,23 @@ class ScannerService:
                 parsed = self.parser.parse(content, path)
         except ParseFailure as e:
             logger.warning("Parse failed for %s/%s: %s", repo, path, e)
-            return Document(
-                path=path,
-                title=title,
-                scan_result=DocumentScanResult(failure_reason=e.issue),
-            )
+            failure_reason = e.issue
         except Exception as e:
             logger.exception("Unexpected parser error for %s/%s", repo, path)
-            return Document(
-                path=path,
-                title=title,
-                scan_result=DocumentScanResult(
-                    failure_reason=Issue(
-                        code=IssueCode.PARSER_ERROR,
-                        details=f"parser raised: {e}",
-                    )
-                ),
+            failure_reason = Issue(
+                code=IssueCode.PARSER_ERROR,
+                details=f"parser raised: {e}",
             )
+        else:
+            return parsed
 
-        return parsed
+        return Document(
+            path=path,
+            title=extract_document_title(content),
+            scan_result=DocumentScanResult(
+                failure_reason=failure_reason,
+            ),
+        )
 
     def _is_excluded(self, path: str) -> bool:
         return any(seg in self.excluded_segments for seg in path.split("/"))

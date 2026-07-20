@@ -430,6 +430,32 @@ def test_non_endpoint_materialized_as_document() -> None:
     assert result.quality_summary.by_overall_status == {"ok": 1}
 
 
+def test_successful_endpoint_title_is_extracted_only_by_parser(monkeypatch) -> None:
+    def fail_if_called(content: str) -> str | None:
+        raise AssertionError("scanner must not extract title for a parsed endpoint")
+
+    monkeypatch.setattr(
+        "tools.scanner.service.extract_document_title",
+        fail_if_called,
+    )
+    fake = FakeDocProvider(
+        repos={
+            "o/svc": {
+                "api-ref/source/endpoint.rst": load_fixture(
+                    "style_a_cce_grid.rst"
+                )
+            }
+        }
+    )
+
+    result = make_scanner(fake).scan_repository("o/svc")
+
+    assert isinstance(result.repository, Service)
+    endpoint = result.repository.documents[0]
+    assert isinstance(endpoint, Endpoint)
+    assert endpoint.title is not None
+
+
 def test_repository_context_resolves_table_from_non_endpoint_document() -> None:
     overview = """Overview
 ========
