@@ -146,12 +146,18 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
     Tolerates missing Mandatory or Type columns. Logs structural issues
     (no header row, unrecognised header layout) without raising.
     """
-    issues: list[Issue] = []
-    rows: list[TableRow] = []
+    extraction = TableExtraction(
+        rows=[],
+        issues=[],
+        fields_total=0,
+        fields_recognized=0,
+        fields_unknown_type=0,
+        fields_failed=0,
+    )
 
     column_map = _build_column_map(table)
     if column_map is None or "name" not in column_map:
-        issues.append(
+        extraction.issues.append(
             Issue(
                 code=IssueCode.UNEXPECTED_COLUMNS,
                 details=(
@@ -159,108 +165,85 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
                 ),
             )
         )
-        return TableExtraction(
-            rows=[],
-            issues=issues,
-            fields_total=0,
-            fields_recognized=0,
-            fields_unknown_type=0,
-            fields_failed=0,
-        )
+        return extraction
 
     body_rows = _body_rows(table)
 
-    fields_total = 0
-    fields_recognized = 0
-    fields_unknown_type = 0
-    fields_failed = 0
-
     for row_idx, row in enumerate(body_rows, start=1):
-        fields_total += 1
-        try:
-            entries = list(row.children)
-            cells = [_cell_text(entry) for entry in entries]
-            name = cells[column_map["name"]].strip()
-            type_raw = cells[column_map["type"]].strip() if "type" in column_map else ""
-            mandatory = (
-                _parse_mandatory(cells[column_map["mandatory"]])
-                if "mandatory" in column_map
-                else False
+        extraction.fields_total += 1
+        _append_parameter_row(extraction, row, row_idx, column_map)
+
+    return extraction
+
+
+def _append_parameter_row(
+    extraction: TableExtraction,
+    row: nodes.row,
+    row_idx: int,
+    column_map: dict[str, int],
+) -> None:
+    try:
+        extracted_row, type_raw = _extract_parameter_row(row, column_map)
+    except (IndexError, ValueError) as exc:  # pragma: no cover - defensive
+        extraction.fields_failed += 1
+        extraction.issues.append(
+            Issue(
+                code=IssueCode.MALFORMED_GRID_TABLE,
+                location=f"row {row_idx}",
+                details=str(exc),
             )
-            description = (
-                cells[column_map["description"]].strip()
-                if "description" in column_map
-                else ""
+        )
+        return
+
+    extraction.rows.append(extracted_row)
+    if type_raw and extracted_row.parameter.param_type is ParameterType.UNKNOWN:
+        extraction.fields_unknown_type += 1
+        extraction.issues.append(
+            Issue(
+                code=IssueCode.UNKNOWN_TYPE_FORMAT,
+                location=f"row {row_idx}",
+                details=type_raw[:DETAILS_MAX],
             )
+        )
+    else:
+        extraction.fields_recognized += 1
 
-            if not name:
-                # Row has no parameter name — count as failed.
-                fields_failed += 1
-                issues.append(
-                    Issue(
-                        code=IssueCode.MALFORMED_GRID_TABLE,
-                        location=f"row {row_idx}",
-                        details="empty parameter name",
-                    )
-                )
-                continue
 
-            param_type = _classify_type(type_raw)
-            is_struct = param_type in _STRUCT_TYPES
-            type_name = _struct_type_name(type_raw) if is_struct else None
-            # The struct ref anchor lives on the type cell in some corpora
-            # (VPC: ":ref:`CreateFirewallOption <...>` object") and on the
-            # name cell in others (IAM: ":ref:`protect_policy <...>`" with a
-            # bare "object" type). Capture it for struct-typed params only,
-            # preferring the type cell, so primitive rows never pick up an
-            # unrelated name-cell ref.
-            anchor = _struct_anchor(entries, column_map) if is_struct else None
+def _extract_parameter_row(
+    row: nodes.row,
+    column_map: dict[str, int],
+) -> tuple[TableRow, str]:
+    entries = list(row.children)
+    cells = [_cell_text(entry) for entry in entries]
+    name = cells[column_map["name"]].strip()
+    if not name:
+        raise ValueError("empty parameter name")
 
-            rows.append(
-                TableRow(
-                    parameter=Parameter(
-                        name=name,
-                        param_type=param_type,
-                        mandatory=mandatory,
-                        description=description,
-                        type_name=type_name,
-                    ),
-                    ref_anchor=anchor,
-                )
-            )
-
-            if not type_raw:
-                # Recognised (we have a name) but no type cell at all.
-                # That's OK for URI tables; counts as "recognized" still.
-                fields_recognized += 1
-            elif param_type is ParameterType.UNKNOWN:
-                fields_unknown_type += 1
-                issues.append(
-                    Issue(
-                        code=IssueCode.UNKNOWN_TYPE_FORMAT,
-                        location=f"row {row_idx}",
-                        details=type_raw[:DETAILS_MAX],
-                    )
-                )
-            else:
-                fields_recognized += 1
-        except (IndexError, ValueError) as e:  # pragma: no cover - defensive
-            fields_failed += 1
-            issues.append(
-                Issue(
-                    code=IssueCode.MALFORMED_GRID_TABLE,
-                    location=f"row {row_idx}",
-                    details=str(e),
-                )
-            )
-
-    return TableExtraction(
-        rows=rows,
-        issues=issues,
-        fields_total=fields_total,
-        fields_recognized=fields_recognized,
-        fields_unknown_type=fields_unknown_type,
-        fields_failed=fields_failed,
+    type_raw = cells[column_map["type"]].strip() if "type" in column_map else ""
+    mandatory = (
+        _parse_mandatory(cells[column_map["mandatory"]])
+        if "mandatory" in column_map
+        else False
+    )
+    description = (
+        cells[column_map["description"]].strip()
+        if "description" in column_map
+        else ""
+    )
+    param_type = _classify_type(type_raw)
+    is_struct = param_type in _STRUCT_TYPES
+    return (
+        TableRow(
+            parameter=Parameter(
+                name=name,
+                param_type=param_type,
+                mandatory=mandatory,
+                description=description,
+                type_name=_struct_type_name(type_raw) if is_struct else None,
+            ),
+            ref_anchor=_struct_anchor(entries, column_map) if is_struct else None,
+        ),
+        type_raw,
     )
 
 
