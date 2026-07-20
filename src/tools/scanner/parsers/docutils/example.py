@@ -6,11 +6,140 @@ import json
 
 from docutils import nodes
 
-from tools.shared.ir import Example, Section, SectionName
+from tools.shared.ir import Example, Parameter, ParameterType, Section, SectionName
 from tools.shared.scan import Issue, IssueCode, SectionScanResult, SectionStatus
 
 from .patterns import HTTP_PREFIX_RE
-from .table import DETAILS_MAX
+from .table import DETAILS_MAX, TableExtraction
+
+_EXAMPLE_SECTIONS = {
+    SectionName.BODY: SectionName.EXAMPLE_REQUEST,
+    SectionName.RESPONSE: SectionName.EXAMPLE_RESPONSE,
+}
+
+
+def infer_top_level_wrappers(
+    primary_tables: dict[SectionName, TableExtraction],
+    wrapper_candidates: dict[str, Parameter],
+    sections: dict[SectionName, Section],
+    label_tables: dict[SectionName, dict[str, TableExtraction]],
+) -> None:
+    """Move documented fields under a documented wrapper confirmed by JSON."""
+    for parameter_section, example_section in _EXAMPLE_SECTIONS.items():
+        table = primary_tables.get(parameter_section)
+        examples = sections.get(example_section)
+        if table is None or examples is None:
+            continue
+        root = _consistent_example_root(examples)
+        if root is None:
+            continue
+        root_name, is_array, example_fields = root
+        nested_table = _apply_top_level_wrapper(
+            table,
+            wrapper_candidates.get(root_name),
+            root_name=root_name,
+            is_array=is_array,
+            example_fields=example_fields,
+        )
+        if nested_table is not None:
+            label_tables.setdefault(parameter_section, {}).setdefault(
+                root_name, nested_table
+            )
+
+
+def _consistent_example_root(
+    section: Section,
+) -> tuple[str, bool, set[str]] | None:
+    if section.scan_result is not None and any(
+        issue.code is IssueCode.EXAMPLE_INVALID_JSON
+        for issue in section.scan_result.issues
+    ):
+        return None
+    parsed_examples = [
+        example.parsed for example in section.examples if example.parsed
+    ]
+    if not parsed_examples:
+        return None
+
+    roots = [_structured_root(example) for example in parsed_examples]
+    if any(root is None for root in roots):
+        return None
+    resolved = [root for root in roots if root is not None]
+    name, is_array, _ = resolved[0]
+    if any(root_name != name or array != is_array for root_name, array, _ in resolved):
+        return None
+    fields = set().union(*(root_fields for _, _, root_fields in resolved))
+    return name, is_array, fields
+
+
+def _structured_root(value: dict | list) -> tuple[str, bool, set[str]] | None:
+    if not isinstance(value, dict) or len(value) != 1:
+        return None
+    name, nested = next(iter(value.items()))
+    if isinstance(nested, dict):
+        return name, False, set(nested)
+    if not isinstance(nested, list) or not nested:
+        return None
+    if not all(isinstance(item, dict) for item in nested):
+        return None
+    return name, True, set().union(*(set(item) for item in nested))
+
+
+def _apply_top_level_wrapper(
+    table: TableExtraction,
+    candidate: Parameter | None,
+    *,
+    root_name: str,
+    is_array: bool,
+    example_fields: set[str],
+) -> TableExtraction | None:
+    existing_index = next(
+        (
+            index
+            for index, parameter in enumerate(table.parameters)
+            if parameter.name == root_name
+        ),
+        None,
+    )
+    wrapper = (
+        table.parameters[existing_index]
+        if existing_index is not None
+        else candidate
+    )
+    if (
+        wrapper is None
+        or wrapper.children
+        or wrapper.param_type is not ParameterType.OBJECT
+        or is_array
+    ):
+        return None
+
+    children = [
+        parameter
+        for index, parameter in enumerate(table.parameters)
+        if index != existing_index
+    ]
+    documented_names = {child.name for child in children}
+    if not children or not example_fields.intersection(documented_names):
+        return None
+
+    child_anchors = [
+        anchor
+        for index, anchor in enumerate(table.ref_anchors)
+        if index != existing_index
+    ]
+    anchor = table.ref_anchors[existing_index] if existing_index is not None else None
+    table.parameters = [wrapper]
+    table.ref_anchors = [anchor]
+    return TableExtraction(
+        parameters=children,
+        ref_anchors=child_anchors,
+        issues=[],
+        fields_total=len(children),
+        fields_recognized=len(children),
+        fields_unknown_type=0,
+        fields_failed=0,
+    )
 
 
 def extract_examples(section: nodes.section) -> list[Example]:

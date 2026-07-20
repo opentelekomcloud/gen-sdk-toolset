@@ -33,14 +33,6 @@ from tools.shared.scan import Issue, IssueCode
 
 from .table import TableExtraction
 
-_NESTED_TYPES = frozenset(
-    {
-        ParameterType.OBJECT,
-        ParameterType.ARRAY,
-        ParameterType.ARRAY_OF_OBJECTS,
-    }
-)
-
 
 class RefKind(str, Enum):
     """What an in-document ref anchor resolves to, classified by the wire-in.
@@ -151,7 +143,7 @@ def _lookup_target(
     issues: list[Issue],
 ) -> _TargetMatch | None:
     if anchor is None:
-        if param.param_type not in _NESTED_TYPES:
+        if not param.param_type.supports_children:
             return None
         table = label_tables.get(param.name)
         if table is None:

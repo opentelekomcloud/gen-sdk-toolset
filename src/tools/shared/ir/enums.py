@@ -28,3 +28,7 @@ class ParameterType(str, Enum):
     ARRAY_OF_INTEGERS = "Array of integers"
     # Fallback for anything the parser can't classify
     UNKNOWN = "Unknown"
+
+    @property
+    def supports_children(self) -> bool:
+        return self in {self.OBJECT, self.ARRAY, self.ARRAY_OF_OBJECTS}

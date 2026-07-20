@@ -29,7 +29,12 @@ from tools.shared.scan import (
     SectionStatus,
 )
 
-from .example import add_examples_to_section, extract_examples, split_combined_examples
+from .example import (
+    add_examples_to_section,
+    extract_examples,
+    infer_top_level_wrappers,
+    split_combined_examples,
+)
 from .nesting import RefKind, RefTarget, resolve_nested
 from .patterns import URI_PLACEHOLDER_RE, URI_RE
 from .section import (
@@ -55,6 +60,7 @@ class _SectionExtraction:
         default_factory=dict
     )
     routing_issues: dict[SectionName, list[Issue]] = field(default_factory=dict)
+    wrapper_candidates: dict[str, Parameter] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -206,6 +212,12 @@ class DocutilsParser(RstParser):
             )
         self._collect_section_data(doctree, extraction, context=context)
         _reconcile_path_parameters(uri, extraction)
+        infer_top_level_wrappers(
+            extraction.primary_tables,
+            extraction.wrapper_candidates,
+            extraction.sections,
+            extraction.label_tables,
+        )
         _register_non_table_targets(doctree, extraction.reference_targets)
         self._resolve_parameter_sections(
             extraction,
@@ -402,6 +414,10 @@ def _reconcile_path_parameters(uri: str, extraction: _SectionExtraction) -> None
     documented = (
         {parameter.name: parameter for parameter in source.parameters} if source else {}
     )
+    placeholder_names = set(placeholders)
+    for name, parameter in documented.items():
+        if name not in placeholder_names:
+            extraction.wrapper_candidates.setdefault(name, parameter)
     extraction.primary_tables[SectionName.PATH_PARAMS] = _path_extraction(
         placeholders,
         documented,
