@@ -62,6 +62,7 @@ def test_repository_scan_result_restores_nested_service() -> None:
                 "fields_recognized": 0,
                 "fields_unknown_type": 0,
                 "fields_failed": 0,
+                "unmatched_tables": None,
             },
         }
         for name in SectionName

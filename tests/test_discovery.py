@@ -4,7 +4,7 @@ from collections.abc import Set
 
 import pytest
 
-from tools.scanner.discovery import DiscoveredRepository, discover_repositories
+from tools.scanner.repositories import DiscoveredRepository, discover_repositories
 from tools.shared.exceptions import ProviderError, ProviderErrorKind
 from tools.shared.scan import RepositoryInterruptionKind
 

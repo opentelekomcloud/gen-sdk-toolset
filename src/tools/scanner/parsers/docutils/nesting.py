@@ -1,130 +1,208 @@
 """Anchor-based resolution of nested object/array struct references.
 
-A parameter whose type is an object or array-of-objects carries a ``:ref:``
-anchor (captured by :mod:`.table` as ``TableExtraction.ref_anchors``) that
-points at the struct's definition table elsewhere in the same document. This
-module follows those anchors and populates :attr:`Parameter.children`.
+A parameter whose type is an object or array-of-objects can carry a ``:ref:``
+anchor. :mod:`.table` keeps that authored anchor in the same ``TableRow`` as
+the parameter. This module follows those anchors and populates
+:attr:`Parameter.children`.
 
-The resolver is **pure**: it takes the already-extracted primary tables and a
-registry of ref targets, and returns the issues it found. Walking the doctree
+The resolver takes the already-extracted primary tables and a
+registry of ref targets, and attaches children to the parameters. Walking the doctree
 to *build* the registry is the wire-in step's job; this module only
 consumes it.
 
 Registry shape
 --------------
-The registry classifies each *in-document* anchor as either a struct table
+The registry classifies every known anchor as either a struct table
 (:attr:`RefKind.TABLE`) or a non-table node (:attr:`RefKind.NON_TABLE`) — a
-plain ``TableExtraction`` cannot express the latter. Two more outcomes are
-decided *without* the registry, at the ``target is None`` branch: OTC anchors
-are ``<docid>__<local>`` where ``docid`` is the document's own label, so an
-anchor whose docid differs from this document's points into another document
-(``NESTED_REF_EXTERNAL``); otherwise it is a genuine dangling ref
-(``NESTED_TABLE_NOT_FOUND``). ``primary`` stays a ``dict[str, TableExtraction]``
-(one per parameter-bearing section) since those are always real tables.
+plain ``TableExtraction`` cannot express the latter. Repository context adds
+cross-document tables to this registry before resolution. An unresolved OTC
+anchor whose docid differs from the current document is reported as
+``NESTED_REF_EXTERNAL``; other unresolved anchors are reported as
+``NESTED_TABLE_NOT_FOUND``.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import Enum
 
-from tools.shared.ir import Parameter
+from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import Issue, IssueCode
 
-from .table import TableExtraction
+from .references import RefKind, RefTarget
+from .table import TableExtraction, TableRow
 
 
-class RefKind(str, Enum):
-    """What an in-document ref anchor resolves to, classified by the wire-in.
-
-    Cross-document refs are not registry entries — they are detected from the
-    anchor's docid at lookup time (see :func:`_is_external`).
-    """
-
-    TABLE = "table"  # a struct definition table in this document
-    NON_TABLE = "non_table"  # anchor exists but points at a non-table node
+@dataclass
+class _ResolutionState:
+    registry: Mapping[str, RefTarget]
+    label_tables: Mapping[str, TableExtraction]
+    used_labels: set[str]
+    used_tables: set[int]
+    doc_id: str | None
+    issues: list[Issue]
 
 
 @dataclass(frozen=True)
-class RefTarget:
-    """A resolved ref anchor. ``table`` is set only when ``kind is TABLE``."""
-
-    kind: RefKind
-    table: TableExtraction | None = None
+class _TargetMatch:
+    reference: str
+    target: RefTarget
 
 
 def resolve_nested(
     primary: dict[str, TableExtraction],
     registry: dict[str, RefTarget],
     doc_id: str | None = None,
+    label_tables: dict[str, TableExtraction] | None = None,
+    used_tables: set[int] | None = None,
 ) -> list[Issue]:
-    """Populate ``children`` for every object/array param in ``primary``.
+    """Attach children through explicit anchors or legacy parent-name labels."""
+    labels = label_tables or {}
 
-    Mutates the parameters in ``primary`` in place (attaching resolved
-    ``children``) and returns the list of issues for anchors that could not
-    be resolved. ``registry`` maps a ref anchor to its :class:`RefTarget`.
-    ``doc_id`` is this document's own label; it lets an unresolved anchor
-    with a foreign docid be reported as external rather than dangling. With
-    no ``doc_id`` the external check is skipped (every miss is "not found").
-    """
-    issues: list[Issue] = []
+    state = _ResolutionState(
+        registry=registry,
+        label_tables=labels,
+        used_labels=set(),
+        used_tables=used_tables if used_tables is not None else set(),
+        doc_id=doc_id,
+        issues=[],
+    )
+
     for extraction in primary.values():
         _resolve(
-            extraction.parameters,
-            extraction.ref_anchors,
-            registry,
-            doc_id=doc_id,
+            extraction.rows,
+            state,
             visiting=frozenset(),
-            issues=issues,
         )
-    return issues
+    state.issues.extend(_orphan_label_issues(labels, state.used_labels))
+    return state.issues
 
 
 def _resolve(
-    params: list[Parameter],
-    anchors: list[str | None],
-    registry: dict[str, RefTarget],
-    doc_id: str | None,
+    rows: list[TableRow],
+    state: _ResolutionState,
+    visiting: frozenset[str],
+) -> None:
+    for row in rows:
+        param = row.parameter
+        match = _lookup_target(
+            param,
+            row.ref_anchor,
+            state=state,
+        )
+        if match is None:
+            continue
+        table = _target_table(match, param, visiting=visiting, issues=state.issues)
+        if table is None:
+            continue
+
+        _attach_and_recurse(
+            param,
+            table,
+            match.reference,
+            state,
+            visiting,
+        )
+
+
+def _attach_and_recurse(
+    param: Parameter,
+    table: TableExtraction,
+    match_reference: str,
+    state: _ResolutionState,
+    visiting: frozenset[str],
+) -> None:
+    state.used_tables.add(id(table))
+    children = [child.model_copy(deep=True) for child in table.parameters]
+    param.children = children
+    if param.param_type is ParameterType.ARRAY:
+        param.param_type = ParameterType.ARRAY_OF_OBJECTS
+    _resolve(
+        [
+            TableRow(child, source.ref_anchor)
+            for child, source in zip(children, table.rows)
+        ],
+        state,
+        visiting | {match_reference},
+    )
+
+
+def _lookup_target(
+    param: Parameter,
+    anchor: str | None,
+    state: _ResolutionState,
+) -> _TargetMatch | None:
+    if anchor is None:
+        return _lookup_label(param, state)
+    return _lookup_anchor(param, anchor, state)
+
+
+def _lookup_label(
+    param: Parameter,
+    state: _ResolutionState,
+) -> _TargetMatch | None:
+    if not param.param_type.supports_children:
+        return None
+    table = state.label_tables.get(param.name)
+    if table is None:
+        return None
+    state.used_labels.add(param.name)
+    return _TargetMatch(
+        reference=f"label:{param.name}",
+        target=RefTarget(kind=RefKind.TABLE, table=table),
+    )
+
+
+def _lookup_anchor(
+    param: Parameter,
+    anchor: str,
+    state: _ResolutionState,
+) -> _TargetMatch | None:
+    target = state.registry.get(anchor)
+    if target is not None:
+        return _TargetMatch(reference=anchor, target=target)
+
+    code = (
+        IssueCode.NESTED_REF_EXTERNAL
+        if _is_external(anchor, state.doc_id)
+        else IssueCode.NESTED_TABLE_NOT_FOUND
+    )
+    _flag(state.issues, code, param, anchor)
+    return None
+
+
+def _target_table(
+    match: _TargetMatch,
+    param: Parameter,
+    *,
     visiting: frozenset[str],
     issues: list[Issue],
-) -> None:
-    for param, anchor in zip(params, anchors):
-        if anchor is None:
-            continue  # primitive / no ref → leaf
+) -> TableExtraction | None:
+    if match.target.kind is RefKind.NON_TABLE or match.target.table is None:
+        _flag(issues, IssueCode.NESTED_REF_NOT_A_TABLE, param, match.reference)
+        return None
+    if not match.target.table.parameters:
+        _flag(issues, IssueCode.NESTED_TABLE_EMPTY, param, match.reference)
+        return None
+    if match.reference in visiting:
+        _flag(issues, IssueCode.NESTED_CIRCULAR_REF, param, match.reference)
+        return None
+    return match.target.table
 
-        target = registry.get(anchor)
-        if target is None:
-            # Not a target in this document: either it points into another
-            # doc (foreign docid) or it is a genuine dangling ref.
-            code = (
-                IssueCode.NESTED_REF_EXTERNAL
-                if _is_external(anchor, doc_id)
-                else IssueCode.NESTED_TABLE_NOT_FOUND
-            )
-            _flag(issues, code, param, anchor)
-            continue
-        if target.kind is RefKind.NON_TABLE or target.table is None:
-            _flag(issues, IssueCode.NESTED_REF_NOT_A_TABLE, param, anchor)
-            continue
-        if not target.table.parameters:
-            _flag(issues, IssueCode.NESTED_TABLE_EMPTY, param, anchor)
-            continue
-        if anchor in visiting:  # cycle on the current path (A → … → A)
-            _flag(issues, IssueCode.NESTED_CIRCULAR_REF, param, anchor)
-            continue
 
-        # Deep-copy so two params referencing the same struct get independent
-        # subtrees and nothing in the registry is mutated.
-        children = [child.model_copy(deep=True) for child in target.table.parameters]
-        param.children = children
-        _resolve(
-            children,
-            target.table.ref_anchors,
-            registry,
-            doc_id,
-            visiting | {anchor},
-            issues,
+def _orphan_label_issues(
+    label_tables: dict[str, TableExtraction],
+    used_labels: set[str],
+) -> list[Issue]:
+    return [
+        Issue(
+            code=IssueCode.NESTED_PARENT_NOT_FOUND,
+            location=parent_name,
+            details="nested table has no matching object or array parameter",
         )
+        for parent_name in label_tables
+        if parent_name not in used_labels
+    ]
 
 
 def _is_external(anchor: str, doc_id: str | None) -> bool:

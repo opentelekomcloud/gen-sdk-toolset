@@ -5,12 +5,13 @@ from tools.shared.scan import (
     RepositoryInterruptionKind,
 )
 
-from .discovery import (
+from .repositories import (
     DiscoveredRepository,
     DiscoveryResult,
+    EligibilityResult,
+    check_repository_eligibility,
     discover_repositories,
 )
-from .eligibility import EligibilityResult, check_repository_eligibility
 
 __all__ = [
     "DiscoveredRepository",

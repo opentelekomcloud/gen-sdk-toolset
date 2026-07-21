@@ -1,21 +1,4 @@
-"""Example code-block extraction from docutils nodes.
-
-Examples in OTC docs appear as ``.. code-block::`` directives or bare
-``::`` literal blocks. Their content ranges from valid JSON to HTTP
-wire-format (``POST https://… <body>``) to cURL fragments to JSON with
-embedded ``//`` comments.
-
-We capture the raw text verbatim and *attempt* to parse it as JSON
-(best-effort) — when JSON parsing fails the ``parsed`` field stays
-``None`` and the raw text is still available for downstream consumers.
-
-Handles two layouts:
-
-* code-blocks directly under an Example section, and
-* bulleted list items under a combined ``Example`` / ``Examples``
-  section (the KMS convention), where each bullet labels a child code
-  block (``- Example request`` / ``- Example response``).
-"""
+"""Extract examples from docutils nodes and assemble example sections."""
 
 from __future__ import annotations
 
@@ -23,22 +6,50 @@ import json
 
 from docutils import nodes
 
-from tools.shared.ir import Example
+from tools.shared.ir import Example, Section, SectionName
+from tools.shared.scan import Issue, IssueCode, SectionScanResult, SectionStatus
 
-from .patterns import HTTP_PREFIX_RE
+from .diagnostics import ISSUE_DETAILS_MAX
+from .patterns import EXAMPLE_HTTP_PREFIX_RE
+from .types import SectionKind
+
+
+def process_example_section(
+    section_node: nodes.section,
+    kind: SectionKind,
+    sections: dict[SectionName, Section],
+) -> None:
+    blocks = extract_examples(section_node)
+
+    if kind is SectionKind.EXAMPLE_REQUEST:
+        add_examples_to_section(sections, SectionName.EXAMPLE_REQUEST, blocks)
+        return
+    if kind is SectionKind.EXAMPLE_RESPONSE:
+        add_examples_to_section(sections, SectionName.EXAMPLE_RESPONSE, blocks)
+        return
+
+    request, response, issues = split_combined_examples(blocks)
+    if request:
+        add_examples_to_section(
+            sections,
+            SectionName.EXAMPLE_REQUEST,
+            request,
+            extra_issues=issues,
+        )
+    if response:
+        add_examples_to_section(sections, SectionName.EXAMPLE_RESPONSE, response)
 
 
 def extract_examples(section: nodes.section) -> list[Example]:
-    """Return every code/literal block inside a section.
-
-    Each :class:`Example` has its `label` set when the block sits
-    under a labelled bullet (``- Example request``), and ``None``
-    otherwise.
-    """
-    blocks: list[Example] = []
+    """Return every code or literal block inside a section."""
     visited: set[int] = set()
+    blocks = _extract_from_lists(section, visited)
+    blocks.extend(_extract_sequential(section, visited))
+    return blocks
 
-    # First pass: bulleted-list layout (each bullet labels its blocks).
+
+def _extract_from_lists(section: nodes.section, visited: set[int]) -> list[Example]:
+    blocks: list[Example] = []
     for item in section.findall(nodes.list_item):
         label = _extract_item_label(item)
         for code in item.findall(nodes.literal_block):
@@ -46,43 +57,106 @@ def extract_examples(section: nodes.section) -> list[Example]:
                 continue
             visited.add(id(code))
             blocks.append(_make_example(code, label=label))
-
-    # Second pass: any literal blocks not already collected via a bullet.
-    for code in section.findall(nodes.literal_block):
-        if id(code) in visited:
-            continue
-        visited.add(id(code))
-        blocks.append(_make_example(code, label=None))
-
     return blocks
 
 
-# --------------------------------------------------------------------------- #
-# Internals
-# --------------------------------------------------------------------------- #
+def _extract_sequential(section: nodes.section, visited: set[int]) -> list[Example]:
+    blocks: list[Example] = []
+    current_label: str | None = None
+    for node in section.findall(nodes.Element):
+        if isinstance(node, nodes.paragraph):
+            text = node.astext().strip()
+            if _is_example_label(text):
+                current_label = text
+        elif isinstance(node, nodes.literal_block) and id(node) not in visited:
+            visited.add(id(node))
+            blocks.append(_make_example(node, label=current_label))
+    return blocks
+
+
+def split_combined_examples(
+    blocks: list[Example],
+) -> tuple[list[Example], list[Example], list[Issue]]:
+    request: list[Example] = []
+    response: list[Example] = []
+    guessed = False
+
+    for block in blocks:
+        label = (block.label or "").lower()
+        if "response" in label:
+            response.append(block)
+        else:
+            request.append(block)
+            guessed = guessed or "request" not in label
+
+    issues = []
+    if guessed:
+        issues.append(
+            Issue(
+                code=IssueCode.EXAMPLE_UNLABELED,
+                location="combined example section",
+                details="request/response split guessed (no labels)",
+            )
+        )
+    return request, response, issues
+
+
+def add_examples_to_section(
+    sections: dict[SectionName, Section],
+    name: SectionName,
+    blocks: list[Example],
+    *,
+    extra_issues: list[Issue] | None = None,
+) -> None:
+    if not blocks:
+        return
+
+    issues = [*_example_json_issues(blocks), *(extra_issues or [])]
+    existing = sections.get(name)
+    if existing is not None:
+        _extend_example_section(existing, blocks, issues)
+        return
+
+    sections[name] = _create_example_section(name, blocks, issues)
+
+
 def _extract_item_label(item: nodes.list_item) -> str | None:
-    """First paragraph text of a list_item, if any."""
-    p = next(iter(item.findall(nodes.paragraph)), None)
-    if p is None:
+    paragraph = next(iter(item.findall(nodes.paragraph)), None)
+    if paragraph is None:
         return None
-    text = p.astext().strip()
+    text = paragraph.astext().strip()
     return text or None
+
+
+def _is_example_label(text: str) -> bool:
+    normalized = text.lower()
+    return ("example" in normalized or "sample" in normalized) and (
+        "request" in normalized or "response" in normalized
+    )
 
 
 def _make_example(block: nodes.literal_block, *, label: str | None) -> Example:
     raw = block.astext()
-    language = block.get("language") or None
     return Example(
         raw=raw,
-        language=language,
+        language=_extract_language(block),
         parsed=_try_parse_json(raw),
         label=label,
     )
 
 
+def _extract_language(block: nodes.literal_block) -> str | None:
+    language = block.get("language")
+    if language:
+        return language
+    return next(
+        (name for name in block.get("classes", []) if name != "code"),
+        None,
+    )
+
+
 def _try_parse_json(raw: str) -> dict | list | None:
-    """Best-effort JSON parse. Returns None on any failure."""
-    candidate = HTTP_PREFIX_RE.sub("", raw, count=1).strip()
+    candidate = EXAMPLE_HTTP_PREFIX_RE.sub("", raw, count=1).strip()
     if not candidate:
         return None
     try:
@@ -92,3 +166,49 @@ def _try_parse_json(raw: str) -> dict | list | None:
     if isinstance(result, (dict, list)):
         return result
     return None
+
+
+def _example_json_issues(blocks: list[Example]) -> list[Issue]:
+    return [
+        Issue(
+            code=IssueCode.EXAMPLE_INVALID_JSON,
+            location=f"example {index}",
+            details=(block.label or "")[:ISSUE_DETAILS_MAX] or None,
+        )
+        for index, block in enumerate(blocks, start=1)
+        if block.parsed is None and _expects_json(block)
+    ]
+
+
+def _expects_json(block: Example) -> bool:
+    if block.language:
+        return block.language.lower() in {"json", "application/json"}
+    return block.raw.lstrip().startswith(("{", "["))
+
+
+def _create_example_section(
+    name: SectionName,
+    blocks: list[Example],
+    issues: list[Issue],
+) -> Section:
+    status = SectionStatus.PARTIAL if _has_invalid_example(issues) else SectionStatus.OK
+    return Section(
+        name=name,
+        examples=list(blocks),
+        scan_result=SectionScanResult(status=status, issues=issues),
+    )
+
+
+def _extend_example_section(
+    section: Section,
+    blocks: list[Example],
+    issues: list[Issue],
+) -> None:
+    section.examples.extend(blocks)
+    section.scan_result.issues.extend(issues)
+    if _has_invalid_example(section.scan_result.issues):
+        section.scan_result.status = SectionStatus.PARTIAL
+
+
+def _has_invalid_example(issues: list[Issue]) -> bool:
+    return any(issue.code is IssueCode.EXAMPLE_INVALID_JSON for issue in issues)

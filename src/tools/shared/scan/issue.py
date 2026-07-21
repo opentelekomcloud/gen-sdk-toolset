@@ -2,7 +2,7 @@
 
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class IssueCode(str, Enum):
@@ -15,10 +15,13 @@ class IssueCode(str, Enum):
 
     MALFORMED_GRID_TABLE = "malformed_grid_table"
     UNEXPECTED_COLUMNS = "unexpected_columns"
+    UNMAPPED_TABLE = "unmapped_table"
+    PATH_PARAMETER_NOT_IN_URI = "path_parameter_not_in_uri"
 
     UNKNOWN_TYPE_FORMAT = "unknown_type_format"
 
     NESTED_TABLE_NOT_FOUND = "nested_table_not_found"
+    NESTED_PARENT_NOT_FOUND = "nested_parent_not_found"
     NESTED_TABLE_EMPTY = "nested_table_empty"
     NESTED_CIRCULAR_REF = "nested_circular_ref"
     NESTED_REF_NOT_A_TABLE = "nested_ref_not_a_table"
@@ -27,9 +30,13 @@ class IssueCode(str, Enum):
     EXAMPLE_INVALID_JSON = "example_invalid_json"
     EXAMPLE_UNLABELED = "example_unlabeled"
 
+    NESTING_ONLY_IN_EXAMPLE = "nesting_only_in_example"
+
 
 class Issue(BaseModel):
     """A single problem encountered while processing a document."""
+
+    model_config = ConfigDict(extra="forbid")
 
     code: IssueCode
     location: str | None = None

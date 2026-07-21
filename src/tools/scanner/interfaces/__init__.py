@@ -8,7 +8,7 @@ from .doc_provider import (
     RepositoryDiscoveryProvider,
     RepositoryEligibilityProvider,
 )
-from .parser import RstParser
+from .parser import RepositoryContextParser, RstParser
 
 __all__ = [
     "DocProvider",
@@ -16,5 +16,6 @@ __all__ = [
     "ParseFailure",
     "RepositoryDiscoveryProvider",
     "RepositoryEligibilityProvider",
+    "RepositoryContextParser",
     "RstParser",
 ]

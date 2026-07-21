@@ -4,7 +4,9 @@ from alembic import context
 
 from tools.panel.core.db import models  # noqa: F401
 from tools.panel.core.db.base import Base
-from tools.panel.core.db.engine import engine as connectable
+from tools.panel.core.db.engine import get_engine
+
+connectable = get_engine()
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

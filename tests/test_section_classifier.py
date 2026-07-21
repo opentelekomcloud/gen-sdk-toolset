@@ -4,8 +4,10 @@ import pytest
 
 from tools.scanner.parsers.docutils.section import (
     SectionKind,
+    TableTarget,
     classify_section_title,
     classify_table_title,
+    nested_parent_name,
 )
 
 
@@ -24,6 +26,7 @@ from tools.scanner.parsers.docutils.section import (
         ("Response", SectionKind.RESPONSE),
         ("Response Parameters", SectionKind.RESPONSE),
         ("Response Message", SectionKind.RESPONSE),
+        ("Response Messages", SectionKind.RESPONSE),
         ("Responses", SectionKind.RESPONSE),
         ("Example Request", SectionKind.EXAMPLE_REQUEST),
         ("Example Requests", SectionKind.EXAMPLE_REQUEST),
@@ -94,6 +97,15 @@ def test_request_body_table() -> None:
     )
 
 
+def test_generic_request_table_requires_method_routing() -> None:
+    assert (
+        classify_table_title(
+            "Table 1 Parameter description", in_section=SectionKind.REQUEST
+        )
+        is TableTarget.GENERIC_REQUEST
+    )
+
+
 def test_response_body_table() -> None:
     assert (
         classify_table_title(
@@ -122,10 +134,28 @@ def test_named_struct_is_nested() -> None:
     )
 
 
-def test_status_code_returns_none() -> None:
+def test_legacy_nested_label_exposes_parent_name() -> None:
+    assert nested_parent_name("Data structure description of warn_config") == (
+        "warn_config"
+    )
+    assert nested_parent_name("Table 3 Description of field direct_connect") == (
+        "direct_connect"
+    )
+    assert nested_parent_name("Parameter description") is None
+
+
+def test_status_code_is_intentionally_ignored() -> None:
     """Status-code tables aren't parameter tables — caller should skip them."""
     assert (
-        classify_table_title("Status code", in_section=SectionKind.STATUS_CODES) is None
+        classify_table_title("Status code", in_section=SectionKind.STATUS_CODES)
+        is TableTarget.INTENTIONALLY_IGNORED
+    )
+
+
+def test_untitled_table_is_unmapped() -> None:
+    assert (
+        classify_table_title("", in_section=SectionKind.RESPONSE)
+        is TableTarget.UNMAPPED
     )
 
 

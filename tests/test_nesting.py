@@ -12,23 +12,26 @@ from tools.scanner.parsers.docutils.nesting import (
     RefTarget,
     resolve_nested,
 )
-from tools.scanner.parsers.docutils.table import TableExtraction
+from tools.scanner.parsers.docutils.table import (
+    ExtractionMetrics,
+    TableExtraction,
+    TableRow,
+)
 from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import IssueCode
 
 
 def _extraction(rows: list[tuple[Parameter, str | None]]) -> TableExtraction:
     """Build a TableExtraction from (param, anchor) pairs; counters unused."""
-    params = [p for p, _ in rows]
-    anchors = [a for _, a in rows]
     return TableExtraction(
-        parameters=params,
-        ref_anchors=anchors,
+        rows=[TableRow(parameter, anchor) for parameter, anchor in rows],
         issues=[],
-        fields_total=len(params),
-        fields_recognized=len(params),
-        fields_unknown_type=0,
-        fields_failed=0,
+        metrics=ExtractionMetrics(
+            fields_total=len(rows),
+            fields_recognized=len(rows),
+            fields_unknown_type=0,
+            fields_failed=0,
+        ),
     )
 
 

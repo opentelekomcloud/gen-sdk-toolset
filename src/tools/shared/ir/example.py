@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Example(BaseModel):
@@ -7,6 +7,8 @@ class Example(BaseModel):
     The raw source is preserved alongside a best-effort JSON representation.
     ``parsed`` remains ``None`` when the example is not valid JSON.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     raw: str
     language: str | None = None

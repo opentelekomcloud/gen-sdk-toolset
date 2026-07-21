@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .enums import ParameterType
 
 
 class Parameter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     param_type: ParameterType = ParameterType.UNKNOWN
     mandatory: bool = False

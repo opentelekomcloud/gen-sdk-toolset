@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Set
 from dataclasses import dataclass
 
-from tools.scanner.eligibility import (
+from tools.scanner.interfaces import RepositoryDiscoveryProvider
+from tools.scanner.repositories.eligibility import (
     check_repository_eligibility,
     interruption_from_repository_error,
 )
-from tools.scanner.interfaces import RepositoryDiscoveryProvider
 from tools.shared.exceptions import ProviderError
 from tools.shared.scan import RepositoryInterruption
 

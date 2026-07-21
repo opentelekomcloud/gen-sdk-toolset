@@ -12,13 +12,12 @@ tables don't have one).
 
 The parser returns:
 
-* a list of :class:`tools.domain.ir.Parameter` (one per body row), and
+* a list of :class:`tools.shared.ir.Parameter` (one per body row), and
 * counters that feed :class:`SectionScanResult` field-level metrics.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 from docutils import nodes
@@ -26,86 +25,55 @@ from docutils import nodes
 from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import Issue, IssueCode
 
-# Max length of free-text `details` we attach to diagnostic issues.
-DETAILS_MAX = 80
-
-# Column-header aliases mapped to canonical column keys. Comparison is
-# case-insensitive on whitespace-stripped text.
-_HEADER_ALIASES: dict[str, str] = {
-    "parameter": "name",
-    "name": "name",
-    "header": "name",  # OBS header tables
-    "mandatory": "mandatory",
-    "mandatory (yes/no)": "mandatory",
-    "required": "mandatory",
-    "type": "type",
-    "description": "description",
-}
+from .diagnostics import ISSUE_DETAILS_MAX
+from .field_type import (
+    STRUCT_TYPES,
+    classify_type,
+    extract_struct_type_name,
+    parse_mandatory,
+)
+from .patterns import HEADER_ALIASES
+from .rst_nodes import first_ref_target
 
 
-# Type-text → ParameterType. Loose matching on lower-cased text. Sphinx
-# :ref: markup is already resolved to its visible label at parse time by the
-# passthrough role registered in doc_parser (_ensure_roles), so no stripping
-# is needed here — see tests/test_ref_resolution.py.
-def _classify_type(raw: str) -> ParameterType:
-    if not raw:
-        return ParameterType.UNKNOWN
-    lower = raw.strip().lower()
+@dataclass
+class TableRow:
+    """A parsed parameter kept together with its authored struct anchor."""
 
-    # Composite array types first (more specific).
-    if re.search(r"\barray\s+of\s+strings?\b", lower):
-        return ParameterType.ARRAY_OF_STRINGS
-    if re.search(r"\barray\s+of\s+integers?\b", lower):
-        return ParameterType.ARRAY_OF_INTEGERS
-    if re.search(r"\barray\s+of\s+", lower) and "object" in lower:
-        return ParameterType.ARRAY_OF_OBJECTS
-    if lower.startswith("array of "):
-        return ParameterType.ARRAY_OF_OBJECTS  # named struct → object array
-
-    # Bare composites
-    if lower == "array" or lower.startswith("array "):
-        return ParameterType.ARRAY
-
-    # Primitives — match the longest prefix word.
-    for word, kind in (
-        ("string", ParameterType.STRING),
-        ("integer", ParameterType.INTEGER),
-        ("long", ParameterType.LONG),
-        ("float", ParameterType.FLOAT),
-        ("double", ParameterType.DOUBLE),
-        ("boolean", ParameterType.BOOLEAN),
-        ("bool", ParameterType.BOOLEAN),
-        ("object", ParameterType.OBJECT),
-    ):
-        if re.search(rf"\b{word}\b", lower):
-            return ParameterType.OBJECT if "object" in lower else kind
-
-    return ParameterType.UNKNOWN
+    parameter: Parameter
+    ref_anchor: str | None = None
 
 
-# Struct/array keywords stripped from a type cell to leave the bare struct
-# name (e.g. "Array of RequestTag objects" -> "RequestTag"). A cell that is
-# only keywords ("object", "Array of objects") leaves nothing -> no type_name.
-# `\s+` tolerates irregular whitespace in "array of" (double spaces, newlines).
-_STRUCT_KEYWORDS_RE = re.compile(r"(?i)\barray\s+of\b|\bobjects?\b")
+@dataclass
+class ExtractionMetrics:
+    fields_total: int = 0
+    fields_recognized: int = 0
+    fields_unknown_type: int = 0
+    fields_failed: int = 0
 
-# Parameter types that carry a referenced struct name worth preserving.
-_STRUCT_TYPES = frozenset({ParameterType.OBJECT, ParameterType.ARRAY_OF_OBJECTS})
+    def merge(self, other: ExtractionMetrics) -> None:
+        self.fields_total += other.fields_total
+        self.fields_recognized += other.fields_recognized
+        self.fields_unknown_type += other.fields_unknown_type
+        self.fields_failed += other.fields_failed
 
 
 @dataclass
 class TableExtraction:
     """Result of parsing one parameter table."""
 
-    parameters: list[Parameter]
-    # Struct ref anchor (`:ref:` target) for each parameter, aligned 1:1 with
-    # ``parameters``. ``None`` for primitives / rows without a struct ref.
-    ref_anchors: list[str | None]
+    rows: list[TableRow]
     issues: list[Issue]
-    fields_total: int
-    fields_recognized: int
-    fields_unknown_type: int
-    fields_failed: int
+    metrics: ExtractionMetrics
+
+    @property
+    def parameters(self) -> list[Parameter]:
+        return [row.parameter for row in self.rows]
+
+    def extend(self, other: TableExtraction) -> None:
+        self.rows.extend(other.rows)
+        self.issues.extend(other.issues)
+        self.metrics.merge(other.metrics)
 
 
 def extract_parameter_table(table: nodes.table) -> TableExtraction:
@@ -114,13 +82,15 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
     Tolerates missing Mandatory or Type columns. Logs structural issues
     (no header row, unrecognised header layout) without raising.
     """
-    issues: list[Issue] = []
-    parameters: list[Parameter] = []
-    ref_anchors: list[str | None] = []
+    extraction = TableExtraction(
+        rows=[],
+        issues=[],
+        metrics=ExtractionMetrics(),
+    )
 
     column_map = _build_column_map(table)
     if column_map is None or "name" not in column_map:
-        issues.append(
+        extraction.issues.append(
             Issue(
                 code=IssueCode.UNEXPECTED_COLUMNS,
                 details=(
@@ -128,115 +98,83 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
                 ),
             )
         )
-        return TableExtraction(
-            parameters=[],
-            ref_anchors=[],
-            issues=issues,
-            fields_total=0,
-            fields_recognized=0,
-            fields_unknown_type=0,
-            fields_failed=0,
-        )
+        return extraction
 
     body_rows = _body_rows(table)
 
-    fields_total = 0
-    fields_recognized = 0
-    fields_unknown_type = 0
-    fields_failed = 0
-
     for row_idx, row in enumerate(body_rows, start=1):
-        fields_total += 1
-        try:
-            entries = list(row.children)
-            cells = [_cell_text(entry) for entry in entries]
-            name = cells[column_map["name"]].strip()
-            type_raw = cells[column_map["type"]].strip() if "type" in column_map else ""
-            mandatory = (
-                _parse_mandatory(cells[column_map["mandatory"]])
-                if "mandatory" in column_map
-                else False
+        extraction.metrics.fields_total += 1
+        _append_parameter_row(extraction, row, row_idx, column_map)
+
+    return extraction
+
+
+def _append_parameter_row(
+    extraction: TableExtraction,
+    row: nodes.row,
+    row_idx: int,
+    column_map: dict[str, int],
+) -> None:
+    try:
+        param_row, type_raw = _extract_parameter_row(row, column_map)
+    except (IndexError, ValueError) as exc:  # pragma: no cover - defensive
+        extraction.metrics.fields_failed += 1
+        extraction.issues.append(
+            Issue(
+                code=IssueCode.MALFORMED_GRID_TABLE,
+                location=f"row {row_idx}",
+                details=str(exc),
             )
-            description = (
-                cells[column_map["description"]].strip()
-                if "description" in column_map
-                else ""
+        )
+        return
+
+    extraction.rows.append(param_row)
+    if type_raw and param_row.parameter.param_type is ParameterType.UNKNOWN:
+        extraction.metrics.fields_unknown_type += 1
+        extraction.issues.append(
+            Issue(
+                code=IssueCode.UNKNOWN_TYPE_FORMAT,
+                location=f"row {row_idx}",
+                details=type_raw[:ISSUE_DETAILS_MAX],
             )
+        )
+    else:
+        extraction.metrics.fields_recognized += 1
 
-            if not name:
-                # Row has no parameter name — count as failed.
-                fields_failed += 1
-                issues.append(
-                    Issue(
-                        code=IssueCode.MALFORMED_GRID_TABLE,
-                        location=f"row {row_idx}",
-                        details="empty parameter name",
-                    )
-                )
-                continue
 
-            param_type = _classify_type(type_raw)
-            is_struct = param_type in _STRUCT_TYPES
-            type_name = _struct_type_name(type_raw) if is_struct else None
-            # The struct ref anchor lives on the type cell in some corpora
-            # (VPC: ":ref:`CreateFirewallOption <...>` object") and on the
-            # name cell in others (IAM: ":ref:`protect_policy <...>`" with a
-            # bare "object" type). Capture it for struct-typed params only,
-            # preferring the type cell, so primitive rows never pick up an
-            # unrelated name-cell ref.
-            anchor = _struct_anchor(entries, column_map) if is_struct else None
+def _extract_parameter_row(
+    row: nodes.row,
+    column_map: dict[str, int],
+) -> tuple[TableRow, str]:
+    entries = list(row.children)
+    cells = [_cell_text(entry) for entry in entries]
+    name = cells[column_map["name"]].strip()
+    if not name:
+        raise ValueError("empty parameter name")
 
-            parameters.append(
-                Parameter(
-                    name=name,
-                    param_type=param_type,
-                    mandatory=mandatory,
-                    description=description,
-                    type_name=type_name,
-                )
-            )
-            ref_anchors.append(anchor)
-
-            if not type_raw:
-                # Recognised (we have a name) but no type cell at all.
-                # That's OK for URI tables; counts as "recognized" still.
-                fields_recognized += 1
-            elif param_type is ParameterType.UNKNOWN:
-                fields_unknown_type += 1
-                issues.append(
-                    Issue(
-                        code=IssueCode.UNKNOWN_TYPE_FORMAT,
-                        location=f"row {row_idx}",
-                        details=type_raw[:DETAILS_MAX],
-                    )
-                )
-            else:
-                fields_recognized += 1
-        except (IndexError, ValueError) as e:  # pragma: no cover - defensive
-            fields_failed += 1
-            issues.append(
-                Issue(
-                    code=IssueCode.MALFORMED_GRID_TABLE,
-                    location=f"row {row_idx}",
-                    details=str(e),
-                )
-            )
-
-    # ref_anchors is appended in lockstep with parameters, so the resolver
-    # (S5) can zip them safely. Guard the invariant rather than trust it.
-    assert len(ref_anchors) == len(parameters), (
-        f"ref_anchors ({len(ref_anchors)}) misaligned with "
-        f"parameters ({len(parameters)})"
+    type_raw = cells[column_map["type"]].strip() if "type" in column_map else ""
+    mandatory = (
+        parse_mandatory(cells[column_map["mandatory"]])
+        if "mandatory" in column_map
+        else False
     )
-
-    return TableExtraction(
-        parameters=parameters,
-        ref_anchors=ref_anchors,
-        issues=issues,
-        fields_total=fields_total,
-        fields_recognized=fields_recognized,
-        fields_unknown_type=fields_unknown_type,
-        fields_failed=fields_failed,
+    description = (
+        cells[column_map["description"]].strip() if "description" in column_map else ""
+    )
+    param_type = classify_type(type_raw)
+    is_struct = param_type in STRUCT_TYPES
+    return (
+        TableRow(
+            parameter=Parameter(
+                name=name,
+                param_type=param_type,
+                mandatory=mandatory,
+                description=description,
+                type_name=extract_struct_type_name(type_raw) if is_struct else None,
+            ),
+            ref_anchor=_struct_anchor(entries, column_map) if is_struct else None,
+        ),
+        type_raw,
     )
 
 
@@ -255,7 +193,7 @@ def _build_column_map(table: nodes.table) -> dict[str, int] | None:
     column_map: dict[str, int] = {}
     for idx, entry in enumerate(header_row.children):
         text = _cell_text(entry).strip().lower()
-        canonical = _HEADER_ALIASES.get(text)
+        canonical = HEADER_ALIASES.get(text)
         if canonical is not None and canonical not in column_map:
             column_map[canonical] = idx
     return column_map
@@ -274,52 +212,18 @@ def _cell_text(entry: nodes.Element) -> str:
     return entry.astext()
 
 
-def _ref_anchor(entry: nodes.Element) -> str | None:
-    """First ``ref_target`` on an inline node in a cell, else ``None``.
-
-    The passthrough role (see doc_parser) attaches ``ref_target`` to the
-    inline node it emits for a ``:ref:``. One struct ref per cell in practice.
-    """
-    for inline in entry.findall(nodes.inline):
-        anchor = inline.get("ref_target")
-        if anchor:
-            return anchor
-    return None
-
-
 def _struct_anchor(
     entries: list[nodes.Element], column_map: dict[str, int]
 ) -> str | None:
-    """Struct ref anchor for a row: type cell first, then name cell.
-
-    Type-cell refs (VPC) win over name-cell refs (IAM) when both exist, so a
-    ``:ref:`` on the type always takes precedence.
-    """
+    """Struct ref anchor for a row: type cell first, then name cell."""
     for column in ("type", "name"):
         idx = column_map.get(column)
         if idx is None:
             continue
-        anchor = _ref_anchor(entries[idx])
+        anchor = first_ref_target(entries[idx])
         if anchor:
             return anchor
     return None
-
-
-def _struct_type_name(raw_type: str) -> str | None:
-    """Bare struct name from an object/array type cell, or ``None``.
-
-    ``"CreateFirewallOption object"`` -> ``"CreateFirewallOption"``;
-    ``"Array of RequestTag objects"`` -> ``"RequestTag"``; a cell that is
-    only structural keywords (``"object"``, ``"Array of objects"``) -> ``None``.
-    """
-    name = _STRUCT_KEYWORDS_RE.sub(" ", raw_type)
-    name = re.sub(r"\s+", " ", name).strip()
-    return name or None
-
-
-def _parse_mandatory(text: str) -> bool:
-    cleaned = text.strip().lower()
-    return cleaned in {"yes", "true", "required"}
 
 
 def _header_preview(table: nodes.table) -> str:

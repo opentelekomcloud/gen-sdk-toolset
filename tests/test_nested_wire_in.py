@@ -201,6 +201,27 @@ def test_empty_struct_table(parser: DocutilsParser) -> None:
     assert IssueCode.NESTED_TABLE_EMPTY in _body_issue_codes(parser, content)
 
 
+def test_unreferenced_struct_table_is_reported(parser: DocutilsParser) -> None:
+    content = _doc(
+        _simple_table(
+            "**Table 1** Request body parameters",
+            ["Parameter", "Type", "Description"],
+            [["name", "String", "a name"]],
+        ),
+        ".. _unused_struct:\n",
+        _simple_table(
+            "**Table 2** Unused",
+            ["Parameter", "Type", "Description"],
+            [["value", "String", "a value"]],
+        ),
+    )
+
+    body = _sections(parser.parse(content, "x.rst"))["body"]
+
+    assert body.scan_result.status is SectionStatus.PARTIAL
+    assert IssueCode.NESTED_PARENT_NOT_FOUND in _body_issue_codes(parser, content)
+
+
 def test_external_cross_doc_ref(parser: DocutilsParser) -> None:
     # This doc's label is `thisdoc`; the ref's docid `otherdoc` differs, so it
     # points into another document -> external (not a dangling in-doc ref).
@@ -215,3 +236,31 @@ def test_external_cross_doc_ref(parser: DocutilsParser) -> None:
     parsed = parser.parse(content, "x.rst")
     assert _sections(parsed)["body"].scan_result.status is SectionStatus.PARTIAL
     assert IssueCode.NESTED_REF_EXTERNAL in _body_issue_codes(parser, content)
+
+
+def test_explicit_cross_document_field_table(parser: DocutilsParser) -> None:
+    overview = "Overview\n========\n\n.. _connection_fields:\n\n" + _simple_table(
+        "**Table 1** Connection fields",
+        ["Parameter", "Type", "Description"],
+        [["id", "String", "connection ID"], ["name", "String", "name"]],
+    )
+    endpoint = (
+        "Demo\n====\n\nURI\n---\n\nGET /v1/test\n\n"
+        "Response\n--------\n\n"
+        + _simple_table(
+            "**Table 1** Response parameters",
+            ["Parameter", "Type", "Description"],
+            [["connection", "Object", "connection object"]],
+        )
+        + "\nFor details about the **connection** field, "
+        "see :ref:`Table 1 <connection_fields>`.\n"
+    )
+
+    context = parser.build_repository_context({"overview.rst": overview})
+    response = _sections(parser.parse(endpoint, "endpoint.rst", context=context))[
+        "response"
+    ]
+
+    connection = response.parameters[0]
+    assert [child.name for child in connection.children] == ["id", "name"]
+    assert response.scan_result.status is SectionStatus.OK

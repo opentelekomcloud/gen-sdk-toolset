@@ -430,6 +430,90 @@ def test_non_endpoint_materialized_as_document() -> None:
     assert result.quality_summary.by_overall_status == {"ok": 1}
 
 
+def test_successful_endpoint_title_is_extracted_only_by_parser(monkeypatch) -> None:
+    def fail_if_called(content: str) -> str | None:
+        raise AssertionError("scanner must not extract title for a parsed endpoint")
+
+    monkeypatch.setattr(
+        "tools.scanner.service.extract_document_title",
+        fail_if_called,
+    )
+    fake = FakeDocProvider(
+        repos={
+            "o/svc": {
+                "api-ref/source/endpoint.rst": load_fixture("style_a_cce_grid.rst")
+            }
+        }
+    )
+
+    result = make_scanner(fake).scan_repository("o/svc")
+
+    assert isinstance(result.repository, Service)
+    endpoint = result.repository.documents[0]
+    assert isinstance(endpoint, Endpoint)
+    assert endpoint.title is not None
+
+
+def test_repository_context_resolves_table_from_non_endpoint_document() -> None:
+    overview = """Overview
+========
+
+.. _shared_fields:
+
+.. table:: Shared fields
+
+   =========  ======  ===========
+   Parameter  Type    Description
+   =========  ======  ===========
+   id         String  object ID
+   name       String  object name
+   =========  ======  ===========
+"""
+    endpoint = """Query object
+============
+
+URI
+---
+
+GET /v1/objects/{id}
+
+Response
+--------
+
+.. table:: Response parameters
+
+   =========  ======  ===========
+   Parameter  Type    Description
+   =========  ======  ===========
+   object     Object  result
+   =========  ======  ===========
+
+For details about the **object** field, see :ref:`Shared <shared_fields>`.
+"""
+    fake = FakeDocProvider(
+        repos={
+            "o/svc": {
+                "api-ref/source/overview.rst": overview,
+                "api-ref/source/query.rst": endpoint,
+            }
+        }
+    )
+
+    result = make_scanner(fake).scan_repository("o/svc")
+
+    assert isinstance(result.repository, Service)
+    parsed = next(
+        document
+        for document in result.repository.documents
+        if document.path.endswith("query.rst")
+    )
+    assert isinstance(parsed, Endpoint)
+    response = next(
+        section for section in parsed.sections if section.name == "response"
+    )
+    assert [child.name for child in response.parameters[0].children] == ["id", "name"]
+
+
 def test_fetch_failure_is_gating() -> None:
     class FailingProvider(FakeDocProvider):
         def fetch_content(self, repo: str, path: str, branch: str) -> str:
@@ -453,7 +537,7 @@ def test_parser_crash_is_parser_error() -> None:
     no_uri_match."""
 
     class CrashingParser(DocutilsParser):
-        def parse(self, content: str, path: str):
+        def parse(self, content: str, path: str, *, context=None):
             raise RuntimeError("boom")
 
     fake = FakeDocProvider(
@@ -467,6 +551,22 @@ def test_parser_crash_is_parser_error() -> None:
     assert doc.scan_result.failure_reason is not None
     assert doc.scan_result.failure_reason.code is IssueCode.PARSER_ERROR
     assert doc_overall_status(doc) == "failed"
+
+
+def test_repository_context_failure_is_not_silently_ignored() -> None:
+    class CrashingContextParser(DocutilsParser):
+        def build_repository_context(self, documents):
+            raise RuntimeError("broken shared schema")
+
+    fake = FakeDocProvider(
+        repos={"o/svc": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
+    )
+
+    result = make_scanner(fake, parser=CrashingContextParser()).scan_repository("o/svc")
+
+    assert isinstance(result.repository, Service)
+    assert result.repository.documents == []
+    assert result.error == "Failed to build parser context: broken shared schema"
 
 
 def test_endpoint_doc_without_uri_is_failed() -> None:

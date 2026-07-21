@@ -1,16 +1,31 @@
 import logging
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 
 from tools.domain.report import OrgScanResult
-from tools.scanner.eligibility import check_repository_eligibility
-from tools.scanner.interfaces import DocProvider, RstParser
-from tools.scanner.parsers.docutils.style import DocStyle, extract_document_title
+from tools.scanner.interfaces import DocProvider, RepositoryContextParser, RstParser
+from tools.scanner.parsers import (
+    extract_document_title,
+)
+from tools.scanner.parsers.docutils.types import DocStyle
+from tools.scanner.repositories import check_repository_eligibility
 from tools.shared.exceptions import ParseFailure, ProviderError
 from tools.shared.ir import Document, Repository, Service
 from tools.shared.scan import DocumentScanResult, Issue, IssueCode, RepositoryScanResult
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _FetchedDocument:
+    path: str
+    content: str | None = None
+    error: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.content is None) == (self.error is None):
+            raise ValueError("Exactly one of 'content' or 'error' must be provided")
 
 
 class ScannerService:
@@ -24,7 +39,7 @@ class ScannerService:
         max_workers: int,
         api_ref_path: str,
         excluded_segments: Iterable[str] = (),
-    ):
+    ) -> None:
         self.doc_provider = doc_provider
         self.parser = parser
         self.style_classifier = style_classifier
@@ -67,9 +82,6 @@ class ScannerService:
     def scan_repository(self, repo: str, branch: str = "main") -> RepositoryScanResult:
         """Scan one repository and return per-document parse results."""
         logger.info("Scanning repo %s@%s", repo, branch)
-
-        # Pin the snapshot to a commit before checking eligibility so the path
-        # check and every content read observe the same repository snapshot.
         try:
             commit_hash = self.doc_provider.get_commit_hash(repo, branch)
         except ProviderError as e:
@@ -120,17 +132,43 @@ class ScannerService:
             )
 
         try:
-            listing = self.doc_provider.list_files(repo, ref)
+            included_paths, excluded_documents, incomplete_reason = (
+                self._list_and_filter_paths(repo, ref)
+            )
         except ProviderError as e:
             logger.error("Failed to list files for %s: %s", repo, e)
-            # Eligibility succeeded before listing failed, so the repository is
-            # still a Service even though this scan produced no documents.
             return RepositoryScanResult(
                 repository=Service(repo=repo),
                 branch=branch,
                 commit_hash=commit_hash,
                 error=str(e),
             )
+
+        logger.debug("%s: %d candidate RST files", repo, len(included_paths))
+
+        doc_outcomes, error = self._scan_documents(repo, ref, included_paths)
+        if error:
+            return RepositoryScanResult(
+                repository=Service(repo=repo),
+                branch=branch,
+                commit_hash=commit_hash,
+                excluded_documents=excluded_documents,
+                incomplete_reason=incomplete_reason,
+                error=error,
+            )
+
+        return RepositoryScanResult(
+            repository=Service(repo=repo, documents=doc_outcomes),
+            branch=branch,
+            commit_hash=commit_hash,
+            excluded_documents=excluded_documents,
+            incomplete_reason=incomplete_reason,
+        )
+
+    def _list_and_filter_paths(
+        self, repo: str, ref: str
+    ) -> tuple[list[str], list[str], str | None]:
+        listing = self.doc_provider.list_files(repo, ref)
 
         incomplete_reason = None
         if listing.truncated:
@@ -160,87 +198,119 @@ class ScannerService:
                 sorted(self.excluded_segments),
             )
 
-        logger.debug("%s: %d candidate RST files", repo, len(included_paths))
+        return included_paths, excluded_documents, incomplete_reason
 
+    def _scan_documents(
+        self, repo: str, ref: str, included_paths: list[str]
+    ) -> tuple[list[Document], str | None]:
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-            doc_outcomes = list(
+            fetched_documents = list(
                 pool.map(
-                    lambda p: self._process_document(repo, p, ref),
+                    lambda path: self._fetch_document(repo, path, ref),
                     included_paths,
                 )
             )
+            try:
+                parser_context = self._build_parser_context(fetched_documents)
+            except Exception as e:
+                error = f"Failed to build parser context: {e}"
+                logger.exception("%s for %s", error, repo)
+                return [], error
+            doc_outcomes = list(
+                pool.map(
+                    lambda document: self._process_document(
+                        repo,
+                        document,
+                        parser_context,
+                    ),
+                    fetched_documents,
+                )
+            )
+        return doc_outcomes, None
 
-        return RepositoryScanResult(
-            repository=Service(repo=repo, documents=doc_outcomes),
-            branch=branch,
-            commit_hash=commit_hash,
-            excluded_documents=excluded_documents,
-            incomplete_reason=incomplete_reason,
-        )
+    def _fetch_document(self, repo: str, path: str, ref: str) -> _FetchedDocument:
+        try:
+            content = self.doc_provider.fetch_content(repo, path, ref)
+        except Exception as e:
+            logger.warning("Fetch failed for %s/%s: %s", repo, path, e)
+            return _FetchedDocument(path=path, error=str(e))
+        return _FetchedDocument(path=path, content=content)
 
-    def _process_document(self, repo: str, path: str, branch: str) -> Document:
-        """Fetch, classify and parse a document.
+    def _build_parser_context(self, documents: list[_FetchedDocument]) -> object | None:
+        if not isinstance(self.parser, RepositoryContextParser):
+            return None
+        contents = {
+            document.path: document.content
+            for document in documents
+            if document.content is not None
+        }
+        return self.parser.build_repository_context(contents)
+
+    def _process_document(
+        self,
+        repo: str,
+        document: _FetchedDocument,
+        parser_context: object | None,
+    ) -> Document:
+        """Classify and parse an already fetched document.
 
         The returned entity owns its scan result. Endpoint sections own their
         section-level results. Gating failures produce a plain document with a
         failure reason; non-endpoint docs produce a successful plain document.
         """
-        try:
-            content = self.doc_provider.fetch_content(repo, path, branch)
-        except Exception as e:
-            logger.warning("Fetch failed for %s/%s: %s", repo, path, e)
-            return Document(
-                path=path,
-                scan_result=DocumentScanResult(
-                    failure_reason=Issue(code=IssueCode.FETCH_FAILED, details=str(e))
-                ),
+        if document.error is not None:
+            return self._build_fallback_document(
+                document.path,
+                None,
+                Issue(code=IssueCode.FETCH_FAILED, details=document.error),
             )
 
-        title = extract_document_title(content)
+        path = document.path
+        content = document.content
+        if content is None:  # pragma: no cover - guarded by _fetch_document
+            raise ValueError(f"document content is missing for {path}")
+
         style = self.style_classifier(content)
 
         if style is DocStyle.NOT_ENDPOINT:
-            return Document(
-                path=path,
-                title=title,
-                scan_result=DocumentScanResult(),
-            )
+            return self._build_fallback_document(path, content)
 
         if style is DocStyle.S3_COMPATIBLE:
-            return Document(
-                path=path,
-                title=title,
-                scan_result=DocumentScanResult(
-                    failure_reason=Issue(
-                        code=IssueCode.UNSUPPORTED_DOC_STYLE,
-                        details="S3-style doc (Request Syntax / Sample Request layout)",
-                    )
+            return self._build_fallback_document(
+                path,
+                content,
+                Issue(
+                    code=IssueCode.UNSUPPORTED_DOC_STYLE,
+                    details="S3-style doc (Request Syntax / Sample Request layout)",
                 ),
             )
 
         try:
-            parsed = self.parser.parse(content, path)
+            if isinstance(self.parser, RepositoryContextParser):
+                return self.parser.parse(content, path, context=parser_context)
+            else:
+                return self.parser.parse(content, path)
         except ParseFailure as e:
             logger.warning("Parse failed for %s/%s: %s", repo, path, e)
-            return Document(
-                path=path,
-                title=title,
-                scan_result=DocumentScanResult(failure_reason=e.issue),
-            )
+            failure_reason = e.issue
         except Exception as e:
             logger.exception("Unexpected parser error for %s/%s", repo, path)
-            return Document(
-                path=path,
-                title=title,
-                scan_result=DocumentScanResult(
-                    failure_reason=Issue(
-                        code=IssueCode.PARSER_ERROR,
-                        details=f"parser raised: {e}",
-                    )
-                ),
+            failure_reason = Issue(
+                code=IssueCode.PARSER_ERROR,
+                details=f"parser raised: {e}",
             )
 
-        return parsed
+        return self._build_fallback_document(path, content, failure_reason)
+
+    def _build_fallback_document(
+        self, path: str, content: str | None, failure_reason: Issue | None = None
+    ) -> Document:
+        title = extract_document_title(content) if content is not None else None
+        return Document(
+            path=path,
+            title=title,
+            scan_result=DocumentScanResult(failure_reason=failure_reason),
+        )
 
     def _is_excluded(self, path: str) -> bool:
         return any(seg in self.excluded_segments for seg in path.split("/"))

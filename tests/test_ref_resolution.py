@@ -1,6 +1,6 @@
 """Pin down where Sphinx ``:ref:`` markup is resolved .
 
-The passthrough role registered by :func:`DocutilsParser._ensure_roles`
+The passthrough role registered by :func:`ensure_roles`
 resolves ``:ref:`Label <anchor>``` to its visible label *at docutils parse
 time*, so table cells already arrive without any ``:ref:`` markup. This test
 guards that contract; ``table.py`` therefore does no ``:ref:`` stripping of
@@ -12,7 +12,7 @@ from __future__ import annotations
 from docutils import nodes
 from docutils.core import publish_doctree
 
-from tools.scanner.parsers.docutils.doc_parser import _ensure_roles
+from tools.scanner.parsers.docutils.context import ensure_roles
 from tools.scanner.parsers.docutils.table import extract_parameter_table
 
 _RST = """
@@ -38,7 +38,7 @@ def _first_table(doctree: nodes.document) -> nodes.table:
 
 def test_ref_resolved_at_parse_time() -> None:
     """A `:ref:` cell arrives at extract_parameter_table already as its label."""
-    _ensure_roles()
+    ensure_roles()
     doctree = publish_doctree(_RST, settings_overrides={"report_level": 5})
 
     table = _first_table(doctree)

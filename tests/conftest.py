@@ -52,3 +52,23 @@ def elb_list_doc() -> str:
 @pytest.fixture
 def two_body_tables_doc() -> str:
     return load_fixture("style_a_two_body_tables.rst")
+
+
+@pytest.fixture
+def anti_ddos_root_doc() -> str:
+    return load_fixture("style_a_anti_ddos_root_endpoint.rst")
+
+
+@pytest.fixture
+def anti_ddos_legacy_uri_doc() -> str:
+    return load_fixture("style_a_anti_ddos_legacy_uri.rst")
+
+
+@pytest.fixture
+def anti_ddos_get_request_doc() -> str:
+    return load_fixture("style_a_anti_ddos_get_request.rst")
+
+
+@pytest.fixture
+def anti_ddos_direct_response_doc() -> str:
+    return load_fixture("style_a_anti_ddos_direct_response.rst")
