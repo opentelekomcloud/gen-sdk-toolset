@@ -93,7 +93,7 @@ def _wrap_section(section: Section | None, example_section: Section | None) -> N
     if root_name not in documented:
         _synthesize_wrapper(section, root_name, example_fields, documented)
     else:
-        _group_siblings_under_wrapper(section, root_name, example_fields)
+        _group_siblings_under_wrapper(section, root_name)
 
 
 def _synthesize_wrapper(
@@ -102,7 +102,7 @@ def _synthesize_wrapper(
     """Wrap the section's fields under a synthesized ``root_name`` object.
 
     Children come from a referenced (unmatched) table when one matches the
-    example; otherwise from the documented flat fields named in the example.
+    example; otherwise the whole documented table is nested under the wrapper.
     """
     unmatched_children = _find_matching_unmatched_table(section, example_fields)
     if unmatched_children is not None:
@@ -110,8 +110,9 @@ def _synthesize_wrapper(
         return
 
     if example_fields & documented:
-        flat_children = [p for p in section.parameters if p.name in example_fields]
-        _wrap_parameters(section, root_name, flat_children)
+        # The example only proves the wrapper exists (and may enumerate just a
+        # subset of fields); the full child set is the whole documented table.
+        _wrap_parameters(section, root_name, list(section.parameters))
 
 
 def _wrap_parameters(
@@ -137,18 +138,12 @@ def _wrap_parameters(
     section.parameters = remaining
 
 
-def _group_siblings_under_wrapper(
-    section: Section, root_name: str, example_fields: set[str]
-) -> None:
+def _group_siblings_under_wrapper(section: Section, root_name: str) -> None:
     root_param = next(p for p in section.parameters if p.name == root_name)
     if root_param.children:
         return
 
-    siblings = [
-        p
-        for p in section.parameters
-        if p.name != root_name and p.name in example_fields
-    ]
+    siblings = [p for p in section.parameters if p.name != root_name]
     if not siblings:
         return
 

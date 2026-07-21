@@ -5,17 +5,37 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
+from enum import Enum
 
 from docutils import nodes
 
 from tools.shared.ir import SectionName
 from tools.shared.scan import Issue, IssueCode
 
-from .nesting import RefKind, RefTarget
 from .patterns import FIELD_DETAILS_RE
+from .rst_nodes import first_authored_name, first_ref_target
 from .section import default_table_section, nested_parent_name
 from .table import TableExtraction, extract_parameter_table
 from .types import SectionKind
+
+
+class RefKind(str, Enum):
+    """What an in-document ref anchor resolves to, classified by the wire-in.
+
+    Repository context can contribute cross-document table entries. Missing
+    cross-document refs are detected from the anchor's docid at lookup time.
+    """
+
+    TABLE = "table"  # a struct definition table in this document
+    NON_TABLE = "non_table"  # anchor exists but points at a non-table node
+
+
+@dataclass(frozen=True)
+class RefTarget:
+    """A resolved ref anchor. ``table`` is set only when ``kind is TABLE``."""
+
+    kind: RefKind
+    table: TableExtraction | None = None
 
 
 @dataclass
@@ -82,7 +102,7 @@ class ReferenceRegistry:
         if match is None:
             return
         parent_name = match.group(1)
-        anchor = _first_ref_target(paragraph)
+        anchor = first_ref_target(paragraph)
         target = self.targets.get(anchor) if anchor else None
         if target is None or target.kind is not RefKind.TABLE or target.table is None:
             return
@@ -128,7 +148,7 @@ class ReferenceRegistry:
         *,
         section_kind: SectionKind,
     ) -> bool:
-        anchor = _table_label_id(table)
+        anchor = first_authored_name(table)
         if not anchor:
             return False
         self.targets[anchor] = RefTarget(kind=RefKind.TABLE, table=extracted)
@@ -164,17 +184,3 @@ def document_id(doctree: nodes.document) -> str | None:
         if name != title_name:
             return name
     return None
-
-
-def _first_ref_target(node: nodes.Element) -> str | None:
-    for inline in node.findall(nodes.inline):
-        target = inline.get("ref_target")
-        if target:
-            return str(target)
-    return None
-
-
-def _table_label_id(table: nodes.table) -> str | None:
-    """Return the authored label without docutils ID normalization."""
-    names = table.get("names")
-    return names[0] if names else None

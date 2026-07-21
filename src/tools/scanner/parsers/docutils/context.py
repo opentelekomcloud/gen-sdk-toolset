@@ -16,6 +16,7 @@ from docutils.core import publish_doctree
 from docutils.parsers.rst import roles
 
 from .patterns import SPHINX_ANCHOR_RE, SPHINX_LABEL_RE
+from .rst_nodes import first_authored_name
 from .table import TableExtraction, extract_parameter_table
 
 logger = logging.getLogger(__name__)
@@ -78,12 +79,11 @@ def _collect_document_tables(
     doctree: nodes.document, path: str, tables: dict[str, TableExtraction]
 ) -> None:
     for table in doctree.findall(nodes.table):
-        names = table.get("names")
-        if not names:
+        anchor = first_authored_name(table)
+        if not anchor:
             continue
         extracted = extract_parameter_table(table)
         if extracted.parameters:
-            anchor = names[0]
             if anchor in tables:
                 logger.warning(
                     "Duplicate table anchor %r in %s; keeping first, "

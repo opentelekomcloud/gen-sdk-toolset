@@ -5,8 +5,8 @@ anchor. :mod:`.table` keeps that authored anchor in the same ``TableRow`` as
 the parameter. This module follows those anchors and populates
 :attr:`Parameter.children`.
 
-The resolver is **pure**: it takes the already-extracted primary tables and a
-registry of ref targets, and returns the issues it found. Walking the doctree
+The resolver takes the already-extracted primary tables and a
+registry of ref targets, and attaches children to the parameters. Walking the doctree
 to *build* the registry is the wire-in step's job; this module only
 consumes it.
 
@@ -23,32 +23,24 @@ anchor whose docid differs from the current document is reported as
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from enum import Enum
 
 from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import Issue, IssueCode
 
+from .references import RefKind, RefTarget
 from .table import TableExtraction, TableRow
 
 
-class RefKind(str, Enum):
-    """What an in-document ref anchor resolves to, classified by the wire-in.
-
-    Repository context can contribute cross-document table entries. Missing
-    cross-document refs are detected from the anchor's docid at lookup time.
-    """
-
-    TABLE = "table"  # a struct definition table in this document
-    NON_TABLE = "non_table"  # anchor exists but points at a non-table node
-
-
-@dataclass(frozen=True)
-class RefTarget:
-    """A resolved ref anchor. ``table`` is set only when ``kind is TABLE``."""
-
-    kind: RefKind
-    table: TableExtraction | None = None
+@dataclass
+class _ResolutionState:
+    registry: Mapping[str, RefTarget]
+    label_tables: Mapping[str, TableExtraction]
+    used_labels: set[str]
+    used_tables: set[int]
+    doc_id: str | None
+    issues: list[Issue]
 
 
 @dataclass(frozen=True)
@@ -66,48 +58,41 @@ def resolve_nested(
 ) -> list[Issue]:
     """Attach children through explicit anchors or legacy parent-name labels."""
     labels = label_tables or {}
-    used_labels: set[str] = set()
-    resolved_tables = used_tables if used_tables is not None else set()
-    issues: list[Issue] = []
+
+    state = _ResolutionState(
+        registry=registry,
+        label_tables=labels,
+        used_labels=set(),
+        used_tables=used_tables if used_tables is not None else set(),
+        doc_id=doc_id,
+        issues=[],
+    )
+
     for extraction in primary.values():
         _resolve(
             extraction.rows,
-            registry,
-            labels,
-            used_labels,
-            resolved_tables,
-            doc_id=doc_id,
+            state,
             visiting=frozenset(),
-            issues=issues,
         )
-    issues.extend(_orphan_label_issues(labels, used_labels))
-    return issues
+    state.issues.extend(_orphan_label_issues(labels, state.used_labels))
+    return state.issues
 
 
 def _resolve(
     rows: list[TableRow],
-    registry: dict[str, RefTarget],
-    label_tables: dict[str, TableExtraction],
-    used_labels: set[str],
-    used_tables: set[int],
-    doc_id: str | None,
+    state: _ResolutionState,
     visiting: frozenset[str],
-    issues: list[Issue],
 ) -> None:
     for row in rows:
         param = row.parameter
         match = _lookup_target(
             param,
             row.ref_anchor,
-            registry=registry,
-            label_tables=label_tables,
-            used_labels=used_labels,
-            doc_id=doc_id,
-            issues=issues,
+            state=state,
         )
         if match is None:
             continue
-        table = _target_table(match, param, visiting=visiting, issues=issues)
+        table = _target_table(match, param, visiting=visiting, issues=state.issues)
         if table is None:
             continue
 
@@ -115,13 +100,8 @@ def _resolve(
             param,
             table,
             match.reference,
-            registry,
-            label_tables,
-            used_labels,
-            used_tables,
-            doc_id,
+            state,
             visiting,
-            issues,
         )
 
 
@@ -129,15 +109,10 @@ def _attach_and_recurse(
     param: Parameter,
     table: TableExtraction,
     match_reference: str,
-    registry: dict[str, RefTarget],
-    label_tables: dict[str, TableExtraction],
-    used_labels: set[str],
-    used_tables: set[int],
-    doc_id: str | None,
+    state: _ResolutionState,
     visiting: frozenset[str],
-    issues: list[Issue],
 ) -> None:
-    used_tables.add(id(table))
+    state.used_tables.add(id(table))
     children = [child.model_copy(deep=True) for child in table.parameters]
     param.children = children
     if param.param_type is ParameterType.ARRAY:
@@ -147,42 +122,31 @@ def _attach_and_recurse(
             TableRow(child, source.ref_anchor)
             for child, source in zip(children, table.rows)
         ],
-        registry,
-        label_tables,
-        used_labels,
-        used_tables,
-        doc_id,
+        state,
         visiting | {match_reference},
-        issues,
     )
 
 
 def _lookup_target(
     param: Parameter,
     anchor: str | None,
-    *,
-    registry: dict[str, RefTarget],
-    label_tables: dict[str, TableExtraction],
-    used_labels: set[str],
-    doc_id: str | None,
-    issues: list[Issue],
+    state: _ResolutionState,
 ) -> _TargetMatch | None:
     if anchor is None:
-        return _lookup_label(param, label_tables, used_labels)
-    return _lookup_anchor(param, anchor, doc_id, registry, issues)
+        return _lookup_label(param, state)
+    return _lookup_anchor(param, anchor, state)
 
 
 def _lookup_label(
     param: Parameter,
-    label_tables: dict[str, TableExtraction],
-    used_labels: set[str],
+    state: _ResolutionState,
 ) -> _TargetMatch | None:
     if not param.param_type.supports_children:
         return None
-    table = label_tables.get(param.name)
+    table = state.label_tables.get(param.name)
     if table is None:
         return None
-    used_labels.add(param.name)
+    state.used_labels.add(param.name)
     return _TargetMatch(
         reference=f"label:{param.name}",
         target=RefTarget(kind=RefKind.TABLE, table=table),
@@ -192,20 +156,18 @@ def _lookup_label(
 def _lookup_anchor(
     param: Parameter,
     anchor: str,
-    doc_id: str | None,
-    registry: dict[str, RefTarget],
-    issues: list[Issue],
+    state: _ResolutionState,
 ) -> _TargetMatch | None:
-    target = registry.get(anchor)
+    target = state.registry.get(anchor)
     if target is not None:
         return _TargetMatch(reference=anchor, target=target)
 
     code = (
         IssueCode.NESTED_REF_EXTERNAL
-        if _is_external(anchor, doc_id)
+        if _is_external(anchor, state.doc_id)
         else IssueCode.NESTED_TABLE_NOT_FOUND
     )
-    _flag(issues, code, param, anchor)
+    _flag(state.issues, code, param, anchor)
     return None
 
 

@@ -6,7 +6,7 @@ from tools.shared.ir import Parameter, ParameterType, SectionName
 from tools.shared.scan import Issue, IssueCode
 
 from .patterns import URI_PLACEHOLDER_RE
-from .table import TableExtraction, TableRow
+from .table import ExtractionMetrics, TableExtraction, TableRow
 
 
 def reconcile_path_parameters(
@@ -54,10 +54,12 @@ def _path_extraction(
             if source
             else []
         ),
-        fields_total=len(parameters),
-        fields_recognized=len(parameters),
-        fields_unknown_type=0,
-        fields_failed=0,
+        metrics=ExtractionMetrics(
+            fields_total=len(parameters),
+            fields_recognized=len(parameters),
+            fields_unknown_type=0,
+            fields_failed=0,
+        ),
     )
 
 

@@ -12,7 +12,11 @@ from tools.scanner.parsers.docutils.nesting import (
     RefTarget,
     resolve_nested,
 )
-from tools.scanner.parsers.docutils.table import TableExtraction, TableRow
+from tools.scanner.parsers.docutils.table import (
+    ExtractionMetrics,
+    TableExtraction,
+    TableRow,
+)
 from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import IssueCode
 
@@ -22,10 +26,12 @@ def _extraction(rows: list[tuple[Parameter, str | None]]) -> TableExtraction:
     return TableExtraction(
         rows=[TableRow(parameter, anchor) for parameter, anchor in rows],
         issues=[],
-        fields_total=len(rows),
-        fields_recognized=len(rows),
-        fields_unknown_type=0,
-        fields_failed=0,
+        metrics=ExtractionMetrics(
+            fields_total=len(rows),
+            fields_recognized=len(rows),
+            fields_unknown_type=0,
+            fields_failed=0,
+        ),
     )
 
 

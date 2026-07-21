@@ -25,6 +25,7 @@ from docutils import nodes
 from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import Issue, IssueCode
 
+from .diagnostics import ISSUE_DETAILS_MAX
 from .field_type import (
     STRUCT_TYPES,
     classify_type,
@@ -32,9 +33,7 @@ from .field_type import (
     parse_mandatory,
 )
 from .patterns import HEADER_ALIASES
-
-# Max length of free-text `details` we attach to diagnostic issues.
-DETAILS_MAX = 80
+from .rst_nodes import first_ref_target
 
 
 @dataclass
@@ -46,15 +45,26 @@ class TableRow:
 
 
 @dataclass
+class ExtractionMetrics:
+    fields_total: int = 0
+    fields_recognized: int = 0
+    fields_unknown_type: int = 0
+    fields_failed: int = 0
+
+    def merge(self, other: ExtractionMetrics) -> None:
+        self.fields_total += other.fields_total
+        self.fields_recognized += other.fields_recognized
+        self.fields_unknown_type += other.fields_unknown_type
+        self.fields_failed += other.fields_failed
+
+
+@dataclass
 class TableExtraction:
     """Result of parsing one parameter table."""
 
     rows: list[TableRow]
     issues: list[Issue]
-    fields_total: int
-    fields_recognized: int
-    fields_unknown_type: int
-    fields_failed: int
+    metrics: ExtractionMetrics
 
     @property
     def parameters(self) -> list[Parameter]:
@@ -63,10 +73,7 @@ class TableExtraction:
     def extend(self, other: TableExtraction) -> None:
         self.rows.extend(other.rows)
         self.issues.extend(other.issues)
-        self.fields_total += other.fields_total
-        self.fields_recognized += other.fields_recognized
-        self.fields_unknown_type += other.fields_unknown_type
-        self.fields_failed += other.fields_failed
+        self.metrics.merge(other.metrics)
 
 
 def extract_parameter_table(table: nodes.table) -> TableExtraction:
@@ -78,10 +85,7 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
     extraction = TableExtraction(
         rows=[],
         issues=[],
-        fields_total=0,
-        fields_recognized=0,
-        fields_unknown_type=0,
-        fields_failed=0,
+        metrics=ExtractionMetrics(),
     )
 
     column_map = _build_column_map(table)
@@ -99,7 +103,7 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
     body_rows = _body_rows(table)
 
     for row_idx, row in enumerate(body_rows, start=1):
-        extraction.fields_total += 1
+        extraction.metrics.fields_total += 1
         _append_parameter_row(extraction, row, row_idx, column_map)
 
     return extraction
@@ -112,9 +116,9 @@ def _append_parameter_row(
     column_map: dict[str, int],
 ) -> None:
     try:
-        extracted_row, type_raw = _extract_parameter_row(row, column_map)
+        param_row, type_raw = _extract_parameter_row(row, column_map)
     except (IndexError, ValueError) as exc:  # pragma: no cover - defensive
-        extraction.fields_failed += 1
+        extraction.metrics.fields_failed += 1
         extraction.issues.append(
             Issue(
                 code=IssueCode.MALFORMED_GRID_TABLE,
@@ -124,18 +128,18 @@ def _append_parameter_row(
         )
         return
 
-    extraction.rows.append(extracted_row)
-    if type_raw and extracted_row.parameter.param_type is ParameterType.UNKNOWN:
-        extraction.fields_unknown_type += 1
+    extraction.rows.append(param_row)
+    if type_raw and param_row.parameter.param_type is ParameterType.UNKNOWN:
+        extraction.metrics.fields_unknown_type += 1
         extraction.issues.append(
             Issue(
                 code=IssueCode.UNKNOWN_TYPE_FORMAT,
                 location=f"row {row_idx}",
-                details=type_raw[:DETAILS_MAX],
+                details=type_raw[:ISSUE_DETAILS_MAX],
             )
         )
     else:
-        extraction.fields_recognized += 1
+        extraction.metrics.fields_recognized += 1
 
 
 def _extract_parameter_row(
@@ -208,15 +212,6 @@ def _cell_text(entry: nodes.Element) -> str:
     return entry.astext()
 
 
-def _ref_anchor(entry: nodes.Element) -> str | None:
-    """First ``ref_target`` on an inline node in a cell, else ``None``."""
-    for inline in entry.findall(nodes.inline):
-        anchor = inline.get("ref_target")
-        if anchor:
-            return anchor
-    return None
-
-
 def _struct_anchor(
     entries: list[nodes.Element], column_map: dict[str, int]
 ) -> str | None:
@@ -225,7 +220,7 @@ def _struct_anchor(
         idx = column_map.get(column)
         if idx is None:
             continue
-        anchor = _ref_anchor(entries[idx])
+        anchor = first_ref_target(entries[idx])
         if anchor:
             return anchor
     return None

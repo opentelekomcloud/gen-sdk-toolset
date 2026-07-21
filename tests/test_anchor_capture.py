@@ -14,6 +14,7 @@ from docutils.core import publish_doctree
 from tools.scanner.parsers.docutils.context import ensure_roles
 from tools.scanner.parsers.docutils.field_type import extract_struct_type_name
 from tools.scanner.parsers.docutils.table import (
+    ExtractionMetrics,
     TableExtraction,
     TableRow,
     extract_parameter_table,
@@ -45,18 +46,16 @@ def test_table_extraction_extends_complete_rows() -> None:
     first = TableExtraction(
         rows=[TableRow(Parameter(name="first"), "first_anchor")],
         issues=[],
-        fields_total=1,
-        fields_recognized=1,
-        fields_unknown_type=0,
-        fields_failed=0,
+        metrics=ExtractionMetrics(
+            fields_total=1, fields_recognized=1, fields_unknown_type=0, fields_failed=0
+        ),
     )
     second = TableExtraction(
         rows=[TableRow(Parameter(name="second"), "second_anchor")],
         issues=[],
-        fields_total=1,
-        fields_recognized=1,
-        fields_unknown_type=0,
-        fields_failed=0,
+        metrics=ExtractionMetrics(
+            fields_total=1, fields_recognized=1, fields_unknown_type=0, fields_failed=0
+        ),
     )
 
     first.extend(second)
@@ -65,8 +64,8 @@ def test_table_extraction_extends_complete_rows() -> None:
         ("first", "first_anchor"),
         ("second", "second_anchor"),
     ]
-    assert first.fields_total == 2
-    assert first.fields_recognized == 2
+    assert first.metrics.fields_total == 2
+    assert first.metrics.fields_recognized == 2
 
 
 # --------------------------------------------------------------------------- #

@@ -9,8 +9,8 @@ from docutils import nodes
 from tools.shared.ir import Example, Section, SectionName
 from tools.shared.scan import Issue, IssueCode, SectionScanResult, SectionStatus
 
+from .diagnostics import ISSUE_DETAILS_MAX
 from .patterns import EXAMPLE_HTTP_PREFIX_RE
-from .table import DETAILS_MAX
 from .types import SectionKind
 
 
@@ -173,7 +173,7 @@ def _example_json_issues(blocks: list[Example]) -> list[Issue]:
         Issue(
             code=IssueCode.EXAMPLE_INVALID_JSON,
             location=f"example {index}",
-            details=(block.label or "")[:DETAILS_MAX] or None,
+            details=(block.label or "")[:ISSUE_DETAILS_MAX] or None,
         )
         for index, block in enumerate(blocks, start=1)
         if block.parsed is None and _expects_json(block)

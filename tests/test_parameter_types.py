@@ -37,5 +37,5 @@ period_start_date   Long integer        Start time
         None,
         None,
     ]
-    assert extraction.fields_recognized == 5
-    assert extraction.fields_unknown_type == 0
+    assert extraction.metrics.fields_recognized == 5
+    assert extraction.metrics.fields_unknown_type == 0

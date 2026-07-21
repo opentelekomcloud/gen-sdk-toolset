@@ -28,7 +28,7 @@ from .section import (
     classify_table_title,
     default_table_section,
 )
-from .table import TableExtraction, extract_parameter_table
+from .table import ExtractionMetrics, TableExtraction, extract_parameter_table
 from .types import SectionKind, TableTarget
 
 
@@ -370,19 +370,19 @@ def _to_section(extraction: TableExtraction, name: SectionName) -> Section:
         name=name,
         parameters=list(extraction.parameters),
         scan_result=SectionScanResult(
-            status=_status_from_counters(extraction),
+            status=_status_from_metrics(extraction.metrics),
             issues=list(extraction.issues),
-            fields_total=extraction.fields_total,
-            fields_recognized=extraction.fields_recognized,
-            fields_unknown_type=extraction.fields_unknown_type,
-            fields_failed=extraction.fields_failed,
+            fields_total=extraction.metrics.fields_total,
+            fields_recognized=extraction.metrics.fields_recognized,
+            fields_unknown_type=extraction.metrics.fields_unknown_type,
+            fields_failed=extraction.metrics.fields_failed,
         ),
     )
 
 
-def _status_from_counters(counters: TableExtraction) -> SectionStatus:
-    if counters.fields_total == 0:
+def _status_from_metrics(metrics: ExtractionMetrics) -> SectionStatus:
+    if metrics.fields_total == 0:
         return SectionStatus.FAILED
-    if counters.fields_failed or counters.fields_unknown_type:
+    if metrics.fields_failed or metrics.fields_unknown_type:
         return SectionStatus.PARTIAL
     return SectionStatus.OK
