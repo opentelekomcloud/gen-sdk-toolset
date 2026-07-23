@@ -175,9 +175,7 @@ class RepositoryScanJob(Base):
             JobKind,
             name="job_kind",
             native_enum=False,
-            values_callable=lambda enum_class: [
-                member.value for member in enum_class
-            ],
+            values_callable=lambda enum_class: [member.value for member in enum_class],
         ),
         nullable=False,
         default=JobKind.scan,
@@ -189,9 +187,7 @@ class RepositoryScanJob(Base):
             JobStatus,
             name="job_status",
             native_enum=False,
-            values_callable=lambda enum_class: [
-                member.value for member in enum_class
-            ],
+            values_callable=lambda enum_class: [member.value for member in enum_class],
         ),
         nullable=False,
         default=JobStatus.queued,
