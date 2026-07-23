@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { SectionDetail } from "../api/types.local";
-import { SECTION_LABELS } from "../constants";
+import { sectionLabelKey } from "../constants";
 import { SECTION_STATUS_CLS } from "../styles";
 import { IrTable } from "./IrTable";
+import { useI18n } from "../../../shared/i18n";
 
 export function DocSectionRow({ section }: { section: SectionDetail }) {
   const [open, setOpen] = useState(false);
+  const { t } = useI18n();
   const counts =
     section.fields_total > 0
-      ? ` · ${section.fields_recognized}/${section.fields_total} fields${
-          section.fields_unknown_type ? ` · ${section.fields_unknown_type} unknown` : ""
+      ? ` · ${t("doc.fields", { rec: section.fields_recognized, total: section.fields_total })}${
+          section.fields_unknown_type ? ` · ${t("doc.unknown", { n: section.fields_unknown_type })}` : ""
         }`
       : "";
   return (
@@ -21,7 +23,7 @@ export function DocSectionRow({ section }: { section: SectionDetail }) {
       >
         <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
           {open ? <ChevronDown size={12} className="text-gray-400" /> : <ChevronRight size={12} className="text-gray-400" />}
-          {SECTION_LABELS[section.name]}
+          {t(sectionLabelKey(section.name))}
         </span>
         <span className={`font-mono text-[11px] font-medium ${SECTION_STATUS_CLS[section.status]}`}>
           {section.status}

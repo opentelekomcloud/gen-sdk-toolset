@@ -1,10 +1,11 @@
 import { Loader2 } from "lucide-react";
 import type { RescanReason } from "../api/types.local";
 import { RESCAN_META } from "../lib/rescan";
+import { useI18n } from "../../../shared/i18n";
 
 interface Props {
   reason: RescanReason | null;
-  scanning?: { jobId?: string; startedBy?: string };
+  scanning?: { jobId?: number; startedBy?: string };
   scannerVersion: string;
   onClick: () => void;
   size?: "sm" | "lg";
@@ -15,10 +16,12 @@ interface Props {
  * kind; no reason → renders nothing. Parent stops row-click propagation.
  */
 export function RescanButton({ reason, scanning, scannerVersion, onClick, size = "sm" }: Props) {
+  const { t } = useI18n();
   if (scanning) {
     return (
       <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-blue-600">
-        <Loader2 size={12} className="animate-spin" /> {scanning.jobId ? `job #${scanning.jobId}` : "queueing…"}
+        <Loader2 size={12} className="animate-spin" />{" "}
+        {scanning.jobId ? t("rescan.job", { id: scanning.jobId }) : t("rescan.queueing")}
         {scanning.startedBy ? ` · ${scanning.startedBy}` : ""}
       </span>
     );
@@ -26,7 +29,7 @@ export function RescanButton({ reason, scanning, scannerVersion, onClick, size =
   if (!reason) return null;
   const meta = RESCAN_META[reason];
   const Icon = meta.icon;
-  const label = meta.label(scannerVersion);
+  const label = t(meta.labelKey, { v: scannerVersion });
   if (size === "lg") {
     return (
       <button

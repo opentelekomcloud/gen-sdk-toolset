@@ -7,6 +7,7 @@ import type {
   DocumentDetail,
   DocumentsResponse,
   ExcludedService,
+  GenerationsResponse,
   ServiceDetail,
   ServiceFilter,
   ServiceSort,
@@ -21,7 +22,9 @@ export const keys = {
   documents: (name: string, p?: object) => (p ? (["documents", name, p] as const) : (["documents", name] as const)),
   /** Prefix for all cached document details of a service — invalidation target. */
   documentDetails: (name: string) => ["document", name] as const,
-  document: (name: string, id: string) => ["document", name, id] as const,
+  document: (name: string, id: number) => ["document", name, id] as const,
+  /** G1: generation history of a service. */
+  generations: (name: string) => ["generations", name] as const,
   summary: ["summary"] as const,
   attention: ["attention"] as const,
   excluded: ["excluded"] as const,
@@ -51,6 +54,15 @@ export function useService(name: string) {
   });
 }
 
+/** G1: lazy — call with enabled: open (popover); trigger renders from ServiceDetail.active_generation. */
+export function useGenerations(name: string, enabled = true) {
+  return useQuery({
+    queryKey: keys.generations(name),
+    queryFn: () => apiFetch<GenerationsResponse>(`/scan/services/${encodeURIComponent(name)}/generations`),
+    enabled,
+  });
+}
+
 export interface DocumentsParams {
   status?: DocStatus | "all";
   q?: string;
@@ -72,12 +84,12 @@ export function useDocuments(name: string, params: DocumentsParams) {
 }
 
 /** Lazy — call with enabled: open (PS13); loading/error/retry come from query state. */
-export function useDocumentDetail(name: string, id: string, enabled: boolean) {
+export function useDocumentDetail(name: string, id: number, enabled: boolean) {
   return useQuery({
     queryKey: keys.document(name, id),
-    queryFn: () => apiFetch<DocumentDetail>(`/scan/services/${encodeURIComponent(name)}/documents/${encodeURIComponent(id)}`),
+    queryFn: () => apiFetch<DocumentDetail>(`/scan/services/${encodeURIComponent(name)}/documents/${id}`),
     enabled,
-    staleTime: Infinity, // immutable within a generation; invalidated on rescan/rollback
+    staleTime: Infinity, // immutable within a generation; invalidated on rescan/activate
   });
 }
 

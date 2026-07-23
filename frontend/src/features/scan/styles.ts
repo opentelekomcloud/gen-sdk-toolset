@@ -1,18 +1,22 @@
 import type { DocStatus, ScanStatus, SectionStatus } from "./api/types.local";
 import type { Tone } from "./lib/sectionTone";
+import type { MessageKey } from "../../shared/i18n";
 
 /**
  * Typed class maps (PS9). Adding a union member breaks compilation
  * until the corresponding map is updated — that is the point.
+ * Labels live in i18n dictionaries (status.* keys); only classes live here.
  */
 
-export const SCAN_PILL: Record<ScanStatus, { label: string; cls: string }> = {
-  scanned: { label: "Scanned", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  partial: { label: "Partially scanned", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  failed: { label: "Failed", cls: "bg-red-50 text-red-700 border-red-200" },
-  not_scanned: { label: "Not scanned", cls: "bg-gray-100 text-gray-500 border-gray-200" },
-  scanning: { label: "Scan in progress", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+export const SCAN_PILL_CLS: Record<ScanStatus, string> = {
+  scanned: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  partial: "bg-amber-50 text-amber-700 border-amber-200",
+  failed: "bg-red-50 text-red-700 border-red-200",
+  not_scanned: "bg-gray-100 text-gray-500 border-gray-200",
+  scanning: "bg-blue-50 text-blue-700 border-blue-200",
 };
+
+export const scanPillKey = (s: ScanStatus): MessageKey => `status.${s}` as MessageKey;
 
 export const DOC_STATUS_CLS: Record<DocStatus, string> = {
   ok: "text-emerald-700",

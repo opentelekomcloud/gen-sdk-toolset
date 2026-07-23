@@ -1,7 +1,8 @@
 /**
- * Contract types (PS1 + PS15).
- * TEMPORARY — once openapi.json covers /scan (PS1/PS15), delete this file
- * and import from `src/shared/api/schema.gen.ts` (`components['schemas'][…]`) instead. Shapes mirror the contracts
+ * Contract types (PS1 + PS15 + G1 generations).
+ * TEMPORARY — once openapi.json covers /scan, delete this file and import from
+ * `src/shared/api/schema.gen.ts` instead. Shapes mirror the DTOs the panel API
+ * builds from the persistence models (service / job / generation / document),
  * so the swap is mechanical.
  */
 
@@ -20,6 +21,9 @@ export type Section =
   | "example_response";
 export type AttentionRuleCode = "failed" | "version" | "drift" | "new";
 export type PanelName = "scan" | "generation" | "maintenance";
+/** Mirrors JobKind / JobStatus enums on the `job` table. */
+export type JobKind = "scan" | "generate" | "maintain";
+export type JobStatus = "queued" | "running" | "done" | "failed";
 
 export type ServiceFilter = "all" | ScanStatus | "needs_rescan";
 export type ServiceSort = "quality" | "docs" | "name";
@@ -37,6 +41,58 @@ export interface SectionCounts {
   missing?: number;
 }
 
+/**
+ * G1: one immutable successfully persisted scan snapshot — DTO of the
+ * `generation` table (a failed job creates no generation). `created_at` is
+ * the scan timestamp; `completeness` is a 0..1 float — use lib/generation.ts
+ * helpers for percent and short commit display.
+ */
+export interface Generation {
+  id: number;
+  source_job_id: number;
+  branch: string;
+  /** Full commit hash the scan ran against (shorten in UI via shortCommit). */
+  commit_hash: string;
+  scanner_version: string;
+  document_schema_version: string;
+  /** Set when the scan finished but could not cover everything. */
+  incomplete_reason: string | null;
+  documents_total: number;
+  endpoints_total: number;
+  non_endpoint_documents: number;
+  issues_total: number;
+  ok_count: number;
+  partial_count: number;
+  failed_count: number;
+  unsupported_count: number;
+  /** 0..1, nullable (e.g. no endpoint documents). */
+  completeness: number | null;
+  created_at: string;
+}
+
+export interface GenerationsResponse {
+  /** Newest first (ix_generation_service_created_at DESC). */
+  items: Generation[];
+  /** Mirror Service.active_generation_id / latest_generation_id — nullable in the DB. */
+  active_id: number | null;
+  latest_id: number | null;
+}
+
+export interface ActivateGenerationRequest {
+  initiated_by: string;
+}
+
+/** Mirrors RepositoryInterruptionKind — typed operational failure on the job. */
+export type RepositoryInterruptionKind = "rate_limit" | "authentication" | "permission_denied" | "repository_failure";
+
+export interface RepositoryInterruption {
+  kind: RepositoryInterruptionKind;
+  repository: string | null;
+  message: string;
+  /** Unix seconds when the rate limit resets (rate_limit only). */
+  reset_time: number | null;
+}
+
 export interface ServiceListItem {
   name: string;
   scan_status: ScanStatus;
@@ -49,9 +105,9 @@ export interface ServiceListItem {
   overall_breakdown: Partial<Record<DocStatus, number>>;
   section_rollup: Record<Section, SectionCounts>;
   error: string | null;
-  /* present while scan_status === "scanning" */
-  job_id?: string;
-  started_by?: string;
+  /* present while scan_status === "scanning" — from the queued/running job */
+  job_id?: number;
+  initiated_by?: string | null;
   started_at?: string;
 }
 
@@ -62,17 +118,35 @@ export interface ServicesResponse {
 }
 
 export interface ServiceDetail extends ServiceListItem {
-  has_previous: boolean;
+  /**
+   * G1: snapshot currently displayed / served (Service.active_generation).
+   * Null when no successful scan exists yet. All flat scan-result fields on
+   * this DTO (documents, struct_ok, overall_breakdown, section_rollup,
+   * top_issues, …) are served FROM this generation.
+   */
+  active_generation: Generation | null;
+  /** G1: newest persisted snapshot (Service.latest_generation) — may deliberately differ from active. */
+  latest_generation: Generation | null;
+  /**
+   * Service.head_commit — current HEAD of the docs repo; drift =
+   * head_commit !== active_generation.commit_hash (docs_changed is the
+   * server-computed shortcut for exactly that).
+   */
+  head_commit: string | null;
+  /** Structured operational failure from the last failed job (job.interruption JSONB); null when error is a plain scan error. */
+  interruption: RepositoryInterruption | null;
   top_issues: IssueCount[];
   non_endpoint_documents: number;
 }
 
 export interface DocumentListItem {
-  id: string;
+  /** document.id (int PK). */
+  id: number;
   method: string | null;
   uri: string | null;
   title: string | null;
-  document: string;
+  /** document.path — generated projection of payload->>'path'. */
+  path: string;
   overall_status: DocStatus;
   issues: IssueCount[];
 }
@@ -111,7 +185,7 @@ export interface SectionDetail {
 }
 
 export interface DocumentDetail {
-  id: string;
+  id: number;
   method: string | null;
   uri: string | null;
   title: string | null;
@@ -137,6 +211,7 @@ export interface AttentionRule {
   count: number;
 }
 
+/** Backed by service.exclude_reason / excluded_by / excluded_at columns. */
 export interface ExcludedService {
   name: string;
   reason: string;
@@ -149,14 +224,8 @@ export interface RescanRequest {
 }
 
 export interface RescanResponse {
-  job_id: string;
-}
-
-export interface RollbackResponse {
-  current_job_id: string;
-  previous_job_id: string;
-  scanned_at: string;
-  scanner_version: string;
+  /** job.id (int PK). */
+  job_id: number;
 }
 
 export interface ExcludeRequest {

@@ -2,18 +2,26 @@ import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-q
 import { apiFetch } from "./client";
 import { keys } from "./queries";
 import { CONFIG } from "../constants";
-import type { ExcludeRequest, RescanRequest, RescanResponse, RollbackResponse, ServiceDetail } from "./types.local";
+import type {
+  ActivateGenerationRequest,
+  ExcludeRequest,
+  GenerationsResponse,
+  RescanRequest,
+  RescanResponse,
+  ServiceDetail,
+} from "./types.local";
 
 /**
- * The full invalidation set (PS11/PS14): a completed scan, a rollback, or an
- * exclusion changes the generation or the working set — service detail,
- * documents, cached document details, services list, summary, and attention
- * are all stale together.
+ * The full invalidation set (PS11/PS14/G1): a completed scan, a generation
+ * activation, or an exclusion changes the active generation or the working
+ * set — service detail, documents, cached document details, generations list,
+ * services list, summary, and attention are all stale together.
  */
 export function invalidateGeneration(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.service(name) });
   void qc.invalidateQueries({ queryKey: keys.documents(name) });
   void qc.invalidateQueries({ queryKey: keys.documentDetails(name) });
+  void qc.invalidateQueries({ queryKey: keys.generations(name) });
   void qc.invalidateQueries({ queryKey: keys.services() });
   void qc.invalidateQueries({ queryKey: keys.summary });
   void qc.invalidateQueries({ queryKey: keys.attention });
@@ -35,7 +43,7 @@ export function useRescan(name: string) {
         qc.setQueryData<ServiceDetail>(keys.service(name), {
           ...prev,
           scan_status: "scanning",
-          started_by: CONFIG.identity,
+          initiated_by: CONFIG.identity,
           started_at: new Date().toISOString(),
         });
       }
@@ -60,11 +68,23 @@ export function useRescan(name: string) {
   });
 }
 
-export function useRollback(name: string) {
+/**
+ * G1: make another persisted generation active (moves Service.active_generation_id).
+ * Replaces useRollback — rollback is activate(previous). Never triggers a scan;
+ * only changes which snapshot every scan-result view is served from.
+ * Server answers 409 while a scan job is queued/running for this service.
+ */
+export function useActivateGeneration(name: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () =>
-      apiFetch<RollbackResponse>(`/scan/services/${encodeURIComponent(name)}/rollback`, { method: "POST" }),
+    mutationFn: (generationId: number) =>
+      apiFetch<GenerationsResponse>(
+        `/scan/services/${encodeURIComponent(name)}/generations/${generationId}/activate`,
+        {
+          method: "POST",
+          body: JSON.stringify({ initiated_by: CONFIG.identity } satisfies ActivateGenerationRequest),
+        },
+      ),
     onSettled: () => invalidateGeneration(qc, name),
   });
 }

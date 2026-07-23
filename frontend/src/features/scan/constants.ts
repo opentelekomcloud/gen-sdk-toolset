@@ -1,4 +1,5 @@
 import type { Section } from "./api/types.local";
+import type { MessageKey } from "../../shared/i18n";
 
 /** The 7 sections in fixed order (PS1). */
 export const SECTIONS: readonly Section[] = [
@@ -11,15 +12,8 @@ export const SECTIONS: readonly Section[] = [
   "example_response",
 ] as const;
 
-export const SECTION_LABELS: Record<Section, string> = {
-  path_params: "Path params",
-  query_params: "Query params",
-  headers: "Headers",
-  body: "Body",
-  response: "Response",
-  example_request: "Example req",
-  example_response: "Example resp",
-};
+/** i18n key for a section label (dictionaries hold section.* entries). */
+export const sectionLabelKey = (s: Section): MessageKey => `section.${s}` as MessageKey;
 
 /** Identity is self-reported, from environment config — never a literal in components. */
 export const CONFIG = {
