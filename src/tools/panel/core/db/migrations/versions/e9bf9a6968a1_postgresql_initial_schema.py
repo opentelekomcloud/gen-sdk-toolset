@@ -1,8 +1,8 @@
-"""postgresql initial schema: service, job, generation, document
+"""postgresql initial schema
 
-Revision ID: c75cdb74675c
+Revision ID: e9bf9a6968a1
 Revises: 
-Create Date: 2026-07-23 15:36:21.976987
+Create Date: 2026-07-23 15:57:11.518176
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = 'c75cdb74675c'
+revision: str = 'e9bf9a6968a1'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -27,7 +27,6 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('branch', sa.String(length=255), nullable=False),
     sa.Column('has_api_ref', sa.Boolean(), server_default=sa.text('false'), nullable=False),
-    sa.Column('is_excluded', sa.Boolean(), server_default=sa.text('false'), nullable=False),
     sa.Column('first_seen', sa.DateTime(timezone=True), nullable=True),
     sa.Column('eligibility_checked_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('discovery_error', sa.Text(), nullable=True),
@@ -39,13 +38,21 @@ def upgrade() -> None:
     sa.UniqueConstraint('repo', name=op.f('uq_service_repo'))
     )
     op.create_index(op.f('ix_service_active_generation_id'), 'service', ['active_generation_id'], unique=False)
-    op.create_index('ix_service_eligibility', 'service', ['has_api_ref', 'is_excluded'], unique=False)
     op.create_index(op.f('ix_service_latest_generation_id'), 'service', ['latest_generation_id'], unique=False)
+    op.create_table('excluded_service',
+    sa.Column('service_id', sa.Integer(), nullable=False),
+    sa.Column('reason', sa.Text(), nullable=False),
+    sa.Column('excluded_by', sa.String(length=255), nullable=False),
+    sa.Column('excluded_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+    sa.ForeignKeyConstraint(['service_id'], ['service.id'], name=op.f('fk_excluded_service_service_id_service'), ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('service_id', name=op.f('pk_excluded_service'))
+    )
     op.create_table('job',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('service_id', sa.Integer(), nullable=False),
     sa.Column('kind', sa.Enum('scan', 'generate', 'maintain', name='job_kind', native_enum=False), server_default='scan', nullable=False),
     sa.Column('status', sa.Enum('queued', 'running', 'done', 'failed', name='job_status', native_enum=False), server_default='queued', nullable=False),
+    sa.Column('initiated_by', sa.String(length=255), server_default='system', nullable=False),
     sa.Column('error', sa.Text(), nullable=True),
     sa.Column('interruption', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
@@ -59,7 +66,6 @@ def upgrade() -> None:
     op.create_index('ix_job_service_created_at', 'job', ['service_id', 'created_at'], unique=False)
     op.create_index(op.f('ix_job_service_id'), 'job', ['service_id'], unique=False)
     op.create_index('ix_job_service_status', 'job', ['service_id', 'status'], unique=False)
-    op.create_index(op.f('ix_job_status'), 'job', ['status'], unique=False)
     op.create_index('uq_active_scan_job_per_service', 'job', ['service_id'], unique=True, postgresql_where=sa.text("kind = 'scan' AND status IN ('queued', 'running')"))
     op.create_table('generation',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -117,6 +123,7 @@ def upgrade() -> None:
     sa.CheckConstraint("jsonb_typeof(payload) = 'object'", name=op.f('ck_document_payload_is_object')),
     sa.CheckConstraint("kind = 'endpoint' OR (method IS NULL AND uri IS NULL)", name=op.f('ck_document_non_endpoint_has_no_method_uri')),
     sa.CheckConstraint("kind IN ('document', 'endpoint')", name=op.f('ck_document_kind_valid')),
+    sa.CheckConstraint("overall_status IS NULL OR overall_status IN ('ok', 'partial', 'failed', 'unsupported')", name=op.f('ck_document_overall_status_valid')),
     sa.CheckConstraint('issues_count >= 0', name=op.f('ck_document_issues_count_non_negative')),
     sa.ForeignKeyConstraint(['generation_id'], ['generation.id'], name=op.f('fk_document_generation_id_generation'), ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_document')),
@@ -127,16 +134,14 @@ def upgrade() -> None:
     op.create_index('ix_document_generation_kind', 'document', ['generation_id', 'kind'], unique=False)
     op.create_index('ix_document_generation_method', 'document', ['generation_id', 'method'], unique=False)
     op.create_index('ix_document_generation_status', 'document', ['generation_id', 'overall_status'], unique=False)
-    op.create_index(op.f('ix_document_overall_status'), 'document', ['overall_status'], unique=False)
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    # ### commands auto generated by Alembic - please adjust! ###
     op.drop_constraint('fk_service_active_generation', 'service', type_='foreignkey')
     op.drop_constraint('fk_service_latest_generation', 'service', type_='foreignkey')
-    op.drop_index(op.f('ix_document_overall_status'), table_name='document')
+    # ### commands auto generated by Alembic - please adjust! ###
     op.drop_index('ix_document_generation_status', table_name='document')
     op.drop_index('ix_document_generation_method', table_name='document')
     op.drop_index('ix_document_generation_kind', table_name='document')
@@ -149,13 +154,12 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_generation_commit_hash'), table_name='generation')
     op.drop_table('generation')
     op.drop_index('uq_active_scan_job_per_service', table_name='job', postgresql_where=sa.text("kind = 'scan' AND status IN ('queued', 'running')"))
-    op.drop_index(op.f('ix_job_status'), table_name='job')
     op.drop_index('ix_job_service_status', table_name='job')
     op.drop_index(op.f('ix_job_service_id'), table_name='job')
     op.drop_index('ix_job_service_created_at', table_name='job')
     op.drop_table('job')
+    op.drop_table('excluded_service')
     op.drop_index(op.f('ix_service_latest_generation_id'), table_name='service')
-    op.drop_index('ix_service_eligibility', table_name='service')
     op.drop_index(op.f('ix_service_active_generation_id'), table_name='service')
     op.drop_table('service')
     # ### end Alembic commands ###

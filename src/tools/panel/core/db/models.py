@@ -61,11 +61,12 @@ class Service(Base):
         default=False,
         server_default=sa.false(),
     )
-    is_excluded: Mapped[bool] = mapped_column(
-        sa.Boolean,
-        nullable=False,
-        default=False,
-        server_default=sa.false(),
+    # Present when the service is excluded from scanning; None otherwise.
+    # Rich exclusion data (who/when/why) lives in ExcludedService for the UI.
+    exclusion: Mapped[ExcludedService | None] = relationship(
+        back_populates="service",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
 
     first_seen: Mapped[datetime | None] = mapped_column(
@@ -137,12 +138,40 @@ class Service(Base):
         post_update=True,
     )
 
-    __table_args__ = (
-        sa.Index(
-            "ix_service_eligibility",
-            "has_api_ref",
-            "is_excluded",
+
+class ExcludedService(Base):
+    """Exclusion record for a service: who excluded it, when, and why.
+
+    One row per excluded service; absence of a row means the service is
+    eligible for scanning.
+    """
+
+    __tablename__ = "excluded_service"
+
+    service_id: Mapped[int] = mapped_column(
+        sa.ForeignKey(
+            "service.id",
+            ondelete="CASCADE",
         ),
+        primary_key=True,
+    )
+
+    reason: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+    )
+    excluded_by: Mapped[str] = mapped_column(
+        sa.String(255),
+        nullable=False,
+    )
+    excluded_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    )
+
+    service: Mapped[Service] = relationship(
+        back_populates="exclusion",
     )
 
 
@@ -192,7 +221,15 @@ class RepositoryScanJob(Base):
         nullable=False,
         default=JobStatus.queued,
         server_default=JobStatus.queued.value,
-        index=True,
+    )
+
+    # Who triggered the job: a panel user login, or "system" for jobs
+    # enqueued automatically (e.g. nightly discovery).
+    initiated_by: Mapped[str] = mapped_column(
+        sa.String(255),
+        nullable=False,
+        default="system",
+        server_default="system",
     )
 
     error: Mapped[str | None] = mapped_column(
@@ -559,7 +596,6 @@ class DocumentRecord(Base):
     overall_status: Mapped[str | None] = mapped_column(
         sa.String(32),
         nullable=True,
-        index=True,
     )
 
     completeness: Mapped[float | None] = mapped_column(
@@ -591,6 +627,11 @@ class DocumentRecord(Base):
         sa.CheckConstraint(
             "kind IN ('document', 'endpoint')",
             name="kind_valid",
+        ),
+        sa.CheckConstraint(
+            "overall_status IS NULL OR overall_status IN "
+            "('ok', 'partial', 'failed', 'unsupported')",
+            name="overall_status_valid",
         ),
         sa.CheckConstraint(
             "kind = 'endpoint' OR (method IS NULL AND uri IS NULL)",
@@ -625,9 +666,10 @@ class DocumentRecord(Base):
 
 __all__ = [
     "DocumentRecord",
+    "ExcludedService",
     "Generation",
-    "RepositoryScanJob",
     "JobKind",
     "JobStatus",
+    "RepositoryScanJob",
     "Service",
 ]
