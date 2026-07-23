@@ -21,6 +21,8 @@ lib64/
 !frontend/**/lib/**
 parts/
 sdist/
+!frontend/**/lib/
+!frontend/**/lib/**
 var/
 wheels/
 share/python-wheels/
