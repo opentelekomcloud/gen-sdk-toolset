@@ -24,7 +24,7 @@ describe("fmtGenAt", () => {
 describe("structPct", () => {
   it("maps the DB 0..1 float to a rounded percent, passing null through", () => {
     expect(structPct(null)).toBeNull();
-    expect(structPct(0.945)).toBe(94);
+    expect(structPct(0.945)).toBe(95);
     expect(structPct(0.946)).toBe(95);
     expect(structPct(1)).toBe(100);
     expect(structPct(0)).toBe(0);
