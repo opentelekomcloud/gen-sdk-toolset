@@ -5,6 +5,8 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-panel}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-panel}
       - POSTGRES_DB=${POSTGRES_DB:-panel}
+    # Exposed for local tooling (psql, IDE) only — do not publish in
+    # production; backend reaches the db over the compose network.
     ports:
       - "5432:5432"
     volumes:
