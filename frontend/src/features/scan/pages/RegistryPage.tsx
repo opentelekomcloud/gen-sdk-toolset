@@ -67,7 +67,11 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
           reason={item.rescan_reason}
           scanning={item.scan_status === "scanning" ? { jobId: item.job_id, startedBy: item.initiated_by ?? undefined } : undefined}
           scannerVersion={scannerVersion}
-          onClick={() => rescan.mutate()}
+          /* guard double-fire: the optimistic flip lives in the detail cache,
+             so the row keeps rendering the button until the list refetches */
+          onClick={() => {
+            if (!rescan.isPending) rescan.mutate();
+          }}
         />
       </div>
     </div>
@@ -89,7 +93,10 @@ export function RegistryPage() {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
-          if (value && value !== "all") next.set(key, value);
+          /* "all" is a sentinel only for the status filter — a search for the
+             literal text "all" must not be swallowed */
+          const isDefault = key === "status" && value === "all";
+          if (value && !isDefault) next.set(key, value);
           else next.delete(key);
           if (dropRule) next.delete("rule");
           return next;

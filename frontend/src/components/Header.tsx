@@ -12,6 +12,7 @@ function LangToggle() {
         <button
           key={l}
           onClick={() => setLang(l)}
+          aria-pressed={lang === l}
           className={`px-2.5 py-1 font-medium uppercase transition ${
             lang === l ? "bg-white text-brand" : "text-white/80 hover:text-white"
           }`}
@@ -30,7 +31,8 @@ export function Header() {
   return (
     <header className="flex items-center justify-between bg-brand px-6 py-3">
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-white text-xl font-black text-brand">T</div>
+        {/* public/ assets are served from the root — a relative ../../public path breaks in the production build */}
+        <img src="/favicon.svg" alt="" className="h-11 w-11 rounded-sm" />
         <div className="text-white">
           <div className="text-sm font-semibold leading-tight">gen-sdk-tooling</div>
           <div className="text-xs leading-tight opacity-80">{t("header.subtitle")}</div>

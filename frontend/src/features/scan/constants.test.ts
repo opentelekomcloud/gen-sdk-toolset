@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { CONFIG, SECTION_LABELS, SECTIONS } from "./constants";
+import { CONFIG, SECTIONS, sectionLabelKey } from "./constants";
+import { en } from "../../shared/i18n/en";
+import { de } from "../../shared/i18n/de";
 
 describe("sections contract (PS1)", () => {
   it("has exactly 7 sections in fixed order", () => {
@@ -8,8 +10,12 @@ describe("sections contract (PS1)", () => {
     expect(SECTIONS[6]).toBe("example_response");
   });
 
-  it("labels every section", () => {
-    for (const s of SECTIONS) expect(SECTION_LABELS[s]).toBeTruthy();
+  it("labels every section in both dictionaries", () => {
+    for (const s of SECTIONS) {
+      expect(sectionLabelKey(s)).toBe(`section.${s}`);
+      expect(en[sectionLabelKey(s)]).toBeTruthy();
+      expect(de[sectionLabelKey(s)]).toBeTruthy();
+    }
   });
 });
 

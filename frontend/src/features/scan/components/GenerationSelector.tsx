@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, GitCommit, History, Loader2 } from "lucide-react";
 import { useGenerations } from "../api/queries";
 import type { Generation, ServiceDetail } from "../api/types.local";
@@ -23,17 +23,30 @@ interface Props {
 export function GenerationSelector({ service, disabled, onActivate }: Props) {
   const [open, setOpen] = useState(false);
   const [pendingId, setPendingId] = useState<number | null>(null);
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const active = service.active_generation;
   const latest = service.latest_generation;
   const { data, isPending } = useGenerations(service.name, open);
+
+  /* Escape closes the popover — click-away alone is mouse-only (a11y) */
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        setPendingId(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   if (!active) {
     /* failed / never scanned — no persisted snapshots to pick from */
     return (
       <div className="mt-1 font-mono text-xs text-gray-400">
         {service.scanner_version ? t("gen.scannedWith", { v: service.scanner_version }) : t("gen.neverScanned")}
-        {service.scanned_at ? ` · ${fmtGenAt(service.scanned_at)}` : ""}
+        {service.scanned_at ? ` · ${fmtGenAt(service.scanned_at, locale)}` : ""}
       </div>
     );
   }
@@ -58,6 +71,8 @@ export function GenerationSelector({ service, disabled, onActivate }: Props) {
         type="button"
         onClick={() => !disabled && (open ? close() : setOpen(true))}
         disabled={disabled}
+        aria-expanded={open}
+        aria-haspopup="listbox"
         title={t("gen.pillTitle")}
         className={`flex items-center gap-1.5 rounded-md border px-2 py-1 font-mono text-xs transition ${
           disabled
@@ -70,7 +85,7 @@ export function GenerationSelector({ service, disabled, onActivate }: Props) {
         <History size={12} className={onLatest ? "text-gray-400" : "text-amber-500"} />
         <span className="font-semibold">{t("gen.pill", { id: active.id })}</span>
         <span className="opacity-40">·</span>
-        <span>{fmtGenAt(active.created_at)}</span>
+        <span>{fmtGenAt(active.created_at, locale)}</span>
         <span className="opacity-40">·</span>
         <span className="flex items-center gap-1">
           <GitCommit size={11} /> {shortCommit(active.commit_hash)}
@@ -135,7 +150,7 @@ export function GenerationSelector({ service, disabled, onActivate }: Props) {
                           )}
                         </div>
                         <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-gray-400">
-                          <span>{fmtGenAt(g.created_at)}</span>
+                          <span>{fmtGenAt(g.created_at, locale)}</span>
                           <span className="flex items-center gap-1">
                             <GitCommit size={10} /> {shortCommit(g.commit_hash)}
                           </span>
@@ -157,7 +172,7 @@ export function GenerationSelector({ service, disabled, onActivate }: Props) {
                 <div className="text-xs font-semibold text-amber-900">{t("gen.confirmTitle", { id: pending.id })}</div>
                 <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
                   {t("gen.confirmBody", {
-                    at: fmtGenAt(pending.created_at),
+                    at: fmtGenAt(pending.created_at, locale),
                     ver: pending.scanner_version,
                     commit: shortCommit(pending.commit_hash),
                     latest: latest.id,

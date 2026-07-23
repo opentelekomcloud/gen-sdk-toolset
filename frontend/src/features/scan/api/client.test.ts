@@ -19,8 +19,16 @@ describe("apiFetch", () => {
   it("always sends Content-Type, even when the caller passes headers", async () => {
     const spy = mockFetch(async () => new Response("{}", { status: 200 }));
     await apiFetch("/x", { method: "POST", headers: { "X-Extra": "1" } });
-    const init = spy.mock.calls[0][1]!;
-    expect(init.headers).toMatchObject({ "Content-Type": "application/json", "X-Extra": "1" });
+    const headers = new Headers(spy.mock.calls[0][1]!.headers);
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get("X-Extra")).toBe("1");
+  });
+
+  it("merges Headers instances too, without clobbering a caller Content-Type", async () => {
+    const spy = mockFetch(async () => new Response("{}", { status: 200 }));
+    await apiFetch("/x", { method: "POST", headers: new Headers({ "Content-Type": "text/plain" }) });
+    const headers = new Headers(spy.mock.calls[0][1]!.headers);
+    expect(headers.get("Content-Type")).toBe("text/plain");
   });
 
   it("returns undefined for 204", async () => {

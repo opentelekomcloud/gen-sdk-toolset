@@ -10,7 +10,7 @@ interface Props {
 
 /** G1: shown when active_generation_id deliberately lags latest_generation_id — one-click return to latest. */
 export function GenerationBanner({ service, onActivateLatest }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const active = service.active_generation;
   const latest = service.latest_generation;
   if (!active || !latest || active.id === latest.id) return null;
@@ -20,10 +20,10 @@ export function GenerationBanner({ service, onActivateLatest }: Props) {
         <History size={14} />
         {t("genBanner.text", {
           activeId: active.id,
-          at: fmtGenAt(active.created_at),
+          at: fmtGenAt(active.created_at, locale),
           ver: active.scanner_version,
           latestId: latest.id,
-          latestAt: fmtGenAt(latest.created_at),
+          latestAt: fmtGenAt(latest.created_at, locale),
         })}
       </span>
       <button

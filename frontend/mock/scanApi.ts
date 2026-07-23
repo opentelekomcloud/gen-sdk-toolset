@@ -116,7 +116,12 @@ for (const s of SERVICES) {
   s.head_commit = s.docs_changed ? HASH(s.name + "drifted") : history[0].commit_hash;
 }
 
-const pub = ({ view: _view, ...g }: Gen) => g;
+/* strip the mock-only `view` payload before a Gen goes over the wire */
+const pub = (g: Gen): Omit<Gen, "view"> => {
+  const rest: Partial<Gen> = { ...g };
+  delete rest.view;
+  return rest as Omit<Gen, "view">;
+};
 const applyActive = (s: MockService) => {
   const history = GENS[s.name as string];
   if (!history) return s;

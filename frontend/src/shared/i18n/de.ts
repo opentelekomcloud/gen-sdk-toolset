@@ -47,7 +47,7 @@ export const de: Record<keyof typeof en, string> = {
   "registry.col.docs": "Doks · Qualität",
   "registry.col.sections": "Sektionen",
   "registry.col.rescan": "Rescan",
-  "registry.docs": "{n} Doks",
+  "registry.docs": "{n} Dok|{n} Doks",
   "registry.noEndpointDocs": "keine Endpoint-Doks",
   "registry.scanning": "wird gescannt…",
   "registry.empty": "Kein Service entspricht dem aktuellen Filter.",
@@ -87,7 +87,7 @@ export const de: Record<keyof typeof en, string> = {
   "service.noEndpointTitle": "Gescannt — keine Endpoint-Dokumente gefunden",
   "service.noEndpointBody":
     "api-ref/source existiert in diesem Repository{pages}, aber keine der Seiten ist ein parsbares Endpoint-Dokument (nur Index- und Konzeptseiten). Nichts zum Generieren — ein gültiger Endzustand, kein Fehler.",
-  "service.noEndpointPages": " und enthält {n} Seite(n)",
+  "service.noEndpointPages": " und enthält {n} Seite| und enthält {n} Seiten",
   "service.metricDocs": "Endpoint-Dokumente",
   "service.metricQuality": "Strukturelle Qualität",
   "service.metricStatuses": "Dokument-Status",
@@ -109,7 +109,7 @@ export const de: Record<keyof typeof en, string> = {
   "gen.latestBadge": "neueste",
   "gen.activeBadge": "aktiv",
   "gen.incompleteBadge": "unvollständig",
-  "gen.docs": "{n} Doks",
+  "gen.docs": "{n} Dok|{n} Doks",
   "gen.scannerV": "Scanner v{v}",
   "gen.confirmTitle": "Gen {id} aktivieren — einen älteren Snapshot?",
   "gen.confirmBody":

@@ -92,12 +92,21 @@ export function ServicePage() {
           {scanning ? (
             <RescanButton reason={null} scanning={{ jobId: service.job_id, startedBy: service.initiated_by ?? undefined }} scannerVersion={scannerVersion} onClick={() => {}} />
           ) : service.rescan_reason ? (
-            <RescanButton reason={service.rescan_reason} scannerVersion={scannerVersion} onClick={() => rescan.mutate()} size="lg" />
+            <RescanButton
+              reason={service.rescan_reason}
+              scannerVersion={scannerVersion}
+              onClick={() => {
+                if (!rescan.isPending) rescan.mutate();
+              }}
+              size="lg"
+            />
           ) : (
             <div className="flex items-center gap-2 text-sm text-gray-400">
               <CheckCircle2 size={15} className="text-emerald-500" /> {t("service.upToDate")}
               <button
-                onClick={() => rescan.mutate()}
+                onClick={() => {
+                  if (!rescan.isPending) rescan.mutate();
+                }}
                 className="text-xs underline decoration-dotted underline-offset-2 transition hover:text-gray-700"
               >
                 {t("service.forceRescan")}

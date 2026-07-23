@@ -1,6 +1,6 @@
-import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { keys } from "./queries";
+import { invalidateGeneration, keys } from "./queries";
 import { CONFIG } from "../constants";
 import type {
   ActivateGenerationRequest,
@@ -10,22 +10,6 @@ import type {
   RescanResponse,
   ServiceDetail,
 } from "./types.local";
-
-/**
- * The full invalidation set (PS11/PS14/G1): a completed scan, a generation
- * activation, or an exclusion changes the active generation or the working
- * set — service detail, documents, cached document details, generations list,
- * services list, summary, and attention are all stale together.
- */
-export function invalidateGeneration(qc: QueryClient, name: string) {
-  void qc.invalidateQueries({ queryKey: keys.service(name) });
-  void qc.invalidateQueries({ queryKey: keys.documents(name) });
-  void qc.invalidateQueries({ queryKey: keys.documentDetails(name) });
-  void qc.invalidateQueries({ queryKey: keys.generations(name) });
-  void qc.invalidateQueries({ queryKey: keys.services() });
-  void qc.invalidateQueries({ queryKey: keys.summary });
-  void qc.invalidateQueries({ queryKey: keys.attention });
-}
 
 export function useRescan(name: string) {
   const qc = useQueryClient();

@@ -45,7 +45,7 @@ export const en = {
   "registry.col.docs": "Docs · quality",
   "registry.col.sections": "Sections",
   "registry.col.rescan": "Rescan",
-  "registry.docs": "{n} docs",
+  "registry.docs": "{n} doc|{n} docs",
   "registry.noEndpointDocs": "no endpoint docs",
   "registry.scanning": "scanning…",
   "registry.empty": "No services match the current filter.",
@@ -85,7 +85,7 @@ export const en = {
   "service.noEndpointTitle": "Scanned — no endpoint documents found",
   "service.noEndpointBody":
     "api-ref/source exists in this repository{pages}, but none of them is a parseable endpoint document (index and conceptual pages only). Nothing to generate from — this is a valid final state, not an error.",
-  "service.noEndpointPages": " and contains {n} page(s)",
+  "service.noEndpointPages": " and contains {n} page| and contains {n} pages",
   "service.metricDocs": "Endpoint documents",
   "service.metricQuality": "Structural quality",
   "service.metricStatuses": "Document statuses",
@@ -107,7 +107,7 @@ export const en = {
   "gen.latestBadge": "latest",
   "gen.activeBadge": "active",
   "gen.incompleteBadge": "incomplete",
-  "gen.docs": "{n} docs",
+  "gen.docs": "{n} doc|{n} docs",
   "gen.scannerV": "scanner v{v}",
   "gen.confirmTitle": "Activate Gen {id} — an older snapshot?",
   "gen.confirmBody":

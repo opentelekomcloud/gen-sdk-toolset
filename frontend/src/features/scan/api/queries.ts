@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiFetch, qs } from "./client";
 import type {
   AttentionRule,
@@ -30,6 +31,24 @@ export const keys = {
   excluded: ["excluded"] as const,
 };
 
+/**
+ * The full invalidation set (PS11/PS14/G1): a completed scan, a generation
+ * activation, or an exclusion changes the active generation or the working
+ * set — service detail, documents, cached document details, generations list,
+ * services list, summary, and attention are all stale together.
+ * Lives here (next to `keys`) so both mutations.ts and useService can use it
+ * without an import cycle.
+ */
+export function invalidateGeneration(qc: QueryClient, name: string) {
+  void qc.invalidateQueries({ queryKey: keys.service(name) });
+  void qc.invalidateQueries({ queryKey: keys.documents(name) });
+  void qc.invalidateQueries({ queryKey: keys.documentDetails(name) });
+  void qc.invalidateQueries({ queryKey: keys.generations(name) });
+  void qc.invalidateQueries({ queryKey: keys.services() });
+  void qc.invalidateQueries({ queryKey: keys.summary });
+  void qc.invalidateQueries({ queryKey: keys.attention });
+}
+
 export interface ServicesParams {
   status?: ServiceFilter;
   q?: string;
@@ -46,12 +65,26 @@ export function useServices(params: ServicesParams) {
 }
 
 export function useService(name: string) {
-  return useQuery({
+  const qc = useQueryClient();
+  const query = useQuery({
     queryKey: keys.service(name),
     queryFn: () => apiFetch<ServiceDetail>(`/scan/services/${encodeURIComponent(name)}`),
     /* while a scan job runs, poll so the page picks up completion (PS14 owns exact policy via useJob) */
     refetchInterval: (query) => (query.state.data?.scan_status === "scanning" ? 4000 : false),
   });
+
+  /* Until useJob (PS14) lands: when polling sees scanning → done, the finished
+     scan has produced a new generation — everything downstream is stale. */
+  const scanStatus = query.data?.scan_status;
+  const prevStatus = useRef(scanStatus);
+  useEffect(() => {
+    if (prevStatus.current === "scanning" && scanStatus != null && scanStatus !== "scanning") {
+      invalidateGeneration(qc, name);
+    }
+    prevStatus.current = scanStatus;
+  }, [scanStatus, qc, name]);
+
+  return query;
 }
 
 /** G1: lazy — call with enabled: open (popover); trigger renders from ServiceDetail.active_generation. */
