@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from tools.panel.core.db.models import (  # noqa: E402
     DocumentRecord,
+    ExcludedService,
     Generation,
     JobKind,
     JobStatus,
@@ -38,6 +39,7 @@ from tools.panel.core.db.models import (  # noqa: E402
     Service,
 )
 from tools.shared.ir import (  # noqa: E402
+    DOCUMENT_SCHEMA_VERSION,
     Document,
     Endpoint,
     Example,
@@ -91,6 +93,7 @@ def scratch_database(admin_url):
     created: list[str] = []
 
     def factory(name: str) -> str:
+        assert name.isidentifier(), f"unsafe database name: {name!r}"
         admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
         with admin_engine.connect() as connection:
             connection.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}"'))
@@ -252,7 +255,7 @@ def make_generation(session: Session, repo: str = "opentelekomcloud-docs/ecs"):
         branch="main",
         commit_hash="a" * 40,
         scanner_version="0.1.0",
-        document_schema_version="1",
+        document_schema_version=DOCUMENT_SCHEMA_VERSION,
         analytics={},
     )
     session.add(generation)
@@ -272,7 +275,7 @@ def test_migration_upgrade_creates_schema_and_downgrade_removes_it(scratch_datab
 
     command.upgrade(config, "head")
     inspector = inspect(engine)
-    assert {"service", "job", "generation", "document"} <= set(
+    assert {"service", "excluded_service", "job", "generation", "document"} <= set(
         inspector.get_table_names()
     )
     service_fks = {fk["name"] for fk in inspector.get_foreign_keys("service")}
@@ -286,7 +289,7 @@ def test_migration_upgrade_creates_schema_and_downgrade_removes_it(scratch_datab
 
     command.downgrade(config, "base")
     inspector = inspect(engine)
-    assert not {"service", "job", "generation", "document"} & set(
+    assert not {"service", "excluded_service", "job", "generation", "document"} & set(
         inspector.get_table_names()
     )
     engine.dispose()
@@ -443,6 +446,53 @@ def test_active_generation_link_set_null_on_delete(db_session):
     stored = db_session.get(Service, service.id)
     assert stored.active_generation_id is None
     assert stored.latest_generation_id is None
+
+
+def test_service_exclusion_roundtrip_and_cascade(db_session):
+    service = Service(repo="org/legacy", name="legacy", branch="main")
+    service.exclusion = ExcludedService(
+        reason="repository archived upstream",
+        excluded_by="valeriia",
+    )
+    db_session.add(service)
+    db_session.flush()
+    db_session.expire_all()
+
+    stored = db_session.get(Service, service.id)
+    assert stored.exclusion.reason == "repository archived upstream"
+    assert stored.exclusion.excluded_by == "valeriia"
+    assert stored.exclusion.excluded_at is not None
+
+    # Dropping the exclusion record makes the service eligible again.
+    stored.exclusion = None
+    db_session.flush()
+    assert db_session.get(ExcludedService, service.id) is None
+
+
+def test_job_initiated_by_defaults_to_system(db_session):
+    service = Service(repo="org/auto", name="auto", branch="main")
+    db_session.add(service)
+    db_session.flush()
+    job = RepositoryScanJob(service_id=service.id, kind=JobKind.scan)
+    db_session.add(job)
+    db_session.flush()
+    db_session.expire_all()
+
+    assert db_session.get(RepositoryScanJob, job.id).initiated_by == "system"
+
+
+def test_document_overall_status_must_be_valid(db_session):
+    endpoint = make_endpoint()
+    _, _, generation = make_generation(db_session)
+    db_session.add(
+        DocumentRecord(
+            generation_id=generation.id,
+            payload=endpoint.model_dump(mode="json"),
+            overall_status="great",
+        )
+    )
+    with pytest.raises(IntegrityError, match="ck_document_overall_status_valid"):
+        db_session.flush()
 
 
 def test_db_modules_import_without_database_or_github_token():
