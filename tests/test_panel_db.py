@@ -32,9 +32,9 @@ from sqlalchemy.orm import Session  # noqa: E402
 from tools.panel.core.db.models import (  # noqa: E402
     DocumentRecord,
     Generation,
-    RepositoryScanJob,
     JobKind,
     JobStatus,
+    RepositoryScanJob,
     Service,
 )
 from tools.shared.ir import (  # noqa: E402
@@ -97,8 +97,10 @@ def scratch_database(admin_url):
             connection.execute(sa.text(f'CREATE DATABASE "{name}"'))
         admin_engine.dispose()
         created.append(name)
-        return sa.engine.make_url(admin_url).set(database=name).render_as_string(
-            hide_password=False
+        return (
+            sa.engine.make_url(admin_url)
+            .set(database=name)
+            .render_as_string(hide_password=False)
         )
 
     yield factory
@@ -277,9 +279,7 @@ def test_migration_upgrade_creates_schema_and_downgrade_removes_it(scratch_datab
     assert {"fk_service_active_generation", "fk_service_latest_generation"} <= (
         service_fks
     )
-    document_columns = {
-        column["name"] for column in inspector.get_columns("document")
-    }
+    document_columns = {column["name"] for column in inspector.get_columns("document")}
     assert {"payload", "kind", "path", "method", "uri", "completeness"} <= (
         document_columns
     )
@@ -341,9 +341,7 @@ def test_plain_document_payload_roundtrip(db_session):
     record = db_session.scalars(select(DocumentRecord)).one()
     restored = Document.model_validate(record.payload)
     assert restored == document
-    assert restored.scan_result.failure_reason.code is (
-        IssueCode.UNSUPPORTED_DOC_STYLE
-    )
+    assert restored.scan_result.failure_reason.code is (IssueCode.UNSUPPORTED_DOC_STYLE)
     assert record.kind == "document"
     assert record.method is None
     assert record.uri is None
