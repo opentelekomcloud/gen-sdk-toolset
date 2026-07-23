@@ -2,11 +2,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { mockScanApi } from './mock/scanApi.ts'
 
 const backend = process.env.BACKEND_URL || 'http://127.0.0.1:8000'
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  /* MOCK_API=1 serves /api/scan/* from fixtures — the backend has no scan routes yet */
+  plugins: [react(), tailwindcss(), ...(process.env.MOCK_API ? [mockScanApi()] : [])],
   server: {
     proxy: {
       '/api': backend,
