@@ -215,3 +215,5 @@ scan.json
 
 node_modules/
 tasks/
+dist/
+coverage/
