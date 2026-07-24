@@ -1,38 +1,34 @@
-import './App.css'
-import { HealthStatus } from './components/HealthStatus'
+import { Navigate, Route, Routes } from "react-router";
+import "./App.css";
+import { I18nProvider, useI18n } from "./shared/i18n";
+import { Header } from "./components/Header";
+import { TabBar } from "./components/TabBar";
+import { AttentionBand } from "./features/scan/components/AttentionBand";
+import { RegistryPage } from "./features/scan/pages/RegistryPage";
+import { ServicePage } from "./features/scan/pages/ServicePage";
 
-const NAV = [
-  { label: "Scan", enabled: true },
-  { label: "Generation", enabled: false },
-  { label: "Maintenance", enabled: false },
-]
-
-function App() {
-  return (
-    <div className="min-h-screen">
-      <header className="bg-brand text-white px-6 py-4">
-        <h1 className="text-lg font-medium">gen-sdk-tooling</h1>
-      </header>
-      <nav className="flex gap-1 border-b px-6">
-        {NAV.map((item) => (
-          <button
-            key={item.label}
-            disabled={!item.enabled}
-            className={
-              item.enabled
-                ? "px-4 py-3 border-b-2 border-brand text-brand font-medium"
-                : "px-4 py-3 text-gray-400 cursor-not-allowed"
-            }
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
-      <main className="p-6">
-        <HealthStatus />
-      </main>
-    </div>
-  )
+function NotFound() {
+  const { t } = useI18n();
+  return <div className="px-6 py-16 text-center text-sm text-gray-400">{t("app.notFound")}</div>;
 }
 
-export default App
+/** Shell order is deliberate: header → attention band (app-level) → tabs → content. */
+function App() {
+  return (
+    <I18nProvider>
+      <div className="min-h-screen">
+        <Header />
+        <AttentionBand />
+        <TabBar />
+        <Routes>
+          <Route path="/" element={<Navigate to="/scan" replace />} />
+          <Route path="/scan" element={<RegistryPage />} />
+          <Route path="/scan/services/:name" element={<ServicePage />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </div>
+    </I18nProvider>
+  );
+}
+
+export default App;

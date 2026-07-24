@@ -16,6 +16,9 @@ eggs/
 .eggs/
 lib/
 lib64/
+# 'lib/' above is for Python build artifacts — frontend source dirs named lib/ are real code
+!frontend/**/lib/
+!frontend/**/lib/**
 parts/
 sdist/
 var/
@@ -215,3 +218,5 @@ scan.json
 
 node_modules/
 tasks/
+dist/
+coverage/
