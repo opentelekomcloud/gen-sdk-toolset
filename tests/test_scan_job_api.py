@@ -33,7 +33,8 @@ from tools.panel.core.db.models import (  # noqa: E402
     RepositoryScanJob,
     Service,
 )
-from tools.shared.ir import Repository, Service as IrService  # noqa: E402
+from tools.shared.ir import Repository  # noqa: E402
+from tools.shared.ir import Service as IrService
 from tools.shared.scan import RepositoryScanResult  # noqa: E402
 
 
@@ -296,7 +297,5 @@ def test_ingest_failure_marks_job_failed(client, session_factory, monkeypatch):
 
 def test_launch_requires_non_empty_initiated_by(client, session_factory):
     _seed_service(session_factory, "nat-api", name="nat")
-    resp = client.post(
-        "/api/scan/services/nat-api/rescan", json={"initiated_by": ""}
-    )
+    resp = client.post("/api/scan/services/nat-api/rescan", json={"initiated_by": ""})
     assert resp.status_code == 422
