@@ -129,6 +129,11 @@ export function useExcluded() {
 /** Terminal job statuses — polling stops here. */
 export const JOB_TERMINAL: JobStatus[] = ["done", "failed"];
 
+/** Polling cadence for a job query: stop once terminal, else poll every 1.5s. */
+export function jobRefetchInterval(job: Job | undefined): number | false {
+  return job && JOB_TERMINAL.includes(job.status) ? false : 1500;
+}
+
 /**
  * F8: poll GET /api/jobs/{id} while the job is non-terminal; stop once it
  * reaches done/failed. Pass undefined to disable (no active job).
@@ -138,7 +143,6 @@ export function useJob(jobId: number | undefined) {
     queryKey: keys.job(jobId ?? -1),
     enabled: jobId != null,
     queryFn: () => apiFetch<Job>(`/jobs/${jobId}`),
-    refetchInterval: (query) =>
-      query.state.data && JOB_TERMINAL.includes(query.state.data.status) ? false : 1500,
+    refetchInterval: (query) => jobRefetchInterval(query.state.data),
   });
 }
