@@ -228,6 +228,22 @@ export interface RescanResponse {
   job_id: number;
 }
 
+/** Job view for polling GET /api/jobs/{id} (mirrors panel JobResponse). */
+export interface Job {
+  id: number;
+  service_id: number;
+  repository: string;
+  kind: JobKind;
+  status: JobStatus;
+  /** Available once ingest creates the generation for a completed scan. */
+  scanner_version: string | null;
+  commit_hash: string | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
 export interface ExcludeRequest {
   reason: string;
   initiated_by: string;

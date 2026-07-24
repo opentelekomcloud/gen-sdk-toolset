@@ -51,7 +51,7 @@ def _settings() -> Settings:
 def _install_fakes(monkeypatch, scanner: FakeScanner) -> None:
     settings = _settings()
     monkeypatch.setattr(scanner_main, "_load_settings_or_exit", lambda _path: settings)
-    monkeypatch.setattr(scanner_main, "_build_scanner", lambda _settings: scanner)
+    monkeypatch.setattr(scanner_main, "build_scanner", lambda _settings: scanner)
 
 
 def _fail_before_scanner(*_args, **_kwargs):
@@ -62,7 +62,7 @@ def test_repo_and_org_are_mutually_exclusive_before_scanner_creation(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(scanner_main, "_load_settings_or_exit", _fail_before_scanner)
-    monkeypatch.setattr(scanner_main, "_build_scanner", _fail_before_scanner)
+    monkeypatch.setattr(scanner_main, "build_scanner", _fail_before_scanner)
 
     with pytest.raises(SystemExit) as exc_info:
         scanner_main.main(["--repo", "o/name", "--org", "o"])

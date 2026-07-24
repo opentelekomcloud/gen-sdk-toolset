@@ -7,6 +7,7 @@ import { useService, useSummary } from "../api/queries";
 import { GenerationBanner } from "../components/GenerationBanner";
 import { GenerationSelector } from "../components/GenerationSelector";
 import { RescanButton } from "../components/RescanButton";
+import { ScanJobWatcher } from "../components/ScanJobWatcher";
 import { SectionCard } from "../components/SectionCard";
 import { StatusPill } from "../components/StatusPill";
 import { OverallBar } from "../components/OverallBar";
@@ -115,6 +116,10 @@ export function ServicePage() {
           )}
         </div>
       </div>
+
+      {scanning && service.job_id != null && (
+        <ScanJobWatcher key={service.job_id} serviceName={service.name} jobId={service.job_id} />
+      )}
 
       {scanning && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs text-blue-800">
