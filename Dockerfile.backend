@@ -4,7 +4,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md alembic.ini ./
 RUN uv sync --extra panel --frozen --no-install-project
 
 COPY src ./src
@@ -12,4 +12,6 @@ RUN uv sync --extra panel --frozen
 
 EXPOSE 8000
 
-CMD ["uv", "run", "uvicorn", "tools.panel.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+# Apply pending migrations before serving so the container is usable on a
+# fresh (or upgraded) database.
+CMD ["sh", "-c", "uv run alembic upgrade head && uv run uvicorn tools.panel.api.app:create_app --factory --host 0.0.0.0 --port 8000"]

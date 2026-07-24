@@ -58,7 +58,13 @@ class LoggingSection(BaseModel):
 
 
 class DatabaseSection(BaseModel):
-    url: str = "sqlite:///./panel.db"
+    """PostgreSQL connection settings for the panel backend.
+
+    ``url`` must be a PostgreSQL SQLAlchemy URL (``postgresql+psycopg://``).
+    Override via the ``DATABASE__URL`` environment variable.
+    """
+
+    url: str = "postgresql+psycopg://panel:panel@localhost:5432/panel"
 
 
 class PanelSection(BaseModel):

@@ -59,32 +59,33 @@ Resources inherit from `openstack.resource.Resource` and declaratively describe 
 ```python
 from openstack import resource
 
+
 class Cluster(resource.Resource):
     # JSON keys in API response
-    resource_key = 'cluster'      # For single object
-    resources_key = 'items'       # For list of objects
-    
+    resource_key = "cluster"  # For single object
+    resources_key = "items"  # For list of objects
+
     # URL template
-    base_path = '/clusters'
-    
+    base_path = "/clusters"
+
     # Allowed operations
     allow_create = True
     allow_fetch = True
     allow_delete = True
     allow_list = True
     allow_commit = False  # Update
-    
+
     # JSON field to attribute mapping
-    name = resource.Body('metadata.name')
-    id = resource.Body('metadata.uid')
-    status = resource.Body('status.phase')
-    cluster_type = resource.Body('spec.type')
-    flavor = resource.Body('spec.flavor')
-    version = resource.Body('spec.version')
-    
+    name = resource.Body("metadata.name")
+    id = resource.Body("metadata.uid")
+    status = resource.Body("status.phase")
+    cluster_type = resource.Body("spec.type")
+    flavor = resource.Body("spec.flavor")
+    version = resource.Body("spec.version")
+
     # Nested structures
-    host_network = resource.Body('spec.hostNetwork', type=dict)
-    container_network = resource.Body('spec.containerNetwork', type=dict)
+    host_network = resource.Body("spec.hostNetwork", type=dict)
+    container_network = resource.Body("spec.containerNetwork", type=dict)
 ```
 
 ### Key Resource Attributes
@@ -108,29 +109,27 @@ Proxy provides a high-level interface for working with resources:
 from openstack import proxy as _proxy
 from otcextensions.sdk.cce.v3 import cluster as _cluster
 
+
 class Proxy(_proxy.Proxy):
-    
     def clusters(self, **query):
         """List all clusters."""
         return self._list(_cluster.Cluster, **query)
-    
+
     def get_cluster(self, cluster):
         """Get cluster by ID."""
         return self._get(_cluster.Cluster, cluster)
-    
+
     def find_cluster(self, name_or_id, ignore_missing=True):
         """Find cluster by name or ID."""
-        return self._find(_cluster.Cluster, name_or_id,
-                         ignore_missing=ignore_missing)
-    
+        return self._find(_cluster.Cluster, name_or_id, ignore_missing=ignore_missing)
+
     def create_cluster(self, **attrs):
         """Create cluster."""
         return self._create(_cluster.Cluster, **attrs)
-    
+
     def delete_cluster(self, cluster, ignore_missing=True):
         """Delete cluster."""
-        return self._delete(_cluster.Cluster, cluster,
-                           ignore_missing=ignore_missing)
+        return self._delete(_cluster.Cluster, cluster, ignore_missing=ignore_missing)
 ```
 
 ---
@@ -141,13 +140,12 @@ For nested resources (e.g., nodes in cluster), `base_path` with placeholder is u
 
 ```python
 class ClusterNode(resource.Resource):
-    base_path = '/clusters/%(cluster_id)s/nodes'
-    
+    base_path = "/clusters/%(cluster_id)s/nodes"
+
     # In Proxy:
     def cluster_nodes(self, cluster, **query):
         cluster = self._get_resource(_cluster.Cluster, cluster)
-        return self._list(_cluster_node.ClusterNode, 
-                         cluster_id=cluster.id, **query)
+        return self._list(_cluster_node.ClusterNode, cluster_id=cluster.id, **query)
 ```
 
 ---
@@ -161,19 +159,19 @@ Many OTC services return a **job id** when creating a resource:
 class CreateCluster(command.ShowOne):
     def take_action(self, parsed_args):
         client = self.app.client_manager.cce
-        
+
         cluster = client.create_cluster(**attrs)
-        
+
         if parsed_args.wait:
             # Wait for creation to complete
             cluster = client.wait_for_status(
-                cluster, 
-                status='Available',
-                failures=['Error'],
+                cluster,
+                status="Available",
+                failures=["Error"],
                 interval=10,
-                wait=parsed_args.wait_timeout
+                wait=parsed_args.wait_timeout,
             )
-        
+
         return self.columns, cluster
 ```
 
@@ -190,7 +188,7 @@ import openstack
 from otcextensions import sdk as otc_sdk
 
 # Create connection
-conn = openstack.connect(cloud='otc')
+conn = openstack.connect(cloud="otc")
 
 # Register OTC extensions
 otc_sdk.register_otc_extensions(conn)
