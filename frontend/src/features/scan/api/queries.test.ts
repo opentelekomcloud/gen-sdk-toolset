@@ -18,7 +18,7 @@ function makeJob(status: JobStatus): Job {
   };
 }
 
-describe("jobRefetchInterval (F8 polling policy)", () => {
+describe("jobRefetchInterval", () => {
   it("keeps polling while the job is queued or running", () => {
     expect(jobRefetchInterval(makeJob("queued"))).toBe(1500);
     expect(jobRefetchInterval(makeJob("running"))).toBe(1500);

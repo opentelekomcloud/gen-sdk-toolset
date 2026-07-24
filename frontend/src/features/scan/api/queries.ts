@@ -67,8 +67,8 @@ export function useServices(params: ServicesParams) {
 }
 
 export function useService(name: string) {
-  /* Scan-completion refresh is owned by ScanJobWatcher (F8, useJob); this query
-     just serves the service detail. */
+  /* Scan-completion refresh is owned by ScanJobWatcher; this query just serves
+     the service detail. */
   return useQuery({
     queryKey: keys.service(name),
     queryFn: () => apiFetch<ServiceDetail>(`/scan/services/${encodeURIComponent(name)}`),
@@ -135,8 +135,8 @@ export function jobRefetchInterval(job: Job | undefined): number | false {
 }
 
 /**
- * F8: poll GET /api/jobs/{id} while the job is non-terminal; stop once it
- * reaches done/failed. Pass undefined to disable (no active job).
+ * Poll GET /api/jobs/{id} while the job is non-terminal; stop once it reaches
+ * done/failed. Pass undefined to disable (no active job).
  */
 export function useJob(jobId: number | undefined) {
   return useQuery({

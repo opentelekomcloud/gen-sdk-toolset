@@ -1,8 +1,5 @@
-"""Background execution of repository scan jobs.
-
-A scan is launched as a FastAPI BackgroundTask (see api/routes/scans.py); this
-module runs the queued Job to a terminal state. The ``job`` table is a status
-record for polling, not a queue.
+"""Background execution of a repository scan job: run the queued Job to a
+terminal state and hand a successful result to ingest.
 """
 
 from __future__ import annotations
@@ -67,7 +64,7 @@ def run_scan_job(job_id: int) -> None:
 
     try:
         ingest_service_result(job_id=job_id, service_repo=repo, result=result)
-    except Exception as exc:  # ingest/database failure is a job failure (ADR-001)
+    except Exception as exc:  # an ingest failure is also a job failure
         logger.exception("run_scan_job: ingest failed for job %s", job_id)
         _fail_job(job_id, error=f"ingest failed: {exc}")
 

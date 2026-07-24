@@ -38,10 +38,10 @@ class JobResponse(BaseModel):
 
     @classmethod
     def from_job(cls, job: RepositoryScanJob) -> JobResponse:
-        """Build the response from a Job, reading provenance from its Generation.
+        """Build the response from a Job.
 
-        ``scanner_version`` and ``commit_hash`` become available once ingest
-        creates the Generation for a completed scan; until then they are None.
+        ``scanner_version`` and ``commit_hash`` come from the linked Generation,
+        or None when the Job has no Generation.
         """
         generation = job.generation
         return cls(

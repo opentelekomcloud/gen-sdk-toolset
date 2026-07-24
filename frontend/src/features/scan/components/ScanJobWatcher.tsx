@@ -8,10 +8,10 @@ interface Props {
 }
 
 /**
- * F8: while a scan job runs, polls it via useJob and refreshes the panel once
- * the job reaches a terminal status (done/failed). Renders nothing — it only
- * drives cache invalidation; the refreshed ServiceDetail carries the new
- * generation (done) or the error (failed).
+ * While a scan job runs, polls it via useJob and refreshes the panel once the
+ * job reaches a terminal status. Renders nothing — it only drives cache
+ * invalidation; the refreshed ServiceDetail carries the new generation (done)
+ * or the error (failed).
  */
 export function ScanJobWatcher({ serviceName, jobId }: Props) {
   const qc = useQueryClient();

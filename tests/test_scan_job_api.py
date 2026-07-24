@@ -1,4 +1,4 @@
-"""API tests for scan launch and job polling (F7 happy path).
+"""API tests for scan launch and job polling.
 
 Reuses the PostgreSQL provisioning from tests/test_panel_db.py, so this module
 is skipped unless TEST_DATABASE_URL is set or Docker is available (see that

@@ -181,7 +181,7 @@ const detail = (name: string, id: number) => ({
 
 const EXCLUDED = [{ name: "internal-sandbox", reason: "Test repository, never had real docs", excluded_by: "ivan", excluded_at: "2026-06-30" }];
 
-/* mock-only: in-flight scan jobs for useJob polling (F8). */
+/* mock-only: in-flight scan jobs for useJob polling. */
 const MOCK_JOBS: Record<number, { id: number; name: string; service_id: number; startedMs: number; created_at: string; completed: boolean }> = {};
 let mockJobSeq = 5000;
 
@@ -198,7 +198,7 @@ export function mockScanApi(): Plugin {
       server.middlewares.use((req, res, next) => {
         const url = new URL(req.url ?? "/", "http://x");
 
-        // mock GET /api/jobs/{id}: simulate the scan job lifecycle for useJob (F8)
+        // mock GET /api/jobs/{id}: simulate the scan job lifecycle for useJob
         const jm = url.pathname.match(/^\/api\/jobs\/(\d+)$/);
         if (jm) {
           const job = MOCK_JOBS[Number(jm[1])];
