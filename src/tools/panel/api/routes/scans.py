@@ -16,7 +16,7 @@ router = APIRouter()
 
 
 @router.post(
-    "/scan/services/{repo}/rescan",
+    "/scan/services/{repo:path}/rescan",
     status_code=202,
     response_model=StartScanResponse,
 )
