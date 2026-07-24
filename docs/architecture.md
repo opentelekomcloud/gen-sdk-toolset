@@ -93,9 +93,10 @@
 @dataclass
 class ServiceModel:
     name: str
-    version: str          # v1, v2, v3
-    source: str           # "otc" or "openstack"
+    version: str  # v1, v2, v3
+    source: str  # "otc" or "openstack"
     resources: List[ResourceModel]
+
 
 @dataclass
 class ResourceModel:
@@ -105,7 +106,8 @@ class ResourceModel:
     resources_key: str
     properties: List[PropertyModel]
     allowed_operations: Set[str]  # create, fetch, delete, list, commit
-    is_async: bool                # requires job polling
+    is_async: bool  # requires job polling
+
 
 @dataclass
 class PropertyModel:
@@ -114,7 +116,7 @@ class PropertyModel:
     type: str
     mandatory: bool
     description: str
-    sub_properties: List['PropertyModel'] = None  # Для вложенных структур
+    sub_properties: List["PropertyModel"] = None  # Для вложенных структур
     is_list: bool = False
 ```
 

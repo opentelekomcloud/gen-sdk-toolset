@@ -24,10 +24,12 @@ from pydantic import BaseModel, Field
 
 mcp = FastMCP("SDK Generator")
 
+
 class APIEndpoint(BaseModel):
     method: str = Field(description="HTTP method")
     path: str = Field(description="URL path")
     parameters: list[dict] = Field(description="Request parameters")
+
 
 @mcp.tool()
 def parse_rst_endpoint(rst_content: str) -> APIEndpoint:
@@ -62,25 +64,27 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from mcp.server.fastmcp import Context, FastMCP
 
+
 @dataclass
 class GeneratorContext:
     """Generator context with cached data."""
+
     parsed_endpoints: dict
     rag_index: object  # Vector index for RAG
+
 
 @asynccontextmanager
 async def generator_lifespan(server: FastMCP):
     """Initialize resources on server start."""
-    ctx = GeneratorContext(
-        parsed_endpoints={},
-        rag_index=await load_rag_index()
-    )
+    ctx = GeneratorContext(parsed_endpoints={}, rag_index=await load_rag_index())
     try:
         yield ctx
     finally:
         await cleanup_resources()
 
+
 mcp = FastMCP("SDK Generator", lifespan=generator_lifespan)
+
 
 @mcp.tool()
 def generate_sdk(service_name: str, ctx: Context) -> str:
@@ -99,22 +103,17 @@ MCP allows the server to request LLM completions from the client to resolve ambi
 ```python
 from mcp.types import SamplingMessage, TextContent
 
+
 @mcp.tool()
-async def clarify_parameter_type(
-    parameter_desc: str, 
-    ctx: Context
-) -> str:
+async def clarify_parameter_type(parameter_desc: str, ctx: Context) -> str:
     """Use LLM to determine parameter type."""
     prompt = f"Determine Python type for parameter: {parameter_desc}"
-    
+
     result = await ctx.session.create_message(
         messages=[
-            SamplingMessage(
-                role="user",
-                content=TextContent(type="text", text=prompt)
-            )
+            SamplingMessage(role="user", content=TextContent(type="text", text=prompt))
         ],
-        max_tokens=50
+        max_tokens=50,
     )
     return result.content.text  # "str", "int", "List[dict]", etc.
 ```
@@ -131,15 +130,12 @@ async def ingest_api_docs(ref: str, ctx: Context) -> dict:
     """Load documentation with progress reporting."""
     files = await list_rst_files(ref)
     total = len(files)
-    
+
     for i, file in enumerate(files):
         await process_file(file)
         # Send progress to client
-        await ctx.notify(
-            "progress",
-            {"current": i + 1, "total": total, "file": file}
-        )
-    
+        await ctx.notify("progress", {"current": i + 1, "total": total, "file": file})
+
     return {"files_ingested": total, "commit": ref}
 ```
 

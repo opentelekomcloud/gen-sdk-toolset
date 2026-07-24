@@ -159,6 +159,7 @@ otc-sdk-python/
 ```python
 from typing import Protocol, runtime_checkable
 
+
 @runtime_checkable
 class AuthProvider(Protocol):
     """Unified interface for all auth strategies."""
@@ -172,8 +173,10 @@ class AuthProvider(Protocol):
 ```python
 from pydantic import BaseModel
 
+
 class AuthOptions(BaseModel):
     """Token/Password authentication."""
+
     identity_endpoint: str
     username: str | None = None
     user_id: str | None = None
@@ -191,6 +194,7 @@ class AuthOptions(BaseModel):
 
 class AKSKAuthOptions(BaseModel):
     """AK/SK authentication (AWS Signature V4)."""
+
     identity_endpoint: str
     access_key: str
     secret_key: str
@@ -206,6 +210,7 @@ class AKSKAuthOptions(BaseModel):
 
 ```python
 import httpx
+
 
 class ProviderClient:
     """Central HTTP client. Manages auth, retry, reauth."""
@@ -236,8 +241,9 @@ class ProviderClient:
 class ServiceClient:
     """Base client for a specific service."""
 
-    def __init__(self, provider: ProviderClient, endpoint: str,
-                 resource_base: str | None = None):
+    def __init__(
+        self, provider: ProviderClient, endpoint: str, resource_base: str | None = None
+    ):
         self.provider = provider
         self.endpoint = endpoint
         self.resource_base = resource_base or endpoint
@@ -261,12 +267,14 @@ class ServiceClient:
 ```python
 from pydantic import BaseModel
 
+
 class CreateZoneOpts(BaseModel):
     name: str
     email: str | None = None
     description: str | None = None
     ttl: int | None = None
     zone_type: str | None = None
+
 
 class Zone(BaseModel):
     id: str
@@ -281,6 +289,7 @@ class Zone(BaseModel):
     project_id: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
+
 
 class ListZonesOpts(BaseModel):
     limit: int | None = None
@@ -297,8 +306,10 @@ from otc_sdk.core.service_client import ServiceClient
 
 ROOT = "zones"
 
+
 def base_url(client: ServiceClient) -> str:
     return client.service_url(ROOT)
+
 
 def zone_url(client: ServiceClient, zone_id: str) -> str:
     return client.service_url(ROOT, zone_id)
@@ -312,6 +323,7 @@ from otc_sdk.core.service_client import ServiceClient
 from .models import CreateZoneOpts, Zone, ListZonesOpts
 from . import urls
 
+
 def create(client: ServiceClient, opts: CreateZoneOpts) -> Zone:
     resp = client.post(
         urls.base_url(client),
@@ -319,11 +331,15 @@ def create(client: ServiceClient, opts: CreateZoneOpts) -> Zone:
     )
     return Zone.model_validate(resp.json())
 
+
 def get(client: ServiceClient, zone_id: str) -> Zone:
     resp = client.get(urls.zone_url(client, zone_id))
     return Zone.model_validate(resp.json())
 
-def list_zones(client: ServiceClient, opts: ListZonesOpts | None = None) -> Iterator[Zone]:
+
+def list_zones(
+    client: ServiceClient, opts: ListZonesOpts | None = None
+) -> Iterator[Zone]:
     """Iterator that automatically walks through all pages."""
     url = urls.base_url(client)
     params = opts.model_dump(exclude_none=True) if opts else {}
@@ -334,6 +350,7 @@ def list_zones(client: ServiceClient, opts: ListZonesOpts | None = None) -> Iter
             yield Zone.model_validate(z)
         url = data.get("links", {}).get("next")
         params = {}  # params already embedded in next URL
+
 
 def delete(client: ServiceClient, zone_id: str) -> None:
     client.delete(urls.zone_url(client, zone_id))
@@ -351,6 +368,7 @@ def delete(client: ServiceClient, zone_id: str) -> None:
 ```python
 # otc_sdk/client.py — main entry point
 
+
 class OTCClient:
     """Main entry point. Creates ProviderClient and service factories."""
 
@@ -360,11 +378,9 @@ class OTCClient:
 
     def dns_v2(self, region: str | None = None) -> ServiceClient:
         endpoint = self.provider.find_endpoint("dns", region=region)
-        return ServiceClient(self.provider, endpoint,
-                             resource_base=endpoint + "v2/")
+        return ServiceClient(self.provider, endpoint, resource_base=endpoint + "v2/")
 
-    def vpc_v1(self, region: str | None = None) -> ServiceClient:
-        ...
+    def vpc_v1(self, region: str | None = None) -> ServiceClient: ...
 
 
 def authenticate(provider: ProviderClient, auth: AuthProvider) -> None:
@@ -398,26 +414,32 @@ from otc_sdk.core.auth import AuthOptions, AKSKAuthOptions
 from otc_sdk.services.dns.v2 import zones
 
 # Token authentication
-client = OTCClient(AuthOptions(
-    identity_endpoint="https://iam.eu-de.otc.t-systems.com/v3",
-    username="user",
-    password="pass",
-    domain_name="domain",
-    tenant_name="eu-de",
-))
+client = OTCClient(
+    AuthOptions(
+        identity_endpoint="https://iam.eu-de.otc.t-systems.com/v3",
+        username="user",
+        password="pass",
+        domain_name="domain",
+        tenant_name="eu-de",
+    )
+)
 
 # Or AK/SK
-client = OTCClient(AKSKAuthOptions(
-    identity_endpoint="https://iam.eu-de.otc.t-systems.com/v3",
-    access_key="AK...",
-    secret_key="SK...",
-    project_id="...",
-    region="eu-de",
-))
+client = OTCClient(
+    AKSKAuthOptions(
+        identity_endpoint="https://iam.eu-de.otc.t-systems.com/v3",
+        access_key="AK...",
+        secret_key="SK...",
+        project_id="...",
+        region="eu-de",
+    )
+)
 
 # API works identically regardless of auth type
 dns = client.dns_v2()
-zone = zones.create(dns, zones.CreateZoneOpts(name="example.com.", email="admin@example.com"))
+zone = zones.create(
+    dns, zones.CreateZoneOpts(name="example.com.", email="admin@example.com")
+)
 
 for z in zones.list_zones(dns):
     print(z.name)
