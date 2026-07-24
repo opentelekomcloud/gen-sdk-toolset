@@ -33,7 +33,7 @@ from tools.panel.core.db.models import (  # noqa: E402
     RepositoryScanJob,
     Service,
 )
-from tools.shared.ir import Service as IrService  # noqa: E402
+from tools.shared.ir import Repository, Service as IrService  # noqa: E402
 from tools.shared.scan import RepositoryScanResult  # noqa: E402
 
 
@@ -226,3 +226,77 @@ def test_job_service_relationship(client, session_factory):
         s.refresh(job)
         assert job.service.repo == "dns-api"
         assert job.id in [j.id for j in job.service.jobs]
+
+
+def test_scan_failure_marks_job_failed(client, session_factory, monkeypatch):
+    _seed_service(session_factory, "obs-api", name="obs")
+
+    def fake_build_scanner(_settings):
+        class _Scanner:
+            def scan_repository(self, repo, branch):
+                return RepositoryScanResult(
+                    repository=Repository(repo=repo),
+                    branch=branch,
+                    error="boom: could not resolve commit",
+                )
+
+        return _Scanner()
+
+    called = {"ingest": False}
+
+    def fake_ingest(**_kwargs):
+        called["ingest"] = True
+
+    monkeypatch.setattr(jobs_module, "build_scanner", fake_build_scanner)
+    monkeypatch.setattr(jobs_module, "ingest_service_result", fake_ingest)
+
+    resp = client.post(
+        "/api/scan/services/obs-api/rescan", json={"initiated_by": "tester"}
+    )
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+
+    assert called["ingest"] is False  # a failed scan is never ingested
+    with session_factory() as s:
+        job = s.get(RepositoryScanJob, job_id)
+        assert job.status is JobStatus.failed
+        assert job.error == "boom: could not resolve commit"
+        assert job.finished_at is not None
+
+
+def test_ingest_failure_marks_job_failed(client, session_factory, monkeypatch):
+    _seed_service(session_factory, "ims-api", name="ims")
+
+    def fake_build_scanner(_settings):
+        class _Scanner:
+            def scan_repository(self, repo, branch):
+                return RepositoryScanResult(
+                    repository=IrService(repo=repo), branch=branch, commit_hash="abc"
+                )
+
+        return _Scanner()
+
+    def boom_ingest(**_kwargs):
+        raise RuntimeError("db exploded")
+
+    monkeypatch.setattr(jobs_module, "build_scanner", fake_build_scanner)
+    monkeypatch.setattr(jobs_module, "ingest_service_result", boom_ingest)
+
+    resp = client.post(
+        "/api/scan/services/ims-api/rescan", json={"initiated_by": "tester"}
+    )
+    job_id = resp.json()["job_id"]
+
+    with session_factory() as s:
+        job = s.get(RepositoryScanJob, job_id)
+        assert job.status is JobStatus.failed
+        assert "ingest failed" in job.error
+        assert job.finished_at is not None
+
+
+def test_launch_requires_non_empty_initiated_by(client, session_factory):
+    _seed_service(session_factory, "nat-api", name="nat")
+    resp = client.post(
+        "/api/scan/services/nat-api/rescan", json={"initiated_by": ""}
+    )
+    assert resp.status_code == 422
