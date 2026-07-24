@@ -6,8 +6,8 @@ import type {
   ActivateGenerationRequest,
   ExcludeRequest,
   GenerationsResponse,
-  RescanRequest,
-  RescanResponse,
+  ScanRequest,
+  ScanResponse,
   ServiceDetail,
 } from "./types.local";
 
@@ -15,9 +15,9 @@ export function useRescan(name: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiFetch<RescanResponse>(`/scan/services/${encodeURIComponent(name)}/rescan`, {
+      apiFetch<ScanResponse>(`/scan/services/${encodeURIComponent(name)}/rescan`, {
         method: "POST",
-        body: JSON.stringify({ initiated_by: CONFIG.identity } satisfies RescanRequest),
+        body: JSON.stringify({ initiated_by: CONFIG.identity } satisfies ScanRequest),
       }),
     /* optimistic: the service flips to scanning immediately (PS14) */
     onMutate: async () => {

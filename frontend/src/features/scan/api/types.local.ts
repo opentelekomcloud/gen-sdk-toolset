@@ -227,11 +227,11 @@ export interface ExcludedService {
   excluded_at: string;
 }
 
-export interface RescanRequest {
+export interface ScanRequest {
   initiated_by: string;
 }
 
-export interface RescanResponse {
+export interface ScanResponse {
   /** job.id (int PK). */
   job_id: number;
 }
