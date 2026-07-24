@@ -118,7 +118,7 @@ export function ServicePage() {
       </div>
 
       {scanning && service.job_id != null && (
-        <ScanJobWatcher serviceName={service.name} jobId={service.job_id} />
+        <ScanJobWatcher key={service.job_id} serviceName={service.name} jobId={service.job_id} />
       )}
 
       {scanning && (
