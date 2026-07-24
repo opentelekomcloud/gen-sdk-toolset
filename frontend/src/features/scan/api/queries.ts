@@ -1,5 +1,4 @@
-import { useEffect, useRef } from "react";
-import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { apiFetch, qs } from "./client";
 import type {
   AttentionRule,
@@ -68,26 +67,12 @@ export function useServices(params: ServicesParams) {
 }
 
 export function useService(name: string) {
-  const qc = useQueryClient();
-  const query = useQuery({
+  /* Scan-completion refresh is owned by ScanJobWatcher (F8, useJob); this query
+     just serves the service detail. */
+  return useQuery({
     queryKey: keys.service(name),
     queryFn: () => apiFetch<ServiceDetail>(`/scan/services/${encodeURIComponent(name)}`),
-    /* while a scan job runs, poll so the page picks up completion (PS14 owns exact policy via useJob) */
-    refetchInterval: (query) => (query.state.data?.scan_status === "scanning" ? 4000 : false),
   });
-
-  /* Until useJob (PS14) lands: when polling sees scanning → done, the finished
-     scan has produced a new generation — everything downstream is stale. */
-  const scanStatus = query.data?.scan_status;
-  const prevStatus = useRef(scanStatus);
-  useEffect(() => {
-    if (prevStatus.current === "scanning" && scanStatus != null && scanStatus !== "scanning") {
-      invalidateGeneration(qc, name);
-    }
-    prevStatus.current = scanStatus;
-  }, [scanStatus, qc, name]);
-
-  return query;
 }
 
 /** G1: lazy — call with enabled: open (popover); trigger renders from ServiceDetail.active_generation. */
