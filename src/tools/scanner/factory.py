@@ -1,8 +1,4 @@
-"""Composition root: wire the scanner adapters into a :class:`ScannerService`.
-
-Extracted from ``scanner/main.py`` so both the CLI and the panel background
-job runner build a scanner the same way.
-"""
+"""Composition root: wire the scanner adapters into a :class:`ScannerService`."""
 
 from __future__ import annotations
 
