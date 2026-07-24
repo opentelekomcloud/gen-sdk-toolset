@@ -9,6 +9,8 @@ import type {
   DocumentsResponse,
   ExcludedService,
   GenerationsResponse,
+  Job,
+  JobStatus,
   ServiceDetail,
   ServiceFilter,
   ServiceSort,
@@ -26,6 +28,7 @@ export const keys = {
   document: (name: string, id: number) => ["document", name, id] as const,
   /** G1: generation history of a service. */
   generations: (name: string) => ["generations", name] as const,
+  job: (id: number) => ["job", id] as const,
   summary: ["summary"] as const,
   attention: ["attention"] as const,
   excluded: ["excluded"] as const,
@@ -136,4 +139,21 @@ export function useAttention() {
 
 export function useExcluded() {
   return useQuery({ queryKey: keys.excluded, queryFn: () => apiFetch<ExcludedService[]>("/scan/excluded") });
+}
+
+/** Terminal job statuses — polling stops here. */
+export const JOB_TERMINAL: JobStatus[] = ["done", "failed"];
+
+/**
+ * F8: poll GET /api/jobs/{id} while the job is non-terminal; stop once it
+ * reaches done/failed. Pass undefined to disable (no active job).
+ */
+export function useJob(jobId: number | undefined) {
+  return useQuery({
+    queryKey: keys.job(jobId ?? -1),
+    enabled: jobId != null,
+    queryFn: () => apiFetch<Job>(`/jobs/${jobId}`),
+    refetchInterval: (query) =>
+      query.state.data && JOB_TERMINAL.includes(query.state.data.status) ? false : 1500,
+  });
 }
