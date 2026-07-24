@@ -76,6 +76,9 @@ export const en = {
   "service.scanningBy": " — started by {by}",
   "service.scanningAt": " at {at}",
   "service.failedTitle": "Scan attempted and failed",
+  "service.failedBannerTitle": "Last scan failed",
+  "service.failedKeptData":
+    "No data was lost — a failed job stores nothing. Everything below is Gen {gen} ({at}), the last successful scan. Retry queues a new job.",
   "service.failedHint": "No data is stored for this service yet. Retry will queue a new scan job.",
   "service.rateLimitReset": "limit resets at {time}",
   "interruption.rate_limit": "Scan interrupted — API rate limit",
