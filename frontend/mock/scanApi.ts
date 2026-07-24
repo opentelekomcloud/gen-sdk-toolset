@@ -174,6 +174,10 @@ const detail = (name: string, id: number) => ({
 
 const EXCLUDED = [{ name: "internal-sandbox", reason: "Test repository, never had real docs", excluded_by: "ivan", excluded_at: "2026-06-30" }];
 
+/* mock-only: in-flight scan jobs for useJob polling (F8). */
+const MOCK_JOBS: Record<number, { id: number; name: string; service_id: number; startedMs: number; created_at: string; completed: boolean }> = {};
+let mockJobSeq = 5000;
+
 export function mockScanApi(): Plugin {
   const json = (res: Parameters<Connect.NextHandleFunction>[1], body: unknown, status = 200) => {
     res.statusCode = status;
@@ -186,6 +190,36 @@ export function mockScanApi(): Plugin {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = new URL(req.url ?? "/", "http://x");
+
+        // mock GET /api/jobs/{id}: simulate the scan job lifecycle for useJob (F8)
+        const jm = url.pathname.match(/^\/api\/jobs\/(\d+)$/);
+        if (jm) {
+          const job = MOCK_JOBS[Number(jm[1])];
+          if (!job) return json(res, { error: { code: "not_found", message: `job ${jm[1]} not found` } }, 404);
+          const done = Date.now() - job.startedMs >= 4000;
+          if (done && !job.completed) {
+            job.completed = true;
+            const svc = SERVICES.find((s) => s.name === job.name);
+            if (svc) {
+              svc.scan_status = "scanned";
+              svc.job_id = undefined;
+              svc.initiated_by = undefined;
+              svc.started_at = undefined;
+              svc.scanner_version = V;
+              svc.scanned_at = new Date().toISOString();
+              svc.rescan_reason = null;
+            }
+          }
+          return json(res, {
+            id: job.id, service_id: job.service_id, repository: job.name,
+            kind: "scan", status: done ? "done" : "running",
+            scanner_version: done ? V : null,
+            commit_hash: done ? HASH(job.name + job.startedMs) : null,
+            error: null, created_at: job.created_at, started_at: job.created_at,
+            finished_at: done ? new Date().toISOString() : null,
+          });
+        }
+
         if (!url.pathname.startsWith("/api/scan")) return next();
         const p = url.pathname.replace("/api/scan", "");
         const q = (url.searchParams.get("q") ?? "").toLowerCase();
@@ -274,7 +308,18 @@ export function mockScanApi(): Plugin {
           }
           const dm = rest.match(/^\/documents\/(\d+)$/);
           if (dm) return json(res, detail(name, Number(dm[1])));
-          if (rest === "/rescan") return json(res, { job_id: 1043 + Math.floor(Math.random() * 100) });
+          if (rest === "/rescan") {
+            const id = ++mockJobSeq;
+            MOCK_JOBS[id] = {
+              id, name, service_id: SERVICES.findIndex((s) => s.name === name) + 1,
+              startedMs: Date.now(), created_at: new Date().toISOString(), completed: false,
+            };
+            service.scan_status = "scanning";
+            service.job_id = id;
+            service.initiated_by = "valeriia";
+            service.started_at = new Date().toISOString();
+            return json(res, { job_id: id });
+          }
           if (rest === "/exclude" || rest === "/include") { res.statusCode = 204; return res.end(); }
         }
         return json(res, { error: { code: "not_found", message: `no mock for ${url.pathname}` } }, 404);
