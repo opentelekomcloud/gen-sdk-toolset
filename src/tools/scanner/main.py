@@ -127,7 +127,6 @@ def _load_settings_or_exit(config_path: str | None) -> Settings:
         raise SystemExit(EXIT_USAGE_ERROR) from e
 
 
-
 def _print_human_summary(
     result: OrgScanResult, api_ref_path: str, logger: logging.Logger
 ) -> None:

@@ -37,7 +37,7 @@ class JobResponse(BaseModel):
     finished_at: datetime | None
 
     @classmethod
-    def from_job(cls, job: RepositoryScanJob) -> "JobResponse":
+    def from_job(cls, job: RepositoryScanJob) -> JobResponse:
         """Build the response from a Job, reading provenance from its Generation.
 
         ``scanner_version`` and ``commit_hash`` become available once ingest

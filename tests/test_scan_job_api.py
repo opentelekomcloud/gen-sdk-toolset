@@ -38,7 +38,7 @@ from tools.shared.scan import RepositoryScanResult  # noqa: E402
 
 
 @pytest.fixture
-def engine(scratch_database):
+def engine(scratch_database):  # noqa: F811  (pytest fixture injection, not a redefinition)
     url = scratch_database("panel_test_scan_job")
     command.upgrade(_alembic_config(url), "head")
     eng = create_engine(url)
@@ -210,9 +210,7 @@ def test_second_active_scan_conflicts_409(client, session_factory):
     assert resp.status_code == 409
     with session_factory() as s:  # the unique index held: still one job
         jobs = s.scalars(
-            select(RepositoryScanJob).where(
-                RepositoryScanJob.service_id == service_id
-            )
+            select(RepositoryScanJob).where(RepositoryScanJob.service_id == service_id)
         ).all()
         assert len(jobs) == 1
 
