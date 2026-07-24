@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from tools.panel.api.deps import get_db
-from tools.panel.api.schemas import JobResponse, RescanRequest, StartScanResponse
+from tools.panel.api.schemas import JobResponse, ScanRequest, StartScanResponse
 from tools.panel.core.db.models import JobKind, JobStatus, RepositoryScanJob, Service
 from tools.panel.core.jobs import run_scan_job
 
@@ -22,7 +22,7 @@ router = APIRouter()
 )
 def start_scan(
     repo: str,
-    body: RescanRequest,
+    body: ScanRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ) -> StartScanResponse:

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from tools.panel.core.db.models import JobKind, JobStatus, RepositoryScanJob
 
 
-class RescanRequest(BaseModel):
+class ScanRequest(BaseModel):
     """Body for launching a scan: who initiated it."""
 
     initiated_by: str = Field(min_length=1)
