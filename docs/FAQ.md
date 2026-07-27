@@ -84,7 +84,7 @@ attribute load after the commit would quietly reopen one.
 ## The numbers look wrong. Where do I start?
 
 Numbers in the panel come from the analytics functions - `tools.domain.report`
-today, moving to `tools.panel.core.analytics` with #34 - computed from the
+today, moving to `tools.panel.core.analytics` with issue #34 - computed from the
 nested scan results. In order:
 
 1. Run the scanner on a pinned SHA and read the raw JSON, not the panel.
@@ -106,5 +106,5 @@ guard that stops it coming back — a test, a lint contract, an assertion.
 
 The one thing that must reach the repository is the *link*: an issue number,
 referenced from the code that is waiting on it (`# TODO(#23):`,
-`NotImplementedError("... — see #23")`). That number is the only part of a plan
+`NotImplementedError("... — see issue #23")`). That number is the only part of a plan
 another person's tooling can see.

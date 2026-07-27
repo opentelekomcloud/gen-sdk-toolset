@@ -64,7 +64,7 @@ The field counters on `SectionScanResult` must reconcile:
 ## Derived analytics
 
 Currently in `src/tools/domain/report/`, **being relocated to
-`src/tools/panel/core/analytics/` by #34**. Nothing here is stored in the scan
+`src/tools/panel/core/analytics/` by issue #34**. Nothing here is stored in the scan
 snapshot - it is computed from it, in one place. Add nothing new to
 `tools.domain`.
 
@@ -76,7 +76,7 @@ snapshot - it is computed from it, in one place. Add nothing new to
 
 `OrgScanResult` and `REPORT_SCHEMA_VERSION` (`report/aggregates.py`) are the
 organization-level report contract. They are **scheduled for removal** together
-with `ScannerService.scan_organization()` - see #34. Do not build on them.
+with `ScannerService.scan_organization()` - see issue #34. Do not build on them.
 
 ## Panel — the persisted model
 
@@ -106,7 +106,7 @@ racy.
 |---|---|---|
 | `__version__` | `src/tools/__init__.py` | The scanner/parser version, read from package metadata and stamped on every result. Lets consumers tell "docs changed" apart from "parser improved". |
 | `DOCUMENT_SCHEMA_VERSION` | `shared/ir/__init__.py` | The serialized `Document`/`Endpoint` contract. |
-| `REPORT_SCHEMA_VERSION` | `domain/report/aggregates.py` | The organization-level report contract. Being removed with #34 - do not build on it. |
+| `REPORT_SCHEMA_VERSION` | `domain/report/aggregates.py` | The organization-level report contract. Being removed with issue #34 - do not build on it. |
 
 ## Scanner vocabulary
 
