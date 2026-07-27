@@ -105,6 +105,33 @@ drift, and the drift is silent because both halves look correct in isolation.
 
 Before adding a name, grep for it. After adding one, record it in the glossary.
 
+## Principles, and what they mean here
+
+These words are in daily use, so here is what each one is attached to - and what
+each degrades into when applied in its internet form rather than this one.
+
+**DRY** - the section above. What gets deduplicated is *knowledge*, not lines.
+Two functions that look alike today but change for different reasons stay
+separate; merging things that merely resemble each other is the most common way
+to do damage while citing DRY.
+
+**YAGNI** - the anti-patterns section and the `simplify` agent's ladder. One
+caveat matters here: code that records data loss - an `Issue`, an
+`incomplete_reason`, a non-OK status - is never premature. That code is the
+product.
+
+**SRP** - why the parser package is split by concern: `table.py` walks table
+nodes, `field_type.py` translates written type names, `patterns.py` holds the
+regexes. The test is simple: a module has one reason to change.
+
+**DIP** - why ports live in `scanner/interfaces/`, implementations in
+infrastructure, and wiring in a composition root. **It is not a licence to add
+an interface with a single implementation** - that one is already on the
+anti-patterns list.
+
+The remaining SOLID letters do not earn their keep on a codebase this size, and
+we do not invoke them.
+
 ## Errors
 
 The hierarchy is `GenSdkError` and its subclasses in
