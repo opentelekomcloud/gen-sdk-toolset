@@ -64,8 +64,9 @@ gate to make a build pass is not — fix the code or explain the gap in the PR.
 
 ## Reviews
 
-Review is described in `.claude/agents/ai-code-review.md` and invoked with
-`/review`. Whether a human or an agent runs it, the same two rules apply:
+Review is run with `/review`; see
+[docs/AGENT-TOOLING.md](docs/AGENT-TOOLING.md) for that and the rest of the
+agent tooling. Whether a human or an agent runs it, the same two rules apply:
 
 1. A review finding must leave behind a fix, a guard (a test or a lint contract),
    or nothing at all. Review documents are not committed — once the finding is

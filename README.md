@@ -195,5 +195,7 @@ Working on the code itself is documented separately, so it stays in one place:
 - [AGENTS.md](AGENTS.md) — the full command reference (lint, tests, coverage,
   schema regeneration) and the project layout
 - [docs/FAQ.md](docs/FAQ.md) — how to carry out the common development tasks
+- [docs/AGENT-TOOLING.md](docs/AGENT-TOOLING.md) — the `/plan`, `/review` and
+  `/pr` commands, the review agents, and the hooks that apply themselves
 - [STYLEGUIDE.md](STYLEGUIDE.md) — code conventions
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — the canonical domain vocabulary
