@@ -13,8 +13,12 @@ docstrings only on tests that protect a non-obvious invariant, fixtures through
 tends to be forgotten in the moment.
 
 - **PostgreSQL is required** for panel tests: `TEST_DATABASE_URL`, or Docker so
-  testcontainers can start `postgres:16-alpine`. A connection failure is an
-  environment problem - report it as that, not as a defect in the code.
+  testcontainers can start `postgres:16-alpine`. Both paths pin
+  `sslmode=disable` in `tests/test_panel_db.py`, because a test container
+  speaks no TLS and libpq would otherwise honour a `PGSSLMODE` set for some
+  other database - a failure that hits only the developers who have that
+  variable. A connection failure is still an environment problem: report it as
+  that, not as a defect in the code.
 - **New vocabulary needs a reachability test.** A new `IssueCode` or status
   needs a test that actually produces it, or you cannot tell "never happens"
   from "cannot happen".
