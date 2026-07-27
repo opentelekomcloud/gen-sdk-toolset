@@ -7,7 +7,8 @@ disable-model-invocation: true
 
 Write an implementation plan for: `$ARGUMENTS`
 
-If an issue number was given, read it first (`gh issue view <n>`). Read the code
+If an issue number was given, read it first (`gh issue view <n>`). If `gh` is
+not installed, ask for the issue text rather than guessing what it says. Read the code
 you are about to change before planning changes to it - a plan built on a guess
 about the current state wastes more time than it saves.
 

@@ -7,19 +7,29 @@ committed, so everyone on the project gets the same behaviour.
 
 This page is for people. The agents read `AGENTS.md`.
 
-## Prerequisite
+## Prerequisites
 
-All of it activates only when the agent's working directory is the **repository
-root**. Open the project with:
+**Install the GitHub CLI.** `/plan`, `gc` and `ai-code-review` read issue state
+through it; `git` cannot, because issues are not part of git.
+
+```bash
+winget install GitHub.cli     # Windows
+brew install gh               # macOS
+# other systems: https://cli.github.com
+gh auth login
+```
+
+**Start the agent in the repository root.** Everything here activates only when
+that is the working directory:
 
 ```bash
 cd path/to/gen-sdk-toolset
 claude
 ```
 
-A session started in a subdirectory, or one that reaches these files from
-somewhere else, will not load them. The configuration is read once at startup,
-so if you pull a change to `.claude/` while a session is open, restart it.
+A session started in a subdirectory will not load any of it. The configuration
+is read once at startup, so if you pull a change to `.claude/` while a session
+is open, restart it.
 
 To check that it loaded, type `/` and look for `review`, `plan` and `pr` in the
 list. If they are missing, the working directory is wrong or the session

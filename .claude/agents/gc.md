@@ -37,7 +37,10 @@ Roots in this repository:
   in this repository calls it.
 - **Declared future work**: `TODO(#N)` comments and
   `NotImplementedError("... see #N")`. Resolve each with `gh issue view N`. An
-  open issue is a live root.
+  open issue is a live root. **If `gh` is unavailable or unauthenticated, treat
+  every referenced issue as open** - an unresolvable root is a live root, and
+  the cost asymmetry above says which way to fail. Say in the report that issue
+  state could not be checked, so nobody reads your candidate list as complete.
 
 Mark everything transitively reachable from those. Only what is left over is
 even a candidate.

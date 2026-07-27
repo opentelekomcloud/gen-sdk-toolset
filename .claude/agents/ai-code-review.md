@@ -37,7 +37,7 @@ tell a real finding from one they invented to have something to fix.
 |---|---|
 | Declared architecture | `[tool.importlinter]` in `pyproject.toml`, `docs/architecture.md`, `STYLEGUIDE.md` |
 | Canonical vocabulary | `docs/GLOSSARY.md` |
-| Deferred scope | `TODO(#N)` and `NotImplementedError("... see #N")` in the code; `gh issue view N` for whether it is still open |
+| Deferred scope | `TODO(#N)` and `NotImplementedError("... see #N")` in the code; `gh issue view N` for whether it is still open. Without `gh`, assume open and do not demand the deferred work |
 | Real output to cross-check | `uv run gen-sdk-scan --repo opentelekomcloud-docs/anti-ddos --branch <pinned sha> --output -` |
 | What the output decides | The panel's numbers decide which OTC services are ready for SDK generation |
 
