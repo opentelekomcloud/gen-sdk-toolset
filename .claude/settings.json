@@ -20,13 +20,26 @@
       "Bash(gh pr diff*)",
       "Bash(npm run lint*)",
       "Bash(npm run build*)",
-      "Bash(npm run test*)"
+      "Bash(npm run test*)",
+      "Bash(cd frontend && npm *)",
+      "Bash(cd frontend && npx *)",
+      "Bash(.venv/Scripts/python.exe -m *)",
+      "Bash(.venv/bin/python -m *)",
+      "Bash(.venv/Scripts/ruff.exe*)",
+      "Bash(.venv/Scripts/pytest.exe*)",
+      "Bash(.venv/bin/ruff*)",
+      "Bash(.venv/bin/pytest*)",
+      "Bash(pytest*)",
+      "Bash(diff-cover*)",
+      "Bash(gh pr list*)",
+      "Bash(git fetch*)"
     ],
     "deny": [
       "Read(.env)",
       "Bash(git push --force*)",
       "Bash(git reset --hard*)",
-      "Bash(rm -rf*)"
+      "Bash(rm -rf*)",
+      "Bash(git stash*)"
     ]
   },
   "hooks": {

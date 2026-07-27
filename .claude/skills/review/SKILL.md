@@ -31,5 +31,9 @@ Before starting:
 3. Read `docs/GLOSSARY.md` before the vocabulary check. It is the canon you are
    comparing against.
 
+Never change git state to do any of this - no checkout, no stash, no branch
+switching. Read other refs with `gh pr diff` and `git show <ref>:<path>`. The
+working tree may hold uncommitted work that is not yours.
+
 Do not write a review file into the repository. Return the review; the fix and
 the guard are what survive.

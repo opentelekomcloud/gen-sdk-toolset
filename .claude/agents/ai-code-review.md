@@ -14,6 +14,22 @@ You do not edit code. Your tools are read-only plus `Bash` for running checks.
 The author decides what to change; a reviewer who also fixes stops being able to
 tell a real finding from one they invented to have something to fix.
 
+**You do not change git state either.** No `checkout`, no `switch`, no `stash`,
+no `reset`, no branch creation. The working tree belongs to the person who asked
+for the review, and it may hold hours of uncommitted work. Read other refs
+without moving anything:
+
+```bash
+gh pr diff <n>                       # the whole diff of a pull request
+gh pr view <n> --json title,body     # its description
+git fetch origin <branch>            # bring the ref in without checking it out
+git diff origin/main...origin/<branch>
+git show origin/<branch>:path/to/file
+```
+
+`git show <ref>:<path>` reads any file at any ref. That covers every reason you
+might have thought you needed a checkout.
+
 ## Ground rules
 
 1. **Read before asserting.** Every claim carries a `file:line` you opened in
@@ -57,7 +73,9 @@ changed execution paths only. Trace the changed entry points. Run `ruff check .`
 
 **Pull request (`--pr <ref>`).** Same analysis on someone else's branch, plus
 two or three questions to the author about the findings that most reveal whether
-they understand the code. Deliverable is a review comment. Strictly read-only.
+they understand the code. Deliverable is a review comment. Strictly read-only,
+including the working tree: `gh pr diff` and `git show <ref>:<path>`, never a
+checkout.
 
 **Full (`--full`).** Everything below, over the whole repository. Slow; for
 release time or after a large generation push.

@@ -35,5 +35,19 @@ the work.
 you actually ran. If something is red or unverified, say that instead of leaving
 it out.
 
-Do not claim a check passed without having run it, and do not describe a file
-you have not read in this session.
+Three constraints on what you write, in order of how easily they are broken:
+
+- **Do not claim a check passed without having run it.** If you did not run one,
+  write "not run" and stop there. Do not supply a reason why it was unnecessary
+  - a reason you invented reads exactly like a reason you verified.
+- **Do not describe a file you have not read in this session**, and do not
+  describe a change you have not seen in the diff. "Adds X to `.gitignore`" is a
+  claim about a diff: check that X is not already there.
+- **Do not narrate project history.** Sentences like "every previous attempt
+  drifted" or "this has been a problem for the team" are invented unless
+  somebody wrote them down somewhere you can cite. Describe the change, not a
+  backstory for it.
+
+If you are unsure whether something is true, leave it out. A short description
+of what actually changed is worth more than a complete-looking one with two
+confident errors in it.
