@@ -9,6 +9,10 @@ Database resolution order:
    (requires a Docker daemon).
 
 Without either, the module is skipped.
+
+Both paths pin ``sslmode=disable`` unless the URL already sets it: a test
+container speaks no TLS, and libpq would otherwise honour a ``PGSSLMODE`` left
+in the environment for some unrelated database.
 """
 
 from __future__ import annotations
@@ -66,12 +70,27 @@ MIGRATIONS = REPO_ROOT / "src" / "tools" / "panel" / "core" / "db" / "migrations
 # ---------------------------------------------------------------------------
 
 
+def _without_tls(url: str) -> str:
+    """Pin ``sslmode=disable`` unless the URL already says otherwise.
+
+    libpq reads ``PGSSLMODE`` from the environment, so a developer who has it
+    set to ``require`` or ``verify-full`` for some other database cannot connect
+    to a local test container at all - it offers no TLS. Without this the suite
+    passes for whoever happens not to have the variable set and fails for
+    everyone else, which is the worst kind of test failure.
+    """
+    if "sslmode=" in url:
+        return url
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}sslmode=disable"
+
+
 @pytest.fixture(scope="session")
 def admin_url() -> str:
     """Admin PostgreSQL URL used to create scratch databases."""
     url = os.environ.get("TEST_DATABASE_URL")
     if url:
-        yield url
+        yield _without_tls(url)
         return
 
     docker = pytest.importorskip(
@@ -81,9 +100,11 @@ def admin_url() -> str:
     try:
         container = docker.PostgresContainer("postgres:16-alpine", driver="psycopg")
         container.start()
-    except Exception as error:  # docker daemon missing/unreachable
-        pytest.skip(f"TEST_DATABASE_URL is not set and Docker is unavailable: {error}")
-    yield container.get_connection_url()
+    except Exception as error:  # docker daemon missing, or the container failed
+        pytest.skip(
+            f"TEST_DATABASE_URL is not set and no test container could start: {error}"
+        )
+    yield _without_tls(container.get_connection_url())
     container.stop()
 
 

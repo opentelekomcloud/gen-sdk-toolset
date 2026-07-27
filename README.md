@@ -189,30 +189,13 @@ level = "INFO"
 
 ## Development
 
-### Python tests and coverage
+Working on the code itself is documented separately, so it stays in one place:
 
-Run the test suite and create `coverage.xml` in the repository root:
-
-```bash
-uv run pytest \
-  --cov \
-  --cov-report=term-missing \
-  --cov-report=xml
-```
-
-The current baseline is **77.48%** and total coverage must remain at least
-**75%**. New and changed executable Python code must have at least **80%**
-coverage. Check it against `origin/main` with:
-
-```bash
-uv run diff-cover coverage.xml \
-  --config-file pyproject.toml \
-  --compare-branch=origin/main
-```
-
-### Code quality
-
-```bash
-ruff check src/         # lint
-ruff format src/        # auto-format
-```
+- [CONTRIBUTING.md](CONTRIBUTING.md) — branches, commits, pull requests, CI gates
+- [AGENTS.md](AGENTS.md) — the full command reference (lint, tests, coverage,
+  schema regeneration) and the project layout
+- [docs/FAQ.md](docs/FAQ.md) — how to carry out the common development tasks
+- [docs/AGENT-TOOLING.md](docs/AGENT-TOOLING.md) — the `/plan`, `/review` and
+  `/pr` commands, the review agents, and the hooks that apply themselves
+- [STYLEGUIDE.md](STYLEGUIDE.md) — code conventions
+- [docs/GLOSSARY.md](docs/GLOSSARY.md) — the canonical domain vocabulary
