@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
+from typing import Self
 
 from pydantic import (
     BaseModel,
@@ -13,7 +14,6 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from typing_extensions import Self
 
 from tools import __version__ as _SCANNER_VERSION
 from tools.shared.ir import Endpoint, Repository, Service

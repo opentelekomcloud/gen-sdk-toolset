@@ -6,7 +6,14 @@ you find yourself wanting to add a rule here, first check whether it can be a
 lint rule, a contract or a test instead. Those never go stale.
 
 Formatting, import order and modernisation are handled by `ruff`
-(`E`, `F`, `I`, `UP`; line length 88; target `py310`). Do not argue with it.
+(`E`, `F`, `I`, `UP`; line length 88). Do not argue with it.
+
+**Python versions.** 3.13 everywhere: `requires-python = ">=3.13"`, ruff's
+`target-version = "py313"`, CI runs 3.13 in every job, and the backend image is
+`python:3.13-slim`. One rule is muted while its migration is scheduled - `UP042`
+(`str, Enum` to `StrEnum`) changes `str()` and f-string output on enums that are
+persisted and serialized, so it sits in `ignore` with a pointer to issue #87
+rather than being auto-fixed.
 
 The rules below give you the pattern. The codebase gives you the proof: when a
 rule and an existing module disagree, read the module and say so, rather than

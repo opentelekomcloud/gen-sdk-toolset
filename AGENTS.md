@@ -24,7 +24,7 @@ either one.
 ## Setup
 
 ```bash
-uv sync --extra dev --extra panel      # Python deps (3.10+)
+uv sync --extra dev --extra panel      # Python 3.13
 cp .env.example .env                   # then set GITHUB_TOKEN=ghp_...
 cd frontend && npm ci                  # frontend deps
 ```
@@ -49,8 +49,10 @@ or the environment only.
 Tests touching the panel database need PostgreSQL. Either export
 `TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/postgres`
 or let testcontainers start `postgres:16-alpine` (Docker must be running).
-A database connection failure is an environment problem, not a code finding —
-say so instead of reporting it as a defect.
+Both paths force `sslmode=disable`, so a `PGSSLMODE` you keep set for an
+unrelated database will not block them. A database connection failure is an
+environment problem, not a code finding — say so instead of reporting it as a
+defect.
 
 ## Layout
 
