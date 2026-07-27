@@ -11,9 +11,24 @@ start `postgres:16-alpine` for you.
 
 ## Branches
 
-One branch per issue, named `<issue-number>-<short-slug>`, for example
-`21-f13-background-scan-job-happy-path`. Branch from `main`; never commit to
-`main` directly.
+One branch per issue, named `<type>/<issue-number>-<short-slug>`:
+
+```
+feat/21-background-scan-job
+fix/57-truncated-listing-reported-clean
+docs/85-agent-guides
+```
+
+The type is one of the same set the commits use - `feat`, `fix`, `refactor`,
+`test`, `docs`, `chore` - so there is one vocabulary rather than two. The issue
+number is not decoration: it is what links the branch to the work it came from,
+and `gh pr create` picks it up.
+
+Creating the branch from the issue on GitHub suggests a name without the
+prefix - the field is editable in that dialog, so add it there rather than
+renaming afterwards.
+
+Branch from `main`; never commit to `main` directly.
 
 ## Commits
 
