@@ -222,3 +222,5 @@ node_modules/
 tasks/
 dist/
 coverage/
+# Claude Code personal overrides
+.claude/settings.local.json
