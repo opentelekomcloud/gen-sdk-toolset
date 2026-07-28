@@ -8,13 +8,12 @@ version = "0.1.0"
 description = "Automated Python SDK generation from OTC API documentation"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "pydantic>=2.10,<3",
     "pydantic-settings>=2.14.2,<3",
     "requests>=2.32,<3",
     "docutils>=0.21,<1",
-    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -54,11 +53,14 @@ forbidden_modules = ["tools.domain", "tools.scanner", "tools.panel"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py313"
 extend-exclude = ["*/migrations/versions/*"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+# UP042 (str, Enum -> StrEnum) changes str()/f-string output on enums that are
+# persisted and serialized. Deliberate migration with tests - see issue #87.
+ignore = ["UP042"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

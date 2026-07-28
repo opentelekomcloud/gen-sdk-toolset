@@ -1,0 +1,71 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest*)",
+      "Bash(uv run diff-cover*)",
+      "Bash(uv run gen-sdk-scan*)",
+      "Bash(uv run panel*)",
+      "Bash(uv run alembic*)",
+      "Bash(uv sync*)",
+      "Bash(ruff check*)",
+      "Bash(ruff format*)",
+      "Bash(lint-imports*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(gh issue view*)",
+      "Bash(gh issue list*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr diff*)",
+      "Bash(npm run lint*)",
+      "Bash(npm run build*)",
+      "Bash(npm run test*)",
+      "Bash(cd frontend && npm *)",
+      "Bash(cd frontend && npx *)",
+      "Bash(.venv/Scripts/python.exe -m *)",
+      "Bash(.venv/bin/python -m *)",
+      "Bash(.venv/Scripts/ruff.exe*)",
+      "Bash(.venv/Scripts/pytest.exe*)",
+      "Bash(.venv/bin/ruff*)",
+      "Bash(.venv/bin/pytest*)",
+      "Bash(pytest*)",
+      "Bash(diff-cover*)",
+      "Bash(gh pr list*)",
+      "Bash(git fetch*)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Bash(git push --force*)",
+      "Bash(git reset --hard*)",
+      "Bash(rm -rf*)",
+      "Bash(git stash*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --quiet python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_paths.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run --quiet python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_edited.py\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}
