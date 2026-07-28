@@ -10,11 +10,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, ValidationError
 
-from tools.config import Settings, load_settings, require_github_token
+from tools.config import Settings, load_settings
 from tools.domain.report import OrgScanResult, OverallStatus
-from tools.scanner.github.client import GitHubDocProvider
-from tools.scanner.parsers import DocutilsParser, classify_doc_style
-from tools.scanner.service import ScannerService
+from tools.scanner.factory import build_scanner
 from tools.shared.exceptions import ProviderError
 
 # Exit codes
@@ -129,23 +127,6 @@ def _load_settings_or_exit(config_path: str | None) -> Settings:
         raise SystemExit(EXIT_USAGE_ERROR) from e
 
 
-def _build_scanner(settings: Settings) -> ScannerService:
-    """Composition root: wire the adapters into a :class:`ScannerService`."""
-    github_provider = GitHubDocProvider(
-        token=require_github_token(settings).get_secret_value(),
-        api_url=settings.github.api_url,
-        prefix=settings.scanner.rst_source_prefix,
-    )
-    return ScannerService(
-        doc_provider=github_provider,
-        parser=DocutilsParser(),
-        style_classifier=classify_doc_style,
-        max_workers=settings.scanner.max_workers,
-        api_ref_path=settings.scanner.api_ref_path,
-        excluded_segments=settings.scanner.excluded_segments,
-    )
-
-
 def _print_human_summary(
     result: OrgScanResult, api_ref_path: str, logger: logging.Logger
 ) -> None:
@@ -207,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     branch = args.branch or settings.github.branch
     output_path = args.output or settings.output.path
     try:
-        scanner = _build_scanner(settings)
+        scanner = build_scanner(settings)
     except RuntimeError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USAGE_ERROR

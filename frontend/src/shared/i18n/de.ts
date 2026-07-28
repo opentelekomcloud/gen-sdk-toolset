@@ -78,6 +78,9 @@ export const de: Record<keyof typeof en, string> = {
   "service.scanningBy": " — gestartet von {by}",
   "service.scanningAt": " um {at}",
   "service.failedTitle": "Scan versucht und fehlgeschlagen",
+  "service.failedBannerTitle": "Letzter Scan fehlgeschlagen",
+  "service.failedKeptData":
+    "Es gingen keine Daten verloren — ein fehlgeschlagener Job speichert nichts. Alles unten ist Gen {gen} ({at}), der letzte erfolgreiche Scan. „Wiederholen“ stellt einen neuen Job ein.",
   "service.failedHint": "Für diesen Service sind noch keine Daten gespeichert. „Wiederholen“ stellt einen neuen Scan-Job in die Warteschlange.",
   "service.rateLimitReset": "Limit wird um {time} zurückgesetzt",
   "interruption.rate_limit": "Scan unterbrochen — API-Rate-Limit",

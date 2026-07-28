@@ -7,12 +7,14 @@ import { useService, useSummary } from "../api/queries";
 import { GenerationBanner } from "../components/GenerationBanner";
 import { GenerationSelector } from "../components/GenerationSelector";
 import { RescanButton } from "../components/RescanButton";
+import { ScanJobWatcher } from "../components/ScanJobWatcher";
 import { SectionCard } from "../components/SectionCard";
 import { StatusPill } from "../components/StatusPill";
 import { OverallBar } from "../components/OverallBar";
 import { SECTIONS } from "../constants";
 import { DocumentsBlock } from "../documents/DocumentsBlock";
 import { ExcludeModal } from "../excluded/ExcludeModal";
+import { fmtGenAt } from "../lib/generation";
 import { DOC_STATUS_CLS, structOkCls } from "../styles";
 import type { DocStatus } from "../api/types.local";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
@@ -68,6 +70,8 @@ export function ServicePage() {
   const scanning = service.scan_status === "scanning";
   const switching = activate.isPending;
   const scannerVersion = summary?.scanner_version ?? "";
+  /* a failed job persists nothing — with an active generation the failure is a warning, without one a terminal state */
+  const jobFailed = service.error != null || service.interruption != null;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
@@ -116,6 +120,10 @@ export function ServicePage() {
         </div>
       </div>
 
+      {scanning && service.job_id != null && (
+        <ScanJobWatcher key={service.job_id} serviceName={service.name} jobId={service.job_id} />
+      )}
+
       {scanning && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs text-blue-800">
           <Loader2 size={14} className="animate-spin" />
@@ -134,7 +142,36 @@ export function ServicePage() {
         />
       )}
 
-      {service.error != null || service.interruption != null ? (
+      {!scanning && jobFailed && service.active_generation != null && (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-800">
+          <AlertTriangle size={14} className="mt-px shrink-0 text-red-500" />
+          <div className="min-w-0">
+            <span className="font-semibold">
+              {service.interruption ? t(`interruption.${service.interruption.kind}` as MessageKey) : t("service.failedBannerTitle")}
+            </span>
+            {" — "}
+            <span className="font-mono">{service.interruption?.message ?? service.error}</span>
+            {service.error_at != null && <span className="font-mono text-red-500"> · {fmtGenAt(service.error_at)}</span>}
+            {service.interruption?.kind === "rate_limit" && service.interruption.reset_time != null && (
+              <span className="font-mono text-red-500">
+                {" · "}
+                {t("service.rateLimitReset", { time: new Date(service.interruption.reset_time * 1000).toLocaleTimeString() })}
+              </span>
+            )}
+            <div className="mt-0.5 text-red-600/80">
+              {t("service.failedKeptData", { gen: service.active_generation.id, at: fmtGenAt(service.active_generation.created_at) })}
+            </div>
+          </div>
+          <button
+            onClick={() => rescan.mutate()}
+            className="ml-auto shrink-0 rounded border border-red-300 px-2 py-1 font-medium text-red-700 transition hover:border-red-500 hover:bg-white"
+          >
+            {t("service.retry")}
+          </button>
+        </div>
+      )}
+
+      {jobFailed && service.active_generation == null ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center">
           <AlertTriangle size={22} className="mx-auto mb-2 text-red-500" />
           <div className="mb-1 text-sm font-semibold text-red-800">

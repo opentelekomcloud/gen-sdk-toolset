@@ -1,5 +1,4 @@
-import { useEffect, useRef } from "react";
-import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { apiFetch, qs } from "./client";
 import type {
   AttentionRule,
@@ -9,6 +8,8 @@ import type {
   DocumentsResponse,
   ExcludedService,
   GenerationsResponse,
+  Job,
+  JobStatus,
   ServiceDetail,
   ServiceFilter,
   ServiceSort,
@@ -26,6 +27,7 @@ export const keys = {
   document: (name: string, id: number) => ["document", name, id] as const,
   /** G1: generation history of a service. */
   generations: (name: string) => ["generations", name] as const,
+  job: (id: number) => ["job", id] as const,
   summary: ["summary"] as const,
   attention: ["attention"] as const,
   excluded: ["excluded"] as const,
@@ -49,6 +51,19 @@ export function invalidateGeneration(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.attention });
 }
 
+/**
+ * A failed scan produces no new generation: only the service state (the error,
+ * the cleared job) and the aggregates that surface it are stale. The documents,
+ * document details and generations of the still-active generation are not —
+ * invalidating them would refetch data that cannot have changed.
+ */
+export function invalidateScanFailure(qc: QueryClient, name: string) {
+  void qc.invalidateQueries({ queryKey: keys.service(name) });
+  void qc.invalidateQueries({ queryKey: keys.services() });
+  void qc.invalidateQueries({ queryKey: keys.summary });
+  void qc.invalidateQueries({ queryKey: keys.attention });
+}
+
 export interface ServicesParams {
   status?: ServiceFilter;
   q?: string;
@@ -65,26 +80,12 @@ export function useServices(params: ServicesParams) {
 }
 
 export function useService(name: string) {
-  const qc = useQueryClient();
-  const query = useQuery({
+  /* Scan-completion refresh is owned by ScanJobWatcher; this query just serves
+     the service detail. */
+  return useQuery({
     queryKey: keys.service(name),
     queryFn: () => apiFetch<ServiceDetail>(`/scan/services/${encodeURIComponent(name)}`),
-    /* while a scan job runs, poll so the page picks up completion (PS14 owns exact policy via useJob) */
-    refetchInterval: (query) => (query.state.data?.scan_status === "scanning" ? 4000 : false),
   });
-
-  /* Until useJob (PS14) lands: when polling sees scanning → done, the finished
-     scan has produced a new generation — everything downstream is stale. */
-  const scanStatus = query.data?.scan_status;
-  const prevStatus = useRef(scanStatus);
-  useEffect(() => {
-    if (prevStatus.current === "scanning" && scanStatus != null && scanStatus !== "scanning") {
-      invalidateGeneration(qc, name);
-    }
-    prevStatus.current = scanStatus;
-  }, [scanStatus, qc, name]);
-
-  return query;
 }
 
 /** G1: lazy — call with enabled: open (popover); trigger renders from ServiceDetail.active_generation. */
@@ -136,4 +137,25 @@ export function useAttention() {
 
 export function useExcluded() {
   return useQuery({ queryKey: keys.excluded, queryFn: () => apiFetch<ExcludedService[]>("/scan/excluded") });
+}
+
+/** Terminal job statuses — polling stops here. */
+export const JOB_TERMINAL: ReadonlySet<JobStatus> = new Set<JobStatus>(["done", "failed"]);
+
+/** Polling cadence for a job query: stop once terminal, else poll every 1.5s. */
+export function jobRefetchInterval(job: Job | undefined): number | false {
+  return job && JOB_TERMINAL.has(job.status) ? false : 1500;
+}
+
+/**
+ * Poll GET /api/jobs/{id} while the job is non-terminal; stop once it reaches
+ * done/failed. Pass undefined to disable (no active job).
+ */
+export function useJob(jobId: number | undefined) {
+  return useQuery({
+    queryKey: keys.job(jobId ?? -1),
+    enabled: jobId != null,
+    queryFn: () => apiFetch<Job>(`/jobs/${jobId}`),
+    refetchInterval: (query) => jobRefetchInterval(query.state.data),
+  });
 }

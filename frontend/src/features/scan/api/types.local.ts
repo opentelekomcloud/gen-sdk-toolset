@@ -102,7 +102,15 @@ export interface ServiceListItem {
   rescan_reason: RescanReason | null;
   overall_breakdown: Partial<Record<DocStatus, number>>;
   section_rollup: Record<Section, SectionCounts>;
+  /**
+   * Message of the last FAILED job (job.error). A failed job creates no
+   * generation — when active_generation exists alongside error, the service
+   * still serves that snapshot and the failure is only a warning, not a
+   * data-loss state. Cleared by the next successful scan.
+   */
   error: string | null;
+  /** job.finished_at of that failed job; null unless error is set. */
+  error_at: string | null;
   /* present while scan_status === "scanning" — from the queued/running job */
   job_id?: number;
   initiated_by?: string | null;
@@ -217,13 +225,29 @@ export interface ExcludedService {
   excluded_at: string;
 }
 
-export interface RescanRequest {
+export interface ScanRequest {
   initiated_by: string;
 }
 
-export interface RescanResponse {
+export interface ScanResponse {
   /** job.id (int PK). */
   job_id: number;
+}
+
+/** Job view for polling GET /api/jobs/{id} (mirrors panel JobResponse). */
+export interface Job {
+  id: number;
+  service_id: number;
+  repository: string;
+  kind: JobKind;
+  status: JobStatus;
+  /** Available once ingest creates the generation for a completed scan. */
+  scanner_version: string | null;
+  commit_hash: string | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 export interface ExcludeRequest {

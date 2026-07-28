@@ -44,7 +44,7 @@ type MockService = {
 };
 
 const svc = (o: Partial<MockService> & { name: string; scan_status: string }): MockService => ({
-  scanner_version: V, scanned_at: NOW, docs_changed: false, rescan_reason: null, error: null,
+  scanner_version: V, scanned_at: NOW, docs_changed: false, rescan_reason: null, error: null, error_at: null,
   overall_breakdown: {}, section_rollup: rollup(0), struct_ok: null, documents: null,
   top_issues: [], non_endpoint_documents: 0, head_commit: null, interruption: null,
   active_generation: null, latest_generation: null, ...o,
@@ -65,6 +65,12 @@ const SERVICES = [
     error: "clone failed: repository archived (HTTP 403)", scanned_at: null, scanner_version: null,
     interruption: { kind: "permission_denied", repository: "legacy-soap-bridge",
       message: "clone failed: repository archived (HTTP 403)", reset_time: null } }),
+  /* failed job WITH preserved data: last successful gen stays active, failure is a banner */
+  svc({ name: "sms-gateway", scan_status: "failed", documents: 23, struct_ok: 78, rescan_reason: "retry",
+    error: "scanner crashed: out of memory while parsing bulk-send.md (job #1041)",
+    error_at: "2026-07-23T09:12:00Z", scanned_at: "2026-07-20T04:00:00Z",
+    overall_breakdown: { ok: 15, partial: 6, failed: 2 }, section_rollup: rollup(15, 6, 2),
+    top_issues: [{ code: "table_parse_error", count: 4 }] }),
   svc({ name: "notifications-hub", scan_status: "scanned", documents: 17, struct_ok: 94, docs_changed: true,
     rescan_reason: "drift", overall_breakdown: { ok: 16, partial: 1 }, section_rollup: rollup(16, 1) }),
   svc({ name: "payments-gw", scan_status: "scanning", documents: 55, struct_ok: 91,
@@ -102,7 +108,8 @@ const mkGen = (name: string, s: MockService, at: string, ver: string, delta: { d
 };
 
 for (const s of SERVICES) {
-  if (s.documents == null || s.error || s.scan_status === "not_scanned" || s.documents === 0) continue;
+  /* s.error alone does NOT skip: a failed job creates no generation, but earlier successful gens survive */
+  if (s.documents == null || s.scan_status === "not_scanned" || s.documents === 0) continue;
   const history: Gen[] = [];
   /* older generations first so ids ascend, then reverse to newest-first */
   if (s.name === "customer-core")
@@ -174,6 +181,10 @@ const detail = (name: string, id: number) => ({
 
 const EXCLUDED = [{ name: "internal-sandbox", reason: "Test repository, never had real docs", excluded_by: "ivan", excluded_at: "2026-06-30" }];
 
+/* mock-only: in-flight scan jobs for useJob polling. */
+const MOCK_JOBS: Record<number, { id: number; name: string; service_id: number; startedMs: number; created_at: string; completed: boolean }> = {};
+let mockJobSeq = 5000;
+
 export function mockScanApi(): Plugin {
   const json = (res: Parameters<Connect.NextHandleFunction>[1], body: unknown, status = 200) => {
     res.statusCode = status;
@@ -186,6 +197,39 @@ export function mockScanApi(): Plugin {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = new URL(req.url ?? "/", "http://x");
+
+        // mock GET /api/jobs/{id}: simulate the scan job lifecycle for useJob
+        const jm = url.pathname.match(/^\/api\/jobs\/(\d+)$/);
+        if (jm) {
+          const job = MOCK_JOBS[Number(jm[1])];
+          if (!job) return json(res, { error: { code: "not_found", message: `job ${jm[1]} not found` } }, 404);
+          const done = Date.now() - job.startedMs >= 4000;
+          if (done && !job.completed) {
+            job.completed = true;
+            const svc = SERVICES.find((s) => s.name === job.name);
+            if (svc) {
+              svc.scan_status = "scanned";
+              svc.job_id = undefined;
+              svc.initiated_by = undefined;
+              svc.started_at = undefined;
+              svc.scanner_version = V;
+              svc.scanned_at = new Date().toISOString();
+              svc.rescan_reason = null;
+              svc.error = null;
+              svc.error_at = null;
+              svc.interruption = null;
+            }
+          }
+          return json(res, {
+            id: job.id, service_id: job.service_id, repository: job.name,
+            kind: "scan", status: done ? "done" : "running",
+            scanner_version: done ? V : null,
+            commit_hash: done ? HASH(job.name + job.startedMs) : null,
+            error: null, created_at: job.created_at, started_at: job.created_at,
+            finished_at: done ? new Date().toISOString() : null,
+          });
+        }
+
         if (!url.pathname.startsWith("/api/scan")) return next();
         const p = url.pathname.replace("/api/scan", "");
         const q = (url.searchParams.get("q") ?? "").toLowerCase();
@@ -274,7 +318,18 @@ export function mockScanApi(): Plugin {
           }
           const dm = rest.match(/^\/documents\/(\d+)$/);
           if (dm) return json(res, detail(name, Number(dm[1])));
-          if (rest === "/rescan") return json(res, { job_id: 1043 + Math.floor(Math.random() * 100) });
+          if (rest === "/rescan") {
+            const id = ++mockJobSeq;
+            MOCK_JOBS[id] = {
+              id, name, service_id: SERVICES.findIndex((s) => s.name === name) + 1,
+              startedMs: Date.now(), created_at: new Date().toISOString(), completed: false,
+            };
+            service.scan_status = "scanning";
+            service.job_id = id;
+            service.initiated_by = "valeriia";
+            service.started_at = new Date().toISOString();
+            return json(res, { job_id: id });
+          }
           if (rest === "/exclude" || rest === "/include") { res.statusCode = 204; return res.end(); }
         }
         return json(res, { error: { code: "not_found", message: `no mock for ${url.pathname}` } }, 404);

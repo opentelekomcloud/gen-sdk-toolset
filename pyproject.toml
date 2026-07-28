@@ -23,6 +23,7 @@ dev = [
     "import-linter>=2.0",
     "pytest-cov>=6,<8",
     "diff-cover[toml]>=9,<10",
+    "httpx>=0.27,<1",
     "testcontainers[postgres]>=4.0,<5",
 ]
 panel = [
