@@ -98,7 +98,9 @@ class ScannerService:
             return self._unresolved_commit_result(repo, branch, str(e))
 
         if commit_hash is None:
-            return self._unresolved_commit_result(repo, branch, "ref not found")
+            return self._unresolved_commit_result(
+                repo, branch, "commit SHA could not be resolved"
+            )
 
         eligibility = check_repository_eligibility(
             self.doc_provider,

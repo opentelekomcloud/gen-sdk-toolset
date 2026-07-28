@@ -256,7 +256,9 @@ def test_unresolved_commit_stops_before_eligibility_regardless_of_path() -> None
 
     assert not isinstance(result.repository, Service)
     assert result.commit_hash is None
-    assert result.error == "Could not resolve commit for o/cce@develop: ref not found"
+    assert result.error == (
+        "Could not resolve commit for o/cce@develop: commit SHA could not be resolved"
+    )
     assert fake.calls == ["get_commit_hash:o/cce@develop"]
 
 
