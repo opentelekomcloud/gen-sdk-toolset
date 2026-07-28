@@ -1,0 +1,352 @@
+"""Read endpoints: what the panel shows about scanned services.
+
+Every value served here was produced by ingest and stored - these routes
+project, filter and paginate, they never rescan and never call GitHub. Filters
+and ordering that depend on the derived service state (scanning, needs_rescan,
+quality) are applied in Python over the loaded rows: the registry is dozens of
+services, and one source of truth for "what partial means"
+(:mod:`tools.panel.core.service_state`) is worth more than a clever query.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import Select, case, func, or_, select
+from sqlalchemy.orm import Session, joinedload, selectinload, undefer
+
+from tools import __version__ as SCANNER_VERSION
+from tools.panel.api.deps import get_db
+from tools.panel.api.schemas import (
+    AttentionRule,
+    DocumentDetailResponse,
+    DocumentListItem,
+    DocumentsResponse,
+    ExcludedServiceResponse,
+    GenerationResponse,
+    GenerationsResponse,
+    ServiceDetailResponse,
+    ServiceListItem,
+    ServicesResponse,
+    SummaryResponse,
+)
+from tools.panel.core.db.models import (
+    DocumentRecord,
+    ExcludedService,
+    Generation,
+    Service,
+)
+from tools.panel.core.service_state import (
+    ScanStatus,
+    ServiceState,
+    derive_service_state,
+    failed_job,
+    status_documents,
+)
+
+router = APIRouter()
+
+PAGE_SIZE = 20
+
+#: Filter chips on the registry, in the order the UI renders them.
+SERVICE_FILTERS = ("all", *(status.value for status in ScanStatus), "needs_rescan")
+
+#: Worst first: the documents that need a human come at the top of the list.
+_STATUS_ORDER = case(
+    {"failed": 0, "partial": 1, "unsupported": 2, "ok": 3},
+    value=DocumentRecord.overall_status,
+    else_=4,
+)
+
+_ATTENTION_LABELS = {
+    "failed": "Last scan failed",
+    "version": "Scanned by an older scanner",
+    "drift": "Documentation moved ahead",
+    "new": "Never scanned",
+}
+
+
+# ---------------------------------------------------------------------------
+# Registry
+# ---------------------------------------------------------------------------
+
+
+@router.get("/scan/summary", response_model=SummaryResponse)
+def get_summary(db: Session = Depends(get_db)) -> SummaryResponse:
+    """Panel-wide counters for the header strip."""
+    states = _all_states(db)
+    scanned = [state for state in states if state.active_generation is not None]
+    return SummaryResponse(
+        scanner_version=SCANNER_VERSION,
+        last_scanned_at=max(
+            (state.active_generation.created_at for state in scanned), default=None
+        ),
+        services_total=len(states),
+        failed_services=sum(failed_job(state) is not None for state in states),
+        documents_total=sum(
+            status_documents(state.active_generation) for state in scanned
+        ),
+        scans_running=sum(state.active_job is not None for state in states),
+    )
+
+
+@router.get("/scan/attention", response_model=list[AttentionRule])
+def get_attention(db: Session = Depends(get_db)) -> list[AttentionRule]:
+    """Reasons the panel wants attention, with the number of services behind each.
+
+    The predicates are independent, unlike ``rescan_reason``: a service whose
+    documents are partial *and* whose scanner is outdated is counted under both
+    rules, because hiding one behind the other would understate the work.
+    """
+    states = _all_states(db)
+    counts = {
+        "failed": sum(failed_job(state) is not None for state in states),
+        "version": sum(
+            state.active_generation is not None
+            and state.active_generation.scanner_version != SCANNER_VERSION
+            for state in states
+        ),
+        "drift": sum(state.docs_changed for state in states),
+        "new": sum(
+            state.active_generation is None and failed_job(state) is None
+            for state in states
+        ),
+    }
+    return [
+        AttentionRule(
+            code=code, panel="scan", label=_ATTENTION_LABELS[code], count=count
+        )
+        for code, count in counts.items()
+        if count
+    ]
+
+
+@router.get("/scan/excluded", response_model=list[ExcludedServiceResponse])
+def list_excluded(db: Session = Depends(get_db)) -> list[ExcludedServiceResponse]:
+    """Services deliberately kept out of scanning."""
+    rows = db.scalars(
+        select(ExcludedService).options(joinedload(ExcludedService.service))
+    ).all()
+    return [
+        ExcludedServiceResponse(
+            name=row.service.repo,
+            reason=row.reason,
+            excluded_by=row.excluded_by,
+            excluded_at=row.excluded_at,
+        )
+        for row in rows
+    ]
+
+
+@router.get("/scan/services", response_model=ServicesResponse)
+def list_services(
+    db: Session = Depends(get_db),
+    status: str = Query(default="all"),
+    q: str = Query(default=""),
+    sort: str = Query(default="quality"),
+    rule: str | None = Query(default=None),
+) -> ServicesResponse:
+    """The registry table: filtered rows plus the count behind every chip.
+
+    ``counts`` is computed with the search applied but the status filter
+    ignored, so the chips keep showing where the rest of the matches went.
+    """
+    matched = [
+        (service, state)
+        for service, state in _all_services(db)
+        if q.lower() in service.repo.lower()
+    ]
+    counts = {
+        name: sum(_matches_filter(state, name) for _service, state in matched)
+        for name in SERVICE_FILTERS
+    }
+
+    if rule is not None:
+        selected = [pair for pair in matched if _matches_rule(pair[1], rule)]
+    else:
+        selected = [pair for pair in matched if _matches_filter(pair[1], status)]
+
+    items = [
+        ServiceListItem.from_service(service, state) for service, state in selected
+    ]
+    return ServicesResponse(items=_sorted(items, sort), counts=counts)
+
+
+@router.get(
+    "/scan/services/{repo:path}/generations", response_model=GenerationsResponse
+)
+def list_generations(repo: str, db: Session = Depends(get_db)) -> GenerationsResponse:
+    """A service's scan history, newest first."""
+    service = _service_or_404(db, repo)
+    generations = db.scalars(
+        select(Generation)
+        .where(Generation.service_id == service.id)
+        .order_by(Generation.created_at.desc(), Generation.id.desc())
+    ).all()
+    return GenerationsResponse(
+        items=[GenerationResponse.from_generation(row) for row in generations],
+        active_id=service.active_generation_id,
+        latest_id=service.latest_generation_id,
+    )
+
+
+@router.get("/scan/services/{repo:path}/documents/{document_id}")
+def get_document(
+    repo: str, document_id: int, db: Session = Depends(get_db)
+) -> DocumentDetailResponse:
+    """One document of the active generation, with its sections and parameters."""
+    service = _service_or_404(db, repo)
+    record = db.scalar(
+        select(DocumentRecord)
+        .options(undefer(DocumentRecord.payload))
+        .where(
+            DocumentRecord.id == document_id,
+            DocumentRecord.generation_id == service.active_generation_id,
+        )
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return DocumentDetailResponse.from_record(record)
+
+
+@router.get("/scan/services/{repo:path}/documents", response_model=DocumentsResponse)
+def list_documents(
+    repo: str,
+    db: Session = Depends(get_db),
+    status: str | None = Query(default=None),
+    q: str = Query(default=""),
+    page: int = Query(default=1, ge=1),
+) -> DocumentsResponse:
+    """One page of the active generation's API documents.
+
+    Pages that carry no scan status are not API documents; they are counted in
+    the service detail's ``non_endpoint_documents`` instead of being listed here
+    under a status they never had.
+    """
+    service = _service_or_404(db, repo)
+    if service.active_generation_id is None:
+        return DocumentsResponse(
+            items=[], total=0, page=page, page_size=PAGE_SIZE, doc_counts={"all": 0}
+        )
+
+    base = select(DocumentRecord).where(
+        DocumentRecord.generation_id == service.active_generation_id,
+        DocumentRecord.overall_status.is_not(None),
+    )
+    if q:
+        pattern = f"%{q}%"
+        base = base.where(
+            or_(
+                DocumentRecord.path.ilike(pattern),
+                DocumentRecord.title.ilike(pattern),
+                DocumentRecord.uri.ilike(pattern),
+            )
+        )
+
+    doc_counts = _document_counts(db, base)
+    filtered = base.where(DocumentRecord.overall_status == status) if status else base
+
+    total = db.scalar(select(func.count()).select_from(filtered.subquery())) or 0
+    records = db.scalars(
+        filtered.options(undefer(DocumentRecord.payload))
+        .order_by(_STATUS_ORDER, DocumentRecord.path)
+        .offset((page - 1) * PAGE_SIZE)
+        .limit(PAGE_SIZE)
+    ).all()
+
+    return DocumentsResponse(
+        items=[DocumentListItem.from_record(record) for record in records],
+        total=total,
+        page=page,
+        page_size=PAGE_SIZE,
+        doc_counts=doc_counts,
+    )
+
+
+@router.get("/scan/services/{repo:path}", response_model=ServiceDetailResponse)
+def get_service(repo: str, db: Session = Depends(get_db)) -> ServiceDetailResponse:
+    """Everything the service page shows about one service."""
+    service = _service_or_404(db, repo)
+    state = derive_service_state(service, scanner_version=SCANNER_VERSION)
+    return ServiceDetailResponse.from_service(service, state)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _service_query():
+    return select(Service).options(
+        selectinload(Service.jobs),
+        joinedload(Service.active_generation),
+        joinedload(Service.latest_generation),
+    )
+
+
+def _service_or_404(db: Session, repo: str) -> Service:
+    service = db.scalar(_service_query().where(Service.repo == repo))
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return service
+
+
+def _all_services(db: Session) -> list[tuple[Service, ServiceState]]:
+    services = db.scalars(_service_query().order_by(Service.repo)).unique().all()
+    return [
+        (service, derive_service_state(service, scanner_version=SCANNER_VERSION))
+        for service in services
+    ]
+
+
+def _all_states(db: Session) -> list[ServiceState]:
+    return [state for _service, state in _all_services(db)]
+
+
+def _matches_filter(state: ServiceState, name: str) -> bool:
+    if name == "all":
+        return True
+    if name == "needs_rescan":
+        return state.rescan_reason is not None
+    return state.scan_status.value == name
+
+
+def _matches_rule(state: ServiceState, rule: str) -> bool:
+    if rule == "failed":
+        return failed_job(state) is not None
+    if rule == "version":
+        generation = state.active_generation
+        return generation is not None and generation.scanner_version != SCANNER_VERSION
+    if rule == "drift":
+        return state.docs_changed
+    if rule == "new":
+        return state.active_generation is None and failed_job(state) is None
+    return False
+
+
+def _sorted(items: list[ServiceListItem], sort: str) -> list[ServiceListItem]:
+    if sort == "name":
+        return sorted(items, key=lambda item: item.name)
+    if sort == "docs":
+        return sorted(items, key=lambda item: (-(item.documents or 0), item.name))
+    # quality: worst structure first, never-scanned services last
+    return sorted(
+        items,
+        key=lambda item: (item.struct_ok is None, item.struct_ok or 0, item.name),
+    )
+
+
+def _document_counts(db: Session, base: Select) -> dict[str, int]:
+    """Per-status counts with the search applied and the status filter ignored.
+
+    ``all`` is the sum of the status buckets, so the chips always account for
+    every listed document.
+    """
+    matched = base.subquery()
+    rows = db.execute(
+        select(matched.c.overall_status, func.count()).group_by(
+            matched.c.overall_status
+        )
+    ).all()
+    counts = {status: count for status, count in rows if status is not None}
+    counts["all"] = sum(counts.values())
+    return counts

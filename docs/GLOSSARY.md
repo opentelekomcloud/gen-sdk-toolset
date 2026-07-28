@@ -122,6 +122,24 @@ it: `Service` here is a database row, not the IR entity above.
 | `JobKind`, `JobStatus` | `JobStatus` is `queued`, `running`, `done`, `failed`. |
 | `IngestRejected` | `panel/core/ingest.py`. The Job or the scan result did not satisfy the successful-ingest contract (not a running scan Job, a failed or commit-less result, a repository that is not a `Service`, or a repository mismatch). The scan runner turns it into a `failed` Job with the message recorded. |
 
+### Derived service state (what the read endpoints serve)
+
+Defined in `src/tools/panel/core/service_state.py`. Computed from a Service's
+jobs and generations on every read - never stored, so it cannot go stale.
+
+| Name | Meaning |
+|---|---|
+| `ScanStatus` | `scanning` (a queued or running scan job), `not_scanned` (no generation, no failure), `failed` (no generation and the last job failed), `partial` (the active generation has partial or failed documents), `scanned` (everything else). |
+| `RescanReason` | Why the panel suggests a rescan, in priority order: `retry` (the last job failed), `partial` (documents came out partial or failed), `version` (an older scanner produced the generation), `drift` (`head_commit` differs from the scanned commit). At most one is reported. |
+| Attention rules | The same four codes (`failed`, `version`, `drift`, `new`) evaluated **independently** for the app-level band: a service can appear under several, because hiding one behind another would understate the work. `new` means never scanned and never failed. |
+| `status_documents` | Documents that carry a status - the sum of the overall breakdown, and what the UI calls `documents`. Pages that are not API documents are reported as `non_endpoint_documents` (the generation analytics' `unknown_count`), never folded into a status. |
+
+Note the two different meanings of "non-endpoint": the `generation.non_endpoint_documents`
+**column** counts everything that is not a parsed endpoint (including failed and
+unsupported documents), while the API's `non_endpoint_documents` **field** counts
+only the pages with no scan status at all. The API serves the second one, because
+that is the number the UI puts next to "documents".
+
 Two database constraints carry rules that code depends on, so do not weaken them
 without reading their consumers first: the `status_timestamps` CHECK constraint
 encodes the job lifecycle (`queued` has no `started_at`; `running` has

@@ -51,8 +51,9 @@ services:
       - /app/node_modules
     environment:
       - BACKEND_URL=http://backend:8000
-      # serves /api/scan/* from frontend/mock/scanApi.ts fixtures; remove once the backend scan routes land
-      - MOCK_API=${MOCK_API:-1}
+      # The backend serves /api/scan/* itself now; set MOCK_API=1 to go back to
+      # the frontend/mock/scanApi.ts fixtures (UI work without a database).
+      - MOCK_API=${MOCK_API:-}
     depends_on:
       backend:
         condition: service_healthy

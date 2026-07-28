@@ -17,6 +17,8 @@ from .generation import (
     analyze_document,
     analyze_generation,
     doc_completeness,
+    document_from_payload,
+    issues_by_code,
 )
 from .validate import example_documentation_issues
 
@@ -27,5 +29,7 @@ __all__ = [
     "analyze_generation",
     "assemble_nesting_from_examples",
     "doc_completeness",
+    "document_from_payload",
     "example_documentation_issues",
+    "issues_by_code",
 ]

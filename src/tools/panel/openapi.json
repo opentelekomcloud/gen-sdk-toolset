@@ -1,6 +1,418 @@
-﻿{
+{
   "components": {
     "schemas": {
+      "AttentionRule": {
+        "description": "One reason the panel is asking for attention, with how many services hit it.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "panel": {
+            "title": "Panel",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "panel",
+          "label",
+          "count"
+        ],
+        "title": "AttentionRule",
+        "type": "object"
+      },
+      "DocumentDetailResponse": {
+        "description": "The document drill-down: sections, parameters and diagnostics.",
+        "properties": {
+          "api_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Version"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "overall_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Status"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/SectionDetail"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uri"
+          }
+        },
+        "required": [
+          "id",
+          "method",
+          "uri",
+          "title",
+          "api_version",
+          "overall_status",
+          "failure_reason",
+          "sections"
+        ],
+        "title": "DocumentDetailResponse",
+        "type": "object"
+      },
+      "DocumentListItem": {
+        "description": "One row of the documents block.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/IssueCount"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "overall_status": {
+            "title": "Overall Status",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uri"
+          }
+        },
+        "required": [
+          "id",
+          "method",
+          "uri",
+          "title",
+          "path",
+          "overall_status",
+          "issues"
+        ],
+        "title": "DocumentListItem",
+        "type": "object"
+      },
+      "DocumentsResponse": {
+        "description": "One page of a generation's documents, with the counts behind the chips.",
+        "properties": {
+          "doc_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Doc Counts",
+            "type": "object"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size",
+          "doc_counts"
+        ],
+        "title": "DocumentsResponse",
+        "type": "object"
+      },
+      "ExcludedServiceResponse": {
+        "description": "One deliberately excluded service.",
+        "properties": {
+          "excluded_at": {
+            "format": "date-time",
+            "title": "Excluded At",
+            "type": "string"
+          },
+          "excluded_by": {
+            "title": "Excluded By",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "reason",
+          "excluded_by",
+          "excluded_at"
+        ],
+        "title": "ExcludedServiceResponse",
+        "type": "object"
+      },
+      "GenerationResponse": {
+        "description": "One persisted scan snapshot (the `generation` row).",
+        "properties": {
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "commit_hash": {
+            "title": "Commit Hash",
+            "type": "string"
+          },
+          "completeness": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completeness"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "document_schema_version": {
+            "title": "Document Schema Version",
+            "type": "string"
+          },
+          "documents_total": {
+            "title": "Documents Total",
+            "type": "integer"
+          },
+          "endpoints_total": {
+            "title": "Endpoints Total",
+            "type": "integer"
+          },
+          "failed_count": {
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "issues_total": {
+            "title": "Issues Total",
+            "type": "integer"
+          },
+          "non_endpoint_documents": {
+            "title": "Non Endpoint Documents",
+            "type": "integer"
+          },
+          "ok_count": {
+            "title": "Ok Count",
+            "type": "integer"
+          },
+          "partial_count": {
+            "title": "Partial Count",
+            "type": "integer"
+          },
+          "scanner_version": {
+            "title": "Scanner Version",
+            "type": "string"
+          },
+          "source_job_id": {
+            "title": "Source Job Id",
+            "type": "integer"
+          },
+          "unsupported_count": {
+            "title": "Unsupported Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "source_job_id",
+          "branch",
+          "commit_hash",
+          "scanner_version",
+          "document_schema_version",
+          "documents_total",
+          "endpoints_total",
+          "non_endpoint_documents",
+          "issues_total",
+          "ok_count",
+          "partial_count",
+          "failed_count",
+          "unsupported_count",
+          "completeness",
+          "created_at"
+        ],
+        "title": "GenerationResponse",
+        "type": "object"
+      },
+      "GenerationsResponse": {
+        "description": "A service's generation history, newest first.",
+        "properties": {
+          "active_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GenerationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "latest_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Id"
+          }
+        },
+        "required": [
+          "items",
+          "active_id",
+          "latest_id"
+        ],
+        "title": "GenerationsResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "HealthResponse": {
         "properties": {
           "status": {
@@ -13,6 +425,800 @@
         ],
         "title": "HealthResponse",
         "type": "object"
+      },
+      "IssueCount": {
+        "description": "One issue code and how often it occurred.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "count"
+        ],
+        "title": "IssueCount",
+        "type": "object"
+      },
+      "JobKind": {
+        "enum": [
+          "scan",
+          "generate",
+          "maintain"
+        ],
+        "title": "JobKind",
+        "type": "string"
+      },
+      "JobResponse": {
+        "description": "Job view for frontend polling (GET /api/jobs/{id}).",
+        "properties": {
+          "commit_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit Hash"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "repository": {
+            "title": "Repository",
+            "type": "string"
+          },
+          "scanner_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanner Version"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "integer"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          }
+        },
+        "required": [
+          "id",
+          "service_id",
+          "repository",
+          "kind",
+          "status",
+          "scanner_version",
+          "commit_hash",
+          "error",
+          "created_at",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "JobResponse",
+        "type": "object"
+      },
+      "JobStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
+      "ParameterResponse": {
+        "description": "One parameter row, nested exactly as the scan recorded it.",
+        "properties": {
+          "children": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ParameterResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Children"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "mandatory": {
+            "title": "Mandatory",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "param_type": {
+            "title": "Param Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "param_type",
+          "mandatory",
+          "description"
+        ],
+        "title": "ParameterResponse",
+        "type": "object"
+      },
+      "RescanReason": {
+        "description": "Why the panel suggests rescanning, in priority order.",
+        "enum": [
+          "retry",
+          "partial",
+          "version",
+          "drift"
+        ],
+        "title": "RescanReason",
+        "type": "string"
+      },
+      "ScanRequest": {
+        "description": "Body for launching a scan: who initiated it.",
+        "properties": {
+          "initiated_by": {
+            "minLength": 1,
+            "title": "Initiated By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "initiated_by"
+        ],
+        "title": "ScanRequest",
+        "type": "object"
+      },
+      "ScanStatus": {
+        "description": "How the registry describes a service's scan state.",
+        "enum": [
+          "scanned",
+          "partial",
+          "failed",
+          "not_scanned",
+          "scanning"
+        ],
+        "title": "ScanStatus",
+        "type": "string"
+      },
+      "SectionDetail": {
+        "description": "One endpoint section as the drill-down renders it.",
+        "properties": {
+          "fields_recognized": {
+            "title": "Fields Recognized",
+            "type": "integer"
+          },
+          "fields_total": {
+            "title": "Fields Total",
+            "type": "integer"
+          },
+          "fields_unknown_type": {
+            "title": "Fields Unknown Type",
+            "type": "integer"
+          },
+          "issues": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ParameterResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parameters"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "fields_total",
+          "fields_recognized",
+          "fields_unknown_type",
+          "parameters",
+          "issues"
+        ],
+        "title": "SectionDetail",
+        "type": "object"
+      },
+      "ServiceDetailResponse": {
+        "description": "The service page: the registry row plus what only the detail view shows.",
+        "properties": {
+          "active_generation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GenerationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "docs_changed": {
+            "title": "Docs Changed",
+            "type": "boolean"
+          },
+          "documents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documents"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "error_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error At"
+          },
+          "head_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Commit"
+          },
+          "initiated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initiated By"
+          },
+          "interruption": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interruption"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "latest_generation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GenerationResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "non_endpoint_documents": {
+            "title": "Non Endpoint Documents",
+            "type": "integer"
+          },
+          "overall_breakdown": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Overall Breakdown",
+            "type": "object"
+          },
+          "rescan_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RescanReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scan_status": {
+            "$ref": "#/components/schemas/ScanStatus"
+          },
+          "scanned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanned At"
+          },
+          "scanner_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanner Version"
+          },
+          "section_rollup": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Section Rollup",
+            "type": "object"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "struct_ok": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Struct Ok"
+          },
+          "top_issues": {
+            "items": {
+              "$ref": "#/components/schemas/IssueCount"
+            },
+            "title": "Top Issues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "scan_status",
+          "documents",
+          "struct_ok",
+          "scanner_version",
+          "scanned_at",
+          "docs_changed",
+          "rescan_reason",
+          "overall_breakdown",
+          "section_rollup",
+          "error",
+          "error_at",
+          "active_generation",
+          "latest_generation",
+          "head_commit",
+          "interruption",
+          "top_issues",
+          "non_endpoint_documents"
+        ],
+        "title": "ServiceDetailResponse",
+        "type": "object"
+      },
+      "ServiceListItem": {
+        "description": "One row of the registry, served from the service's active Generation.\n\n``documents`` counts the documents that have a scan status, so it always\nequals the sum of ``overall_breakdown``. Pages that are not API documents\nare counted separately (see ``ServiceDetailResponse.non_endpoint_documents``)\nrather than folded into a status they do not have.",
+        "properties": {
+          "docs_changed": {
+            "title": "Docs Changed",
+            "type": "boolean"
+          },
+          "documents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documents"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "error_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error At"
+          },
+          "initiated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initiated By"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "overall_breakdown": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Overall Breakdown",
+            "type": "object"
+          },
+          "rescan_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RescanReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scan_status": {
+            "$ref": "#/components/schemas/ScanStatus"
+          },
+          "scanned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanned At"
+          },
+          "scanner_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scanner Version"
+          },
+          "section_rollup": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "Section Rollup",
+            "type": "object"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "struct_ok": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Struct Ok"
+          }
+        },
+        "required": [
+          "name",
+          "scan_status",
+          "documents",
+          "struct_ok",
+          "scanner_version",
+          "scanned_at",
+          "docs_changed",
+          "rescan_reason",
+          "overall_breakdown",
+          "section_rollup",
+          "error",
+          "error_at"
+        ],
+        "title": "ServiceListItem",
+        "type": "object"
+      },
+      "ServicesResponse": {
+        "description": "The registry: matching rows plus the count behind every filter chip.",
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "counts"
+        ],
+        "title": "ServicesResponse",
+        "type": "object"
+      },
+      "StartScanResponse": {
+        "description": "Returned immediately when a scan Job is queued.",
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "StartScanResponse",
+        "type": "object"
+      },
+      "SummaryResponse": {
+        "description": "The header strip: one number per thing the panel is currently doing.",
+        "properties": {
+          "documents_total": {
+            "title": "Documents Total",
+            "type": "integer"
+          },
+          "failed_services": {
+            "title": "Failed Services",
+            "type": "integer"
+          },
+          "last_scanned_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Scanned At"
+          },
+          "scanner_version": {
+            "title": "Scanner Version",
+            "type": "string"
+          },
+          "scans_running": {
+            "title": "Scans Running",
+            "type": "integer"
+          },
+          "services_total": {
+            "title": "Services Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scanner_version",
+          "last_scanned_at",
+          "services_total",
+          "failed_services",
+          "documents_total",
+          "scans_running"
+        ],
+        "title": "SummaryResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
       }
     }
   },
@@ -22,6 +1228,444 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/jobs/{job_id}": {
+      "get": {
+        "description": "Return one Job's state for frontend polling.",
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Job"
+      }
+    },
+    "/api/scan/attention": {
+      "get": {
+        "description": "Reasons the panel wants attention, with the number of services behind each.\n\nThe predicates are independent, unlike ``rescan_reason``: a service whose\ndocuments are partial *and* whose scanner is outdated is counted under both\nrules, because hiding one behind the other would understate the work.",
+        "operationId": "get_attention_api_scan_attention_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AttentionRule"
+                  },
+                  "title": "Response Get Attention Api Scan Attention Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Attention"
+      }
+    },
+    "/api/scan/excluded": {
+      "get": {
+        "description": "Services deliberately kept out of scanning.",
+        "operationId": "list_excluded_api_scan_excluded_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExcludedServiceResponse"
+                  },
+                  "title": "Response List Excluded Api Scan Excluded Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Excluded"
+      }
+    },
+    "/api/scan/services": {
+      "get": {
+        "description": "The registry table: filtered rows plus the count behind every chip.\n\n``counts`` is computed with the search applied but the status filter\nignored, so the chips keep showing where the rest of the matches went.",
+        "operationId": "list_services_api_scan_services_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "quality",
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rule",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rule"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Services"
+      }
+    },
+    "/api/scan/services/{repo}": {
+      "get": {
+        "description": "Everything the service page shows about one service.",
+        "operationId": "get_service_api_scan_services__repo__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Service"
+      }
+    },
+    "/api/scan/services/{repo}/documents": {
+      "get": {
+        "description": "One page of the active generation's API documents.\n\nPages that carry no scan status are not API documents; they are counted in\nthe service detail's ``non_endpoint_documents`` instead of being listed here\nunder a status they never had.",
+        "operationId": "list_documents_api_scan_services__repo__documents_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Documents"
+      }
+    },
+    "/api/scan/services/{repo}/documents/{document_id}": {
+      "get": {
+        "description": "One document of the active generation, with its sections and parameters.",
+        "operationId": "get_document_api_scan_services__repo__documents__document_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Document"
+      }
+    },
+    "/api/scan/services/{repo}/generations": {
+      "get": {
+        "description": "A service's scan history, newest first.",
+        "operationId": "list_generations_api_scan_services__repo__generations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Generations"
+      }
+    },
+    "/api/scan/services/{repo}/rescan": {
+      "post": {
+        "description": "Queue a scan Job for an existing Service and schedule it in the background.\n\nThe Job is created ``queued`` and committed before scheduling; the Job ID is\nreturned immediately without waiting for the scan.",
+        "operationId": "start_scan_api_scan_services__repo__rescan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartScanResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Scan"
+      }
+    },
+    "/api/scan/summary": {
+      "get": {
+        "description": "Panel-wide counters for the header strip.",
+        "operationId": "get_summary_api_scan_summary_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Summary"
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health_health_get",

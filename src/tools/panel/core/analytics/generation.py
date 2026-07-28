@@ -78,6 +78,30 @@ class GenerationAnalytics(BaseModel):
     by_version: dict[str, int] = Field(default_factory=dict)
 
 
+def document_from_payload(payload: dict) -> Document:
+    """Restore the canonical IR from a persisted ``DocumentRecord.payload``.
+
+    The ``kind`` discriminator is what makes the subclass survive JSON, so the
+    restoration lives here rather than at each read site.
+
+    :param payload: The stored document payload.
+    """
+    if payload.get("kind") == "endpoint":
+        return Endpoint.model_validate(payload)
+    return Document.model_validate(payload)
+
+
+def issues_by_code(document: Document) -> dict[str, int]:
+    """Count one document's issues (document-level and section-level) by code.
+
+    :param document: The scanned document IR to count.
+    """
+    counts: Counter[str] = Counter()
+    for issue in doc_all_issues(document):
+        counts[issue.code.value] += 1
+    return dict(counts.most_common())
+
+
 def document_field_totals(document: Document) -> tuple[int, int]:
     """Return ``(fields_total, fields_recognized)`` summed over the sections.
 
