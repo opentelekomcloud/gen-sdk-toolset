@@ -82,6 +82,31 @@ snapshot - it is computed from it, in one place. Add nothing new to
 organization-level report contract. They are **scheduled for removal** together
 with `ScannerService.scan_organization()` - see issue #34. Do not build on them.
 
+### What ingest computes (panel-owned)
+
+Defined in `src/tools/panel/core/analytics/generation.py`. Pure functions over
+the IR — they own no state and no persistence; `ingest_service_result` writes
+what they return into the existing `generation` and `document` rows. The
+document-level functions above are imported from `tools.domain` until issue #34
+relocates them.
+
+| Name | Meaning |
+|---|---|
+| `completeness` | The recognized share of the documented parameter rows: `fields_recognized / fields_total`, a `0..1` float. Per document it covers that document's sections; per `Generation` it is **field-weighted** over all documents, not a mean of per-document means. |
+| `DocumentAnalytics` | What one `DocumentRecord` stores beyond its payload: `overall_status`, `completeness`, `issues_count`. |
+| `GenerationAnalytics` | The `Generation` roll-up: the counters that have columns, plus `unknown_count`, `fields_total`, `fields_recognized`, `by_section_status`, `issues_by_code` and `by_version`. Serialized whole into the `analytics` JSONB. |
+| `unknown_count` | Documents with no derivable `OverallStatus` (a successfully scanned non-endpoint page). It exists so that `ok + partial + failed + unsupported + unknown == documents_total` — without it the difference would be unexplained. |
+
+**Unmeasurable is `None`, never `0`.** A document whose structure could not be
+measured — a plain page, or one gated before any table was read — has
+`completeness = NULL`, and so does a `Generation` with no measurable fields.
+Reporting `0.0` would claim we measured it and found nothing, which is a
+different fact. Both columns are nullable for exactly this reason.
+
+`issues_by_code` counts **every** code, not a top-N slice: a truncated map
+stored as the whole truth is a silent loss. Callers that want the top five take
+them at read time.
+
 ## Panel — the persisted model
 
 Defined in `src/tools/panel/core/db/models.py`. Note the name collision and mind
@@ -95,6 +120,7 @@ it: `Service` here is a database row, not the IR entity above.
 | `DocumentRecord` (table `document`) | One document inside a `Generation`: the full IR `payload` plus the columns denormalized for querying. |
 | `RepositoryScanJob` (table `job`) | One scan run: `kind`, `status`, `initiated_by`, timestamps, `error`, `interruption`. |
 | `JobKind`, `JobStatus` | `JobStatus` is `queued`, `running`, `done`, `failed`. |
+| `IngestRejected` | `panel/core/ingest.py`. The Job or the scan result did not satisfy the successful-ingest contract (not a running scan Job, a failed or commit-less result, a repository that is not a `Service`, or a repository mismatch). The scan runner turns it into a `failed` Job with the message recorded. |
 
 Two database constraints carry rules that code depends on, so do not weaken them
 without reading their consumers first: the `status_timestamps` CHECK constraint

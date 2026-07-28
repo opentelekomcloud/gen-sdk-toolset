@@ -47,6 +47,12 @@ source_modules = ["tools.domain"]
 forbidden_modules = ["tools.scanner"]
 
 [[tool.importlinter.contracts]]
+name = "panel analytics is pure (no persistence, no HTTP, no scanner)"
+type = "forbidden"
+source_modules = ["tools.panel.core.analytics"]
+forbidden_modules = ["tools.panel.core.db", "tools.panel.api", "tools.scanner"]
+
+[[tool.importlinter.contracts]]
 name = "shared is a leaf (imports nothing internal)"
 type = "forbidden"
 source_modules = ["tools.shared"]
