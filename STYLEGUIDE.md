@@ -235,9 +235,10 @@ reasonable.
 **Trusting the server.** "The page was shorter than the limit, so we are done" -
 servers cap limits, proxies strip query parameters. GitHub's recursive tree
 endpoint returns HTTP 200 with a partial list and `truncated: true`; that is why
-`FileListing` carries a flag and why `RepositoryScanResult` has
-`incomplete_reason`. Treat every listing as potentially truncated until the
-provider says otherwise.
+`FileListing` carries a flag, and why `scan_repository` fails the whole
+repository scan (`RepositoryScanResult.error`) rather than continuing with
+whatever partial listing came back. Treat every listing as potentially
+truncated until the provider says otherwise.
 
 **Extension paths skipping validation.** When an "already exists, just add to
 it" branch bypasses the recomputation the creation branch performs, the second

@@ -24,9 +24,10 @@ into a recorded diagnostic rather than into missing data.
   (`EXAMPLE_UNLABELED`, `UNKNOWN_TYPE_FORMAT`, `NESTED_*`). Use it even when the
   fallback is obviously right, so consumers can measure how much was guessed.
 - **Never trust a listing to be complete.** GitHub caps large trees with HTTP
-  200 and `truncated: true`. That is what `FileListing.truncated` and
-  `incomplete_reason` exist for. Any new pagination or listing code needs a test
-  with a fake provider that answers unconditionally.
+  200 and `truncated: true`. That is what `FileListing.truncated` exists for -
+  `scan_repository` fails the whole scan (`error`) on a truncated listing
+  rather than continuing with a partial one. Any new pagination or listing
+  code needs a test with a fake provider that answers unconditionally.
 - **Providers normalize their own failures** into `ProviderError` with a
   `ProviderErrorKind`. `requests` must not leak past the provider package.
 - **Skipping is a decision, so it is recorded.** Paths filtered by
