@@ -23,9 +23,13 @@ export const fmtGenAt = (iso: string | null | undefined, locale = "en-GB"): stri
   return fmt.format(new Date(iso));
 };
 
-/** DB `completeness` is a 0..1 float (nullable); UI speaks percent. */
+/**
+ * DB `completeness` is a 0..1 float (nullable); UI speaks percent, rounded
+ * DOWN. Math.round would show 0.9993 as "100%" next to a scan the server calls
+ * partial — the number must not claim a completeness the scan does not have.
+ */
 export const structPct = (completeness: number | null): number | null =>
-  completeness == null ? null : Math.round(completeness * 100);
+  completeness == null ? null : Math.floor(completeness * 100);
 
 /** Breakdown for OverallBar from the generation's persisted status counts. */
 export const genBreakdown = (g: Generation) => ({

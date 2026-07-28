@@ -20,7 +20,7 @@ type Gen = {
   scanner_version: string; document_schema_version: string;
   documents_total: number; endpoints_total: number; non_endpoint_documents: number; issues_total: number;
   ok_count: number; partial_count: number; failed_count: number; unsupported_count: number;
-  completeness: number | null; created_at: string;
+  docs_ok: number | null; completeness: number | null; created_at: string;
   /** mock-only: service-level view fields applied when this gen becomes active */
   view: Record<string, unknown>;
 };
@@ -36,7 +36,7 @@ const rollup = (ok: number, partial = 0, failed = 0, skipped = 0, missing = 0) =
   Object.fromEntries(SECTIONS.map((s) => [s, { ok, partial, failed, skipped, missing } as SectionCounts]));
 
 type MockService = {
-  name: string; scan_status: string; documents: number | null; struct_ok: number | null;
+  name: string; label: string; scan_status: string; documents: number | null; docs_ok: number | null;
   scanner_version: string | null; scanned_at: string | null; docs_changed: boolean;
   rescan_reason: string | null; error: string | null;
   job_id?: number; initiated_by?: string | null; started_at?: string;
@@ -45,20 +45,20 @@ type MockService = {
 
 const svc = (o: Partial<MockService> & { name: string; scan_status: string }): MockService => ({
   scanner_version: V, scanned_at: NOW, docs_changed: false, rescan_reason: null, error: null, error_at: null,
-  overall_breakdown: {}, section_rollup: rollup(0), struct_ok: null, documents: null,
+  overall_breakdown: {}, section_rollup: rollup(0), docs_ok: null, documents: null,
   top_issues: [], non_endpoint_documents: 0, head_commit: null, interruption: null,
-  active_generation: null, latest_generation: null, ...o,
+  active_generation: null, latest_generation: null, label: o.name.split("/").pop() ?? o.name, ...o,
 });
 
 const SERVICES = [
-  svc({ name: "billing-api", scan_status: "scanned", documents: 42, struct_ok: 97,
+  svc({ name: "billing-api", scan_status: "scanned", documents: 42, docs_ok: 97,
     overall_breakdown: { ok: 40, partial: 2 }, section_rollup: rollup(40, 2),
     top_issues: [{ code: "missing_example", count: 3 }] }),
-  svc({ name: "customer-core", scan_status: "scanned", documents: 128, struct_ok: 88, scanner_version: "3.1.0",
+  svc({ name: "customer-core", scan_status: "scanned", documents: 128, docs_ok: 88, scanner_version: "3.1.0",
     rescan_reason: "version", overall_breakdown: { ok: 110, partial: 12, unsupported: 6 },
     section_rollup: rollup(110, 12, 0, 6),
     top_issues: [{ code: "unknown_type", count: 14 }, { code: "missing_description", count: 9 }] }),
-  svc({ name: "device-mgmt", scan_status: "partial", documents: 31, struct_ok: 64, rescan_reason: "partial",
+  svc({ name: "device-mgmt", scan_status: "partial", documents: 31, docs_ok: 64, rescan_reason: "partial",
     overall_breakdown: { ok: 18, partial: 9, failed: 4 }, section_rollup: rollup(18, 9, 4),
     top_issues: [{ code: "table_parse_error", count: 6 }] }),
   svc({ name: "legacy-soap-bridge", scan_status: "failed", rescan_reason: "retry",
@@ -66,14 +66,14 @@ const SERVICES = [
     interruption: { kind: "permission_denied", repository: "legacy-soap-bridge",
       message: "clone failed: repository archived (HTTP 403)", reset_time: null } }),
   /* failed job WITH preserved data: last successful gen stays active, failure is a banner */
-  svc({ name: "sms-gateway", scan_status: "failed", documents: 23, struct_ok: 78, rescan_reason: "retry",
+  svc({ name: "sms-gateway", scan_status: "failed", documents: 23, docs_ok: 78, rescan_reason: "retry",
     error: "scanner crashed: out of memory while parsing bulk-send.md (job #1041)",
     error_at: "2026-07-23T09:12:00Z", scanned_at: "2026-07-20T04:00:00Z",
     overall_breakdown: { ok: 15, partial: 6, failed: 2 }, section_rollup: rollup(15, 6, 2),
     top_issues: [{ code: "table_parse_error", count: 4 }] }),
-  svc({ name: "notifications-hub", scan_status: "scanned", documents: 17, struct_ok: 94, docs_changed: true,
+  svc({ name: "notifications-hub", scan_status: "scanned", documents: 17, docs_ok: 94, docs_changed: true,
     rescan_reason: "drift", overall_breakdown: { ok: 16, partial: 1 }, section_rollup: rollup(16, 1) }),
-  svc({ name: "payments-gw", scan_status: "scanning", documents: 55, struct_ok: 91,
+  svc({ name: "payments-gw", scan_status: "scanning", documents: 55, docs_ok: 91,
     overall_breakdown: { ok: 50, partial: 5 }, section_rollup: rollup(50, 5),
     job_id: 1042, initiated_by: "valeriia", started_at: "2026-07-23T12:58:00Z" }),
   svc({ name: "tariff-catalog", scan_status: "scanned", documents: 0, non_endpoint_documents: 7 }),
@@ -93,7 +93,7 @@ const mkGen = (name: string, s: MockService, at: string, ver: string, delta: { d
   const partial = (ob.partial ?? 0) + (delta.partial ?? 0);
   const failed = (ob.failed ?? 0) + (delta.failed ?? 0);
   const unsupported = (ob.unsupported ?? 0) + (delta.unsupported ?? 0);
-  const struct = (s.struct_ok as number) + (delta.struct ?? 0);
+  const struct = (s.docs_ok as number) + (delta.struct ?? 0);
   const breakdown = { ...(ok && { ok }), ...(partial && { partial }), ...(failed && { failed }), ...(unsupported && { unsupported }) };
   return {
     id: ++genId, source_job_id: ++jobId, branch: "main", commit_hash: HASH(name + at),
@@ -101,8 +101,9 @@ const mkGen = (name: string, s: MockService, at: string, ver: string, delta: { d
     documents_total: docs, endpoints_total: docs, non_endpoint_documents: 0,
     issues_total: partial * 2 + failed * 3, ok_count: ok, partial_count: partial,
     failed_count: failed, unsupported_count: unsupported,
+    docs_ok: ok + partial + failed + unsupported ? Math.round((100 * ok) / (ok + partial + failed + unsupported)) : null,
     completeness: struct / 100, created_at: at,
-    view: { documents: docs, struct_ok: struct, overall_breakdown: breakdown,
+    view: { documents: docs, docs_ok: struct, overall_breakdown: breakdown,
       section_rollup: rollup(ok, partial, failed, unsupported), scanned_at: at, scanner_version: ver },
   };
 };
@@ -164,6 +165,7 @@ const docsForActive = (name: string): Doc[] => {
 
 const detail = (name: string, id: number) => ({
   id, method: "POST", uri: `/v2/${name}/items`, title: `Detail of ${id}`, api_version: "2.4", overall_status: "partial",
+  source_url: `https://github.com/opentelekomcloud-docs/${name}/blob/mockcommit/api-ref/source/doc-${id}.rst`,
   failure_reason: null,
   sections: SECTIONS.map((sec, i) => ({
     name: sec, status: i === 3 ? "partial" : i === 5 ? "skipped" : "ok",
@@ -176,6 +178,12 @@ const detail = (name: string, id: number) => ({
       ]},
     ],
     issues: i === 3 ? [{ code: "unknown_type", location: "options.flags", details: "cannot map cell 'bitmask?'" }] : [],
+    examples: sec.startsWith("example")
+      ? [{ label: "Sample", language: "json", raw: `{
+  "customerId": "c-42",
+  "options": { "locale": "de-DE" }
+}` }]
+      : [],
   })),
 });
 
@@ -270,7 +278,7 @@ export function mockScanApi(): Plugin {
           items = [...items].sort((a, b) =>
             sort === "name" ? (a.name as string).localeCompare(b.name as string)
             : sort === "docs" ? ((b.documents as number) ?? -1) - ((a.documents as number) ?? -1)
-            : ((a.struct_ok as number) ?? 101) - ((b.struct_ok as number) ?? 101));
+            : ((a.docs_ok as number) ?? 101) - ((b.docs_ok as number) ?? 101));
           return json(res, { items, counts });
         }
 

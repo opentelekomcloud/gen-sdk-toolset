@@ -25,7 +25,14 @@ _ACTIVE_STATUSES = (JobStatus.queued, JobStatus.running)
 
 
 class ScanStatus(str, enum.Enum):
-    """How the registry describes a service's scan state."""
+    """How completely the panel managed to read a service.
+
+    This is a statement about the scan, not about the documentation. A document
+    full of malformed tables that we nevertheless read end to end leaves the
+    service ``scanned``; its quality is reported separately as the clean-document
+    share. ``partial`` means something stayed unread: a document we could not
+    interpret at all, or parameter rows we could not recognize.
+    """
 
     scanned = "scanned"
     partial = "partial"
@@ -35,10 +42,15 @@ class ScanStatus(str, enum.Enum):
 
 
 class RescanReason(str, enum.Enum):
-    """Why the panel suggests rescanning, in priority order."""
+    """Why the panel suggests rescanning, in priority order.
+
+    Documents that came out partial are deliberately not a reason: the same
+    commit scanned by the same scanner produces the same result, so offering a
+    rescan would promise a change that cannot happen. Partial documents are a
+    documentation problem, and the panel reports them as one.
+    """
 
     retry = "retry"
-    partial = "partial"
     version = "version"
     drift = "drift"
 
@@ -110,6 +122,23 @@ def status_documents(generation: Generation) -> int:
     )
 
 
+def clean_endpoint_share(generation: Generation) -> float | None:
+    """Share of documents that were scanned without a single diagnostic.
+
+    This is the panel's answer to "how good is this documentation": a section
+    leaves ``ok`` exactly when something in the document was wrong, so the
+    clean share needs no thresholds and no issue-code classification of its
+    own. ``None`` when the generation has no document with a status - unknown,
+    not zero.
+
+    :param generation: The generation to measure.
+    """
+    total = status_documents(generation)
+    if total == 0:
+        return None
+    return generation.ok_count / total
+
+
 def failed_job(state: ServiceState) -> RepositoryScanJob | None:
     """The last job, but only while it is the failure the UI should surface.
 
@@ -153,8 +182,10 @@ def _scan_status(
         if last_job is not None and last_job.status is JobStatus.failed:
             return ScanStatus.failed
         return ScanStatus.not_scanned
-    if generation.partial_count or generation.failed_count:
-        return ScanStatus.partial
+    if generation.failed_count or generation.unsupported_count:
+        return ScanStatus.partial  # documents we could not interpret at all
+    if generation.completeness is not None and generation.completeness < 1:
+        return ScanStatus.partial  # parameter rows we could not recognize
     return ScanStatus.scanned
 
 
@@ -166,15 +197,13 @@ def _rescan_reason(
     docs_changed: bool,
     scanner_version: str,
 ) -> RescanReason | None:
-    """Priority order: retry, then partial, then version, then drift."""
+    """Priority order: retry, then version, then drift."""
     if scan_status is ScanStatus.scanning:
         return None
     if last_job is not None and last_job.status is JobStatus.failed:
         return RescanReason.retry
     if generation is None:
         return None
-    if generation.partial_count or generation.failed_count:
-        return RescanReason.partial
     if generation.scanner_version != scanner_version:
         return RescanReason.version
     if docs_changed:

@@ -125,6 +125,10 @@ export interface paths {
          *     Pages that carry no scan status are not API documents; they are counted in
          *     the service detail's ``non_endpoint_documents`` instead of being listed here
          *     under a status they never had.
+         *
+         *     ``section`` and ``section_status`` together answer "which documents have a
+         *     failed body": both are required for the filter to apply, because either one
+         *     alone would silently mean something else.
          */
         get: operations["list_documents_api_scan_services__repo__documents_get"];
         put?: never;
@@ -270,6 +274,8 @@ export interface components {
             overall_status: string | null;
             /** Sections */
             sections: components["schemas"]["SectionDetail"][];
+            /** Source Url */
+            source_url: string;
             /** Title */
             title: string | null;
             /** Uri */
@@ -314,6 +320,24 @@ export interface components {
             total: number;
         };
         /**
+         * ExampleResponse
+         * @description One request or response example, as written in the documentation.
+         *
+         *     ``raw`` is the source text, shown verbatim: the point of an example is to
+         *     compare it against what the parser made of it. Whether it was valid JSON is
+         *     deliberately absent - not every example is JSON (a request line is a
+         *     legitimate example), and the scanner already reports the real defect as an
+         *     ``example_invalid_json`` issue on the section.
+         */
+        ExampleResponse: {
+            /** Label */
+            label: string | null;
+            /** Language */
+            language: string | null;
+            /** Raw */
+            raw: string;
+        };
+        /**
          * ExcludedServiceResponse
          * @description One deliberately excluded service.
          */
@@ -346,6 +370,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Docs Ok */
+            docs_ok: number | null;
             /** Document Schema Version */
             document_schema_version: string;
             /** Documents Total */
@@ -461,9 +487,14 @@ export interface components {
         /**
          * RescanReason
          * @description Why the panel suggests rescanning, in priority order.
+         *
+         *     Documents that came out partial are deliberately not a reason: the same
+         *     commit scanned by the same scanner produces the same result, so offering a
+         *     rescan would promise a change that cannot happen. Partial documents are a
+         *     documentation problem, and the panel reports them as one.
          * @enum {string}
          */
-        RescanReason: "retry" | "partial" | "version" | "drift";
+        RescanReason: "retry" | "version" | "drift";
         /**
          * ScanRequest
          * @description Body for launching a scan: who initiated it.
@@ -474,7 +505,13 @@ export interface components {
         };
         /**
          * ScanStatus
-         * @description How the registry describes a service's scan state.
+         * @description How completely the panel managed to read a service.
+         *
+         *     This is a statement about the scan, not about the documentation. A document
+         *     full of malformed tables that we nevertheless read end to end leaves the
+         *     service ``scanned``; its quality is reported separately as the clean-document
+         *     share. ``partial`` means something stayed unread: a document we could not
+         *     interpret at all, or parameter rows we could not recognize.
          * @enum {string}
          */
         ScanStatus: "scanned" | "partial" | "failed" | "not_scanned" | "scanning";
@@ -483,6 +520,8 @@ export interface components {
          * @description One endpoint section as the drill-down renders it.
          */
         SectionDetail: {
+            /** Examples */
+            examples: components["schemas"]["ExampleResponse"][];
             /** Fields Recognized */
             fields_recognized: number;
             /** Fields Total */
@@ -508,6 +547,8 @@ export interface components {
             active_generation: components["schemas"]["GenerationResponse"] | null;
             /** Docs Changed */
             docs_changed: boolean;
+            /** Docs Ok */
+            docs_ok: number | null;
             /** Documents */
             documents: number | null;
             /** Error */
@@ -524,6 +565,8 @@ export interface components {
             } | null;
             /** Job Id */
             job_id?: number | null;
+            /** Label */
+            label: string;
             latest_generation: components["schemas"]["GenerationResponse"] | null;
             /** Name */
             name: string;
@@ -547,8 +590,6 @@ export interface components {
             };
             /** Started At */
             started_at?: string | null;
-            /** Struct Ok */
-            struct_ok: number | null;
             /** Top Issues */
             top_issues: components["schemas"]["IssueCount"][];
         };
@@ -564,6 +605,8 @@ export interface components {
         ServiceListItem: {
             /** Docs Changed */
             docs_changed: boolean;
+            /** Docs Ok */
+            docs_ok: number | null;
             /** Documents */
             documents: number | null;
             /** Error */
@@ -574,6 +617,8 @@ export interface components {
             initiated_by?: string | null;
             /** Job Id */
             job_id?: number | null;
+            /** Label */
+            label: string;
             /** Name */
             name: string;
             /** Overall Breakdown */
@@ -594,8 +639,6 @@ export interface components {
             };
             /** Started At */
             started_at?: string | null;
-            /** Struct Ok */
-            struct_ok: number | null;
         };
         /**
          * ServicesResponse
@@ -799,6 +842,8 @@ export interface operations {
                 status?: string | null;
                 q?: string;
                 page?: number;
+                section?: string | null;
+                section_status?: string | null;
             };
             header?: never;
             path: {

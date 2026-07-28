@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import Select, case, func, or_, select
+from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session, joinedload, selectinload, undefer
 
 from tools import __version__ as SCANNER_VERSION
@@ -56,6 +57,10 @@ _STATUS_ORDER = case(
     value=DocumentRecord.overall_status,
     else_=4,
 )
+
+#: "which documents have a failed body?" - answered against the stored payload,
+#: so no section projection has to be denormalized into its own column.
+_SECTION_MATCH = "$.sections[*] ? (@.name == $name && @.scan_result.status == $status)"
 
 _ATTENTION_LABELS = {
     "failed": "Last scan failed",
@@ -205,7 +210,11 @@ def get_document(
     )
     if record is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    return DocumentDetailResponse.from_record(record)
+    return DocumentDetailResponse.from_record(
+        record,
+        repo=service.repo,
+        commit_hash=service.active_generation.commit_hash,
+    )
 
 
 @router.get("/scan/services/{repo:path}/documents", response_model=DocumentsResponse)
@@ -215,12 +224,18 @@ def list_documents(
     status: str | None = Query(default=None),
     q: str = Query(default=""),
     page: int = Query(default=1, ge=1),
+    section: str | None = Query(default=None),
+    section_status: str | None = Query(default=None),
 ) -> DocumentsResponse:
     """One page of the active generation's API documents.
 
     Pages that carry no scan status are not API documents; they are counted in
     the service detail's ``non_endpoint_documents`` instead of being listed here
     under a status they never had.
+
+    ``section`` and ``section_status`` together answer "which documents have a
+    failed body": both are required for the filter to apply, because either one
+    alone would silently mean something else.
     """
     service = _service_or_404(db, repo)
     if service.active_generation_id is None:
@@ -239,6 +254,16 @@ def list_documents(
                 DocumentRecord.path.ilike(pattern),
                 DocumentRecord.title.ilike(pattern),
                 DocumentRecord.uri.ilike(pattern),
+            )
+        )
+    if section and section_status:
+        base = base.where(
+            func.jsonb_path_exists(
+                DocumentRecord.payload,
+                sa_text("CAST(:section_match AS jsonpath)").bindparams(
+                    section_match=_SECTION_MATCH
+                ),
+                func.jsonb_build_object("name", section, "status", section_status),
             )
         )
 
@@ -328,10 +353,10 @@ def _sorted(items: list[ServiceListItem], sort: str) -> list[ServiceListItem]:
         return sorted(items, key=lambda item: item.name)
     if sort == "docs":
         return sorted(items, key=lambda item: (-(item.documents or 0), item.name))
-    # quality: worst structure first, never-scanned services last
+    # quality: the documentation that needs the most work first, never-scanned last
     return sorted(
         items,
-        key=lambda item: (item.struct_ok is None, item.struct_ok or 0, item.name),
+        key=lambda item: (item.docs_ok is None, item.docs_ok or 0, item.name),
     )
 
 

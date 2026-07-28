@@ -42,8 +42,21 @@ export function DocSectionRow({ section }: { section: SectionDetail }) {
         </div>
       ))}
       {open && (
-        <div className="border-t border-gray-100 p-2">
-          <IrTable section={section} />
+        <div className="space-y-2 border-t border-gray-100 p-2">
+          {/* `?? []` guards a detail cached before examples existed: the query
+              keeps document details forever (staleTime: Infinity). */}
+          {(section.examples ?? []).map((example, idx) => (
+            <figure key={idx} className="overflow-hidden rounded border border-gray-200">
+              <figcaption className="flex items-center justify-between gap-2 border-b border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-500">
+                <span className="truncate">{example.label || t("doc.example")}</span>
+                {example.language && <span className="font-mono">{example.language}</span>}
+              </figcaption>
+              <pre className="max-h-72 overflow-auto bg-gray-900 px-3 py-2 text-[11px] leading-relaxed text-gray-100">
+                <code>{example.raw}</code>
+              </pre>
+            </figure>
+          ))}
+          {(section.examples ?? []).length === 0 && <IrTable section={section} />}
         </div>
       )}
     </div>

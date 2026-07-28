@@ -136,14 +136,19 @@ def test_services_list_serves_the_active_generation(scanned):
 
     assert body["counts"]["all"] == 1
     (item,) = body["items"]
-    assert item["name"] == REPO
-    assert item["scan_status"] == "partial"  # the endpoint scanned partially
+    assert item["name"] == REPO  # the identifier routes and links use
+    assert item["label"] == "ecs"  # what the table prints
+    # partial: the plain page's style was not supported, so it stayed unread.
+    assert item["scan_status"] == "partial"
     assert item["documents"] == 2  # both documents carry a status
-    assert item["struct_ok"] == 50  # completeness 0.5 -> percent
+    # Neither document came out clean: one partial endpoint, one unsupported page.
+    assert item["docs_ok"] == 0
     assert item["scanner_version"] == SCANNER_VERSION
     assert item["scanned_at"] is not None
     assert item["docs_changed"] is False  # no head_commit known yet (issue #25)
-    assert item["rescan_reason"] == "partial"
+    # Partial documents are a documentation problem, not something a rescan of
+    # the same commit could fix - so no rescan is suggested.
+    assert item["rescan_reason"] is None
     assert item["error"] is None
     assert sum(item["overall_breakdown"].values()) == item["documents"]
     assert set(item["section_rollup"]) == {
@@ -164,7 +169,7 @@ def test_never_scanned_service_reports_not_scanned(client, session_factory):
 
     assert item["scan_status"] == "not_scanned"
     assert item["documents"] is None
-    assert item["struct_ok"] is None  # unknown, not 0%
+    assert item["docs_ok"] is None  # unknown, not 0%
     assert item["rescan_reason"] is None
 
 
@@ -326,6 +331,10 @@ def test_document_detail_returns_sections_and_parameters(scanned):
     assert body["api_version"] == "v1"
     assert body["overall_status"] == "partial"
     assert body["failure_reason"] is None
+    # Pinned to the scanned commit, so the source always matches what was parsed.
+    assert body["source_url"] == (
+        f"https://github.com/{REPO}/blob/{COMMIT}/api-ref/source/create_server.rst"
+    )
     sections = {section["name"]: section for section in body["sections"]}
     assert len(sections) == 7
     body_section = sections["body"]
@@ -335,6 +344,13 @@ def test_document_detail_returns_sections_and_parameters(scanned):
     assert body_section["parameters"][0]["name"] == "server"
     assert body_section["parameters"][0]["children"][0]["name"] == "flavor"
     assert body_section["issues"][0]["code"] == "unknown_type_format"
+    # Examples travel with their section, verbatim, so they can be compared
+    # against what the parser made of them.
+    example = sections["example_request"]["examples"][0]
+    assert example["raw"] == '{"server": {"flavor": "s3.large"}}'
+    assert example["language"] == "json"
+    assert example["label"] == "Creating a server"
+    assert sections["body"]["examples"] == []
 
 
 def test_document_of_another_service_is_not_served(scanned, session_factory):
@@ -440,3 +456,54 @@ def test_register_service_command_is_idempotent(session_factory, monkeypatch, ca
         services = session.scalars(select(Service)).all()
         assert [service.repo for service in services] == ["opentelekomcloud-docs/dns"]
         assert services[0].name == "dns"  # derived from the repo
+
+
+def test_documents_can_be_filtered_by_a_section_status(scanned):
+    """ "Which documents have a partial body?" - the section rollup shows the
+    count, this is how the user reaches the documents behind it."""
+    body = scanned.get(
+        f"/api/scan/services/{REPO}/documents?section=body&section_status=partial"
+    ).json()
+
+    assert [item["path"] for item in body["items"]] == [
+        "api-ref/source/create_server.rst"
+    ]
+    assert body["total"] == 1
+    assert body["doc_counts"]["all"] == 1  # counts follow the section filter
+
+
+def test_section_filter_without_a_status_is_ignored(scanned):
+    """One half of the pair alone would quietly mean something else."""
+    body = scanned.get(f"/api/scan/services/{REPO}/documents?section=body").json()
+
+    assert body["total"] == 2
+
+
+def test_section_filter_matching_nothing_returns_an_empty_page(scanned):
+    body = scanned.get(
+        f"/api/scan/services/{REPO}/documents?section=headers&section_status=failed"
+    ).json()
+
+    assert body["items"] == []
+    assert body["total"] == 0
+    assert body["doc_counts"] == {"all": 0}
+
+
+def test_messy_documentation_read_in_full_is_scanned_not_partial(
+    client, session_factory
+):
+    """Scan status is about our reading, not about the documentation: an
+    endpoint whose tables are all recognized is a complete scan even when the
+    documentation earned itself a diagnostic."""
+    _register(session_factory)
+    endpoint = make_endpoint()
+    body = next(s for s in endpoint.sections if s.name.value == "body")
+    body.scan_result.fields_recognized = 2  # everything recognized...
+    body.scan_result.fields_unknown_type = 0
+    # ...while the section still carries the issue that made it partial.
+    _run_scan(session_factory, documents=[endpoint])
+
+    (item,) = client.get("/api/scan/services").json()["items"]
+
+    assert item["scan_status"] == "scanned"  # nothing stayed unread
+    assert item["docs_ok"] == 0  # but the documentation is not clean

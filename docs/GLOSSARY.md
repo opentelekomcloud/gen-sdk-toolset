@@ -129,10 +129,16 @@ jobs and generations on every read - never stored, so it cannot go stale.
 
 | Name | Meaning |
 |---|---|
-| `ScanStatus` | `scanning` (a queued or running scan job), `not_scanned` (no generation, no failure), `failed` (no generation and the last job failed), `partial` (the active generation has partial or failed documents), `scanned` (everything else). |
+| `ScanStatus` | How completely **we** read the service, never how good its documentation is: `scanning` (a queued or running scan job), `not_scanned` (no generation, no failure), `failed` (no generation and the last job failed), `partial` (something stayed unread - a document we could not interpret at all, or parameter rows we could not recognize), `scanned` (everything was read, however messy it turned out to be). |
 | `RescanReason` | Why the panel suggests a rescan, in priority order: `retry` (the last job failed), `partial` (documents came out partial or failed), `version` (an older scanner produced the generation), `drift` (`head_commit` differs from the scanned commit). At most one is reported. |
 | Attention rules | The same four codes (`failed`, `version`, `drift`, `new`) evaluated **independently** for the app-level band: a service can appear under several, because hiding one behind another would understate the work. `new` means never scanned and never failed. |
 | `status_documents` | Documents that carry a status - the sum of the overall breakdown, and what the UI calls `documents`. Pages that are not API documents are reported as `non_endpoint_documents` (the generation analytics' `unknown_count`), never folded into a status. |
+| `docs_ok` (`clean_endpoint_share`) | **Documentation quality**: the share of documents scanned without a single diagnostic. A section leaves `ok` exactly when something in the document was wrong, so this needs no thresholds and no issue-code classification. `None` when nothing carries a status - unknown, not zero. |
+
+Two numbers answer two different questions and must not be swapped: `docs_ok`
+measures the documentation, `Generation.completeness` measures our parser (the
+share of documented parameter rows it understood). The generation selector shows
+both side by side for exactly that reason.
 
 Note the two different meanings of "non-endpoint": the `generation.non_endpoint_documents`
 **column** counts everything that is not a parsed endpoint (including failed and

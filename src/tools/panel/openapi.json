@@ -88,6 +88,10 @@
             "title": "Sections",
             "type": "array"
           },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
           "title": {
             "anyOf": [
               {
@@ -119,6 +123,7 @@
           "api_version",
           "overall_status",
           "failure_reason",
+          "source_url",
           "sections"
         ],
         "title": "DocumentDetailResponse",
@@ -232,6 +237,44 @@
         "title": "DocumentsResponse",
         "type": "object"
       },
+      "ExampleResponse": {
+        "description": "One request or response example, as written in the documentation.\n\n``raw`` is the source text, shown verbatim: the point of an example is to\ncompare it against what the parser made of it. Whether it was valid JSON is\ndeliberately absent - not every example is JSON (a request line is a\nlegitimate example), and the scanner already reports the real defect as an\n``example_invalid_json`` issue on the section.",
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "raw": {
+            "title": "Raw",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "language",
+          "raw"
+        ],
+        "title": "ExampleResponse",
+        "type": "object"
+      },
       "ExcludedServiceResponse": {
         "description": "One deliberately excluded service.",
         "properties": {
@@ -288,6 +331,17 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "docs_ok": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docs Ok"
           },
           "document_schema_version": {
             "title": "Document Schema Version",
@@ -353,6 +407,7 @@
           "partial_count",
           "failed_count",
           "unsupported_count",
+          "docs_ok",
           "completeness",
           "created_at"
         ],
@@ -608,10 +663,9 @@
         "type": "object"
       },
       "RescanReason": {
-        "description": "Why the panel suggests rescanning, in priority order.",
+        "description": "Why the panel suggests rescanning, in priority order.\n\nDocuments that came out partial are deliberately not a reason: the same\ncommit scanned by the same scanner produces the same result, so offering a\nrescan would promise a change that cannot happen. Partial documents are a\ndocumentation problem, and the panel reports them as one.",
         "enum": [
           "retry",
-          "partial",
           "version",
           "drift"
         ],
@@ -634,7 +688,7 @@
         "type": "object"
       },
       "ScanStatus": {
-        "description": "How the registry describes a service's scan state.",
+        "description": "How completely the panel managed to read a service.\n\nThis is a statement about the scan, not about the documentation. A document\nfull of malformed tables that we nevertheless read end to end leaves the\nservice ``scanned``; its quality is reported separately as the clean-document\nshare. ``partial`` means something stayed unread: a document we could not\ninterpret at all, or parameter rows we could not recognize.",
         "enum": [
           "scanned",
           "partial",
@@ -648,6 +702,13 @@
       "SectionDetail": {
         "description": "One endpoint section as the drill-down renders it.",
         "properties": {
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/ExampleResponse"
+            },
+            "title": "Examples",
+            "type": "array"
+          },
           "fields_recognized": {
             "title": "Fields Recognized",
             "type": "integer"
@@ -707,7 +768,8 @@
           "fields_recognized",
           "fields_unknown_type",
           "parameters",
-          "issues"
+          "issues",
+          "examples"
         ],
         "title": "SectionDetail",
         "type": "object"
@@ -728,6 +790,17 @@
           "docs_changed": {
             "title": "Docs Changed",
             "type": "boolean"
+          },
+          "docs_ok": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docs Ok"
           },
           "documents": {
             "anyOf": [
@@ -807,6 +880,10 @@
               }
             ],
             "title": "Job Id"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
           },
           "latest_generation": {
             "anyOf": [
@@ -891,17 +968,6 @@
             ],
             "title": "Started At"
           },
-          "struct_ok": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Struct Ok"
-          },
           "top_issues": {
             "items": {
               "$ref": "#/components/schemas/IssueCount"
@@ -912,9 +978,10 @@
         },
         "required": [
           "name",
+          "label",
           "scan_status",
           "documents",
-          "struct_ok",
+          "docs_ok",
           "scanner_version",
           "scanned_at",
           "docs_changed",
@@ -939,6 +1006,17 @@
           "docs_changed": {
             "title": "Docs Changed",
             "type": "boolean"
+          },
+          "docs_ok": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docs Ok"
           },
           "documents": {
             "anyOf": [
@@ -995,6 +1073,10 @@
               }
             ],
             "title": "Job Id"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
           },
           "name": {
             "title": "Name",
@@ -1064,24 +1146,14 @@
               }
             ],
             "title": "Started At"
-          },
-          "struct_ok": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Struct Ok"
           }
         },
         "required": [
           "name",
+          "label",
           "scan_status",
           "documents",
-          "struct_ok",
+          "docs_ok",
           "scanner_version",
           "scanned_at",
           "docs_changed",
@@ -1433,7 +1505,7 @@
     },
     "/api/scan/services/{repo}/documents": {
       "get": {
-        "description": "One page of the active generation's API documents.\n\nPages that carry no scan status are not API documents; they are counted in\nthe service detail's ``non_endpoint_documents`` instead of being listed here\nunder a status they never had.",
+        "description": "One page of the active generation's API documents.\n\nPages that carry no scan status are not API documents; they are counted in\nthe service detail's ``non_endpoint_documents`` instead of being listed here\nunder a status they never had.\n\n``section`` and ``section_status`` together answer \"which documents have a\nfailed body\": both are required for the filter to apply, because either one\nalone would silently mean something else.",
         "operationId": "list_documents_api_scan_services__repo__documents_get",
         "parameters": [
           {
@@ -1480,6 +1552,38 @@
               "minimum": 1,
               "title": "Page",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "section",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Section"
+            }
+          },
+          {
+            "in": "query",
+            "name": "section_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Section Status"
             }
           }
         ],

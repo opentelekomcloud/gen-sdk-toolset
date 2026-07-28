@@ -26,6 +26,7 @@ from tools.panel.core.service_state import (
     RescanReason,
     ScanStatus,
     ServiceState,
+    clean_endpoint_share,
     failed_job,
     status_documents,
 )
@@ -35,6 +36,15 @@ from tools.shared.ir import Endpoint, SectionName
 #: existed still gets the full strip instead of a ragged one.
 _SECTION_NAMES = [name.value for name in SectionName]
 _TOP_ISSUES_SHOWN = 10
+#: Where a persisted document can be read in the original repository. Pinned to
+#: the scanned commit, not to a branch: the page must show what was parsed, not
+#: what the documentation looks like now.
+_SOURCE_URL = "https://github.com/{repo}/blob/{commit}/{path}"
+
+
+def source_url(*, repo: str, commit_hash: str, path: str) -> str:
+    """Return the upstream URL of one scanned document."""
+    return _SOURCE_URL.format(repo=repo, commit=commit_hash, path=path)
 
 
 class ScanRequest(BaseModel):
@@ -111,6 +121,11 @@ class GenerationResponse(BaseModel):
     partial_count: int
     failed_count: int
     unsupported_count: int
+    #: Documentation quality: percent of documents with no diagnostic at all.
+    docs_ok: int | None
+    #: Processing quality: the share of documented parameter rows the parser
+    #: understood. A different question, kept next to the first one so neither
+    #: can be mistaken for the other.
     completeness: float | None
     created_at: datetime
 
@@ -131,6 +146,7 @@ class GenerationResponse(BaseModel):
             partial_count=generation.partial_count,
             failed_count=generation.failed_count,
             unsupported_count=generation.unsupported_count,
+            docs_ok=_docs_ok(generation),
             completeness=generation.completeness,
             created_at=generation.created_at,
         )
@@ -153,10 +169,16 @@ class ServiceListItem(BaseModel):
     rather than folded into a status they do not have.
     """
 
+    #: The identifier every route and link uses: Service.repo, always unique.
     name: str
+    #: What the UI prints: Service.name, short enough to read in a table.
+    label: str
     scan_status: ScanStatus
     documents: int | None
-    struct_ok: int | None
+    #: Whole percent of documents scanned without a single diagnostic - the
+    #: panel's measure of the documentation, not of the parser. The parser's
+    #: own coverage lives on the generation as `completeness`.
+    docs_ok: int | None
     scanner_version: str | None
     scanned_at: datetime | None
     docs_changed: bool
@@ -176,9 +198,10 @@ class ServiceListItem(BaseModel):
         active_job = state.active_job
         return cls(
             name=service.repo,
+            label=service.name,
             scan_status=state.scan_status,
             documents=_status_documents(generation),
-            struct_ok=_struct_ok(generation),
+            docs_ok=_docs_ok(generation),
             scanner_version=generation.scanner_version if generation else None,
             scanned_at=generation.created_at if generation else None,
             docs_changed=state.docs_changed,
@@ -283,6 +306,21 @@ class ParameterResponse(BaseModel):
     children: list[ParameterResponse] | None = None
 
 
+class ExampleResponse(BaseModel):
+    """One request or response example, as written in the documentation.
+
+    ``raw`` is the source text, shown verbatim: the point of an example is to
+    compare it against what the parser made of it. Whether it was valid JSON is
+    deliberately absent - not every example is JSON (a request line is a
+    legitimate example), and the scanner already reports the real defect as an
+    ``example_invalid_json`` issue on the section.
+    """
+
+    label: str | None
+    language: str | None
+    raw: str
+
+
 class SectionDetail(BaseModel):
     """One endpoint section as the drill-down renders it."""
 
@@ -293,6 +331,7 @@ class SectionDetail(BaseModel):
     fields_unknown_type: int
     parameters: list[ParameterResponse] | None
     issues: list[dict[str, str | None]]
+    examples: list[ExampleResponse]
 
 
 class DocumentDetailResponse(BaseModel):
@@ -305,10 +344,14 @@ class DocumentDetailResponse(BaseModel):
     api_version: str | None
     overall_status: str | None
     failure_reason: str | None
+    #: The document in the repository, at the commit it was scanned from.
+    source_url: str
     sections: list[SectionDetail]
 
     @classmethod
-    def from_record(cls, record: DocumentRecord) -> DocumentDetailResponse:
+    def from_record(
+        cls, record: DocumentRecord, *, repo: str, commit_hash: str
+    ) -> DocumentDetailResponse:
         document = document_from_payload(record.payload)
         failure = document.scan_result.failure_reason if document.scan_result else None
         return cls(
@@ -318,6 +361,7 @@ class DocumentDetailResponse(BaseModel):
             title=record.title,
             api_version=record.api_version,
             overall_status=record.overall_status,
+            source_url=source_url(repo=repo, commit_hash=commit_hash, path=record.path),
             failure_reason=(
                 f"{failure.code.value}: {failure.details}"
                 if failure and failure.details
@@ -382,11 +426,17 @@ def _status_documents(generation: Generation | None) -> int | None:
     return status_documents(generation)
 
 
-def _struct_ok(generation: Generation | None) -> int | None:
-    """Completeness as whole percent; None stays None (unknown is not zero)."""
-    if generation is None or generation.completeness is None:
+def _docs_ok(generation: Generation | None) -> int | None:
+    """Clean-document share as whole percent; None stays None.
+
+    Rounded **down**: 100% has to mean every document, not 99.6% of them. A
+    percent that rounds up hides exactly the documents someone would go and
+    look for.
+    """
+    if generation is None:
         return None
-    return round(generation.completeness * 100)
+    share = clean_endpoint_share(generation)
+    return None if share is None else int(share * 100)
 
 
 def _overall_breakdown(generation: Generation | None) -> dict[str, int]:
@@ -435,6 +485,14 @@ def _section_detail(section: Any) -> SectionDetail:
                 "details": issue.details,
             }
             for issue in (result.issues if result else [])
+        ],
+        examples=[
+            ExampleResponse(
+                label=example.label,
+                language=example.language,
+                raw=example.raw,
+            )
+            for example in section.examples
         ],
     )
 

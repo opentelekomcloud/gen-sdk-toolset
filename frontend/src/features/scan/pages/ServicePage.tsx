@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { Section, SectionStatus } from "../api/types.local";
 import { AlertTriangle, ArrowLeft, Ban, CheckCircle2, FolderOpen, Loader2, RefreshCw } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ApiError } from "../api/client";
@@ -26,6 +27,8 @@ export function ServicePage() {
   const { name = "" } = useParams();
   const navigate = useNavigate();
   const [showExclude, setShowExclude] = useState(false);
+  /* Which section count is filtering the documents below, if any (PS12). */
+  const [sectionFilter, setSectionFilter] = useState<{ section: Section; status: SectionStatus } | null>(null);
   const { t } = useI18n();
 
   const { data: service, isPending, isError, error, refetch } = useService(name);
@@ -82,7 +85,7 @@ export function ServicePage() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-mono text-xl font-semibold text-gray-900">{service.name}</h1>
+            <h1 className="font-mono text-xl font-semibold text-gray-900">{service.label}</h1>
             <StatusPill kind={service.scan_status} by={service.initiated_by ?? undefined} />
           </div>
           {/* G1: replaces the static "scanned with …" line; RollbackButton is gone — the selector covers it */}
@@ -207,8 +210,8 @@ export function ServicePage() {
             </div>
             <div className="rounded-lg border border-gray-200 bg-white p-3.5">
               <div className="text-xs text-gray-500">{t("service.metricQuality")}</div>
-              <div className={`mt-0.5 font-mono text-2xl font-semibold tabular-nums ${structOkCls(service.struct_ok)}`}>
-                {service.struct_ok == null ? "—" : `${service.struct_ok}%`}
+              <div className={`mt-0.5 font-mono text-2xl font-semibold tabular-nums ${structOkCls(service.docs_ok)}`}>
+                {service.docs_ok == null ? "—" : `${service.docs_ok}%`}
               </div>
             </div>
             <div className="col-span-2 rounded-lg border border-gray-200 bg-white p-3.5">
@@ -228,7 +231,17 @@ export function ServicePage() {
 
           <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-3">
             {SECTIONS.map((s) => (
-              <SectionCard key={s} name={s} stats={service.section_rollup[s]} />
+              <SectionCard
+                key={s}
+                name={s}
+                stats={service.section_rollup[s]}
+                active={sectionFilter?.section === s ? sectionFilter.status : null}
+                onPick={(status) =>
+                  setSectionFilter((current) =>
+                    current?.section === s && current.status === status ? null : { section: s, status },
+                  )
+                }
+              />
             ))}
           </div>
 
@@ -243,7 +256,14 @@ export function ServicePage() {
             </div>
           )}
 
-          <DocumentsBlock serviceName={service.name} />
+          <DocumentsBlock
+            /* A different section filter is a different result set: the key
+               remounts the block so paging and search start clean. */
+            key={sectionFilter ? `${sectionFilter.section}-${sectionFilter.status}` : "all"}
+            serviceName={service.name}
+            sectionFilter={sectionFilter}
+            onClearSectionFilter={() => setSectionFilter(null)}
+          />
         </div>
       )}
 

@@ -63,7 +63,9 @@ export interface Generation {
   partial_count: number;
   failed_count: number;
   unsupported_count: number;
-  /** 0..1, nullable (e.g. no endpoint documents). */
+  /** Documentation quality: percent of documents scanned without a diagnostic. */
+  docs_ok: number | null;
+  /** Processing quality: recognized share of the documented rows, 0..1, nullable. */
   completeness: number | null;
   created_at: string;
 }
@@ -92,10 +94,14 @@ export interface RepositoryInterruption {
 }
 
 export interface ServiceListItem {
+  /** Identifier used in routes and links (the repository, e.g. "org/direct-connect"). */
   name: string;
+  /** Display name — the short repository name, e.g. "direct-connect". */
+  label: string;
   scan_status: ScanStatus;
   documents: number | null;
-  struct_ok: number | null;
+  /** Percent of documents scanned without a single diagnostic (documentation quality). */
+  docs_ok: number | null;
   scanner_version: string | null;
   scanned_at: string | null;
   docs_changed: boolean;
@@ -127,7 +133,7 @@ export interface ServiceDetail extends ServiceListItem {
   /**
    * G1: snapshot currently displayed / served (Service.active_generation).
    * Null when no successful scan exists yet. All flat scan-result fields on
-   * this DTO (documents, struct_ok, overall_breakdown, section_rollup,
+   * this DTO (documents, docs_ok, overall_breakdown, section_rollup,
    * top_issues, …) are served FROM this generation.
    */
   active_generation: Generation | null;
@@ -180,6 +186,13 @@ export interface SectionIssue {
   details?: string;
 }
 
+export interface ExampleBlock {
+  label: string | null;
+  language: string | null;
+  /** The example exactly as the documentation writes it. */
+  raw: string;
+}
+
 export interface SectionDetail {
   name: Section;
   status: SectionStatus;
@@ -188,6 +201,7 @@ export interface SectionDetail {
   fields_unknown_type: number;
   parameters: Parameter[] | null;
   issues: SectionIssue[];
+  examples: ExampleBlock[];
 }
 
 export interface DocumentDetail {
@@ -198,6 +212,8 @@ export interface DocumentDetail {
   api_version: string | null;
   overall_status: DocStatus;
   failure_reason: string | null;
+  /** The document in the docs repository, pinned to the scanned commit. */
+  source_url: string;
   sections: SectionDetail[];
 }
 

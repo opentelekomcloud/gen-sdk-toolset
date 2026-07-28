@@ -1,5 +1,6 @@
 import type { Section, SectionCounts } from "../api/types.local";
 import { SECTIONS, sectionLabelKey } from "../constants";
+import { sectionCountsSummary } from "../lib/sectionTone";
 import { sectionTone } from "../lib/sectionTone";
 import { TONE_BG } from "../styles";
 import { useI18n } from "../../../shared/i18n";
@@ -15,7 +16,7 @@ export function SectionStrip({ sections }: { sections: Record<Section, SectionCo
         return (
           <div
             key={s}
-            title={t(sectionLabelKey(s))}
+            title={`${t(sectionLabelKey(s))} — ${sectionCountsSummary(sections[s])}`}
             className={`h-3.5 w-3.5 rounded-sm ${TONE_BG[tone]} ${tone === "empty" ? "opacity-60" : ""}`}
           />
         );

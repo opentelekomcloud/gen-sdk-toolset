@@ -37,7 +37,7 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
     >
       <div className="col-span-3 flex items-center gap-1.5 overflow-hidden">
         <ChevronRight size={14} className="shrink-0 text-gray-400" />
-        <span className="truncate font-mono text-sm text-gray-800">{item.name}</span>
+        <span className="truncate font-mono text-sm text-gray-800">{item.label}</span>
       </div>
       <div className="col-span-2">
         <StatusPill kind={item.scan_status} by={item.initiated_by ?? undefined} />
@@ -46,7 +46,7 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
         {item.documents ? (
           <div className="space-y-1">
             <div className="font-mono text-xs tabular-nums text-gray-600">
-              {t("registry.docs", { n: item.documents })} · <span className={structOkCls(item.struct_ok)}>{item.struct_ok}%</span>
+              {t("registry.docs", { n: item.documents })} · <span className={structOkCls(item.docs_ok)}>{item.docs_ok}%</span>
               {outdated && <span className="text-gray-400"> · v{item.scanner_version}</span>}
             </div>
             <OverallBar overall={item.overall_breakdown} docs={item.documents} />
