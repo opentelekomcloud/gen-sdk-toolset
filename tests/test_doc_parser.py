@@ -718,3 +718,27 @@ def test_api_version_from_source_path() -> None:
     assert extract("/elb/pools", "api-ref/source/V2/create.rst") == "v2"
     # No version anywhere → None.
     assert extract("/elb/pools", "api-ref/source/x.rst") is None
+
+
+def test_unread_example_block_is_recorded_not_reported_as_absent(
+    parser: DocutilsParser, cce_inline_examples_doc: str
+) -> None:
+    """An example written as a bold run-in inside Response is not extracted yet.
+    The section must not claim the document has no example: `missing` is a fact
+    about the documentation, `failed` plus `unmapped_block` is a fact about us.
+    """
+    doc = parser.parse(cce_inline_examples_doc, "deleting_a_node.rst")
+    sections = {section.name.value: section for section in doc.sections}
+
+    response_example = sections["example_response"].scan_result
+    assert response_example.status is SectionStatus.FAILED
+    assert [issue.code for issue in response_example.issues] == [
+        IssueCode.UNMAPPED_BLOCK
+    ]
+    assert sections["example_response"].examples == []  # nothing was invented
+
+    # The request example really is absent ("N/A" in the source), and absence
+    # keeps reading as absence.
+    request_example = sections["example_request"].scan_result
+    assert request_example.status is SectionStatus.MISSING
+    assert request_example.issues == []

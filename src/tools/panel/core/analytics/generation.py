@@ -36,6 +36,19 @@ from tools.domain.report.analytics import (
 )
 from tools.domain.report.enums import OverallStatus
 from tools.shared.ir import Document, Endpoint
+from tools.shared.scan import IssueCode
+
+#: Diagnostics that describe **our** shortfall rather than the documentation's:
+#: content we saw and could not read. They make a scan partial, and they must
+#: not be counted against the documentation - the pages may be perfectly fine.
+SCANNER_GAP_CODES = frozenset(
+    {
+        IssueCode.UNMAPPED_BLOCK,
+        IssueCode.PARSER_ERROR,
+        IssueCode.UNSUPPORTED_DOC_STYLE,
+        IssueCode.FETCH_FAILED,
+    }
+)
 
 
 class DocumentAnalytics(BaseModel):
@@ -59,6 +72,17 @@ class GenerationAnalytics(BaseModel):
     endpoints_total: int = 0
     non_endpoint_documents: int = 0
     issues_total: int = 0
+
+    #: Documents carrying at least one diagnostic about the documentation.
+    #: Their complement over the documents with a status is `docs_ok`.
+    documentation_clean: int = 0
+    #: Documents where something stayed unread - our gap, not the docs'.
+    unread_documents: int = 0
+    #: Documents we read end to end: nothing left unread and every documented
+    #: parameter row recognized. The share of these is what "how well did the
+    #: parser do" actually means - `completeness` only sees table rows and stays
+    #: at 100% while whole sections go unread.
+    read_in_full: int = 0
 
     ok_count: int = 0
     partial_count: int = 0
@@ -131,6 +155,40 @@ def doc_completeness(document: Document) -> float | None:
     return recognized / total
 
 
+def is_unread(document: Document) -> bool:
+    """True when a diagnostic says we could not read part of this document.
+
+    :param document: The scanned document IR to inspect.
+    """
+    return any(issue.code in SCANNER_GAP_CODES for issue in doc_all_issues(document))
+
+
+def has_documentation_defect(document: Document) -> bool:
+    """True when a diagnostic describes the documentation itself.
+
+    :param document: The scanned document IR to inspect.
+    """
+    return any(
+        issue.code not in SCANNER_GAP_CODES for issue in doc_all_issues(document)
+    )
+
+
+def is_read_in_full(document: Document) -> bool:
+    """True when nothing in this document was left unread.
+
+    Two ways to fall short: content we saw and could not place (a scanner gap),
+    and documented parameter rows we could not recognize. A document with no
+    measurable rows at all cannot fail the second test - there was nothing to
+    recognize.
+
+    :param document: The scanned document IR to inspect.
+    """
+    if is_unread(document):
+        return False
+    completeness = doc_completeness(document)
+    return completeness is None or completeness >= 1
+
+
 def analyze_document(document: Document) -> DocumentAnalytics:
     """Return the panel projections for one scanned document.
 
@@ -160,6 +218,9 @@ def analyze_generation(documents: Sequence[Document]) -> GenerationAnalytics:
 
     endpoints_total = 0
     issues_total = 0
+    documentation_clean = 0
+    unread_documents = 0
+    read_in_full = 0
     fields_total = 0
     fields_recognized = 0
 
@@ -169,6 +230,14 @@ def analyze_generation(documents: Sequence[Document]) -> GenerationAnalytics:
 
         issues = doc_all_issues(document)
         issues_total += len(issues)
+        if is_unread(document):
+            unread_documents += 1
+        if status is not None and is_read_in_full(document):
+            read_in_full += 1
+        if status is not None and not has_documentation_defect(document):
+            # Every diagnostic here is about us, so as far as the documentation
+            # goes this document came out clean.
+            documentation_clean += 1
         for issue in issues:
             issue_counts[issue.code.value] += 1
 
@@ -189,6 +258,9 @@ def analyze_generation(documents: Sequence[Document]) -> GenerationAnalytics:
     return GenerationAnalytics(
         documents_total=documents_total,
         endpoints_total=endpoints_total,
+        documentation_clean=documentation_clean,
+        unread_documents=unread_documents,
+        read_in_full=read_in_full,
         non_endpoint_documents=documents_total - endpoints_total,
         issues_total=issues_total,
         ok_count=status_counts[OverallStatus.OK.value],

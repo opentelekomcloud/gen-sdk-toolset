@@ -65,6 +65,14 @@ no remaining producer anywhere in the scanner.
 The field counters on `SectionScanResult` must reconcile:
 `fields_recognized + fields_unknown_type + fields_failed == fields_total`.
 
+**`missing` is a fact about the document; `failed` is a fact about us.** A
+section is `missing` only when the document does not contain it. A section whose
+content we saw and could not read is `failed`, carrying the diagnostic that says
+what was left unread (`UNMAPPED_TABLE` for a table, `UNMAPPED_BLOCK` for a code
+block). Without that distinction "we never looked here" is indistinguishable
+from "there is nothing here", which is the one confusion this project cannot
+afford: it turns a silent loss into a clean number.
+
 ## Derived analytics
 
 Currently in `src/tools/domain/report/`, **being relocated to
@@ -95,6 +103,9 @@ relocates them.
 | `completeness` | The recognized share of the documented parameter rows: `fields_recognized / fields_total`, a `0..1` float. Per document it covers that document's sections; per `Generation` it is **field-weighted** over all documents, not a mean of per-document means. |
 | `DocumentAnalytics` | What one `DocumentRecord` stores beyond its payload: `overall_status`, `completeness`, `issues_count`. |
 | `GenerationAnalytics` | The `Generation` roll-up: the counters that have columns, plus `unknown_count`, `fields_total`, `fields_recognized`, `by_section_status`, `issues_by_code` and `by_version`. Serialized whole into the `analytics` JSONB. |
+| `SCANNER_GAP_CODES` | The diagnostics that describe **our** shortfall rather than the documentation's: `UNMAPPED_BLOCK`, `PARSER_ERROR`, `UNSUPPORTED_DOC_STYLE`, `FETCH_FAILED`. They make the scan `partial` and are excluded from `docs_ok` - the pages may be perfectly fine. |
+| `unread_documents` | Documents carrying at least one scanner-gap diagnostic. This is what makes a service `partially scanned`. |
+| `documentation_clean` | Documents with no diagnostic about the documentation itself (scanner gaps do not count). The numerator of `docs_ok`. |
 | `unknown_count` | Documents with no derivable `OverallStatus` (a successfully scanned non-endpoint page). It exists so that `ok + partial + failed + unsupported + unknown == documents_total` — without it the difference would be unexplained. |
 
 **Unmeasurable is `None`, never `0`.** A document whose structure could not be

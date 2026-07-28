@@ -28,6 +28,7 @@ from tools.panel.core.service_state import (
     ServiceState,
     clean_endpoint_share,
     failed_job,
+    read_in_full_share,
     status_documents,
 )
 from tools.shared.ir import Endpoint, SectionName
@@ -123,9 +124,11 @@ class GenerationResponse(BaseModel):
     unsupported_count: int
     #: Documentation quality: percent of documents with no diagnostic at all.
     docs_ok: int | None
-    #: Processing quality: the share of documented parameter rows the parser
-    #: understood. A different question, kept next to the first one so neither
-    #: can be mistaken for the other.
+    #: Processing quality: percent of documents the scanner read end to end.
+    #: Kept next to the first number so neither can be mistaken for the other.
+    parser_ok: int | None
+    #: The row-level detail behind parser_ok: the share of documented parameter
+    #: rows that were recognized. Blind to content that was never read at all.
     completeness: float | None
     created_at: datetime
 
@@ -147,6 +150,7 @@ class GenerationResponse(BaseModel):
             failed_count=generation.failed_count,
             unsupported_count=generation.unsupported_count,
             docs_ok=_docs_ok(generation),
+            parser_ok=_parser_ok(generation),
             completeness=generation.completeness,
             created_at=generation.created_at,
         )
@@ -436,6 +440,14 @@ def _docs_ok(generation: Generation | None) -> int | None:
     if generation is None:
         return None
     share = clean_endpoint_share(generation)
+    return None if share is None else int(share * 100)
+
+
+def _parser_ok(generation: Generation | None) -> int | None:
+    """Read-in-full share as whole percent, rounded down. None stays None."""
+    if generation is None:
+        return None
+    share = read_in_full_share(generation)
     return None if share is None else int(share * 100)
 
 

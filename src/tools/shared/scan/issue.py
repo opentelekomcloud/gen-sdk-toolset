@@ -13,6 +13,8 @@ class IssueCode(str, Enum):
     PARSER_ERROR = "parser_error"
     UNSUPPORTED_DOC_STYLE = "unsupported_doc_style"
 
+    UNMAPPED_BLOCK = "unmapped_block"
+
     MALFORMED_GRID_TABLE = "malformed_grid_table"
     UNEXPECTED_COLUMNS = "unexpected_columns"
     UNMAPPED_TABLE = "unmapped_table"

@@ -123,20 +123,50 @@ def status_documents(generation: Generation) -> int:
 
 
 def clean_endpoint_share(generation: Generation) -> float | None:
-    """Share of documents that were scanned without a single diagnostic.
+    """Share of documents with nothing wrong **in the documentation**.
 
-    This is the panel's answer to "how good is this documentation": a section
-    leaves ``ok`` exactly when something in the document was wrong, so the
-    clean share needs no thresholds and no issue-code classification of its
-    own. ``None`` when the generation has no document with a status - unknown,
-    not zero.
+    Diagnostics about our own shortfall - content we saw and could not read -
+    are excluded: they say nothing about the pages themselves and are reported
+    through :func:`unread_documents` instead. ``None`` when the generation has
+    no document with a status: unknown, not zero.
 
     :param generation: The generation to measure.
     """
     total = status_documents(generation)
     if total == 0:
         return None
-    return generation.ok_count / total
+    clean = generation.analytics.get("documentation_clean")
+    if clean is None:
+        # Ingested before scanner gaps were counted separately; the ok count is
+        # the closest honest answer that generation can give.
+        clean = generation.ok_count
+    return clean / total
+
+
+def read_in_full_share(generation: Generation) -> float | None:
+    """Share of documents the scanner read end to end.
+
+    The honest answer to "how well did we do": ``Generation.completeness`` only
+    measures parameter rows, so it happily reports 100% for a document whose
+    example section was never read. ``None`` when nothing carries a status.
+
+    :param generation: The generation to measure.
+    """
+    total = status_documents(generation)
+    if total == 0:
+        return None
+    read = generation.analytics.get("read_in_full")
+    if read is None:
+        return None  # ingested before this was counted: unknown, not 100%
+    return read / total
+
+
+def unread_documents(generation: Generation) -> int:
+    """Documents where something stayed unread - our gap, not the docs'.
+
+    :param generation: The generation to inspect.
+    """
+    return generation.analytics.get("unread_documents", 0)
 
 
 def failed_job(state: ServiceState) -> RepositoryScanJob | None:
@@ -184,6 +214,8 @@ def _scan_status(
         return ScanStatus.not_scanned
     if generation.failed_count or generation.unsupported_count:
         return ScanStatus.partial  # documents we could not interpret at all
+    if unread_documents(generation):
+        return ScanStatus.partial  # content we saw and could not read
     if generation.completeness is not None and generation.completeness < 1:
         return ScanStatus.partial  # parameter rows we could not recognize
     return ScanStatus.scanned

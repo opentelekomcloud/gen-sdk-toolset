@@ -141,8 +141,9 @@ def test_services_list_serves_the_active_generation(scanned):
     # partial: the plain page's style was not supported, so it stayed unread.
     assert item["scan_status"] == "partial"
     assert item["documents"] == 2  # both documents carry a status
-    # Neither document came out clean: one partial endpoint, one unsupported page.
-    assert item["docs_ok"] == 0
+    # One of two: the endpoint carries a documentation diagnostic, while the
+    # unsupported page is our gap, not the documentation's, so it stays clean.
+    assert item["docs_ok"] == 50
     assert item["scanner_version"] == SCANNER_VERSION
     assert item["scanned_at"] is not None
     assert item["docs_changed"] is False  # no head_commit known yet (issue #25)
