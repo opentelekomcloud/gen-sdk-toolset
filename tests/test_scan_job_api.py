@@ -8,7 +8,7 @@ module's docstring).
 from __future__ import annotations
 
 import dataclasses
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -424,7 +424,7 @@ def test_runner_skips_job_not_in_queued_state(client, session_factory, monkeypat
             service_id=service_id,
             kind=JobKind.scan,
             status=JobStatus.running,
-            started_at=datetime.now(tz=timezone.utc),
+            started_at=datetime.now(tz=UTC),
             initiated_by="tester",
         )
         s.add(job)

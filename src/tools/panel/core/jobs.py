@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from tools.config import load_settings
@@ -51,7 +51,7 @@ def run_scan_job(job_id: int) -> None:
             repo = job.service.repo
             branch = job.service.branch
             job.status = JobStatus.running
-            job.started_at = datetime.now(tz=timezone.utc)
+            job.started_at = datetime.now(tz=UTC)
             session.commit()
     except Exception as exc:  # a Job stuck in queued blocks the service forever
         logger.exception("run_scan_job: could not mark job %s running", job_id)
@@ -95,7 +95,7 @@ def _fail_job(
             return
         job.status = JobStatus.failed
         job.error = error
-        job.finished_at = datetime.now(tz=timezone.utc)
+        job.finished_at = datetime.now(tz=UTC)
         if interruption is not None:
             job.interruption = interruption
         session.commit()
