@@ -65,7 +65,9 @@ export interface Generation {
   unsupported_count: number;
   /** Documentation quality: percent of documents scanned without a diagnostic. */
   docs_ok: number | null;
-  /** Processing quality: recognized share of the documented rows, 0..1, nullable. */
+  /** Processing quality: percent of documents read end to end. */
+  parser_ok: number | null;
+  /** Row-level detail behind parser_ok: recognized share of documented rows. */
   completeness: number | null;
   created_at: string;
 }
@@ -150,6 +152,11 @@ export interface ServiceDetail extends ServiceListItem {
   top_issues: IssueCount[];
   non_endpoint_documents: number;
 }
+
+/** What the documents block is narrowed to: a section's status, or an issue code. */
+export type DocFilter =
+  | { kind: "section"; section: Section; status: SectionStatus }
+  | { kind: "issue"; code: string };
 
 export interface DocumentListItem {
   /** document.id (int PK). */

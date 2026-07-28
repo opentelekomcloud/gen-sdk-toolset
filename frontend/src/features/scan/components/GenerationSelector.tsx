@@ -157,8 +157,13 @@ export function GenerationSelector({ service, disabled, onActivate }: Props) {
                           <span className={structOkCls(g.docs_ok)}>{g.docs_ok == null ? "—" : `${g.docs_ok}%`}</span>
                         </span>
                         <br />
-                        <span title={t("gen.parserHint")} className="text-gray-400">
-                          {t("gen.parser")} {pct == null ? "—" : `${pct}%`}
+                        <span
+                          /* The row-level detail stays reachable: parser_ok is
+                             about whole documents, completeness about rows. */
+                          title={`${t("gen.parserHint")}${pct == null ? "" : ` · ${t("gen.rows", { pct })}`}`}
+                          className="text-gray-400"
+                        >
+                          {t("gen.parser")} {g.parser_ok == null ? "—" : `${g.parser_ok}%`}
                         </span>
                       </div>
                     </button>

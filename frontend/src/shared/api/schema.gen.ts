@@ -128,7 +128,8 @@ export interface paths {
          *
          *     ``section`` and ``section_status`` together answer "which documents have a
          *     failed body": both are required for the filter to apply, because either one
-         *     alone would silently mean something else.
+         *     alone would silently mean something else. ``issue`` answers the same
+         *     question for a diagnostic code.
          */
         get: operations["list_documents_api_scan_services__repo__documents_get"];
         put?: never;
@@ -388,6 +389,8 @@ export interface components {
             non_endpoint_documents: number;
             /** Ok Count */
             ok_count: number;
+            /** Parser Ok */
+            parser_ok: number | null;
             /** Partial Count */
             partial_count: number;
             /** Scanner Version */
@@ -844,6 +847,7 @@ export interface operations {
                 page?: number;
                 section?: string | null;
                 section_status?: string | null;
+                issue?: string | null;
             };
             header?: never;
             path: {

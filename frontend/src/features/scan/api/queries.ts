@@ -106,6 +106,8 @@ export interface DocumentsParams {
   /** Section filter — both halves or neither, mirroring the API. */
   section?: Section;
   section_status?: SectionStatus;
+  /** Issue-code filter, from the top-issue chips. */
+  issue?: string;
 }
 
 export function useDocuments(name: string, params: DocumentsParams) {

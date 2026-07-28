@@ -375,6 +375,17 @@
             "title": "Ok Count",
             "type": "integer"
           },
+          "parser_ok": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Ok"
+          },
           "partial_count": {
             "title": "Partial Count",
             "type": "integer"
@@ -408,6 +419,7 @@
           "failed_count",
           "unsupported_count",
           "docs_ok",
+          "parser_ok",
           "completeness",
           "created_at"
         ],
@@ -1505,7 +1517,7 @@
     },
     "/api/scan/services/{repo}/documents": {
       "get": {
-        "description": "One page of the active generation's API documents.\n\nPages that carry no scan status are not API documents; they are counted in\nthe service detail's ``non_endpoint_documents`` instead of being listed here\nunder a status they never had.\n\n``section`` and ``section_status`` together answer \"which documents have a\nfailed body\": both are required for the filter to apply, because either one\nalone would silently mean something else.",
+        "description": "One page of the active generation's API documents.\n\nPages that carry no scan status are not API documents; they are counted in\nthe service detail's ``non_endpoint_documents`` instead of being listed here\nunder a status they never had.\n\n``section`` and ``section_status`` together answer \"which documents have a\nfailed body\": both are required for the filter to apply, because either one\nalone would silently mean something else. ``issue`` answers the same\nquestion for a diagnostic code.",
         "operationId": "list_documents_api_scan_services__repo__documents_get",
         "parameters": [
           {
@@ -1584,6 +1596,22 @@
                 }
               ],
               "title": "Section Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "issue",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Issue"
             }
           }
         ],

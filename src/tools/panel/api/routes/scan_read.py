@@ -62,6 +62,10 @@ _STATUS_ORDER = case(
 #: so no section projection has to be denormalized into its own column.
 _SECTION_MATCH = "$.sections[*] ? (@.name == $name && @.scan_result.status == $status)"
 
+#: "which documents raised this issue?" - `code` appears only on an Issue, at
+#: section level or on the gating failure, so one recursive match covers both.
+_ISSUE_MATCH = "$.**.code ? (@ == $code)"
+
 _ATTENTION_LABELS = {
     "failed": "Last scan failed",
     "version": "Scanned by an older scanner",
@@ -226,6 +230,7 @@ def list_documents(
     page: int = Query(default=1, ge=1),
     section: str | None = Query(default=None),
     section_status: str | None = Query(default=None),
+    issue: str | None = Query(default=None),
 ) -> DocumentsResponse:
     """One page of the active generation's API documents.
 
@@ -235,7 +240,8 @@ def list_documents(
 
     ``section`` and ``section_status`` together answer "which documents have a
     failed body": both are required for the filter to apply, because either one
-    alone would silently mean something else.
+    alone would silently mean something else. ``issue`` answers the same
+    question for a diagnostic code.
     """
     service = _service_or_404(db, repo)
     if service.active_generation_id is None:
@@ -264,6 +270,16 @@ def list_documents(
                     section_match=_SECTION_MATCH
                 ),
                 func.jsonb_build_object("name", section, "status", section_status),
+            )
+        )
+    if issue:
+        base = base.where(
+            func.jsonb_path_exists(
+                DocumentRecord.payload,
+                sa_text("CAST(:issue_match AS jsonpath)").bindparams(
+                    issue_match=_ISSUE_MATCH
+                ),
+                func.jsonb_build_object("code", issue),
             )
         )
 

@@ -508,3 +508,26 @@ def test_messy_documentation_read_in_full_is_scanned_not_partial(
 
     assert item["scan_status"] == "scanned"  # nothing stayed unread
     assert item["docs_ok"] == 0  # but the documentation is not clean
+
+
+def test_documents_can_be_filtered_by_an_issue_code(scanned):
+    """The top-issue chips are counts; this is how a reader reaches the
+    documents behind one."""
+    body = scanned.get(
+        f"/api/scan/services/{REPO}/documents?issue=unknown_type_format"
+    ).json()
+
+    assert [item["path"] for item in body["items"]] == [
+        "api-ref/source/create_server.rst"
+    ]
+    assert body["doc_counts"]["all"] == 1
+
+
+def test_issue_filter_also_matches_a_gating_failure(scanned):
+    """`unsupported_doc_style` sits on the document, not on a section - the
+    filter has to find it there too."""
+    body = scanned.get(
+        f"/api/scan/services/{REPO}/documents?issue=unsupported_doc_style"
+    ).json()
+
+    assert [item["overall_status"] for item in body["items"]] == ["unsupported"]

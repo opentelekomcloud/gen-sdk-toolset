@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Section, SectionStatus } from "../api/types.local";
+import type { DocFilter } from "../api/types.local";
 import { AlertTriangle, ArrowLeft, Ban, CheckCircle2, FolderOpen, Loader2, RefreshCw } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ApiError } from "../api/client";
@@ -27,8 +27,8 @@ export function ServicePage() {
   const { name = "" } = useParams();
   const navigate = useNavigate();
   const [showExclude, setShowExclude] = useState(false);
-  /* Which section count is filtering the documents below, if any (PS12). */
-  const [sectionFilter, setSectionFilter] = useState<{ section: Section; status: SectionStatus } | null>(null);
+  /* What the documents below are narrowed to: a section count or an issue code. */
+  const [filter, setFilter] = useState<DocFilter | null>(null);
   const { t } = useI18n();
 
   const { data: service, isPending, isError, error, refetch } = useService(name);
@@ -235,10 +235,12 @@ export function ServicePage() {
                 key={s}
                 name={s}
                 stats={service.section_rollup[s]}
-                active={sectionFilter?.section === s ? sectionFilter.status : null}
+                active={filter?.kind === "section" && filter.section === s ? filter.status : null}
                 onPick={(status) =>
-                  setSectionFilter((current) =>
-                    current?.section === s && current.status === status ? null : { section: s, status },
+                  setFilter((current) =>
+                    current?.kind === "section" && current.section === s && current.status === status
+                      ? null
+                      : { kind: "section", section: s, status },
                   )
                 }
               />
@@ -249,9 +251,23 @@ export function ServicePage() {
             <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
               <span className="font-semibold uppercase tracking-wide text-gray-500">{t("service.topIssues")}</span>
               {service.top_issues.map((i) => (
-                <span key={i.code} className="rounded bg-white px-2 py-1 font-mono tabular-nums text-gray-600 ring-1 ring-gray-200">
+                <button
+                  key={i.code}
+                  type="button"
+                  title={t("service.issueFilterHint")}
+                  onClick={() =>
+                    setFilter((current) =>
+                      current?.kind === "issue" && current.code === i.code ? null : { kind: "issue", code: i.code },
+                    )
+                  }
+                  className={`rounded px-2 py-1 font-mono tabular-nums ring-1 transition ${
+                    filter?.kind === "issue" && filter.code === i.code
+                      ? "bg-gray-900 text-white ring-gray-900"
+                      : "bg-white text-gray-600 ring-gray-200 hover:ring-gray-400"
+                  }`}
+                >
                   {i.code} ×{i.count}
-                </span>
+                </button>
               ))}
             </div>
           )}
@@ -259,10 +275,10 @@ export function ServicePage() {
           <DocumentsBlock
             /* A different section filter is a different result set: the key
                remounts the block so paging and search start clean. */
-            key={sectionFilter ? `${sectionFilter.section}-${sectionFilter.status}` : "all"}
+            key={filter ? (filter.kind === "section" ? `${filter.section}-${filter.status}` : filter.code) : "all"}
             serviceName={service.name}
-            sectionFilter={sectionFilter}
-            onClearSectionFilter={() => setSectionFilter(null)}
+            filter={filter}
+            onClearFilter={() => setFilter(null)}
           />
         </div>
       )}

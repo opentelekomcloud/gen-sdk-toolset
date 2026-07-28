@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, FileText, Search, X } from "lucide-react";
 import { useDocuments } from "../api/queries";
-import type { DocStatus, Section, SectionStatus } from "../api/types.local";
+import type { DocFilter, DocStatus } from "../api/types.local";
 import { sectionLabelKey } from "../constants";
 import { chipCls } from "../styles";
 import { DocRow } from "./DocRow";
@@ -12,12 +12,12 @@ const CHIP_ORDER: (DocStatus | "all")[] = ["all", "failed", "unsupported", "part
 /** Documents block on the service page (PS12): server-side filter/search/pagination. */
 interface Props {
   serviceName: string;
-  /** Set by clicking a count in a section card; both halves travel together. */
-  sectionFilter?: { section: Section; status: SectionStatus } | null;
-  onClearSectionFilter?: () => void;
+  /** Set by clicking a section count or a top-issue chip. */
+  filter?: DocFilter | null;
+  onClearFilter?: () => void;
 }
 
-export function DocumentsBlock({ serviceName, sectionFilter, onClearSectionFilter }: Props) {
+export function DocumentsBlock({ serviceName, filter, onClearFilter }: Props) {
   const [status, setStatus] = useState<DocStatus | "all">("all");
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
@@ -34,8 +34,9 @@ export function DocumentsBlock({ serviceName, sectionFilter, onClearSectionFilte
     status,
     q: qDebounced,
     page,
-    section: sectionFilter?.section,
-    section_status: sectionFilter?.status,
+    section: filter?.kind === "section" ? filter.section : undefined,
+    section_status: filter?.kind === "section" ? filter.status : undefined,
+    issue: filter?.kind === "issue" ? filter.code : undefined,
   });
   if (!data) return null;
 
@@ -61,13 +62,15 @@ export function DocumentsBlock({ serviceName, sectionFilter, onClearSectionFilte
             {t(`docstatus.${k}` as MessageKey)} <span className="font-mono tabular-nums opacity-70">{data.doc_counts[k] ?? 0}</span>
           </button>
         ))}
-        {sectionFilter && (
+        {filter && (
           <button
             type="button"
-            onClick={onClearSectionFilter}
+            onClick={onClearFilter}
             className="flex items-center gap-1 rounded-full bg-gray-900 px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-gray-700"
           >
-            {t(sectionLabelKey(sectionFilter.section))} · {sectionFilter.status}
+            {filter.kind === "section"
+              ? `${t(sectionLabelKey(filter.section))} · ${filter.status}`
+              : filter.code}
             <X size={11} />
           </button>
         )}

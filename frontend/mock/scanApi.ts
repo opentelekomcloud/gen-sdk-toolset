@@ -20,7 +20,7 @@ type Gen = {
   scanner_version: string; document_schema_version: string;
   documents_total: number; endpoints_total: number; non_endpoint_documents: number; issues_total: number;
   ok_count: number; partial_count: number; failed_count: number; unsupported_count: number;
-  docs_ok: number | null; completeness: number | null; created_at: string;
+  docs_ok: number | null; parser_ok: number | null; completeness: number | null; created_at: string;
   /** mock-only: service-level view fields applied when this gen becomes active */
   view: Record<string, unknown>;
 };
@@ -102,7 +102,7 @@ const mkGen = (name: string, s: MockService, at: string, ver: string, delta: { d
     issues_total: partial * 2 + failed * 3, ok_count: ok, partial_count: partial,
     failed_count: failed, unsupported_count: unsupported,
     docs_ok: ok + partial + failed + unsupported ? Math.round((100 * ok) / (ok + partial + failed + unsupported)) : null,
-    completeness: struct / 100, created_at: at,
+    parser_ok: struct, completeness: struct / 100, created_at: at,
     view: { documents: docs, docs_ok: struct, overall_breakdown: breakdown,
       section_rollup: rollup(ok, partial, failed, unsupported), scanned_at: at, scanner_version: ver },
   };
