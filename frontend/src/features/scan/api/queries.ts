@@ -51,6 +51,19 @@ export function invalidateGeneration(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.attention });
 }
 
+/**
+ * A failed scan produces no new generation: only the service state (the error,
+ * the cleared job) and the aggregates that surface it are stale. The documents,
+ * document details and generations of the still-active generation are not —
+ * invalidating them would refetch data that cannot have changed.
+ */
+export function invalidateScanFailure(qc: QueryClient, name: string) {
+  void qc.invalidateQueries({ queryKey: keys.service(name) });
+  void qc.invalidateQueries({ queryKey: keys.services() });
+  void qc.invalidateQueries({ queryKey: keys.summary });
+  void qc.invalidateQueries({ queryKey: keys.attention });
+}
+
 export interface ServicesParams {
   status?: ServiceFilter;
   q?: string;
@@ -127,11 +140,11 @@ export function useExcluded() {
 }
 
 /** Terminal job statuses — polling stops here. */
-export const JOB_TERMINAL: JobStatus[] = ["done", "failed"];
+export const JOB_TERMINAL: ReadonlySet<JobStatus> = new Set<JobStatus>(["done", "failed"]);
 
 /** Polling cadence for a job query: stop once terminal, else poll every 1.5s. */
 export function jobRefetchInterval(job: Job | undefined): number | false {
-  return job && JOB_TERMINAL.includes(job.status) ? false : 1500;
+  return job && JOB_TERMINAL.has(job.status) ? false : 1500;
 }
 
 /**

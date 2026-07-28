@@ -47,10 +47,20 @@ def start_scan(
     except IntegrityError as exc:
         # uq_active_scan_job_per_service: one queued/running scan per service.
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="A scan is already queued or running for this service",
-        ) from exc
+        active = db.scalar(
+            select(RepositoryScanJob)
+            .where(
+                RepositoryScanJob.service_id == service.id,
+                RepositoryScanJob.status.in_((JobStatus.queued, JobStatus.running)),
+            )
+            .order_by(RepositoryScanJob.id.desc())
+        )
+        detail = (
+            f"Scan job #{active.id} is already {active.status.value} for this service"
+            if active is not None
+            else "A scan is already queued or running for this service"
+        )
+        raise HTTPException(status_code=409, detail=detail) from exc
     db.refresh(job)
 
     background_tasks.add_task(run_scan_job, job.id)

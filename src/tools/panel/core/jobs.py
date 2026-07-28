@@ -4,6 +4,7 @@ terminal state and hand a successful result to ingest.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -26,21 +27,36 @@ def run_scan_job(job_id: int) -> None:
     then hands a successful result to ingest. A provider failure, an ingest
     failure, or any unexpected error transitions the Job to ``failed`` with the
     error recorded — the runner never leaves a Job stuck in ``running``. The
-    ``done`` transition and generation persistence belong to ingest (next task).
+    ``done`` transition and generation persistence belong to ingest
+    (issue #16, F14).
     """
     settings = load_settings()
     get_engine()  # ensure SessionLocal is bound
 
-    with SessionLocal() as session:
-        job = session.get(RepositoryScanJob, job_id)
-        if job is None:
-            logger.warning("run_scan_job: job %s no longer exists", job_id)
-            return
-        repo = job.service.repo
-        branch = job.service.branch
-        job.status = JobStatus.running
-        job.started_at = datetime.now(tz=timezone.utc)
-        session.commit()
+    try:
+        with SessionLocal() as session:
+            job = session.get(RepositoryScanJob, job_id)
+            if job is None:
+                logger.warning("run_scan_job: job %s no longer exists", job_id)
+                return
+            if job.status is not JobStatus.queued:
+                # Scheduled twice or already finalized: never scan the same
+                # job again.
+                logger.warning(
+                    "run_scan_job: job %s is %s, expected queued — skipping",
+                    job_id,
+                    job.status.value,
+                )
+                return
+            repo = job.service.repo
+            branch = job.service.branch
+            job.status = JobStatus.running
+            job.started_at = datetime.now(tz=timezone.utc)
+            session.commit()
+    except Exception as exc:  # a Job stuck in queued blocks the service forever
+        logger.exception("run_scan_job: could not mark job %s running", job_id)
+        _fail_job(job_id, error=f"could not start job: {exc}")
+        return
     # session closed -> no open transaction during provider work
 
     try:
@@ -86,13 +102,14 @@ def _fail_job(
 
 
 def _interruption_payload(result: RepositoryScanResult) -> dict[str, Any] | None:
-    """Structured RepositoryInterruption for the ``job.interruption`` JSONB column."""
+    """Structured RepositoryInterruption for the ``job.interruption`` JSONB column.
+
+    Serialized via ``dataclasses.asdict`` so a field added to
+    ``RepositoryInterruption`` later cannot be dropped silently.
+    """
     interruption = result.interruption
     if interruption is None:
         return None
-    return {
-        "kind": interruption.kind.value,
-        "repository": interruption.repository,
-        "message": interruption.message,
-        "reset_time": interruption.reset_time,
-    }
+    payload = dataclasses.asdict(interruption)
+    payload["kind"] = interruption.kind.value  # enum -> plain string for JSONB
+    return payload

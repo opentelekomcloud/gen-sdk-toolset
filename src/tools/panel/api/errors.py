@@ -15,6 +15,7 @@ def _envelope(code: str, message: str) -> dict:
 _STATUS_CODES = {
     400: "bad_request",
     404: "not_found",
+    409: "conflict",
     422: "validation_error",
     500: "internal_error",
 }

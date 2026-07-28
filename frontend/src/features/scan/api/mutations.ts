@@ -40,8 +40,9 @@ export function useRescan(name: string) {
       void qc.invalidateQueries({ queryKey: keys.services() });
     },
     onSuccess: (res) => {
-      /* TODO: useJob(res.job_id) polls to completion, then calls
-         invalidateGeneration(qc, name). Check polling policy. */
+      /* ScanJobWatcher (mounted by ServicePage, keyed by job_id) polls this
+         job via useJob and refreshes the panel on the terminal edge; here we
+         only record the job_id and refresh the list/summary views. */
       const cur = qc.getQueryData<ServiceDetail>(keys.service(name));
       if (cur?.scan_status === "scanning" && !cur.job_id) {
         qc.setQueryData<ServiceDetail>(keys.service(name), { ...cur, job_id: res.job_id });
