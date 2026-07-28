@@ -80,33 +80,39 @@ class ScannerService:
         return result
 
     def scan_repository(self, repo: str, branch: str = "main") -> RepositoryScanResult:
-        """Scan one repository and return per-document parse results."""
+        """Scan one repository and return per-document parse results.
+
+        Every operation past commit resolution — eligibility, file listing,
+        content fetches — reads at the resolved `commit_hash`, never at
+        `branch` directly, so the result always represents one immutable
+        repository snapshot. If the commit cannot be resolved, the scan
+        stops immediately with an error result instead of falling back to
+        the (mutable) branch name.
+        """
         logger.info("Scanning repo %s@%s", repo, branch)
         try:
             commit_hash = self.doc_provider.get_commit_hash(repo, branch)
         except ProviderError as e:
             # TODO(#70): let rate-limited ProviderError reach background-job
             # orchestration once durable retry state exists.
-            error = f"Could not resolve commit for {repo}@{branch}: {e}"
-            logger.error(error)
-            return RepositoryScanResult(
-                repository=Repository(repo=repo),
-                branch=branch,
-                error=error,
+            return self._unresolved_commit_result(repo, branch, str(e))
+
+        if commit_hash is None:
+            return self._unresolved_commit_result(
+                repo, branch, "commit SHA could not be resolved"
             )
 
-        ref = commit_hash or branch
         eligibility = check_repository_eligibility(
             self.doc_provider,
             repo=repo,
-            ref=ref,
+            ref=commit_hash,
             api_ref_path=self.api_ref_path,
         )
         if eligibility.interruption is not None:
             logger.error(
                 "Could not check eligibility for %s@%s: %s",
                 repo,
-                ref,
+                commit_hash,
                 eligibility.interruption.message,
             )
             return RepositoryScanResult(
@@ -117,23 +123,15 @@ class ScannerService:
             )
 
         if not eligibility.has_api_ref:
-            error = None
-            if commit_hash is None:
-                error = (
-                    f"Cannot confirm {repo}@{branch}: commit could not be resolved "
-                    f"and {self.api_ref_path} was not found"
-                )
-                logger.error(error)
             return RepositoryScanResult(
                 repository=Repository(repo=repo),
                 branch=branch,
                 commit_hash=commit_hash,
-                error=error,
             )
 
         try:
             included_paths, excluded_documents, incomplete_reason = (
-                self._list_and_filter_paths(repo, ref)
+                self._list_and_filter_paths(repo, commit_hash)
             )
         except ProviderError as e:
             logger.error("Failed to list files for %s: %s", repo, e)
@@ -146,7 +144,7 @@ class ScannerService:
 
         logger.debug("%s: %d candidate RST files", repo, len(included_paths))
 
-        doc_outcomes, error = self._scan_documents(repo, ref, included_paths)
+        doc_outcomes, error = self._scan_documents(repo, commit_hash, included_paths)
         if error:
             return RepositoryScanResult(
                 repository=Service(repo=repo),
@@ -165,10 +163,28 @@ class ScannerService:
             incomplete_reason=incomplete_reason,
         )
 
+    def _unresolved_commit_result(
+        self, repo: str, branch: str, reason: str
+    ) -> RepositoryScanResult:
+        """Build the error result for a repo whose commit could not be resolved.
+
+        Shared by the two ways `get_commit_hash` can fail to produce one: it
+        raises (an operational `ProviderError`), or it returns `None` (the ref
+        is confirmed not to exist). Both leave the scan with nothing safe to
+        read `repo` at, so both are reported the same way.
+        """
+        error = f"Could not resolve commit for {repo}@{branch}: {reason}"
+        logger.error(error)
+        return RepositoryScanResult(
+            repository=Repository(repo=repo),
+            branch=branch,
+            error=error,
+        )
+
     def _list_and_filter_paths(
-        self, repo: str, ref: str
+        self, repo: str, commit_hash: str
     ) -> tuple[list[str], list[str], str | None]:
-        listing = self.doc_provider.list_files(repo, ref)
+        listing = self.doc_provider.list_files(repo, commit_hash)
 
         incomplete_reason = None
         if listing.truncated:
@@ -201,12 +217,12 @@ class ScannerService:
         return included_paths, excluded_documents, incomplete_reason
 
     def _scan_documents(
-        self, repo: str, ref: str, included_paths: list[str]
+        self, repo: str, commit_hash: str, included_paths: list[str]
     ) -> tuple[list[Document], str | None]:
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             fetched_documents = list(
                 pool.map(
-                    lambda path: self._fetch_document(repo, path, ref),
+                    lambda path: self._fetch_document(repo, path, commit_hash),
                     included_paths,
                 )
             )
@@ -228,9 +244,11 @@ class ScannerService:
             )
         return doc_outcomes, None
 
-    def _fetch_document(self, repo: str, path: str, ref: str) -> _FetchedDocument:
+    def _fetch_document(
+        self, repo: str, path: str, commit_hash: str
+    ) -> _FetchedDocument:
         try:
-            content = self.doc_provider.fetch_content(repo, path, ref)
+            content = self.doc_provider.fetch_content(repo, path, commit_hash)
         except Exception as e:
             logger.warning("Fetch failed for %s/%s: %s", repo, path, e)
             return _FetchedDocument(path=path, error=str(e))

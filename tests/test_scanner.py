@@ -175,9 +175,10 @@ def test_scan_reads_tree_and_files_at_resolved_commit() -> None:
     assert refs and all(ref == "a" * 40 for ref in refs)
 
 
-def test_scan_falls_back_to_branch_when_commit_hash_unknown() -> None:
-    refs = _refs_used_by_scan(None)
-    assert refs and all(ref == "main" for ref in refs)
+def test_no_content_is_read_when_commit_hash_unresolved() -> None:
+    # An unresolvable commit stops the scan before any file listing or
+    # content fetch — there is no safe branch-name fallback to read at.
+    assert _refs_used_by_scan(None) == []
 
 
 # --------------------------------------------------------------------------- #
@@ -241,28 +242,10 @@ def test_scan_repository_returns_ineligible_without_scanning() -> None:
     ]
 
 
-def test_unresolved_commit_and_missing_path_is_not_normal_ineligible() -> None:
-    fake = FakeDocProvider(
-        repos={"o/missing": {}},
-        has_api_ref=set(),
-        commit_hash=None,
-    )
-
-    result = make_scanner(fake).scan_repository("o/missing", branch="bad-ref")
-
-    assert not isinstance(result.repository, Service)
-    assert result.commit_hash is None
-    assert result.error == (
-        "Cannot confirm o/missing@bad-ref: commit could not be resolved and "
-        "api-ref/source was not found"
-    )
-    assert fake.calls == [
-        "get_commit_hash:o/missing@bad-ref",
-        "path_exists:o/missing@bad-ref:api-ref/source",
-    ]
-
-
-def test_unresolved_commit_with_existing_path_scans_original_ref() -> None:
+def test_unresolved_commit_stops_before_eligibility_regardless_of_path() -> None:
+    """An unresolved commit is gating on its own: the scan must not fall back
+    to checking (or scanning) the plain branch name, even when the api-ref
+    path would in fact exist there."""
     path = "api-ref/source/x.rst"
     fake = FakeDocProvider(
         repos={"o/cce": {path: load_fixture("style_a_cce_grid.rst")}},
@@ -271,15 +254,12 @@ def test_unresolved_commit_with_existing_path_scans_original_ref() -> None:
 
     result = make_scanner(fake).scan_repository("o/cce", branch="develop")
 
-    assert isinstance(result.repository, Service)
+    assert not isinstance(result.repository, Service)
     assert result.commit_hash is None
-    assert result.repository.documents
-    assert fake.calls == [
-        "get_commit_hash:o/cce@develop",
-        "path_exists:o/cce@develop:api-ref/source",
-        "list_files:o/cce@develop",
-        f"fetch_content:o/cce@develop:{path}",
-    ]
+    assert result.error == (
+        "Could not resolve commit for o/cce@develop: commit SHA could not be resolved"
+    )
+    assert fake.calls == ["get_commit_hash:o/cce@develop"]
 
 
 def test_eligibility_error_stops_before_file_listing() -> None:
