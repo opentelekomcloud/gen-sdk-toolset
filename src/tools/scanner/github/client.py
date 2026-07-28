@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import logging
 
@@ -12,6 +14,29 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = 30
 # Max length of an error-response body we quote back in an exception message.
 _ERROR_BODY_MAX = 200
+# Cap on directory-listing calls the truncated-tree fallback walk (see
+# list_files) will make before giving up rather than risk exhausting the
+# rate-limit budget for the rest of an org-wide scan on one pathological repo.
+_MAX_WALK_REQUESTS = 300
+# The Contents API's own undocumented per-directory item cap. Unlike the
+# git-trees endpoint, a directory listing at or above this size carries no
+# explicit truncation signal - a directory this large is treated as itself
+# incomplete rather than trusted as the full listing.
+_CONTENTS_API_DIRECTORY_CAP = 1000
+
+
+class _IncompleteWalk(Exception):
+    """Internal signal: the directory-walk fallback could not guarantee a
+    complete listing (request budget exhausted, or a directory hit the
+    Contents API's own undocumented per-directory item cap).
+
+    Not a ProviderError - this is the walk's own bookkeeping, not an upstream
+    failure, so it must not be caught by callers that only expect ProviderError.
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
 
 
 class GitHubDocProvider(DocProvider):
@@ -63,48 +88,144 @@ class GitHubDocProvider(DocProvider):
         return True
 
     def list_files(self, repo: str, branch: str) -> FileListing:
+        """Return the RST file paths under `self.prefix` in `repo` at `branch`.
+
+        GitHub's recursive tree endpoint caps huge trees and reports
+        ``truncated: true`` instead of erroring. When that happens, this
+        falls back to walking `self.prefix` directory-by-directory via the
+        Contents API - scoped to that prefix rather than the whole repo,
+        since that is the only subtree the scanner cares about, and bounded
+        by `_MAX_WALK_REQUESTS` so one huge repo cannot exhaust the org
+        scan's rate-limit budget, and guards against the Contents API's own
+        undocumented per-directory item cap (`_CONTENTS_API_DIRECTORY_CAP`).
+        If the walk cannot finish within budget, or a directory is at or
+        above that cap, this reports `truncated=True` rather than a partial
+        listing - a listing that gave up partway is not a complete one
+        either.
+        """
         url = f"{self.api_url}/repos/{repo}/git/trees/{branch}"
         resp = self._get(
             url, repo=repo, resource=f"tree/{branch}", params={"recursive": "1"}
         )
 
         data = resp.json()
-        truncated = bool(data.get("truncated"))
-        if truncated:
-            logger.warning(
-                "Tree for %s@%s is truncated; some files may be missing",
-                repo,
-                branch,
-            )
-        paths = [
-            item["path"]
-            for item in data.get("tree", [])
-            if item.get("type") == "blob"
-            and item["path"].startswith(self.prefix)
-            and item["path"].endswith(".rst")
-        ]
-        return FileListing(
-            paths=paths,
-            truncated=truncated,
-            truncated_reason="GitHub git-tree response was truncated"
-            if truncated
-            else None,
+        if not bool(data.get("truncated")):
+            paths = [
+                item["path"]
+                for item in data.get("tree", [])
+                if item.get("type") == "blob"
+                and item["path"].startswith(self.prefix)
+                and item["path"].endswith(".rst")
+            ]
+            return FileListing(paths=paths)
+
+        logger.warning(
+            "Tree for %s@%s is truncated; falling back to a directory walk of %r",
+            repo,
+            branch,
+            self.prefix,
         )
+        try:
+            paths = self._walk_prefix(repo, branch)
+        except _IncompleteWalk as e:
+            logger.error("File listing for %s is still incomplete: %s", repo, e.reason)
+            return FileListing(truncated=True, truncated_reason=e.reason)
+        return FileListing(paths=paths)
+
+    def _walk_prefix(self, repo: str, branch: str) -> list[str]:
+        """Reconstruct the RST paths under `self.prefix` directory-by-directory.
+
+        Iterative rather than recursive, so an unusually deep doc tree can
+        never risk Python's recursion limit. Raises `_IncompleteWalk` if
+        `_MAX_WALK_REQUESTS` is exhausted, or a directory is at or above
+        `_CONTENTS_API_DIRECTORY_CAP`, before the walk completes. A genuine
+        `ProviderError` from any directory listing propagates uncaught,
+        exactly like the top-level tree call above.
+        """
+        paths: list[str] = []
+        stack = [self.prefix.rstrip("/")]
+        requests_made = 0
+        while stack:
+            directory = stack.pop()
+            if requests_made >= _MAX_WALK_REQUESTS:
+                raise _IncompleteWalk(
+                    f"directory walk of {self.prefix!r} exceeded "
+                    f"{_MAX_WALK_REQUESTS} requests without completing"
+                )
+            requests_made += 1
+            entries = self._list_directory(repo, branch, directory)
+            if len(entries) >= _CONTENTS_API_DIRECTORY_CAP:
+                raise _IncompleteWalk(
+                    f"directory {directory!r} returned {len(entries)} entries, "
+                    f"at or above the Contents API's own undocumented "
+                    f"per-directory cap (~{_CONTENTS_API_DIRECTORY_CAP}); "
+                    "the listing may be incomplete"
+                )
+            for entry in entries:
+                entry_type = entry.get("type")
+                if entry_type == "dir":
+                    stack.append(entry["path"])
+                elif entry["path"].endswith(".rst"):
+                    if entry_type != "file":
+                        logger.warning(
+                            "%s in %s has unexpected Contents API type %r;"
+                            " including it anyway",
+                            entry["path"],
+                            repo,
+                            entry_type,
+                        )
+                    paths.append(entry["path"])
+        return paths
+
+    def _list_directory(self, repo: str, branch: str, path: str) -> list[dict]:
+        """Return the immediate child entries of one directory."""
+        url = f"{self.api_url}/repos/{repo}/contents/{path}"
+        resp = self._get(url, repo=repo, resource=path, params={"ref": branch})
+        data = resp.json()
+        if not isinstance(data, list):
+            raise ProviderError(
+                f"Expected a directory listing at {path} in {repo}, "
+                f"got {type(data).__name__}",
+                kind=ProviderErrorKind.unexpected_response,
+                resource=path,
+            )
+        return data
 
     def fetch_content(self, repo: str, path: str, branch: str) -> str:
+        """Return the text content of `path`.
+
+        Files up to 1 MB come back inline as base64 JSON. Above that (up to
+        the Contents API's 100 MB ceiling), the API omits inline content and
+        this retries the same request with the raw media type, which returns
+        the file's bytes directly instead of a JSON envelope.
+        """
         url = f"{self.api_url}/repos/{repo}/contents/{path}"
         resp = self._get(url, repo=repo, resource=path, params={"ref": branch})
 
         payload = resp.json()
         encoding = payload.get("encoding")
-        if encoding != "base64":
-            raise ProviderError(
-                f"Unexpected content encoding {encoding!r} for {path} in {repo}"
-                " (file may exceed the contents-API 1 MB limit)",
-                kind=ProviderErrorKind.unexpected_response,
-                resource=path,
-            )
-        return base64.b64decode(payload.get("content", "")).decode("utf-8")
+        if encoding == "base64":
+            return base64.b64decode(payload.get("content", "")).decode("utf-8")
+
+        logger.info(
+            "Contents API omitted inline data for %s in %s (encoding=%r);"
+            " retrying with the raw media type",
+            path,
+            repo,
+            encoding,
+        )
+        raw_resp = self._get(
+            url,
+            repo=repo,
+            resource=path,
+            params={"ref": branch},
+            headers={"Accept": "application/vnd.github.raw+json"},
+        )
+        # A decode failure here is a bad document, not a transport failure -
+        # let it propagate bare, exactly like the base64 branch above, so
+        # ScannerService gates only this one document instead of failing
+        # the whole repository scan (see _fetch_document's except clauses).
+        return raw_resp.content.decode("utf-8")
 
     def get_commit_hash(self, repo: str, branch: str) -> str | None:
         """Head commit SHA of `branch`, or None if the ref can't be resolved.
