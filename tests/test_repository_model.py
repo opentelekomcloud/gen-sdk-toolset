@@ -87,7 +87,6 @@ def test_repository_scan_result_restores_nested_service() -> None:
         "commit_hash": "a" * 40,
         "scanner_version": __version__,
         "excluded_documents": [],
-        "incomplete_reason": None,
         "error": None,
         "interruption": None,
     }

@@ -140,14 +140,6 @@ export function GenerationSelector({ service, disabled, onActivate }: Props) {
                               {t("gen.activeBadge")}
                             </span>
                           )}
-                          {g.incomplete_reason && (
-                            <span
-                              title={g.incomplete_reason}
-                              className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-px text-[10px] font-medium text-amber-700"
-                            >
-                              {t("gen.incompleteBadge")}
-                            </span>
-                          )}
                         </div>
                         <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-gray-400">
                           <span>{fmtGenAt(g.created_at, locale)}</span>

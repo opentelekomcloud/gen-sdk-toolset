@@ -47,7 +47,7 @@ frontend read them.
 | `SectionStatus` | `scan/section.py` | `ok`, `partial`, `failed`, `missing`. |
 | `RepositoryInterruption` / `RepositoryInterruptionKind` | `scan/repository.py` | An operational reason the scan stopped: `rate_limit`, `authentication`, `permission_denied`, `repository_failure`. |
 
-Three fields describe three different kinds of "not clean", and they are not
+Two fields describe two different kinds of "not clean", and they are not
 interchangeable:
 
 - **`error`** — the repository-level scan failed (for example, listing files
@@ -55,11 +55,12 @@ interchangeable:
   document content). Mutually exclusive with `interruption`.
 - **`interruption`** — the scan stopped for an operational reason outside the
   documents themselves.
-- **`incomplete_reason`** — reserved for a scan that finishes on a truncated
-  input. Currently has no producer anywhere in the scanner: a truncated file
-  listing now fails the whole scan via `error` instead of continuing with a
-  partial result. Whether to remove this field or give it a new producer is
-  an open decision, not yet resolved.
+
+`incomplete_reason` (a soft "finished, but on a truncated input" marker) was
+removed from `RepositoryScanResult`, the `Generation` DB column, and the
+frontend generation badge: every scenario that used to set it (a truncated
+file listing) now fails the whole scan via `error` instead, so the field had
+no remaining producer anywhere in the scanner.
 
 The field counters on `SectionScanResult` must reconcile:
 `fields_recognized + fields_unknown_type + fields_failed == fields_total`.

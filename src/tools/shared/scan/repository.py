@@ -48,13 +48,8 @@ class RepositoryScanResult(BaseModel):
 
     excluded_documents: list[str] = Field(default_factory=list)
 
-    incomplete_reason: str | None = None
     error: str | None = None
     interruption: RepositoryInterruption | None = None
-
-    @property
-    def incomplete(self) -> bool:
-        return self.incomplete_reason is not None
 
     @property
     def failure_message(self) -> str | None:

@@ -124,7 +124,7 @@ to do damage while citing DRY.
 
 **YAGNI** - the anti-patterns section and the `simplify` agent's ladder. One
 caveat matters here: code that records data loss - an `Issue`, an
-`incomplete_reason`, a non-OK status - is never premature. That code is the
+`interruption`, a non-OK status - is never premature. That code is the
 product.
 
 **SRP** - why the parser package is split by concern: `table.py` walks table
@@ -205,8 +205,8 @@ Concrete patterns to avoid, all of which have appeared in generated code before:
 
 **Warning-only failure.** `logger.warning(...)` and then returning partial data
 with an OK status. The log line is invisible to every consumer downstream. If
-the result is incomplete, say so in the result: `incomplete_reason`,
-`interruption`, a non-OK `SectionStatus`, or an `Issue`.
+the result is incomplete, say so in the result: `error`, `interruption`, a
+non-OK `SectionStatus`, or an `Issue`.
 
 **Denominator escape.** An item that should count as failed gets moved into an
 excluded or not-applicable bucket instead. Quality metrics improve because

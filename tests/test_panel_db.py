@@ -434,7 +434,6 @@ def test_only_one_active_scan_job_per_service(db_session):
 
 def test_generation_interruption_and_exclusions_survive(db_session):
     _, job, generation = make_generation(db_session)
-    generation.incomplete_reason = "rate limited"
     generation.excluded_documents = ["api-ref/source/out-of-date_apis/old.rst"]
     job.interruption = {
         "kind": "rate_limit",

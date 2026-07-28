@@ -91,9 +91,9 @@ the number still looks plausible: a dropped document, a failure reclassified
 into an excluded bucket, a truncated listing returned with a clean status.
 
 So: **data may never disappear quietly.** Anything dropped, guessed, truncated
-or defaulted must leave a machine-readable trace — an `Issue`, an
-`incomplete_reason`, an `interruption`, or a non-OK status. A `logger.warning`
-followed by a clean return is not a trace.
+or defaulted must leave a machine-readable trace — an `Issue`, an `error`, an
+`interruption`, or a non-OK status. A `logger.warning` followed by a clean
+return is not a trace.
 
 ## Definition of Done
 
