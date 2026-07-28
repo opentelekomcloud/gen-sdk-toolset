@@ -47,16 +47,20 @@ frontend read them.
 | `SectionStatus` | `scan/section.py` | `ok`, `partial`, `failed`, `missing`. |
 | `RepositoryInterruption` / `RepositoryInterruptionKind` | `scan/repository.py` | An operational reason the scan stopped: `rate_limit`, `authentication`, `permission_denied`, `repository_failure`. |
 
-Three fields describe three different kinds of "not clean", and they are not
+Two fields describe two different kinds of "not clean", and they are not
 interchangeable:
 
 - **`error`** — the repository-level scan failed (for example, listing files
-  failed). Mutually exclusive with `interruption`.
+  failed, a truncated file listing, or a transport failure while fetching
+  document content). Mutually exclusive with `interruption`.
 - **`interruption`** — the scan stopped for an operational reason outside the
   documents themselves.
-- **`incomplete_reason`** — the scan finished, but on a truncated input. Set
-  when the provider reported a capped file listing. Its purpose is to stop a
-  partial scan from being read as a clean one.
+
+`incomplete_reason` (a soft "finished, but on a truncated input" marker) was
+removed from `RepositoryScanResult`, the `Generation` DB column, and the
+frontend generation badge: every scenario that used to set it (a truncated
+file listing) now fails the whole scan via `error` instead, so the field had
+no remaining producer anywhere in the scanner.
 
 The field counters on `SectionScanResult` must reconcile:
 `fields_recognized + fields_unknown_type + fields_failed == fields_total`.
@@ -115,7 +119,7 @@ racy.
 | **Style A / Style B** | Two documentation shapes found upstream. Style A is the Function / URI / Request / Response layout the parser supports. Style classification happens in the scanner *before* the parser runs, so the parser may assume Style A. |
 | **Eligible** | A repository that has the configured `api_ref_path` (`api-ref/source`) and therefore becomes a `Service`. |
 | **Excluded document** | A path skipped by configuration (`excluded_segments`, e.g. `out-of-date_apis`). Recorded in `excluded_documents` — skipping is a decision, so it is written down. |
-| **Truncated listing** | The provider returned a capped file tree. Surfaces as `FileListing.truncated` and becomes `incomplete_reason`. |
+| **Truncated listing** | The provider returned a capped file tree. Surfaces as `FileListing.truncated` and fails the repository scan (`error`) — a capped tree means the pinned snapshot was never read in full. |
 | **Repository context** | Shared definitions resolved across a repository's documents before parsing individual files, so cross-file references can be followed. |
 
 ## Parser-internal vocabulary

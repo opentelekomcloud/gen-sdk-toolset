@@ -17,7 +17,7 @@ type Doc = {
 };
 type Gen = {
   id: number; source_job_id: number; branch: string; commit_hash: string;
-  scanner_version: string; document_schema_version: string; incomplete_reason: string | null;
+  scanner_version: string; document_schema_version: string;
   documents_total: number; endpoints_total: number; non_endpoint_documents: number; issues_total: number;
   ok_count: number; partial_count: number; failed_count: number; unsupported_count: number;
   completeness: number | null; created_at: string;
@@ -80,7 +80,7 @@ const ACTIVE: Record<string, number> = {};
 let genId = 500;
 let jobId = 900;
 
-const mkGen = (name: string, s: MockService, at: string, ver: string, delta: { docs?: number; ok?: number; partial?: number; failed?: number; unsupported?: number; struct?: number; incomplete?: string | null } = {}): Gen => {
+const mkGen = (name: string, s: MockService, at: string, ver: string, delta: { docs?: number; ok?: number; partial?: number; failed?: number; unsupported?: number; struct?: number } = {}): Gen => {
   const ob = { ...(s.overall_breakdown as Record<string, number>) };
   const docs = (s.documents as number) + (delta.docs ?? 0);
   const ok = (ob.ok ?? 0) + (delta.ok ?? 0);
@@ -91,7 +91,7 @@ const mkGen = (name: string, s: MockService, at: string, ver: string, delta: { d
   const breakdown = { ...(ok && { ok }), ...(partial && { partial }), ...(failed && { failed }), ...(unsupported && { unsupported }) };
   return {
     id: ++genId, source_job_id: ++jobId, branch: "main", commit_hash: HASH(name + at),
-    scanner_version: ver, document_schema_version: SCHEMA_V, incomplete_reason: delta.incomplete ?? null,
+    scanner_version: ver, document_schema_version: SCHEMA_V,
     documents_total: docs, endpoints_total: docs, non_endpoint_documents: 0,
     issues_total: partial * 2 + failed * 3, ok_count: ok, partial_count: partial,
     failed_count: failed, unsupported_count: unsupported,
@@ -106,7 +106,7 @@ for (const s of SERVICES) {
   const history: Gen[] = [];
   /* older generations first so ids ascend, then reverse to newest-first */
   if (s.name === "customer-core")
-    history.push(mkGen(s.name, s, "2026-05-02T08:40:00Z", "3.0.2", { docs: -9, ok: -8, partial: -1, struct: -6, incomplete: "rate limited after 119 documents" }));
+    history.push(mkGen(s.name, s, "2026-05-02T08:40:00Z", "3.0.2", { docs: -9, ok: -8, partial: -1, struct: -6 }));
   if (["billing-api", "customer-core", "device-mgmt", "notifications-hub", "payments-gw"].includes(s.name))
     history.push(mkGen(s.name, s, "2026-06-18T14:20:00Z", "3.1.0", { docs: -3, ok: -4, partial: 1, struct: -4 }));
   history.push(mkGen(s.name, s, (s.scanned_at as string) ?? NOW, (s.scanner_version as string) ?? V));

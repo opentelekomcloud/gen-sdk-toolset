@@ -108,7 +108,6 @@ export const de: Record<keyof typeof en, string> = {
   "gen.loading": "Generationen werden geladen…",
   "gen.latestBadge": "neueste",
   "gen.activeBadge": "aktiv",
-  "gen.incompleteBadge": "unvollständig",
   "gen.docs": "{n} Dok|{n} Doks",
   "gen.scannerV": "Scanner v{v}",
   "gen.confirmTitle": "Gen {id} aktivieren — einen älteren Snapshot?",

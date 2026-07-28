@@ -11,8 +11,8 @@ class FileListing:
     Carries the file paths plus whether the listing was *complete*. GitHub's
     recursive tree endpoint silently caps huge trees (HTTP 200 with a partial
     list and ``"truncated": true``); a provider sets ``truncated`` so the
-    scanner can mark the repo result incomplete instead of scanning it as if
-    clean.
+    scanner can fail the repository scan instead of treating a partial
+    listing as the complete pinned snapshot.
     """
 
     paths: list[str] = field(default_factory=list)

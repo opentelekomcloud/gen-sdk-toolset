@@ -370,11 +370,6 @@ class Generation(Base):
         nullable=False,
     )
 
-    incomplete_reason: Mapped[str | None] = mapped_column(
-        sa.Text,
-        nullable=True,
-    )
-
     excluded_documents: Mapped[list[str]] = mapped_column(
         ARRAY(sa.Text),
         nullable=False,

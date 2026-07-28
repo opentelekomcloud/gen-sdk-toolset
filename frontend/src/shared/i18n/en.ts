@@ -106,7 +106,6 @@ export const en = {
   "gen.loading": "Loading generations…",
   "gen.latestBadge": "latest",
   "gen.activeBadge": "active",
-  "gen.incompleteBadge": "incomplete",
   "gen.docs": "{n} doc|{n} docs",
   "gen.scannerV": "scanner v{v}",
   "gen.confirmTitle": "Activate Gen {id} — an older snapshot?",

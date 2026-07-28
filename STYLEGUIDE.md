@@ -124,7 +124,7 @@ to do damage while citing DRY.
 
 **YAGNI** - the anti-patterns section and the `simplify` agent's ladder. One
 caveat matters here: code that records data loss - an `Issue`, an
-`incomplete_reason`, a non-OK status - is never premature. That code is the
+`interruption`, a non-OK status - is never premature. That code is the
 product.
 
 **SRP** - why the parser package is split by concern: `table.py` walks table
@@ -205,8 +205,8 @@ Concrete patterns to avoid, all of which have appeared in generated code before:
 
 **Warning-only failure.** `logger.warning(...)` and then returning partial data
 with an OK status. The log line is invisible to every consumer downstream. If
-the result is incomplete, say so in the result: `incomplete_reason`,
-`interruption`, a non-OK `SectionStatus`, or an `Issue`.
+the result is incomplete, say so in the result: `error`, `interruption`, a
+non-OK `SectionStatus`, or an `Issue`.
 
 **Denominator escape.** An item that should count as failed gets moved into an
 excluded or not-applicable bucket instead. Quality metrics improve because
@@ -235,9 +235,10 @@ reasonable.
 **Trusting the server.** "The page was shorter than the limit, so we are done" -
 servers cap limits, proxies strip query parameters. GitHub's recursive tree
 endpoint returns HTTP 200 with a partial list and `truncated: true`; that is why
-`FileListing` carries a flag and why `RepositoryScanResult` has
-`incomplete_reason`. Treat every listing as potentially truncated until the
-provider says otherwise.
+`FileListing` carries a flag, and why `scan_repository` fails the whole
+repository scan (`RepositoryScanResult.error`) rather than continuing with
+whatever partial listing came back. Treat every listing as potentially
+truncated until the provider says otherwise.
 
 **Extension paths skipping validation.** When an "already exists, just add to
 it" branch bypasses the recomputation the creation branch performs, the second

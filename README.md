@@ -150,9 +150,8 @@ embedded in the JSON — they are computed by the pure functions in
   - `branch`, `commit_hash`, and `scanner_version` identify the scan;
   - API-version counts are derived from `Service.endpoints`, not stored in a
     parallel `documents_by_version` structure;
-  - `incomplete_reason` — set when the provider returned a truncated file tree,
-    so a partial scan is never mistaken for a clean one
-  - `error` — repo-level failure (e.g. file listing failed)
+  - `error` — repo-level failure (e.g. file listing failed, or a truncated
+    file tree, so a partial scan is never mistaken for a clean one)
 
 - **Legacy org-level adapter** (`OrgScanResult`):
   - `report_schema_version`, `scanner_version`, `org`, `branch`,

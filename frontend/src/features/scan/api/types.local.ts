@@ -55,8 +55,6 @@ export interface Generation {
   commit_hash: string;
   scanner_version: string;
   document_schema_version: string;
-  /** Set when the scan finished but could not cover everything. */
-  incomplete_reason: string | null;
   documents_total: number;
   endpoints_total: number;
   non_endpoint_documents: number;

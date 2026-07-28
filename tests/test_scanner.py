@@ -495,6 +495,14 @@ For details about the **object** field, see :ref:`Shared <shared_fields>`.
 
 
 def test_fetch_failure_is_gating() -> None:
+    """A non-ProviderError fetch failure gates only this document.
+
+    ProviderError is different - see
+    test_scan_repository_fails_when_fetch_raises_provider_error - because it
+    means the transport itself is unreliable, not that this one document is
+    bad.
+    """
+
     class FailingProvider(FakeDocProvider):
         def fetch_content(self, repo: str, path: str, branch: str) -> str:
             raise RuntimeError("network down")
@@ -510,6 +518,63 @@ def test_fetch_failure_is_gating() -> None:
     assert doc.scan_result.failure_reason is not None
     assert doc.scan_result.failure_reason.code is IssueCode.FETCH_FAILED
     assert doc_overall_status(doc) == "failed"
+
+
+def test_scan_repository_fails_when_fetch_raises_provider_error() -> None:
+    """A transport failure while fetching content must fail the whole
+    repository scan rather than being reported as a per-document parse
+    problem: the pinned snapshot could not be read in full."""
+
+    class TransportFailingProvider(FakeDocProvider):
+        def fetch_content(self, repo: str, path: str, branch: str) -> str:
+            raise ProviderError(
+                "connection reset",
+                kind=ProviderErrorKind.connection_error,
+                resource=path,
+            )
+
+    fake = TransportFailingProvider(
+        repos={"o/svc": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
+    )
+
+    result = make_scanner(fake).scan_repository("o/svc")
+
+    assert isinstance(result.repository, Service)
+    assert result.repository.documents == []
+    assert (
+        result.error == "Failed to fetch document content for o/svc: connection reset"
+    )
+
+
+def test_fetch_provider_error_voids_the_whole_scan() -> None:
+    """One transport failure must void the whole snapshot, even when another
+    document in the same repository fetched cleanly - a partially-fetched
+    repo is not a documentation-quality result."""
+
+    class FlakyProvider(FakeDocProvider):
+        def fetch_content(self, repo: str, path: str, branch: str) -> str:
+            if path.endswith("bad.rst"):
+                raise ProviderError(
+                    "connection reset",
+                    kind=ProviderErrorKind.connection_error,
+                    resource=path,
+                )
+            return super().fetch_content(repo, path, branch)
+
+    fake = FlakyProvider(
+        repos={
+            "o/svc": {
+                "api-ref/source/good.rst": load_fixture("style_a_cce_grid.rst"),
+                "api-ref/source/bad.rst": "unused",
+            }
+        }
+    )
+
+    result = make_scanner(fake).scan_repository("o/svc")
+
+    assert isinstance(result.repository, Service)
+    assert result.repository.documents == []
+    assert result.error is not None
 
 
 def test_parser_crash_is_parser_error() -> None:
@@ -608,9 +673,12 @@ def test_excluded_segments_not_shared() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Truncated tree → incomplete repo
+# Truncated tree → failed repo
 # --------------------------------------------------------------------------- #
-def test_truncated_tree_marks_repo_incomplete() -> None:
+def test_truncated_tree_fails_the_scan() -> None:
+    """A capped file tree means the scanner never saw the complete pinned
+    snapshot, so the whole repo scan must fail rather than silently continue
+    with whatever GitHub happened to return."""
     fake = FakeDocProvider(
         repos={"o/svc": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
         truncated={"o/svc"},
@@ -618,9 +686,30 @@ def test_truncated_tree_marks_repo_incomplete() -> None:
     scanner = make_scanner(fake)
     result = scanner.scan_organization(org="o")
     repo = result.repos[0]
-    assert repo.incomplete is True
-    assert repo.incomplete_reason
-    assert "incomplete" not in repo.model_dump(mode="json")
+    assert isinstance(repo.repository, Service)
+    assert repo.repository.documents == []
+    assert repo.error
+    assert not any(call.startswith("fetch_content:") for call in fake.calls)
+
+
+def test_scan_repository_fails_when_tree_is_truncated() -> None:
+    sha = "a" * 40
+    fake = FakeDocProvider(
+        repos={"o/svc": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
+        truncated={"o/svc"},
+        commit_hash=sha,
+    )
+
+    result = make_scanner(fake).scan_repository("o/svc")
+
+    assert isinstance(result.repository, Service)
+    assert result.repository.documents == []
+    assert result.error
+    assert fake.calls == [
+        "get_commit_hash:o/svc@main",
+        f"path_exists:o/svc@{sha}:api-ref/source",
+        f"list_files:o/svc@{sha}",
+    ]
 
 
 # --------------------------------------------------------------------------- #

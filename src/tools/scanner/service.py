@@ -130,29 +130,32 @@ class ScannerService:
             )
 
         try:
-            included_paths, excluded_documents, incomplete_reason = (
-                self._list_and_filter_paths(repo, commit_hash)
-            )
+            listing = self.doc_provider.list_files(repo, commit_hash)
         except ProviderError as e:
+            # TODO(#70): same rate-limit-to-background-job gap as above.
             logger.error("Failed to list files for %s: %s", repo, e)
-            return RepositoryScanResult(
-                repository=Service(repo=repo),
-                branch=branch,
-                commit_hash=commit_hash,
-                error=str(e),
-            )
+            return self._failed_service_result(repo, branch, commit_hash, str(e))
 
+        if listing.truncated:
+            # A capped tree means we never saw the complete pinned snapshot,
+            # so this is a failed scan, not a partial-but-clean one.
+            error = listing.truncated_reason or "file tree truncated by provider"
+            logger.error("File listing for %s is incomplete: %s", repo, error)
+            return self._failed_service_result(repo, branch, commit_hash, error)
+
+        included_paths, excluded_documents = self._list_and_filter_paths(
+            repo, listing.paths
+        )
         logger.debug("%s: %d candidate RST files", repo, len(included_paths))
 
         doc_outcomes, error = self._scan_documents(repo, commit_hash, included_paths)
         if error:
-            return RepositoryScanResult(
-                repository=Service(repo=repo),
-                branch=branch,
-                commit_hash=commit_hash,
+            return self._failed_service_result(
+                repo,
+                branch,
+                commit_hash,
+                error,
                 excluded_documents=excluded_documents,
-                incomplete_reason=incomplete_reason,
-                error=error,
             )
 
         return RepositoryScanResult(
@@ -160,7 +163,6 @@ class ScannerService:
             branch=branch,
             commit_hash=commit_hash,
             excluded_documents=excluded_documents,
-            incomplete_reason=incomplete_reason,
         )
 
     def _unresolved_commit_result(
@@ -181,23 +183,44 @@ class ScannerService:
             error=error,
         )
 
+    def _failed_service_result(
+        self,
+        repo: str,
+        branch: str,
+        commit_hash: str,
+        error: str,
+        *,
+        excluded_documents: list[str] | None = None,
+    ) -> RepositoryScanResult:
+        """Build the error result for a repo confirmed eligible but not fully read.
+
+        Shared by every failure after eligibility is confirmed: listing
+        failed, the tree was truncated, or fetching/parsing the documents
+        failed. `repository` stays a documentless `Service` - the repo does
+        have an `api-ref` path, the scan just could not read it completely.
+        """
+        return RepositoryScanResult(
+            repository=Service(repo=repo),
+            branch=branch,
+            commit_hash=commit_hash,
+            excluded_documents=excluded_documents or [],
+            error=error,
+        )
+
     def _list_and_filter_paths(
-        self, repo: str, commit_hash: str
-    ) -> tuple[list[str], list[str], str | None]:
-        listing = self.doc_provider.list_files(repo, commit_hash)
+        self, repo: str, paths: list[str]
+    ) -> tuple[list[str], list[str]]:
+        """Deduplicate a file listing and split it into included/excluded paths.
 
-        incomplete_reason = None
-        if listing.truncated:
-            incomplete_reason = (
-                listing.truncated_reason or "file tree truncated by provider"
-            )
-            logger.warning("File listing for %s is incomplete (truncated)", repo)
-
-        unique_paths = list(dict.fromkeys(listing.paths))
-        if len(unique_paths) != len(listing.paths):
+        Takes an already-fetched path list rather than calling `list_files`
+        itself, so the caller can reject a truncated listing before any path
+        here is treated as the complete set.
+        """
+        unique_paths = list(dict.fromkeys(paths))
+        if len(unique_paths) != len(paths):
             logger.warning(
                 "Ignored %d duplicate path(s) returned for %s",
-                len(listing.paths) - len(unique_paths),
+                len(paths) - len(unique_paths),
                 repo,
             )
 
@@ -214,18 +237,26 @@ class ScannerService:
                 sorted(self.excluded_segments),
             )
 
-        return included_paths, excluded_documents, incomplete_reason
+        return included_paths, excluded_documents
 
     def _scan_documents(
         self, repo: str, commit_hash: str, included_paths: list[str]
     ) -> tuple[list[Document], str | None]:
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
-            fetched_documents = list(
-                pool.map(
-                    lambda path: self._fetch_document(repo, path, commit_hash),
-                    included_paths,
+            try:
+                fetched_documents = list(
+                    pool.map(
+                        lambda path: self._fetch_document(repo, path, commit_hash),
+                        included_paths,
+                    )
                 )
-            )
+            except ProviderError as e:
+                # TODO(#70): same rate-limit-to-background-job gap as in
+                # scan_repository - this is the call site most likely to
+                # actually trip one, since it fetches concurrently per file.
+                error = f"Failed to fetch document content for {repo}: {e}"
+                logger.error(error)
+                return [], error
             try:
                 parser_context = self._build_parser_context(fetched_documents)
             except Exception as e:
@@ -249,6 +280,11 @@ class ScannerService:
     ) -> _FetchedDocument:
         try:
             content = self.doc_provider.fetch_content(repo, path, commit_hash)
+        except ProviderError:
+            # A transport failure means the pinned snapshot could not be read
+            # in full, not that this one document is bad - propagate it so
+            # _scan_documents fails the whole repository scan.
+            raise
         except Exception as e:
             logger.warning("Fetch failed for %s/%s: %s", repo, path, e)
             return _FetchedDocument(path=path, error=str(e))

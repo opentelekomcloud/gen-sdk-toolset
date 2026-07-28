@@ -38,9 +38,9 @@ These stay, no matter how much smaller the code would be without them:
 
 - Validation at a trust boundary - anything reading upstream documents, HTTP
   responses or user input.
-- Anything that records data loss: an `Issue`, an `incomplete_reason`, an
-  `interruption`, a non-OK status. This codebase's core rule is that data may
-  not disappear quietly, and the code that upholds it is not overhead.
+- Anything that records data loss: an `Issue`, an `error`, an `interruption`,
+  a non-OK status. This codebase's core rule is that data may not disappear
+  quietly, and the code that upholds it is not overhead.
 - Error handling that converts an exception into a recorded diagnostic.
 - Constraints, validators and unique indexes.
 - Anything with a live consumer, including a test.
