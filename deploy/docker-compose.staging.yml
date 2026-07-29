@@ -1,5 +1,10 @@
-# Deployment stack for the scan panel: Caddy (auth + TLS + static bundle),
-# the FastAPI backend, and PostgreSQL seeded from a dump of a local run.
+# Staging stack for the scan panel: Caddy (auth + TLS + static bundle), the
+# FastAPI backend, and PostgreSQL seeded from a dump of a local run.
+#
+# Staging, not production: one host, one shared password, no backups, no
+# migration story for a live database, and the data is a copy of somebody's
+# laptop. Production is expected to be a Kubernetes deployment, where the
+# ingress takes over what Caddy does here.
 #
 # Differences from the development compose, and why:
 #   * the frontend is a built bundle served by Caddy, not the Vite dev server;

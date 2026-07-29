@@ -1,8 +1,8 @@
-# Deploying the scan panel
+# Staging the scan panel
 
-A single ECS host with Docker: Caddy terminates TLS and asks for a password,
-the FastAPI backend serves `/api`, PostgreSQL arrives with the data from a
-local scan run. Nothing but Caddy is published.
+A single host with Docker: Caddy terminates TLS and asks for a password, the
+FastAPI backend serves `/api`, PostgreSQL arrives with the data from a local
+scan run. Nothing but Caddy is published.
 
 ## What the host needs
 
@@ -51,14 +51,14 @@ docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'
 `GITHUB_TOKEN` is deliberately not set. Reading the panel does not need it; a
 scan launched on this host would spend the quota of whatever token lives here,
 so scanning stays a laptop activity unless you decide otherwise (uncomment the
-line in `docker-compose.prod.yml`).
+line in `docker-compose.staging.yml`).
 
 ## 3. Start
 
 ```bash
 cd ~/gen_sdk_tooling/deploy
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml logs -f web
+docker compose -f docker-compose.staging.yml up -d --build
+docker compose -f docker-compose.staging.yml logs -f web
 ```
 
 The first start builds the frontend bundle and restores the dump; give it a few
@@ -86,10 +86,10 @@ job, as any other failure would be.
 ## Updating the data later
 
 ```bash
-docker compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.staging.yml down
 docker volume rm deploy_pgdata
 # put a fresh panel.sql.gz into deploy/seed/
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.staging.yml up -d --build
 ```
 
 ## What this deployment is not

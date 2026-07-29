@@ -1,4 +1,4 @@
-# Production frontend: a static bundle, not the dev server.
+# Frontend for a deployed panel: a static bundle, not the dev server.
 #
 # The compose stack runs Vite in dev mode with the sources mounted, which is
 # right for a laptop and wrong for anything reachable from the internet: it
