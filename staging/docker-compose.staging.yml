@@ -59,7 +59,7 @@ services:
   web:
     build:
       context: ../frontend
-      dockerfile: ../deploy/Dockerfile.frontend
+      dockerfile: ../staging/Dockerfile.frontend
     ports:
       # Published ports are configurable so the same stack can run on a laptop
       # (behind an ngrok tunnel, on 8080) and on the host that owns 80/443.
