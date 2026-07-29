@@ -764,3 +764,23 @@ def test_unlabelled_block_is_reported_rather_than_taken_as_an_example(
         IssueCode.UNMAPPED_BLOCK
     ]
     assert all("DELETE /api/v3" not in block.raw for block in example.examples)
+
+
+def test_code_block_inside_a_description_cell_is_not_an_unread_example(
+    parser: DocutilsParser, cce_inline_examples_doc: str
+) -> None:
+    """A description cell routinely holds a script, a pattern or a sample value.
+    Its text is already extracted as part of the parameter, so reporting it as
+    an unread block would invent a diagnostic about content we did read - and
+    would push the example section into `failed` for no reason."""
+    doc = parser.parse(cce_inline_examples_doc, "deleting_a_node.rst")
+    sections = {section.name.value: section for section in doc.sections}
+
+    request_example = sections["example_request"].scan_result
+    assert request_example.status is SectionStatus.MISSING
+    assert request_example.issues == []
+
+    # The block itself did reach the parameter it describes.
+    body = sections["body"]
+    user_data = next(p for p in body.parameters if p.name == "user_data")
+    assert "#!/bin/bash" in user_data.description

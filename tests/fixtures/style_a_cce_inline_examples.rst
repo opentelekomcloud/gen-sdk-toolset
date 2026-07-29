@@ -37,6 +37,17 @@ Request
    Content-Type  Yes        Message body type.
    ============  =========  ==================
 
+.. table:: **Table 2b** Parameters in the request body
+
+   +-----------+-----------+--------------------------------+
+   | Parameter | Mandatory | Description                    |
+   +===========+===========+================================+
+   | user_data | No        | Script injected at boot::      |
+   |           |           |                                |
+   |           |           |    #!/bin/bash                 |
+   |           |           |    echo hello >> /tmp/out      |
+   +-----------+-----------+--------------------------------+
+
 **Example request**:
 
 N/A

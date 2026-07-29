@@ -77,6 +77,24 @@ def labelled_example_owner(
     return None
 
 
+def inside_table(node: nodes.Element) -> bool:
+    """True when this node sits inside a parameter table.
+
+    A description cell routinely holds a literal block - an injected script, a
+    pattern, a sample value. Its text is already extracted as part of the
+    parameter, so the block is neither an example nor unread; treating it as
+    either invents a diagnostic about content we did read.
+
+    :param node: The node to place.
+    """
+    parent = node.parent
+    while parent is not None:
+        if isinstance(parent, nodes.table):
+            return True
+        parent = parent.parent
+    return False
+
+
 def process_inline_examples(
     section_node: nodes.section,
     sections: dict[SectionName, Section],
@@ -85,12 +103,16 @@ def process_inline_examples(
 
     The returned blocks are the ones nothing consumed - the caller reports them
     so that "we did not read this" never passes for "there was nothing here".
+    Blocks inside a parameter table are not among them: the table already
+    consumed their text.
 
     :param section_node: A request or response section node.
     :param sections: The sections collected so far, extended in place.
     """
     leftover: list[nodes.literal_block] = []
     for block in section_node.findall(nodes.literal_block):
+        if inside_table(block):
+            continue
         placed = labelled_example_owner(block)
         if placed is None:
             leftover.append(block)
