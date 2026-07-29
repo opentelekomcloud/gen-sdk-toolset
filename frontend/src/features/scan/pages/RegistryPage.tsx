@@ -9,6 +9,7 @@ import { SectionStrip } from "../components/SectionStrip";
 import { StatusPill } from "../components/StatusPill";
 import { OverallBar } from "../components/OverallBar";
 import { ExcludedSection } from "../excluded/ExcludedSection";
+import { shortError } from "../lib/errors";
 import { chipCls, structOkCls } from "../styles";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
 
@@ -37,22 +38,29 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
     >
       <div className="col-span-3 flex items-center gap-1.5 overflow-hidden">
         <ChevronRight size={14} className="shrink-0 text-gray-400" />
-        <span className="truncate font-mono text-sm text-gray-800">{item.name}</span>
+        <span className="truncate font-mono text-sm text-gray-800">{item.label}</span>
       </div>
       <div className="col-span-2">
-        <StatusPill kind={item.scan_status} by={item.initiated_by ?? undefined} />
+        <StatusPill kind={item.scan_status} />
       </div>
-      <div className="col-span-3">
+      <div className="col-span-3 min-w-0">
         {item.documents ? (
           <div className="space-y-1">
             <div className="font-mono text-xs tabular-nums text-gray-600">
-              {t("registry.docs", { n: item.documents })} · <span className={structOkCls(item.struct_ok)}>{item.struct_ok}%</span>
+              {item.read_in_full != null && item.read_in_full !== item.documents
+                ? t("registry.docsOf", { n: item.read_in_full, total: item.documents })
+                : t("registry.docs", { n: item.documents })} · <span className={structOkCls(item.docs_ok)} title={item.unread_documents ? t("registry.docsOkBound", { n: item.unread_documents }) : undefined}>
+                {item.unread_documents ? "≤" : ""}{item.docs_ok}%
+              </span>
               {outdated && <span className="text-gray-400"> · v{item.scanner_version}</span>}
             </div>
-            <OverallBar overall={item.overall_breakdown} docs={item.documents} />
+            <OverallBar overall={item.overall_breakdown} docs={item.documents} unread={item.unread_breakdown} />
           </div>
         ) : item.scan_status === "failed" ? (
-          <span className="truncate text-xs text-red-600">{item.error}</span>
+          /* Full text stays reachable on hover and on the service page. */
+          <span className="block truncate text-xs text-red-600" title={item.error ?? undefined}>
+            {item.error ? shortError(item.error) : ""}
+          </span>
         ) : item.scan_status === "scanning" ? (
           <span className="text-xs text-blue-600">{t("registry.scanning")}</span>
         ) : (
@@ -132,7 +140,7 @@ export function RegistryPage() {
       <div className="mx-auto max-w-6xl px-6 py-5">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {CHIPS.map(([k, labelKey]) => (
-            <button key={k} onClick={() => setParam("status", k, true)} className={chipCls(params.status === k && !params.rule)}>
+            <button type="button" key={k} onClick={() => setParam("status", k, true)} className={chipCls(params.status === k && !params.rule)}>
               {t(labelKey)} <span className="font-mono tabular-nums opacity-70">{data?.counts[k] ?? 0}</span>
             </button>
           ))}

@@ -4,6 +4,251 @@
  */
 
 export interface paths {
+    "/api/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Job
+         * @description Return one Job's state for frontend polling.
+         */
+        get: operations["get_job_api_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Attention
+         * @description Reasons the panel wants attention, with the number of services behind each.
+         *
+         *     The predicates are independent, unlike ``rescan_reason``: a service whose
+         *     documents are partial *and* whose scanner is outdated is counted under both
+         *     rules, because hiding one behind the other would understate the work.
+         */
+        get: operations["get_attention_api_scan_attention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/excluded": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Excluded
+         * @description Services deliberately kept out of scanning.
+         */
+        get: operations["list_excluded_api_scan_excluded_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Services
+         * @description The registry table: filtered rows plus the count behind every chip.
+         *
+         *     ``counts`` is computed with the search applied but the status filter
+         *     ignored, so the chips keep showing where the rest of the matches went.
+         */
+        get: operations["list_services_api_scan_services_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/services/{repo}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Service
+         * @description Everything the service page shows about one service.
+         */
+        get: operations["get_service_api_scan_services__repo__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/services/{repo}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Documents
+         * @description One page of the active generation's API documents.
+         *
+         *     Pages that carry no scan status are not API documents; they are counted in
+         *     the service detail's ``non_endpoint_documents`` instead of being listed here
+         *     under a status they never had.
+         *
+         *     ``section`` and ``section_status`` together answer "which documents have a
+         *     failed body": both are required for the filter to apply, because either one
+         *     alone would silently mean something else. ``issue`` answers the same
+         *     question for a diagnostic code, and ``api_version`` narrows to one version
+         *     of the API (``unversioned`` for the documents that name none).
+         */
+        get: operations["list_documents_api_scan_services__repo__documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/services/{repo}/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Document
+         * @description One document of the active generation, with its sections and parameters.
+         */
+        get: operations["get_document_api_scan_services__repo__documents__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/services/{repo}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Generation
+         * @description The active generation as a ``RepositoryScanResult`` - the scanner's own
+         *     contract, not a shape invented for this endpoint.
+         *
+         *     Rebuilt from the stored payloads and validated on the way out: if anything
+         *     in the database no longer satisfies the contract, this fails loudly instead
+         *     of handing out a file that only looks right.
+         */
+        get: operations["export_generation_api_scan_services__repo__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/services/{repo}/generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Generations
+         * @description A service's scan history, newest first.
+         */
+        get: operations["list_generations_api_scan_services__repo__generations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/services/{repo}/rescan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Scan
+         * @description Queue a scan Job for an existing Service and schedule it in the background.
+         *
+         *     The Job is created ``queued`` and committed before scheduling; the Job ID is
+         *     returned immediately without waiting for the scan.
+         */
+        post: operations["start_scan_api_scan_services__repo__rescan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Summary
+         * @description Panel-wide counters for the header strip.
+         */
+        get: operations["get_summary_api_scan_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -25,10 +270,479 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AttentionRule
+         * @description One reason the panel is asking for attention, with how many services hit it.
+         */
+        AttentionRule: {
+            /** Code */
+            code: string;
+            /** Count */
+            count: number;
+            /** Label */
+            label: string;
+            /** Panel */
+            panel: string;
+        };
+        /**
+         * DocumentDetailResponse
+         * @description The document drill-down: sections, parameters and diagnostics.
+         */
+        DocumentDetailResponse: {
+            /** Api Version */
+            api_version: string | null;
+            /** Failure Reason */
+            failure_reason: string | null;
+            /** Id */
+            id: number;
+            /** Method */
+            method: string | null;
+            /** Overall Status */
+            overall_status: string | null;
+            /** Sections */
+            sections: components["schemas"]["SectionDetail"][];
+            /** Source Url */
+            source_url: string;
+            /** Title */
+            title: string | null;
+            /** Uri */
+            uri: string | null;
+        };
+        /**
+         * DocumentListItem
+         * @description One row of the documents block.
+         */
+        DocumentListItem: {
+            /** Id */
+            id: number;
+            /** Issues */
+            issues: components["schemas"]["IssueCount"][];
+            /** Method */
+            method: string | null;
+            /** Overall Status */
+            overall_status: string;
+            /** Path */
+            path: string;
+            /** Title */
+            title: string | null;
+            /** Uri */
+            uri: string | null;
+        };
+        /**
+         * DocumentsResponse
+         * @description One page of a generation's documents, with the counts behind the chips.
+         */
+        DocumentsResponse: {
+            /** Doc Counts */
+            doc_counts: {
+                [key: string]: number;
+            };
+            /** Items */
+            items: components["schemas"]["DocumentListItem"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+            /** Version Counts */
+            version_counts: {
+                [key: string]: number;
+            };
+        };
+        /**
+         * ExampleResponse
+         * @description One request or response example, as written in the documentation.
+         *
+         *     ``raw`` is the source text, shown verbatim: the point of an example is to
+         *     compare it against what the parser made of it. Whether it was valid JSON is
+         *     deliberately absent - not every example is JSON (a request line is a
+         *     legitimate example), and the scanner already reports the real defect as an
+         *     ``example_invalid_json`` issue on the section.
+         */
+        ExampleResponse: {
+            /** Label */
+            label: string | null;
+            /** Language */
+            language: string | null;
+            /** Raw */
+            raw: string;
+        };
+        /**
+         * ExcludedServiceResponse
+         * @description One deliberately excluded service.
+         */
+        ExcludedServiceResponse: {
+            /**
+             * Excluded At
+             * Format: date-time
+             */
+            excluded_at: string;
+            /** Excluded By */
+            excluded_by: string;
+            /** Name */
+            name: string;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * GenerationResponse
+         * @description One persisted scan snapshot (the `generation` row).
+         */
+        GenerationResponse: {
+            /** Branch */
+            branch: string;
+            /** Commit Hash */
+            commit_hash: string;
+            /** Completeness */
+            completeness: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Docs Ok */
+            docs_ok: number | null;
+            /** Document Schema Version */
+            document_schema_version: string;
+            /** Documents Total */
+            documents_total: number;
+            /** Endpoints Total */
+            endpoints_total: number;
+            /** Failed Count */
+            failed_count: number;
+            /** Id */
+            id: number;
+            /** Issues Total */
+            issues_total: number;
+            /** Non Endpoint Documents */
+            non_endpoint_documents: number;
+            /** Ok Count */
+            ok_count: number;
+            /** Parser Ok */
+            parser_ok: number | null;
+            /** Partial Count */
+            partial_count: number;
+            /** Scanner Version */
+            scanner_version: string;
+            /** Source Job Id */
+            source_job_id: number;
+            /** Unsupported Count */
+            unsupported_count: number;
+        };
+        /**
+         * GenerationsResponse
+         * @description A service's generation history, newest first.
+         */
+        GenerationsResponse: {
+            /** Active Id */
+            active_id: number | null;
+            /** Items */
+            items: components["schemas"]["GenerationResponse"][];
+            /** Latest Id */
+            latest_id: number | null;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Status */
             status: string;
+        };
+        /**
+         * IssueCount
+         * @description One issue code and how often it occurred.
+         */
+        IssueCount: {
+            /** Code */
+            code: string;
+            /** Count */
+            count: number;
+        };
+        /**
+         * JobKind
+         * @enum {string}
+         */
+        JobKind: "scan" | "generate" | "maintain";
+        /**
+         * JobResponse
+         * @description Job view for frontend polling (GET /api/jobs/{id}).
+         */
+        JobResponse: {
+            /** Commit Hash */
+            commit_hash: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: number;
+            kind: components["schemas"]["JobKind"];
+            /** Repository */
+            repository: string;
+            /** Scanner Version */
+            scanner_version: string | null;
+            /** Service Id */
+            service_id: number;
+            /** Started At */
+            started_at: string | null;
+            status: components["schemas"]["JobStatus"];
+        };
+        /**
+         * JobStatus
+         * @enum {string}
+         */
+        JobStatus: "queued" | "running" | "done" | "failed";
+        /**
+         * ParameterResponse
+         * @description One parameter row, nested exactly as the scan recorded it.
+         */
+        ParameterResponse: {
+            /** Children */
+            children?: components["schemas"]["ParameterResponse"][] | null;
+            /** Description */
+            description: string;
+            /** Mandatory */
+            mandatory: boolean;
+            /** Name */
+            name: string;
+            /** Param Type */
+            param_type: string;
+        };
+        /**
+         * RescanReason
+         * @description Why the panel suggests rescanning, in priority order.
+         *
+         *     Documents that came out partial are deliberately not a reason: the same
+         *     commit scanned by the same scanner produces the same result, so offering a
+         *     rescan would promise a change that cannot happen. Partial documents are a
+         *     documentation problem, and the panel reports them as one.
+         * @enum {string}
+         */
+        RescanReason: "retry" | "version" | "drift";
+        /**
+         * ScanRequest
+         * @description Body for launching a scan: who initiated it.
+         */
+        ScanRequest: {
+            /** Initiated By */
+            initiated_by: string;
+        };
+        /**
+         * ScanStatus
+         * @description How completely the panel managed to read a service.
+         *
+         *     This is a statement about the scan, not about the documentation. A document
+         *     full of malformed tables that we nevertheless read end to end leaves the
+         *     service ``scanned``; its quality is reported separately as the clean-document
+         *     share. ``partial`` means something stayed unread: a document we could not
+         *     interpret at all, or parameter rows we could not recognize.
+         * @enum {string}
+         */
+        ScanStatus: "scanned" | "partial" | "failed" | "not_scanned" | "scanning";
+        /**
+         * SectionDetail
+         * @description One endpoint section as the drill-down renders it.
+         */
+        SectionDetail: {
+            /** Examples */
+            examples: components["schemas"]["ExampleResponse"][];
+            /** Fields Recognized */
+            fields_recognized: number;
+            /** Fields Total */
+            fields_total: number;
+            /** Fields Unknown Type */
+            fields_unknown_type: number;
+            /** Issues */
+            issues: {
+                [key: string]: string | null;
+            }[];
+            /** Name */
+            name: string;
+            /** Parameters */
+            parameters: components["schemas"]["ParameterResponse"][] | null;
+            /** Status */
+            status: string;
+        };
+        /**
+         * ServiceDetailResponse
+         * @description The service page: the registry row plus what only the detail view shows.
+         */
+        ServiceDetailResponse: {
+            active_generation: components["schemas"]["GenerationResponse"] | null;
+            /** Docs Changed */
+            docs_changed: boolean;
+            /** Docs Ok */
+            docs_ok: number | null;
+            /** Documents */
+            documents: number | null;
+            /** Error */
+            error: string | null;
+            /** Error At */
+            error_at: string | null;
+            /** Head Commit */
+            head_commit: string | null;
+            /** Initiated By */
+            initiated_by?: string | null;
+            /** Interruption */
+            interruption: {
+                [key: string]: unknown;
+            } | null;
+            /** Job Id */
+            job_id?: number | null;
+            /** Label */
+            label: string;
+            latest_generation: components["schemas"]["GenerationResponse"] | null;
+            /** Name */
+            name: string;
+            /** Non Endpoint Documents */
+            non_endpoint_documents: number;
+            /** Overall Breakdown */
+            overall_breakdown: {
+                [key: string]: number;
+            };
+            /** Read In Full */
+            read_in_full: number | null;
+            rescan_reason: components["schemas"]["RescanReason"] | null;
+            /** Rows Unrecognized */
+            rows_unrecognized: number;
+            scan_status: components["schemas"]["ScanStatus"];
+            /** Scanned At */
+            scanned_at: string | null;
+            /** Scanner Version */
+            scanner_version: string | null;
+            /** Section Rollup */
+            section_rollup: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /** Started At */
+            started_at?: string | null;
+            /** Top Issues */
+            top_issues: components["schemas"]["IssueCount"][];
+            /** Unread Breakdown */
+            unread_breakdown: {
+                [key: string]: number;
+            };
+            /** Unread Documents */
+            unread_documents: number;
+        };
+        /**
+         * ServiceListItem
+         * @description One row of the registry, served from the service's active Generation.
+         *
+         *     ``documents`` counts the documents that have a scan status, so it always
+         *     equals the sum of ``overall_breakdown``. Pages that are not API documents
+         *     are counted separately (see ``ServiceDetailResponse.non_endpoint_documents``)
+         *     rather than folded into a status they do not have.
+         */
+        ServiceListItem: {
+            /** Docs Changed */
+            docs_changed: boolean;
+            /** Docs Ok */
+            docs_ok: number | null;
+            /** Documents */
+            documents: number | null;
+            /** Error */
+            error: string | null;
+            /** Error At */
+            error_at: string | null;
+            /** Initiated By */
+            initiated_by?: string | null;
+            /** Job Id */
+            job_id?: number | null;
+            /** Label */
+            label: string;
+            /** Name */
+            name: string;
+            /** Overall Breakdown */
+            overall_breakdown: {
+                [key: string]: number;
+            };
+            /** Read In Full */
+            read_in_full: number | null;
+            rescan_reason: components["schemas"]["RescanReason"] | null;
+            /** Rows Unrecognized */
+            rows_unrecognized: number;
+            scan_status: components["schemas"]["ScanStatus"];
+            /** Scanned At */
+            scanned_at: string | null;
+            /** Scanner Version */
+            scanner_version: string | null;
+            /** Section Rollup */
+            section_rollup: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /** Started At */
+            started_at?: string | null;
+            /** Unread Breakdown */
+            unread_breakdown: {
+                [key: string]: number;
+            };
+            /** Unread Documents */
+            unread_documents: number;
+        };
+        /**
+         * ServicesResponse
+         * @description The registry: matching rows plus the count behind every filter chip.
+         */
+        ServicesResponse: {
+            /** Counts */
+            counts: {
+                [key: string]: number;
+            };
+            /** Items */
+            items: components["schemas"]["ServiceListItem"][];
+        };
+        /**
+         * StartScanResponse
+         * @description Returned immediately when a scan Job is queued.
+         */
+        StartScanResponse: {
+            /** Job Id */
+            job_id: number;
+        };
+        /**
+         * SummaryResponse
+         * @description The header strip: one number per thing the panel is currently doing.
+         */
+        SummaryResponse: {
+            /** Documents Total */
+            documents_total: number;
+            /** Failed Services */
+            failed_services: number;
+            /** Last Scanned At */
+            last_scanned_at: string | null;
+            /** Scanner Version */
+            scanner_version: string;
+            /** Scans Running */
+            scans_running: number;
+            /** Services Total */
+            services_total: number;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
         };
     };
     responses: never;
@@ -39,6 +753,330 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_job_api_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_attention_api_scan_attention_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttentionRule"][];
+                };
+            };
+        };
+    };
+    list_excluded_api_scan_excluded_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExcludedServiceResponse"][];
+                };
+            };
+        };
+    };
+    list_services_api_scan_services_get: {
+        parameters: {
+            query?: {
+                status?: string;
+                q?: string;
+                sort?: string;
+                rule?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServicesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_service_api_scan_services__repo__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_documents_api_scan_services__repo__documents_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                q?: string;
+                page?: number;
+                section?: string | null;
+                section_status?: string | null;
+                issue?: string | null;
+                api_version?: string | null;
+            };
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_api_scan_services__repo__documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_generation_api_scan_services__repo__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_generations_api_scan_services__repo__generations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_scan_api_scan_services__repo__rescan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartScanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_summary_api_scan_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SummaryResponse"];
+                };
+            };
+        };
+    };
     health_health_get: {
         parameters: {
             query?: never;

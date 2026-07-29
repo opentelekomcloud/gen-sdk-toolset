@@ -40,6 +40,88 @@ def process_example_section(
         add_examples_to_section(sections, SectionName.EXAMPLE_RESPONSE, response)
 
 
+_LABELLED_OWNER = {
+    "request": SectionName.EXAMPLE_REQUEST,
+    "response": SectionName.EXAMPLE_RESPONSE,
+}
+
+
+def labelled_example_owner(
+    block: nodes.literal_block,
+) -> tuple[SectionName, str] | None:
+    """Return the example section a run-in label puts this block in.
+
+    Style-A documents converted from HTML often write their examples inside the
+    Request or Response heading, announced by a bold paragraph
+    (``**Example response**:``) instead of a heading of their own. The label is
+    what makes the block an example; a block with no such label is left alone,
+    so a URI snippet never becomes an example by accident.
+
+    :param block: The literal block to place.
+    """
+    if block.parent is None:
+        return None
+    index = block.parent.index(block) - 1
+    while index >= 0:
+        sibling = block.parent[index]
+        if isinstance(sibling, nodes.paragraph):
+            text = sibling.astext().strip()
+            if not _is_example_label(text):
+                return None
+            normalized = text.lower()
+            for keyword, name in _LABELLED_OWNER.items():
+                if keyword in normalized:
+                    return name, text
+            return None
+        index -= 1
+    return None
+
+
+def inside_table(node: nodes.Element) -> bool:
+    """True when this node sits inside a parameter table.
+
+    A description cell routinely holds a literal block - an injected script, a
+    pattern, a sample value. Its text is already extracted as part of the
+    parameter, so the block is neither an example nor unread; treating it as
+    either invents a diagnostic about content we did read.
+
+    :param node: The node to place.
+    """
+    parent = node.parent
+    while parent is not None:
+        if isinstance(parent, nodes.table):
+            return True
+        parent = parent.parent
+    return False
+
+
+def process_inline_examples(
+    section_node: nodes.section,
+    sections: dict[SectionName, Section],
+) -> list[nodes.literal_block]:
+    """Extract the blocks this section labels as examples; return the rest.
+
+    The returned blocks are the ones nothing consumed - the caller reports them
+    so that "we did not read this" never passes for "there was nothing here".
+    Blocks inside a parameter table are not among them: the table already
+    consumed their text.
+
+    :param section_node: A request or response section node.
+    :param sections: The sections collected so far, extended in place.
+    """
+    leftover: list[nodes.literal_block] = []
+    for block in section_node.findall(nodes.literal_block):
+        if inside_table(block):
+            continue
+        placed = labelled_example_owner(block)
+        if placed is None:
+            leftover.append(block)
+            continue
+        name, label = placed
+        add_examples_to_section(sections, name, [_make_example(block, label=label)])
+    return leftover
+
+
 def extract_examples(section: nodes.section) -> list[Example]:
     """Return every code or literal block inside a section."""
     visited: set[int] = set()

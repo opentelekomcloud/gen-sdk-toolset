@@ -63,7 +63,7 @@ export function AttentionBand() {
             /* today every rule targets the scan registry; future rules navigate to their panel */
             const target = r.panel === "scan" ? `/scan?rule=${r.code}` : null;
             return (
-              <button
+              <button type="button"
                 key={r.code}
                 disabled={!target}
                 title={target ? undefined : t("attention.futurePanel")}

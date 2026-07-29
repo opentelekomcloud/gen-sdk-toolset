@@ -1,6 +1,9 @@
 # SDK Generation Pipeline
 
 > **Status:** draft for discussion
+> **Last aligned with the codebase:** 2026-07-29 (panel: full generation
+> history, background scan jobs and ingest are implemented; `generator/` and
+> `llm/` remain planned)
 
 ## Purpose
 
@@ -35,26 +38,34 @@ that output is *produced*, not what it looks like.
 
 ## Component layout
 
-`gen-sdk-tooling` is a single repository with four modules sharing a common
-type layer. Each module is independent: it depends only on `shared/`, never
-on its peers.
+`gen-sdk-tooling` is a single repository with modules sharing a common
+type layer. Today `shared/`, `scanner/` and `panel/` exist; `generator/` and
+`llm/` are planned (this document). `domain/` is a legacy org-report module
+being folded into the panel (issue #34) — nothing new lands there.
 
 ```
 gen-sdk-tooling/
 └── src/tools/
-    ├── shared/        # IR, IssueCode, SectionScanResult, exceptions — type contracts
-    ├── scanner/       # RST → IR + ScanReport
-    ├── generator/     # IR → Python files (via Jinja2)
-    └── llm/           # FIXME placeholders → resolved (via Ollama)
+    ├── shared/        # IR, IssueCode, scan result models, exceptions — type contracts
+    ├── scanner/       # RST → RepositoryScanResult (IR + scan diagnostics)   [exists]
+    ├── panel/         # FastAPI + React control plane: scans, generations    [exists]
+    ├── domain/        # legacy org-level report — being removed, issue #34   [exists]
+    ├── generator/     # IR → Python files (via Jinja2)                       [planned]
+    └── llm/           # FIXME placeholders → resolved (via Ollama)           [planned]
 ```
 
 ### Dependency rules
 
-- `shared/` depends only on external libraries (pydantic, etc.).
+- `shared/` is a leaf: it depends only on external libraries (pydantic, etc.).
 - `scanner/`, `generator/`, `llm/` depend on `shared/` and external libraries.
   **They do not depend on each other.**
-- There is no Python orchestrator. The pipeline is composed at the
-  workflow level by GitHub Actions.
+- `panel/` may depend on `scanner/` (its background jobs build a scanner via
+  the `scanner/factory.py` composition root); `panel/core/analytics` stays
+  pure — no persistence, no HTTP, no scanner. These rules are enforced by
+  import-linter contracts in `pyproject.toml`.
+- There is no Python orchestrator for the generation pipeline. It is composed
+  at the workflow level by GitHub Actions; per-service *scan* orchestration
+  lives in the panel (see Components → Panel).
 
 ### What lives in `shared/`
 
@@ -72,9 +83,10 @@ Each module ships a CLI entry point registered in `pyproject.toml`:
 
 ```toml
 [project.scripts]
-gen-sdk-scan = "tools.scanner.main:main"
-gen-sdk-generate = "tools.generator.__main__:main"
-gen-sdk-refine = "tools.llm.__main__:main"
+gen-sdk-scan = "tools.scanner.main:main"          # exists
+panel = "tools.panel.cli:main"                    # exists (openapi, register-service, discover)
+gen-sdk-generate = "tools.generator.__main__:main"  # planned
+gen-sdk-refine = "tools.llm.__main__:main"          # planned
 ```
 
 This allows each module to run independently — useful for debugging, local
@@ -93,18 +105,20 @@ passing data through the filesystem as artifacts:
                  ▼
 ┌──────────────────────────────────┐
 │ 2. gen-sdk-scan                  │
-│    output: ir.json, report.json  │
+│    output: scan.json             │
+│    (one RepositoryScanResult:    │
+│     IR + scan diagnostics)       │
 └────────────────┬─────────────────┘
                  ▼
 ┌──────────────────────────────────┐
 │ 3. Gating check (script reads    │
-│    report.json, decides if       │
+│    scan.json, decides if         │
 │    service is generatable)       │
 └────────────────┬─────────────────┘
                  ▼ pass
 ┌──────────────────────────────────┐
 │ 4. gen-sdk-generate              │
-│    input:  ir.json, templates/   │
+│    input:  scan.json, templates/ │
 │    checkout python-t-cloud→/tmp, │
 │    commit+push, open PR per repo │
 └────────────────┬─────────────────┘
@@ -121,7 +135,7 @@ passing data through the filesystem as artifacts:
                  ▼
 ┌──────────────────────────────────┐
 │ 7. gen-sdk-refine                │
-│    input:  generated/, ir.json   │
+│    input:  generated/, scan.json │
 │    output: refined/*.py          │
 └────────────────┬─────────────────┘
                  ▼
@@ -146,7 +160,7 @@ passing data through the filesystem as artifacts:
 ```
 
 Every step is a workflow step. Failures are visible per-step in the Actions
-UI. Intermediate outputs (ir.json, generated/, refined/) are uploaded as
+UI. Intermediate outputs (scan.json, generated/, refined/) are uploaded as
 artifacts for post-mortem debugging.
 
 ### Why GitHub Actions for the generation pipeline
@@ -215,14 +229,19 @@ maintenance — a documentation change requires a fresh manual trigger.
 
 ### Scanner
 
-Produces two outputs from RST:
+Produces **one output** from RST: a `RepositoryScanResult` (`scan.json`)
+carrying both roles at once —
 
-- **IR** (`ir.json`) — the data the generator consumes (`Endpoint`,
-  `Parameter`, nested objects).
-- **ScanReport** (`report.json`) — metadata about parsing quality
-  (`SectionScanResult` per section, with `IssueCode` for problems found).
+- **IR** — the data the generator consumes (`Endpoint`, `Section`,
+  `Parameter`, nested objects), and
+- **scan diagnostics nested into those entities** — every document carries a
+  `DocumentScanResult`, every endpoint section a `SectionScanResult` with
+  `IssueCode`s for problems found.
 
-The scanner does not generate code. It parses and reports.
+The result is data-only: derived views (per-document overall status, flat
+issue lists, roll-ups) are computed downstream by the pure analytics
+functions, not embedded in the JSON. The scanner does not generate code.
+It parses and reports.
 
 Detailed scanner internals and the `SectionScanResult` / `IssueCode` model are
 covered in a separate design issue in `gen-sdk-tooling`.
@@ -234,22 +253,28 @@ analytics surface. It exists because GitHub Actions can't: GitHub rate limits
 prevent scanning all ~90 services in one pass, so services are scanned one at
 a time and accumulated in a database.
 
-- **Per-service scan orchestration** — triggers a single-repo scan (via the
-  scanner's single-repo entrypoint), stores the result as a new generation.
-- **Two generations per service** — `current` + `previous` only; rollback
-  swaps the pointers, no rescanning.
-- **Aggregation** — quality_summary, by_version, structOk, completeness are
-  computed here from raw per-document data (not in the scanner, not in shared).
+- **Per-service scan orchestration** — background scan jobs launched from the
+  UI (FastAPI BackgroundTasks; `queued → running → done/failed`), each
+  successful scan ingested as a new generation. Registry filled by
+  `panel discover` (nightly discovery planned).
+- **Full generation history per service** — every successful scan is persisted
+  as an immutable `Generation`; the service tracks `active_generation` and
+  `latest_generation` pointers. Activating an older snapshot (rollback) swaps
+  the pointer — no rescanning, nothing deleted, switch back anytime.
+- **Aggregation** — computed at ingest by the pure functions in
+  `panel/core/analytics` and stored on the Generation (`docs_ok` — weighted
+  usable share, `parser_ok`/`read_in_full`, `completeness`, status counters,
+  issue totals). Not in the scanner, not in shared.
 - **Phase 3 decision surface** — the org-wide quality picture is read from the
   panel DB; the Jinja-vs-LLM decision is made here, not from a raw JSON dump.
 - **Drift** — stores repo HEAD per service; `docs_changed = commit_hash != head_commit`.
 
 Read endpoints never call GitHub; they read stored state. Detailed schema and
-the 2-generations model are covered in the panel design issues.
+the generations model are covered in the panel design issues.
 
 ### Gating check
 
-A small workflow-level script reads `report.json` and decides whether the
+A small workflow-level script reads `scan.json` and decides whether the
 service is generatable at all. If not, the workflow fails early with a
 clear message rather than producing a noisy PR.
 
@@ -270,7 +295,7 @@ across the full org.
   Unknown fragments become FIXME placeholders with safe default values:
 
   ```python
-  timestamp: Any = None  # FIXME_UNKNOWN_TYPE: see RST "Response Parameters"
+  timestamp: Any = None  # FIXME_UNKNOWN_TYPE_FORMAT: see RST "Response Parameters"
   ```
 
 - **Determinism is mandatory.** Sorted keys everywhere ordering is not
@@ -442,7 +467,7 @@ services:
 
 Each workflow run preserves the following as artifacts:
 
-- `report.json` — scanner output (raw per-document results, no aggregates), for post-mortem analysis
+- `scan.json` — scanner output (raw per-document results, no aggregates), for post-mortem analysis
 - `generated/` — Jinja-only output (commit 1 state)
 - `refined/` — final output after LLM (commit 2 state, if applicable)
 

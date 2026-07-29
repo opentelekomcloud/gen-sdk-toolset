@@ -4,6 +4,8 @@ import type {
   AttentionRule,
   AttentionRuleCode,
   DocStatus,
+  Section,
+  SectionStatus,
   DocumentDetail,
   DocumentsResponse,
   ExcludedService,
@@ -101,6 +103,13 @@ export interface DocumentsParams {
   status?: DocStatus | "all";
   q?: string;
   page?: number;
+  /** Section filter — both halves or neither, mirroring the API. */
+  section?: Section;
+  section_status?: SectionStatus;
+  /** Issue-code filter, from the top-issue chips. */
+  issue?: string;
+  /** One API version, or "unversioned". */
+  api_version?: string;
 }
 
 export function useDocuments(name: string, params: DocumentsParams) {

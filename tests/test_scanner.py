@@ -355,9 +355,11 @@ def test_style_a_populates_sections() -> None:
     assert len(docs) == 1
     doc = docs[0]
     assert doc.scan_result.failure_reason is None
-    # CCE's `metadata` object resolves to its struct table, so the doc is fully
-    # extracted now (no deferred-nesting partial) and emits no nested_objects.
-    assert doc_overall_status(doc) == "ok"
+    # `ok` used to be asserted here, and it was wrong: this fixture carries an
+    # example request and an example response written as bold run-ins, both of
+    # which the parser drops. The document is partial because that loss is now
+    # recorded instead of passing for a clean parse.
+    assert doc_overall_status(doc) == "partial"
     assert isinstance(doc, Endpoint)
     sections = {section.name: section for section in doc.sections}
     assert len(sections) == 7
@@ -407,7 +409,9 @@ def test_non_endpoint_materialized_as_document() -> None:
     assert intro.scan_result.failure_reason is None
     assert isinstance(documents["api-ref/source/real.rst"], Endpoint)
     assert result.total_documents == 2
-    assert result.quality_summary.by_overall_status == {"ok": 1}
+    # The CCE fixture's inline examples are still unread, so its one endpoint is
+    # partial - the count is about the roll-up, not about that gap.
+    assert result.quality_summary.by_overall_status == {"partial": 1}
 
 
 def test_successful_endpoint_title_is_extracted_only_by_parser(monkeypatch) -> None:
@@ -796,7 +800,9 @@ def test_quality_summary_counts() -> None:
     result = scanner.scan_organization(org="o")
     qs = result.quality_summary
     # CCE is ok (nested struct resolved), OBS is unsupported.
-    assert qs.by_overall_status.get("ok", 0) >= 1
+    # The Style-A fixture carries inline examples the parser does not read yet,
+    # which is recorded rather than ignored - so it rolls up as partial.
+    assert qs.by_overall_status.get("partial", 0) >= 1
     assert qs.by_overall_status.get("unsupported", 0) == 1
 
 

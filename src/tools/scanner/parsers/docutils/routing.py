@@ -19,7 +19,8 @@ from tools.shared.scan import (
 )
 
 from .context import RepositoryParseContext
-from .example import process_example_section
+from .diagnostics import ISSUE_DETAILS_MAX
+from .example import process_example_section, process_inline_examples
 from .nesting import resolve_nested
 from .path import reconcile_path_parameters
 from .references import ReferenceRegistry, document_id
@@ -39,6 +40,10 @@ class _SectionExtraction:
     primary_tables: dict[SectionName, TableExtraction] = field(default_factory=dict)
     references: ReferenceRegistry = field(default_factory=ReferenceRegistry)
     routing_issues: dict[SectionName, list[Issue]] = field(default_factory=dict)
+    #: Blocks seen inside a request/response section that nothing consumed.
+    #: Kept apart from routing_issues because they must not turn a parameter
+    #: section into a failure - they belong to the example that was not read.
+    unread_blocks: dict[SectionName, list[Issue]] = field(default_factory=dict)
 
 
 _GENERIC_REQUEST_TARGETS = {
@@ -84,7 +89,9 @@ class _SectionRouter:
             doc_id=document_id(doctree),
         )
         _apply_routing_issues(extraction.sections, extraction.routing_issues)
-        return _complete_sections(extraction.sections)
+        sections = _complete_sections(extraction.sections)
+        _attach_unread_blocks(extraction.sections, extraction.unread_blocks)
+        return sections
 
     def _collect_section_data(
         self,
@@ -101,6 +108,11 @@ class _SectionRouter:
 
             if kind in (SectionKind.URI, SectionKind.REQUEST, SectionKind.RESPONSE):
                 self._collect_parameter_tables(section_node, kind, extraction)
+                if kind is not SectionKind.URI:
+                    leftover = process_inline_examples(
+                        section_node, extraction.sections
+                    )
+                    _report_unread_blocks(leftover, kind, extraction.unread_blocks)
                 if context is not None:
                     extraction.references.register_explicit_field_tables(
                         section_node,
@@ -277,6 +289,67 @@ def _complete_sections(sections: dict[SectionName, Section]) -> list[Section]:
             ),
         )
     return [sections[name] for name in SectionName]
+
+
+_EXAMPLE_OF_KIND = {
+    SectionKind.REQUEST: SectionName.EXAMPLE_REQUEST,
+    SectionKind.RESPONSE: SectionName.EXAMPLE_RESPONSE,
+}
+
+
+def _attach_unread_blocks(
+    sections: dict[SectionName, Section],
+    unread: dict[SectionName, list[Issue]],
+) -> None:
+    """Record unread blocks on the example section they belong to.
+
+    A section the document never wrote is ``missing``. A section whose content
+    we saw and could not read is **not** missing - it is ``failed``, and the
+    ``unmapped_block`` issue says what was left unread. Keeping the two apart is
+    the whole point: `missing` is a fact about the documentation, `failed` is a
+    fact about us.
+
+    No data is invented: the section still carries no examples, because we did
+    not read any.
+    """
+    for name, issues in unread.items():
+        section = sections.get(name)
+        if section is None or section.scan_result is None:
+            continue
+        section.scan_result.issues.extend(issues)
+        if section.scan_result.status is SectionStatus.MISSING:
+            section.scan_result.status = SectionStatus.FAILED
+
+
+def _report_unread_blocks(
+    blocks: list[nodes.literal_block],
+    kind: SectionKind,
+    issues_by_section: dict[SectionName, list[Issue]],
+) -> None:
+    """Record the blocks in this section that nothing consumed.
+
+    A block the document labels as an example is extracted (see
+    :func:`process_inline_examples`); what stays here is content we saw and
+    could not place. Saying so is the point: an unread block is otherwise
+    indistinguishable from an absent one, and `missing` would then claim the
+    document has no example when we simply never read it.
+
+    The issue is deliberately about the scanner, not about the documentation.
+    """
+    owner = _EXAMPLE_OF_KIND[kind]
+    for index, block in enumerate(blocks, start=1):
+        issues_by_section.setdefault(owner, []).append(
+            Issue(
+                code=IssueCode.UNMAPPED_BLOCK,
+                location=f"{kind.value} block {index}",
+                details=_block_preview(block),
+            )
+        )
+
+
+def _block_preview(block: nodes.literal_block) -> str:
+    text = " ".join(block.astext().split())
+    return text[:ISSUE_DETAILS_MAX]
 
 
 def _add_unmapped_table_issue(

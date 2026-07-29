@@ -65,6 +65,14 @@ no remaining producer anywhere in the scanner.
 The field counters on `SectionScanResult` must reconcile:
 `fields_recognized + fields_unknown_type + fields_failed == fields_total`.
 
+**`missing` is a fact about the document; `failed` is a fact about us.** A
+section is `missing` only when the document does not contain it. A section whose
+content we saw and could not read is `failed`, carrying the diagnostic that says
+what was left unread (`UNMAPPED_TABLE` for a table, `UNMAPPED_BLOCK` for a code
+block). Without that distinction "we never looked here" is indistinguishable
+from "there is nothing here", which is the one confusion this project cannot
+afford: it turns a silent loss into a clean number.
+
 ## Derived analytics
 
 Currently in `src/tools/domain/report/`, **being relocated to
@@ -82,6 +90,34 @@ snapshot - it is computed from it, in one place. Add nothing new to
 organization-level report contract. They are **scheduled for removal** together
 with `ScannerService.scan_organization()` - see issue #34. Do not build on them.
 
+### What ingest computes (panel-owned)
+
+Defined in `src/tools/panel/core/analytics/generation.py`. Pure functions over
+the IR — they own no state and no persistence; `ingest_service_result` writes
+what they return into the existing `generation` and `document` rows. The
+document-level functions above are imported from `tools.domain` until issue #34
+relocates them.
+
+| Name | Meaning |
+|---|---|
+| `completeness` | The recognized share of the documented parameter rows: `fields_recognized / fields_total`, a `0..1` float. Per document it covers that document's sections; per `Generation` it is **field-weighted** over all documents, not a mean of per-document means. |
+| `DocumentAnalytics` | What one `DocumentRecord` stores beyond its payload: `overall_status`, `completeness`, `issues_count`. |
+| `GenerationAnalytics` | The `Generation` roll-up: the counters that have columns, plus `unknown_count`, `fields_total`, `fields_recognized`, `by_section_status`, `issues_by_code` and `by_version`. Serialized whole into the `analytics` JSONB. |
+| `SCANNER_GAP_CODES` | The diagnostics that describe **our** shortfall rather than the documentation's: `UNMAPPED_BLOCK`, `PARSER_ERROR`, `UNSUPPORTED_DOC_STYLE`, `FETCH_FAILED`. They make the scan `partial` and are excluded from `docs_ok` - the pages may be perfectly fine. |
+| `unread_documents` | Documents carrying at least one scanner-gap diagnostic. This is what makes a service `partially scanned`. |
+| `documentation_clean` | Documents with no diagnostic about the documentation itself (scanner gaps do not count). The numerator of `docs_ok`. |
+| `unknown_count` | Documents with no derivable `OverallStatus` (a successfully scanned non-endpoint page). It exists so that `ok + partial + failed + unsupported + unknown == documents_total` — without it the difference would be unexplained. |
+
+**Unmeasurable is `None`, never `0`.** A document whose structure could not be
+measured — a plain page, or one gated before any table was read — has
+`completeness = NULL`, and so does a `Generation` with no measurable fields.
+Reporting `0.0` would claim we measured it and found nothing, which is a
+different fact. Both columns are nullable for exactly this reason.
+
+`issues_by_code` counts **every** code, not a top-N slice: a truncated map
+stored as the whole truth is a silent loss. Callers that want the top five take
+them at read time.
+
 ## Panel — the persisted model
 
 Defined in `src/tools/panel/core/db/models.py`. Note the name collision and mind
@@ -95,6 +131,33 @@ it: `Service` here is a database row, not the IR entity above.
 | `DocumentRecord` (table `document`) | One document inside a `Generation`: the full IR `payload` plus the columns denormalized for querying. |
 | `RepositoryScanJob` (table `job`) | One scan run: `kind`, `status`, `initiated_by`, timestamps, `error`, `interruption`. |
 | `JobKind`, `JobStatus` | `JobStatus` is `queued`, `running`, `done`, `failed`. |
+| `IngestRejected` | `panel/core/ingest.py`. The Job or the scan result did not satisfy the successful-ingest contract (not a running scan Job, a failed or commit-less result, a repository that is not a `Service`, or a repository mismatch). The scan runner turns it into a `failed` Job with the message recorded. |
+
+### Derived service state (what the read endpoints serve)
+
+Defined in `src/tools/panel/core/service_state.py`. Computed from a Service's
+jobs and generations on every read - never stored, so it cannot go stale.
+
+| Name | Meaning |
+|---|---|
+| `ScanStatus` | How completely **we** read the service, never how good its documentation is: `scanning` (a queued or running scan job), `not_scanned` (no generation, no failure), `failed` (no generation and the last job failed), `partial` (something stayed unread - a document we could not interpret at all, or parameter rows we could not recognize), `scanned` (everything was read, however messy it turned out to be). |
+| `RescanReason` | Why the panel suggests a rescan, in priority order: `retry` (the last job failed), `partial` (documents came out partial or failed), `version` (an older scanner produced the generation), `drift` (`head_commit` differs from the scanned commit). At most one is reported. |
+| Attention rules | The same four codes (`failed`, `version`, `drift`, `new`) evaluated **independently** for the app-level band: a service can appear under several, because hiding one behind another would understate the work. `new` means never scanned and never failed. |
+| `status_documents` | Documents that carry a status - the sum of the overall breakdown, and what the UI calls `documents`. Pages that are not API documents are reported as `non_endpoint_documents` (the generation analytics' `unknown_count`), never folded into a status. |
+| `docs_ok` (`clean_endpoint_share`) | **Documentation quality**: how much of the documentation a generator can use, `0..1`. Documents are **weighted**, not counted - clean `1`, degraded `0.5`, uninterpretable `0` - so "half the endpoints are partial" stops reading like "half are unusable". `None` when nothing carries a status: unknown, not zero. |
+| `EXAMPLE_SECTIONS` | `example_request`, `example_response`. Diagnostics found there (invalid JSON, an unread example block) stay visible on the document and in the issue filters but move **no** quality number: a generator builds from the parameter tables, so a broken example says nothing about whether the endpoint can be generated. Decided with the team on 2026-07-29. |
+| `document_status` | The panel's document roll-up, judged on the material sections only. Deliberately different from the legacy `doc_overall_status` in `tools.domain`, which still degrades a document for an example; issue #34 removes that one. |
+
+Two numbers answer two different questions and must not be swapped: `docs_ok`
+measures the documentation, `Generation.completeness` measures our parser (the
+share of documented parameter rows it understood). The generation selector shows
+both side by side for exactly that reason.
+
+Note the two different meanings of "non-endpoint": the `generation.non_endpoint_documents`
+**column** counts everything that is not a parsed endpoint (including failed and
+unsupported documents), while the API's `non_endpoint_documents` **field** counts
+only the pages with no scan status at all. The API serves the second one, because
+that is the number the UI puts next to "documents".
 
 Two database constraints carry rules that code depends on, so do not weaken them
 without reading their consumers first: the `status_timestamps` CHECK constraint

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, FileText, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Search, X } from "lucide-react";
 import { useDocuments } from "../api/queries";
-import type { DocStatus } from "../api/types.local";
+import type { DocFilter, DocStatus } from "../api/types.local";
+import { sectionLabelKey, UNVERSIONED } from "../constants";
 import { chipCls } from "../styles";
 import { DocRow } from "./DocRow";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
@@ -9,8 +10,16 @@ import { useI18n, type MessageKey } from "../../../shared/i18n";
 const CHIP_ORDER: (DocStatus | "all")[] = ["all", "failed", "unsupported", "partial", "ok"];
 
 /** Documents block on the service page (PS12): server-side filter/search/pagination. */
-export function DocumentsBlock({ serviceName }: { serviceName: string }) {
+interface Props {
+  serviceName: string;
+  /** Set by clicking a section count or a top-issue chip. */
+  filter?: DocFilter | null;
+  onClearFilter?: () => void;
+}
+
+export function DocumentsBlock({ serviceName, filter, onClearFilter }: Props) {
   const [status, setStatus] = useState<DocStatus | "all">("all");
+  const [version, setVersion] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   const [page, setPage] = useState(1);
@@ -22,7 +31,15 @@ export function DocumentsBlock({ serviceName }: { serviceName: string }) {
     return () => clearTimeout(timer);
   }, [q]);
 
-  const { data } = useDocuments(serviceName, { status, q: qDebounced, page });
+  const { data } = useDocuments(serviceName, {
+    status,
+    q: qDebounced,
+    page,
+    section: filter?.kind === "section" ? filter.section : undefined,
+    section_status: filter?.kind === "section" ? filter.status : undefined,
+    issue: filter?.kind === "issue" ? filter.code : undefined,
+    api_version: version ?? undefined,
+  });
   if (!data) return null;
 
   const chips = CHIP_ORDER.filter((k) => k === "all" || data.doc_counts[k]);
@@ -36,7 +53,7 @@ export function DocumentsBlock({ serviceName }: { serviceName: string }) {
         <FileText size={15} className="text-gray-400" />
         <span className="text-sm font-semibold text-gray-700">{t("docs.title")}</span>
         {chips.map((k) => (
-          <button
+          <button type="button"
             key={k}
             onClick={() => {
               setStatus(k);
@@ -47,6 +64,40 @@ export function DocumentsBlock({ serviceName }: { serviceName: string }) {
             {t(`docstatus.${k}` as MessageKey)} <span className="font-mono tabular-nums opacity-70">{data.doc_counts[k] ?? 0}</span>
           </button>
         ))}
+        {/* Versions come from the same response as the rows, so the chips can
+            never claim a version the current filter has no documents for. */}
+        {Object.keys(data.version_counts).length > 1 &&
+          Object.entries(data.version_counts)
+            /* Numbered versions first, "no version" last: it is a leftover
+               bucket, not a version anyone released. */
+            .sort(([a], [b]) =>
+              a === UNVERSIONED ? 1 : b === UNVERSIONED ? -1 : a.localeCompare(b),
+            )
+            .map(([name, count]) => (
+              <button type="button"
+                key={name}
+                onClick={() => {
+                  setVersion(version === name ? null : name);
+                  setPage(1);
+                }}
+                className={chipCls(version === name)}
+              >
+                {name === UNVERSIONED ? t("docs.noVersion") : name}{" "}
+                <span className="font-mono tabular-nums opacity-70">{count}</span>
+              </button>
+            ))}
+        {filter && (
+          <button
+            type="button"
+            onClick={onClearFilter}
+            className="flex items-center gap-1 rounded-full bg-gray-900 px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-gray-700"
+          >
+            {filter.kind === "section"
+              ? `${t(sectionLabelKey(filter.section))} · ${filter.status}`
+              : filter.code}
+            <X size={11} />
+          </button>
+        )}
         <div className="relative ml-auto">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -74,7 +125,7 @@ export function DocumentsBlock({ serviceName }: { serviceName: string }) {
         <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
           <span>{t("docs.showing", { from, to, total: data.total })}</span>
           <span className="flex items-center gap-1">
-            <button
+            <button type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={data.page <= 1}
               className={`flex items-center gap-0.5 rounded border px-2 py-1 transition ${
@@ -84,7 +135,7 @@ export function DocumentsBlock({ serviceName }: { serviceName: string }) {
               <ChevronLeft size={12} /> {t("docs.prev")}
             </button>
             <span className="px-2 font-mono tabular-nums">{t("docs.page", { p: data.page, total: totalPages })}</span>
-            <button
+            <button type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={data.page >= totalPages}
               className={`flex items-center gap-0.5 rounded border px-2 py-1 transition ${

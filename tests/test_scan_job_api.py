@@ -25,12 +25,16 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from tests.test_panel_db import (  # noqa: E402,F401  (reused DB fixtures)
     _alembic_config,
     admin_url,
+    make_endpoint,
     scratch_database,
 )
+from tools import __version__ as SCANNER_VERSION  # noqa: E402
 from tools.panel.api import deps  # noqa: E402
 from tools.panel.api.app import create_app  # noqa: E402
+from tools.panel.core import ingest as ingest_module  # noqa: E402
 from tools.panel.core import jobs as jobs_module  # noqa: E402
 from tools.panel.core.db.models import (  # noqa: E402
+    Generation,
     JobKind,
     JobStatus,
     RepositoryScanJob,
@@ -479,3 +483,46 @@ def test_failed_start_transition_marks_job_failed_not_stuck_queued(
         assert job.status is JobStatus.failed
         assert job.error.startswith("could not start job:")
         assert job.finished_at is not None
+
+
+def test_successful_scan_is_ingested_and_served_by_the_job_api(
+    client, session_factory, monkeypatch
+):
+    """The full path with the real ingest: launch, scan, persist, poll. This is
+    what the panel shows, so no part of it may be stubbed out."""
+    _seed_service(session_factory, "ecs-api", name="ecs")
+
+    def fake_build_scanner(_settings):
+        class _Scanner:
+            def scan_repository(self, repo, branch):
+                return RepositoryScanResult(
+                    repository=IrService(repo=repo, documents=[make_endpoint()]),
+                    branch=branch,
+                    commit_hash="d" * 40,
+                )
+
+        return _Scanner()
+
+    monkeypatch.setattr(jobs_module, "build_scanner", fake_build_scanner)
+    # Ingest opens its own session, exactly like the runner does.
+    monkeypatch.setattr(ingest_module, "SessionLocal", session_factory)
+    monkeypatch.setattr(ingest_module, "get_engine", lambda: None)
+
+    resp = client.post(
+        "/api/scan/services/ecs-api/rescan", json={"initiated_by": "tester"}
+    )
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+
+    body = client.get(f"/api/jobs/{job_id}").json()
+    assert body["status"] == "done"
+    assert body["error"] is None
+    assert body["finished_at"] is not None
+    assert body["commit_hash"] == "d" * 40
+    assert body["scanner_version"] == SCANNER_VERSION
+
+    with session_factory() as s:
+        generation = s.scalars(select(Generation)).one()
+        assert generation.source_job_id == job_id
+        assert generation.documents_total == 1
+        assert [record.kind for record in generation.documents] == ["endpoint"]

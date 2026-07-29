@@ -1,0 +1,16 @@
+# Frontend for a deployed panel: a static bundle, not the dev server.
+#
+# The compose stack runs Vite in dev mode with the sources mounted, which is
+# right for a laptop and wrong for anything reachable from the internet: it
+# ships source maps, watches the filesystem and serves unminified modules.
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+# The bundle talks to /api on its own origin; Caddy proxies that to the backend,
+# so no build-time backend URL is needed.
+RUN npm run build
+
+FROM caddy:2-alpine
+COPY --from=build /app/dist /srv

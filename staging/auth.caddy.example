@@ -1,0 +1,6 @@
+# Copy to deploy/auth.caddy and put your own login and hash here.
+# Generate the hash on your own machine - it never has to be shared:
+#   docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'
+basic_auth {
+	panel $2a$14$replace-with-your-own-hash
+}

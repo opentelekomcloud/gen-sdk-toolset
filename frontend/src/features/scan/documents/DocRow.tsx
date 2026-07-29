@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { useDocumentDetail } from "../api/queries";
 import type { DocumentListItem } from "../api/types.local";
 import { DOC_STATUS_CLS, methodCls } from "../styles";
@@ -71,7 +71,7 @@ export function DocRow({ serviceName, doc }: { serviceName: string; doc: Documen
               <span className="flex items-center gap-2 text-xs text-red-700">
                 <AlertTriangle size={13} /> {t("doc.detailFailed")}
               </span>
-              <button
+              <button type="button"
                 onClick={() => void detail.refetch()}
                 className="flex items-center gap-1 rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 transition hover:border-red-500"
               >
@@ -92,6 +92,16 @@ export function DocRow({ serviceName, doc }: { serviceName: string; doc: Documen
                 {detail.data.failure_reason && (
                   <span className="text-red-600">{t("doc.gatingFailure", { reason: detail.data.failure_reason })}</span>
                 )}
+                <a
+                  href={detail.data.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="ml-auto flex items-center gap-1 text-gray-500 transition hover:text-gray-900"
+                  title={t("doc.openSourceHint")}
+                >
+                  <ExternalLink size={12} /> {t("doc.openSource")}
+                </a>
               </div>
               {detail.data.sections.length > 0 ? (
                 <div className="grid grid-cols-1 gap-1.5">

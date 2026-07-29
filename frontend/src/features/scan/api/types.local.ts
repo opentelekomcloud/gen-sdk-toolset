@@ -63,7 +63,11 @@ export interface Generation {
   partial_count: number;
   failed_count: number;
   unsupported_count: number;
-  /** 0..1, nullable (e.g. no endpoint documents). */
+  /** Documentation quality: percent of documents scanned without a diagnostic. */
+  docs_ok: number | null;
+  /** Processing quality: percent of documents read end to end. */
+  parser_ok: number | null;
+  /** Row-level detail behind parser_ok: recognized share of documented rows. */
   completeness: number | null;
   created_at: string;
 }
@@ -92,15 +96,27 @@ export interface RepositoryInterruption {
 }
 
 export interface ServiceListItem {
+  /** Identifier used in routes and links (the repository, e.g. "org/direct-connect"). */
   name: string;
+  /** Display name — the short repository name, e.g. "direct-connect". */
+  label: string;
   scan_status: ScanStatus;
   documents: number | null;
-  struct_ok: number | null;
+  /** Of those, the documents read end to end (the rest hid content from us). */
+  read_in_full: number | null;
+  /** Percent of documents scanned without a single diagnostic (documentation quality). */
+  docs_ok: number | null;
   scanner_version: string | null;
   scanned_at: string | null;
   docs_changed: boolean;
   rescan_reason: RescanReason | null;
   overall_breakdown: Partial<Record<DocStatus, number>>;
+  /** The part of each status bucket that was not read in full (grey in the bar). */
+  unread_breakdown: Partial<Record<DocStatus, number>>;
+  /** While above zero, docs_ok is an upper bound: defects can hide in the unread part. */
+  unread_documents: number;
+  /** Read end to end, but some parameter rows stayed unrecognized. */
+  rows_unrecognized: number;
   section_rollup: Record<Section, SectionCounts>;
   /**
    * Message of the last FAILED job (job.error). A failed job creates no
@@ -127,7 +143,7 @@ export interface ServiceDetail extends ServiceListItem {
   /**
    * G1: snapshot currently displayed / served (Service.active_generation).
    * Null when no successful scan exists yet. All flat scan-result fields on
-   * this DTO (documents, struct_ok, overall_breakdown, section_rollup,
+   * this DTO (documents, docs_ok, overall_breakdown, section_rollup,
    * top_issues, …) are served FROM this generation.
    */
   active_generation: Generation | null;
@@ -144,6 +160,11 @@ export interface ServiceDetail extends ServiceListItem {
   top_issues: IssueCount[];
   non_endpoint_documents: number;
 }
+
+/** What the documents block is narrowed to: a section's status, or an issue code. */
+export type DocFilter =
+  | { kind: "section"; section: Section; status: SectionStatus }
+  | { kind: "issue"; code: string };
 
 export interface DocumentListItem {
   /** document.id (int PK). */
@@ -164,6 +185,8 @@ export interface DocumentsResponse {
   page_size: number;
   /** Computed with q applied, status ignored (aligned with services counts). */
   doc_counts: Record<DocStatus | "all", number>;
+  /** Matching documents per API version; "unversioned" for those naming none. */
+  version_counts: Record<string, number>;
 }
 
 export interface Parameter {
@@ -180,6 +203,13 @@ export interface SectionIssue {
   details?: string;
 }
 
+export interface ExampleBlock {
+  label: string | null;
+  language: string | null;
+  /** The example exactly as the documentation writes it. */
+  raw: string;
+}
+
 export interface SectionDetail {
   name: Section;
   status: SectionStatus;
@@ -188,6 +218,7 @@ export interface SectionDetail {
   fields_unknown_type: number;
   parameters: Parameter[] | null;
   issues: SectionIssue[];
+  examples: ExampleBlock[];
 }
 
 export interface DocumentDetail {
@@ -198,6 +229,8 @@ export interface DocumentDetail {
   api_version: string | null;
   overall_status: DocStatus;
   failure_reason: string | null;
+  /** The document in the docs repository, pinned to the scanned commit. */
+  source_url: string;
   sections: SectionDetail[];
 }
 
