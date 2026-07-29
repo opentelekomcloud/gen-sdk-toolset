@@ -162,20 +162,40 @@ class GitHubDocProvider(DocProvider):
                     "the listing may be incomplete"
                 )
             for entry in entries:
-                entry_type = entry.get("type")
-                if entry_type == "dir":
-                    stack.append(entry["path"])
-                elif entry["path"].endswith(".rst"):
-                    if entry_type != "file":
-                        logger.warning(
-                            "%s in %s has unexpected Contents API type %r;"
-                            " including it anyway",
-                            entry["path"],
-                            repo,
-                            entry_type,
-                        )
-                    paths.append(entry["path"])
+                self._collect_entry(entry, repo=repo, paths=paths, stack=stack)
         return paths
+
+    @staticmethod
+    def _collect_entry(
+        entry: dict, *, repo: str, paths: list[str], stack: list[str]
+    ) -> None:
+        """Route one Contents API entry into the walk's paths or its stack.
+
+        The four documented types are handled explicitly. A submodule's content
+        lives in another repository, so it is not part of this snapshot and is
+        skipped rather than read. An `.rst` path of any other type means the
+        API returned something this walk does not understand - that fails the
+        scan rather than being guessed at, since a listing we cannot classify
+        is not one we can call complete.
+        """
+        entry_type = entry.get("type")
+        path = entry["path"]
+
+        if entry_type == "dir":
+            stack.append(path)
+            return
+        if entry_type == "submodule":
+            logger.debug("Skipping submodule %s in %s", path, repo)
+            return
+        if not path.endswith(".rst"):
+            return
+        if entry_type not in ("file", "symlink"):
+            raise ProviderError(
+                f"Unexpected Contents API type {entry_type!r} for {path} in {repo}",
+                kind=ProviderErrorKind.unexpected_response,
+                resource=path,
+            )
+        paths.append(path)
 
     def _list_directory(self, repo: str, branch: str, path: str) -> list[dict]:
         """Return the immediate child entries of one directory."""
@@ -194,25 +214,39 @@ class GitHubDocProvider(DocProvider):
     def fetch_content(self, repo: str, path: str, branch: str) -> str:
         """Return the text content of `path`.
 
-        Files up to 1 MB come back inline as base64 JSON. Above that (up to
-        the Contents API's 100 MB ceiling), the API omits inline content and
-        this retries the same request with the raw media type, which returns
-        the file's bytes directly instead of a JSON envelope.
+        Only a regular file is readable here. Up to 1 MB the Contents API
+        inlines it as base64; above that (to the API's 100 MB ceiling) it
+        reports ``encoding: "none"`` and omits the content, and this retries
+        the same request with the raw media type to get the bytes directly.
+        Any other type or encoding is something this client cannot read, and
+        raises rather than being guessed at.
         """
         url = f"{self.api_url}/repos/{repo}/contents/{path}"
         resp = self._get(url, repo=repo, resource=path, params={"ref": branch})
 
         payload = resp.json()
+        entry_type = payload.get("type")
         encoding = payload.get("encoding")
+        if entry_type != "file":
+            raise ProviderError(
+                f"Expected a file at {path} in {repo}, got type {entry_type!r}",
+                kind=ProviderErrorKind.unexpected_response,
+                resource=path,
+            )
         if encoding == "base64":
             return base64.b64decode(payload.get("content", "")).decode("utf-8")
+        if encoding != "none":
+            raise ProviderError(
+                f"Unexpected content encoding {encoding!r} for {path} in {repo}",
+                kind=ProviderErrorKind.unexpected_response,
+                resource=path,
+            )
 
         logger.info(
-            "Contents API omitted inline data for %s in %s (encoding=%r);"
-            " retrying with the raw media type",
+            "Contents API omitted inline data for %s in %s (over the 1 MB"
+            " inline limit); retrying with the raw media type",
             path,
             repo,
-            encoding,
         )
         raw_resp = self._get(
             url,

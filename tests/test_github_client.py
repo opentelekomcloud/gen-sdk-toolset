@@ -186,7 +186,12 @@ def test_secondary_rate_limits_remain_distinguishable_from_permission_denied(
 def test_fetch_content_returns_inline_base64_when_available() -> None:
     encoded = base64.b64encode(b"Example\n=======\n").decode()
     session = _Session(
-        [_Resp(200, json_data={"encoding": "base64", "content": encoded})]
+        [
+            _Resp(
+                200,
+                json_data={"type": "file", "encoding": "base64", "content": encoded},
+            )
+        ]
     )
 
     content = _provider(session).fetch_content("o/r", "p/x.rst", "main")
@@ -198,7 +203,7 @@ def test_fetch_content_returns_inline_base64_when_available() -> None:
 def test_fetch_content_falls_back_to_raw_media_type_when_not_base64() -> None:
     session = _Session(
         [
-            _Resp(200, json_data={"encoding": "none"}),
+            _Resp(200, json_data={"type": "file", "encoding": "none"}),
             _Resp(200, content=b"Example\n=======\n"),
         ]
     )
@@ -215,7 +220,7 @@ def test_fetch_content_falls_back_to_raw_media_type_when_not_base64() -> None:
 def test_fetch_content_raw_fallback_propagates_provider_error() -> None:
     session = _Session(
         [
-            _Resp(200, json_data={"encoding": "none"}),
+            _Resp(200, json_data={"type": "file", "encoding": "none"}),
             _rate_limited(1_800_000_000),
         ]
     )
@@ -233,13 +238,40 @@ def test_fetch_content_raw_fallback_non_utf8_content_is_not_a_provider_error() -
     failing the whole repository scan (see _fetch_document's except clauses)."""
     session = _Session(
         [
-            _Resp(200, json_data={"encoding": "none"}),
+            _Resp(200, json_data={"type": "file", "encoding": "none"}),
             _Resp(200, content=b"\xff\xfe"),
         ]
     )
 
     with pytest.raises(UnicodeDecodeError):
         _provider(session).fetch_content("o/r", "p/x.rst", "main")
+
+
+@pytest.mark.parametrize("entry_type", ["dir", "submodule", "symlink", None])
+def test_fetch_content_rejects_anything_but_a_regular_file(entry_type) -> None:
+    """Only a regular file has content to read. Anything else - an unresolved
+    symlink, a submodule, a directory - is refused rather than run through the
+    raw-media-type retry as if it were a large file."""
+    session = _Session([_Resp(200, json_data={"type": entry_type, "encoding": "none"})])
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).fetch_content("o/r", "p/x.rst", "main")
+
+    assert exc_info.value.kind is ProviderErrorKind.unexpected_response
+    assert session.calls == 1  # no raw retry was attempted
+
+
+def test_fetch_content_rejects_an_unrecognized_encoding() -> None:
+    """`none` specifically means "too large to inline", which the raw retry
+    handles. Any other encoding is a shape this client does not understand,
+    so it fails instead of retrying and hoping."""
+    session = _Session([_Resp(200, json_data={"type": "file", "encoding": "utf-16"})])
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).fetch_content("o/r", "p/x.rst", "main")
+
+    assert exc_info.value.kind is ProviderErrorKind.unexpected_response
+    assert session.calls == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -335,10 +367,10 @@ def test_list_directory_rejects_non_list_response() -> None:
     assert exc_info.value.kind is ProviderErrorKind.unexpected_response
 
 
-def test_list_files_walk_includes_non_file_rst_entries() -> None:
-    """A symlink/submodule entry ending in .rst must still be counted - the
-    git-tree path would have included it (as a blob) - not silently dropped
-    just because the Contents API's walk uses different type vocabulary."""
+def test_list_files_walk_includes_symlinked_rst_entries() -> None:
+    """GitHub resolves an in-repo symlink to the file it points at, so a
+    symlinked .rst is a readable document and must be counted - the git-tree
+    path would have included it as a blob."""
     session = _Session(
         [
             _Resp(200, json_data={"truncated": True, "tree": []}),
@@ -353,6 +385,47 @@ def test_list_files_walk_includes_non_file_rst_entries() -> None:
 
     assert listing.paths == ["p/linked.rst"]
     assert listing.truncated is False
+
+
+def test_list_files_walk_skips_submodules() -> None:
+    """A submodule's content lives in another repository, so it is not part
+    of this snapshot - skipped without being walked into or counted."""
+    session = _Session(
+        [
+            _Resp(200, json_data={"truncated": True, "tree": []}),
+            _Resp(
+                200,
+                json_data=[
+                    {"path": "p/vendored", "type": "submodule"},
+                    {"path": "p/vendored.rst", "type": "submodule"},
+                    {"path": "p/real.rst", "type": "file"},
+                ],
+            ),
+        ]
+    )
+
+    listing = _provider(session).list_files("o/r", "main")
+
+    assert listing.paths == ["p/real.rst"]
+    assert listing.truncated is False
+    # The submodule was never listed as a directory.
+    assert session.calls == 2
+
+
+def test_list_files_walk_rejects_an_unknown_entry_type() -> None:
+    """An .rst path of a type this walk does not understand means the listing
+    cannot be classified, so it fails rather than guessing whether to read it."""
+    session = _Session(
+        [
+            _Resp(200, json_data={"truncated": True, "tree": []}),
+            _Resp(200, json_data=[{"path": "p/odd.rst", "type": "gitlink"}]),
+        ]
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).list_files("o/r", "main")
+
+    assert exc_info.value.kind is ProviderErrorKind.unexpected_response
 
 
 def test_list_files_walk_reports_truncated_when_directory_hits_item_cap(
