@@ -20,7 +20,7 @@ from tools.shared.scan import (
 
 from .context import RepositoryParseContext
 from .diagnostics import ISSUE_DETAILS_MAX
-from .example import process_example_section
+from .example import process_example_section, process_inline_examples
 from .nesting import resolve_nested
 from .path import reconcile_path_parameters
 from .references import ReferenceRegistry, document_id
@@ -109,7 +109,10 @@ class _SectionRouter:
             if kind in (SectionKind.URI, SectionKind.REQUEST, SectionKind.RESPONSE):
                 self._collect_parameter_tables(section_node, kind, extraction)
                 if kind is not SectionKind.URI:
-                    _report_unread_blocks(section_node, kind, extraction.unread_blocks)
+                    leftover = process_inline_examples(
+                        section_node, extraction.sections
+                    )
+                    _report_unread_blocks(leftover, kind, extraction.unread_blocks)
                 if context is not None:
                     extraction.references.register_explicit_field_tables(
                         section_node,
@@ -319,24 +322,22 @@ def _attach_unread_blocks(
 
 
 def _report_unread_blocks(
-    section_node: nodes.section,
+    blocks: list[nodes.literal_block],
     kind: SectionKind,
     issues_by_section: dict[SectionName, list[Issue]],
 ) -> None:
-    """Record every literal block this section carries but nothing consumed.
+    """Record the blocks in this section that nothing consumed.
 
-    Examples are only extracted from sections whose *heading* announces them,
-    so a request or response section that embeds its example inline (a bold
-    "Example response:" run-in followed by a code block, as the CCE and Cloud
-    Eye documents do) loses it silently. Silently is the problem: an unread
-    block is indistinguishable from an absent one, and `missing` then claims
-    the document has no example when we simply never looked there.
+    A block the document labels as an example is extracted (see
+    :func:`process_inline_examples`); what stays here is content we saw and
+    could not place. Saying so is the point: an unread block is otherwise
+    indistinguishable from an absent one, and `missing` would then claim the
+    document has no example when we simply never read it.
 
-    The issue says what happened - we saw a block and could not place it - and
-    is deliberately about the scanner, not about the documentation.
+    The issue is deliberately about the scanner, not about the documentation.
     """
-    for index, block in enumerate(section_node.findall(nodes.literal_block), start=1):
-        owner = _labelled_owner(block) or _EXAMPLE_OF_KIND[kind]
+    owner = _EXAMPLE_OF_KIND[kind]
+    for index, block in enumerate(blocks, start=1):
         issues_by_section.setdefault(owner, []).append(
             Issue(
                 code=IssueCode.UNMAPPED_BLOCK,
@@ -344,27 +345,6 @@ def _report_unread_blocks(
                 details=_block_preview(block),
             )
         )
-
-
-def _labelled_owner(block: nodes.literal_block) -> SectionName | None:
-    """Read the run-in label above a block, when the document wrote one.
-
-    ``**Example response**:`` before a code block says where it belongs better
-    than the enclosing heading does, so the label wins when it names one.
-    """
-    previous = block.parent.index(block) - 1 if block.parent is not None else -1
-    while previous >= 0:
-        sibling = block.parent[previous]
-        if isinstance(sibling, nodes.paragraph):
-            text = sibling.astext().strip().lower()
-            if "example" in text or "sample" in text:
-                if "request" in text:
-                    return SectionName.EXAMPLE_REQUEST
-                if "response" in text:
-                    return SectionName.EXAMPLE_RESPONSE
-            return None
-        previous -= 1
-    return None
 
 
 def _block_preview(block: nodes.literal_block) -> str:

@@ -252,3 +252,114 @@ def test_empty_scan_produces_zeroed_analytics_with_unknown_completeness() -> Non
     assert analytics.documents_total == 0
     assert analytics.completeness is None
     assert analytics.issues_by_code == {}
+
+
+def test_read_buckets_account_for_every_document_with_a_status() -> None:
+    """read_in_full + rows_unrecognized + unread == documents with a status:
+    the three ways a document can end up must leave no remainder, or the
+    difference becomes an unexplained number in the UI."""
+    analytics = analyze_generation(
+        [
+            _endpoint("clean.rst", body=_measured_body(3, 3)),
+            _endpoint("rows.rst", body=_measured_body(3, 1)),
+            _plain(
+                "unsupported.rst", failure=Issue(code=IssueCode.UNSUPPORTED_DOC_STYLE)
+            ),
+            _plain("intro.rst"),  # no status at all
+        ]
+    )
+
+    with_status = (
+        analytics.ok_count
+        + analytics.partial_count
+        + analytics.failed_count
+        + analytics.unsupported_count
+    )
+    assert analytics.read_in_full == 1
+    assert analytics.rows_unrecognized == 1
+    assert analytics.unread_documents == 1
+    assert (
+        analytics.read_in_full
+        + analytics.rows_unrecognized
+        + analytics.unread_documents
+        == with_status
+    )
+
+
+# ---------------------------------------------------------------------------
+# Examples are evidence, not material
+# ---------------------------------------------------------------------------
+
+
+def _endpoint_with_example_issue(path: str) -> Endpoint:
+    """An endpoint whose tables are clean and whose example is broken."""
+    endpoint = _endpoint(path, body=_measured_body(2, 2))
+    example = next(
+        section
+        for section in endpoint.sections
+        if section.name is SectionName.EXAMPLE_RESPONSE
+    )
+    example.scan_result = SectionScanResult(
+        status=SectionStatus.PARTIAL,
+        issues=[Issue(code=IssueCode.EXAMPLE_INVALID_JSON, location="example 1")],
+    )
+    return endpoint
+
+
+def test_a_broken_example_does_not_degrade_the_document() -> None:
+    """A generator builds from the parameter tables; a malformed example is a
+    documentation nuisance, not a reason to call the endpoint unusable."""
+    endpoint = _endpoint_with_example_issue("example-broken.rst")
+
+    assert analyze_document(endpoint).overall_status is OverallStatus.OK
+
+    analytics = analyze_generation([endpoint])
+    assert analytics.ok_count == 1
+    assert analytics.documentation_clean == 1
+    assert analytics.usable_documents == 1.0
+    # The diagnostic itself is still reported - it is only weighed differently.
+    assert analytics.issues_by_code == {"example_invalid_json": 1}
+
+
+def test_an_unread_example_block_does_not_make_the_scan_partial() -> None:
+    """Same rule for our own shortfall: not having read an example says nothing
+    about whether the endpoint can be generated."""
+    endpoint = _endpoint("unread-example.rst", body=_measured_body(2, 2))
+    example = next(
+        section
+        for section in endpoint.sections
+        if section.name is SectionName.EXAMPLE_REQUEST
+    )
+    example.scan_result = SectionScanResult(
+        status=SectionStatus.FAILED,
+        issues=[Issue(code=IssueCode.UNMAPPED_BLOCK, location="request block 1")],
+    )
+
+    analytics = analyze_generation([endpoint])
+
+    assert analytics.unread_documents == 0
+    assert analytics.read_in_full == 1
+
+
+def test_documents_are_weighted_by_how_much_is_usable() -> None:
+    """ok counts 1, partial 0.5, failed and unsupported 0 - so "everything is
+    partial" and "everything is unusable" stop reading the same."""
+    analytics = analyze_generation(
+        [
+            _endpoint("ok.rst", body=_measured_body(2, 2)),
+            _endpoint(
+                "partial.rst",
+                body=SectionScanResult(
+                    status=SectionStatus.PARTIAL,
+                    issues=[Issue(code=IssueCode.UNMAPPED_TABLE)],
+                ),
+            ),
+            _plain("failed.rst", failure=Issue(code=IssueCode.PARSER_ERROR)),
+            _plain(
+                "unsupported.rst", failure=Issue(code=IssueCode.UNSUPPORTED_DOC_STYLE)
+            ),
+        ]
+    )
+
+    assert (analytics.ok_count, analytics.partial_count) == (1, 1)
+    assert analytics.usable_documents == 1.5  # 1 + 0.5 + 0 + 0

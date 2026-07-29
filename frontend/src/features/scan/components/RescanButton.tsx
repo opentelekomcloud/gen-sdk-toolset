@@ -32,7 +32,7 @@ export function RescanButton({ reason, scanning, scannerVersion, onClick, size =
   const label = t(meta.labelKey, { v: scannerVersion });
   if (size === "lg") {
     return (
-      <button
+      <button type="button"
         onClick={onClick}
         className="flex items-center gap-1.5 rounded bg-brand px-3.5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
       >
@@ -44,7 +44,7 @@ export function RescanButton({ reason, scanning, scannerVersion, onClick, size =
     ? "border-red-300 text-red-700 hover:border-red-500"
     : "border-gray-300 text-gray-600 hover:border-gray-500 hover:text-gray-900";
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded border px-2.5 py-1 text-xs font-medium transition ${tone}`}
     >

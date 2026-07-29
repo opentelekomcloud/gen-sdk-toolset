@@ -1,0 +1,49 @@
+# Everything behind one door: the static panel and the API share an origin, so
+# a single basic-auth guard covers both. Without it POST /scan/.../rescan would
+# be open to anyone who finds the address - and a scan spends the GitHub quota
+# of whatever token the server holds.
+#
+# SITE_ADDRESS is the domain (Caddy then obtains a Let's Encrypt certificate on
+# its own) or :80 when there is no DNS name yet.
+#
+# The credentials live in deploy/auth.caddy, mounted next to this file. They are
+# deliberately NOT passed as environment variables: compose expands `$` even
+# inside an env_file, and a bcrypt hash is mostly `$` - it arrives truncated and
+# every password is then rejected.
+{$SITE_ADDRESS} {
+	import /etc/caddy/auth.caddy
+
+	# The API and the health probe live on the backend; everything else is the
+	# static bundle, with unknown paths falling back to index.html so the
+	# client-side router keeps working on a deep link.
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle /health {
+		reverse_proxy backend:8000
+	}
+	# The API contract, readable: FastAPI serves Swagger UI at /docs and the
+	# schema at /openapi.json. Both sit behind the same password as everything
+	# else. "Try it out" starts real jobs - on this host they fail cleanly,
+	# because no GitHub token is configured here.
+	handle /docs* {
+		reverse_proxy backend:8000
+	}
+	handle /redoc* {
+		reverse_proxy backend:8000
+	}
+	handle /openapi.json {
+		reverse_proxy backend:8000
+	}
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	encode gzip
+	log {
+		output stdout
+		format console
+	}
+}

@@ -225,6 +225,13 @@
           "total": {
             "title": "Total",
             "type": "integer"
+          },
+          "version_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Version Counts",
+            "type": "object"
           }
         },
         "required": [
@@ -232,7 +239,8 @@
           "total",
           "page",
           "page_size",
-          "doc_counts"
+          "doc_counts",
+          "version_counts"
         ],
         "title": "DocumentsResponse",
         "type": "object"
@@ -922,6 +930,17 @@
             "title": "Overall Breakdown",
             "type": "object"
           },
+          "read_in_full": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read In Full"
+          },
           "rescan_reason": {
             "anyOf": [
               {
@@ -931,6 +950,10 @@
                 "type": "null"
               }
             ]
+          },
+          "rows_unrecognized": {
+            "title": "Rows Unrecognized",
+            "type": "integer"
           },
           "scan_status": {
             "$ref": "#/components/schemas/ScanStatus"
@@ -986,6 +1009,17 @@
             },
             "title": "Top Issues",
             "type": "array"
+          },
+          "unread_breakdown": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Unread Breakdown",
+            "type": "object"
+          },
+          "unread_documents": {
+            "title": "Unread Documents",
+            "type": "integer"
           }
         },
         "required": [
@@ -993,12 +1027,16 @@
           "label",
           "scan_status",
           "documents",
+          "read_in_full",
           "docs_ok",
           "scanner_version",
           "scanned_at",
           "docs_changed",
           "rescan_reason",
           "overall_breakdown",
+          "unread_breakdown",
+          "unread_documents",
+          "rows_unrecognized",
           "section_rollup",
           "error",
           "error_at",
@@ -1101,6 +1139,17 @@
             "title": "Overall Breakdown",
             "type": "object"
           },
+          "read_in_full": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read In Full"
+          },
           "rescan_reason": {
             "anyOf": [
               {
@@ -1110,6 +1159,10 @@
                 "type": "null"
               }
             ]
+          },
+          "rows_unrecognized": {
+            "title": "Rows Unrecognized",
+            "type": "integer"
           },
           "scan_status": {
             "$ref": "#/components/schemas/ScanStatus"
@@ -1158,6 +1211,17 @@
               }
             ],
             "title": "Started At"
+          },
+          "unread_breakdown": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Unread Breakdown",
+            "type": "object"
+          },
+          "unread_documents": {
+            "title": "Unread Documents",
+            "type": "integer"
           }
         },
         "required": [
@@ -1165,12 +1229,16 @@
           "label",
           "scan_status",
           "documents",
+          "read_in_full",
           "docs_ok",
           "scanner_version",
           "scanned_at",
           "docs_changed",
           "rescan_reason",
           "overall_breakdown",
+          "unread_breakdown",
+          "unread_documents",
+          "rows_unrecognized",
           "section_rollup",
           "error",
           "error_at"
@@ -1517,7 +1585,7 @@
     },
     "/api/scan/services/{repo}/documents": {
       "get": {
-        "description": "One page of the active generation's API documents.\n\nPages that carry no scan status are not API documents; they are counted in\nthe service detail's ``non_endpoint_documents`` instead of being listed here\nunder a status they never had.\n\n``section`` and ``section_status`` together answer \"which documents have a\nfailed body\": both are required for the filter to apply, because either one\nalone would silently mean something else. ``issue`` answers the same\nquestion for a diagnostic code.",
+        "description": "One page of the active generation's API documents.\n\nPages that carry no scan status are not API documents; they are counted in\nthe service detail's ``non_endpoint_documents`` instead of being listed here\nunder a status they never had.\n\n``section`` and ``section_status`` together answer \"which documents have a\nfailed body\": both are required for the filter to apply, because either one\nalone would silently mean something else. ``issue`` answers the same\nquestion for a diagnostic code, and ``api_version`` narrows to one version\nof the API (``unversioned`` for the documents that name none).",
         "operationId": "list_documents_api_scan_services__repo__documents_get",
         "parameters": [
           {
@@ -1613,6 +1681,22 @@
               ],
               "title": "Issue"
             }
+          },
+          {
+            "in": "query",
+            "name": "api_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Api Version"
+            }
           }
         ],
         "responses": {
@@ -1687,6 +1771,44 @@
           }
         },
         "summary": "Get Document"
+      }
+    },
+    "/api/scan/services/{repo}/export": {
+      "get": {
+        "description": "The active generation as a ``RepositoryScanResult`` - the scanner's own\ncontract, not a shape invented for this endpoint.\n\nRebuilt from the stored payloads and validated on the way out: if anything\nin the database no longer satisfies the contract, this fails loudly instead\nof handing out a file that only looks right.",
+        "operationId": "export_generation_api_scan_services__repo__export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Generation"
       }
     },
     "/api/scan/services/{repo}/generations": {

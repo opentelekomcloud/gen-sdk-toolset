@@ -129,7 +129,8 @@ export interface paths {
          *     ``section`` and ``section_status`` together answer "which documents have a
          *     failed body": both are required for the filter to apply, because either one
          *     alone would silently mean something else. ``issue`` answers the same
-         *     question for a diagnostic code.
+         *     question for a diagnostic code, and ``api_version`` narrows to one version
+         *     of the API (``unversioned`` for the documents that name none).
          */
         get: operations["list_documents_api_scan_services__repo__documents_get"];
         put?: never;
@@ -152,6 +153,31 @@ export interface paths {
          * @description One document of the active generation, with its sections and parameters.
          */
         get: operations["get_document_api_scan_services__repo__documents__document_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/services/{repo}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Generation
+         * @description The active generation as a ``RepositoryScanResult`` - the scanner's own
+         *     contract, not a shape invented for this endpoint.
+         *
+         *     Rebuilt from the stored payloads and validated on the way out: if anything
+         *     in the database no longer satisfies the contract, this fails loudly instead
+         *     of handing out a file that only looks right.
+         */
+        get: operations["export_generation_api_scan_services__repo__export_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -319,6 +345,10 @@ export interface components {
             page_size: number;
             /** Total */
             total: number;
+            /** Version Counts */
+            version_counts: {
+                [key: string]: number;
+            };
         };
         /**
          * ExampleResponse
@@ -579,7 +609,11 @@ export interface components {
             overall_breakdown: {
                 [key: string]: number;
             };
+            /** Read In Full */
+            read_in_full: number | null;
             rescan_reason: components["schemas"]["RescanReason"] | null;
+            /** Rows Unrecognized */
+            rows_unrecognized: number;
             scan_status: components["schemas"]["ScanStatus"];
             /** Scanned At */
             scanned_at: string | null;
@@ -595,6 +629,12 @@ export interface components {
             started_at?: string | null;
             /** Top Issues */
             top_issues: components["schemas"]["IssueCount"][];
+            /** Unread Breakdown */
+            unread_breakdown: {
+                [key: string]: number;
+            };
+            /** Unread Documents */
+            unread_documents: number;
         };
         /**
          * ServiceListItem
@@ -628,7 +668,11 @@ export interface components {
             overall_breakdown: {
                 [key: string]: number;
             };
+            /** Read In Full */
+            read_in_full: number | null;
             rescan_reason: components["schemas"]["RescanReason"] | null;
+            /** Rows Unrecognized */
+            rows_unrecognized: number;
             scan_status: components["schemas"]["ScanStatus"];
             /** Scanned At */
             scanned_at: string | null;
@@ -642,6 +686,12 @@ export interface components {
             };
             /** Started At */
             started_at?: string | null;
+            /** Unread Breakdown */
+            unread_breakdown: {
+                [key: string]: number;
+            };
+            /** Unread Documents */
+            unread_documents: number;
         };
         /**
          * ServicesResponse
@@ -848,6 +898,7 @@ export interface operations {
                 section?: string | null;
                 section_status?: string | null;
                 issue?: string | null;
+                api_version?: string | null;
             };
             header?: never;
             path: {
@@ -896,6 +947,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DocumentDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_generation_api_scan_services__repo__export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

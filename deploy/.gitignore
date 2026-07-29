@@ -1,0 +1,4 @@
+# The data dump, the host configuration and the credentials stay out of git.
+seed/*.sql.gz
+.env
+auth.caddy

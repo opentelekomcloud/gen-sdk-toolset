@@ -10,7 +10,10 @@ services, and one source of truth for "what partial means"
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Session, joinedload, selectinload, undefer
@@ -30,6 +33,8 @@ from tools.panel.api.schemas import (
     ServicesResponse,
     SummaryResponse,
 )
+from tools.panel.core.analytics import document_from_payload
+from tools.panel.core.analytics.generation import UNVERSIONED_KEY as UNVERSIONED
 from tools.panel.core.db.models import (
     DocumentRecord,
     ExcludedService,
@@ -43,6 +48,8 @@ from tools.panel.core.service_state import (
     failed_job,
     status_documents,
 )
+from tools.shared.ir import Service as IrService
+from tools.shared.scan import RepositoryScanResult
 
 router = APIRouter()
 
@@ -231,6 +238,7 @@ def list_documents(
     section: str | None = Query(default=None),
     section_status: str | None = Query(default=None),
     issue: str | None = Query(default=None),
+    api_version: str | None = Query(default=None),
 ) -> DocumentsResponse:
     """One page of the active generation's API documents.
 
@@ -241,12 +249,18 @@ def list_documents(
     ``section`` and ``section_status`` together answer "which documents have a
     failed body": both are required for the filter to apply, because either one
     alone would silently mean something else. ``issue`` answers the same
-    question for a diagnostic code.
+    question for a diagnostic code, and ``api_version`` narrows to one version
+    of the API (``unversioned`` for the documents that name none).
     """
     service = _service_or_404(db, repo)
     if service.active_generation_id is None:
         return DocumentsResponse(
-            items=[], total=0, page=page, page_size=PAGE_SIZE, doc_counts={"all": 0}
+            items=[],
+            total=0,
+            page=page,
+            page_size=PAGE_SIZE,
+            doc_counts={"all": 0},
+            version_counts={},
         )
 
     base = select(DocumentRecord).where(
@@ -283,8 +297,19 @@ def list_documents(
             )
         )
 
+    # Both chip rows describe the same set: the counts are taken before the
+    # chips' own filters are applied, so clicking one never makes the others
+    # vanish - and the row a user just clicked stays there to be unclicked.
     doc_counts = _document_counts(db, base)
+    version_counts = _version_counts(db, base)
+
     filtered = base.where(DocumentRecord.overall_status == status) if status else base
+    if api_version:
+        filtered = filtered.where(
+            DocumentRecord.api_version.is_(None)
+            if api_version == UNVERSIONED
+            else DocumentRecord.api_version == api_version
+        )
 
     total = db.scalar(select(func.count()).select_from(filtered.subquery())) or 0
     records = db.scalars(
@@ -300,6 +325,46 @@ def list_documents(
         page=page,
         page_size=PAGE_SIZE,
         doc_counts=doc_counts,
+        version_counts=version_counts,
+    )
+
+
+@router.get("/scan/services/{repo:path}/export")
+def export_generation(repo: str, db: Session = Depends(get_db)) -> Response:
+    """The active generation as a ``RepositoryScanResult`` - the scanner's own
+    contract, not a shape invented for this endpoint.
+
+    Rebuilt from the stored payloads and validated on the way out: if anything
+    in the database no longer satisfies the contract, this fails loudly instead
+    of handing out a file that only looks right.
+    """
+    service = _service_or_404(db, repo)
+    generation = service.active_generation
+    if generation is None:
+        raise HTTPException(status_code=404, detail="Service has no scan result")
+
+    payloads = db.scalars(
+        select(DocumentRecord)
+        .options(undefer(DocumentRecord.payload))
+        .where(DocumentRecord.generation_id == generation.id)
+        .order_by(DocumentRecord.path)
+    ).all()
+
+    result = RepositoryScanResult(
+        repository=IrService(
+            repo=service.repo,
+            documents=[document_from_payload(record.payload) for record in payloads],
+        ),
+        branch=generation.branch,
+        commit_hash=generation.commit_hash,
+        scanner_version=generation.scanner_version,
+        excluded_documents=list(generation.excluded_documents),
+    )
+    filename = f"{service.name}-{generation.commit_hash[:7]}.json"
+    return Response(
+        content=json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -374,6 +439,20 @@ def _sorted(items: list[ServiceListItem], sort: str) -> list[ServiceListItem]:
         items,
         key=lambda item: (item.docs_ok is None, item.docs_ok or 0, item.name),
     )
+
+
+def _version_counts(db: Session, base: Select) -> dict[str, int]:
+    """How the matching documents spread over API versions, worst-first order
+    being irrelevant here: the UI sorts them itself.
+
+    Documents that name no version are grouped under ``unversioned`` - the same
+    key the generation analytics uses, so the two never disagree.
+    """
+    matched = base.subquery()
+    rows = db.execute(
+        select(matched.c.api_version, func.count()).group_by(matched.c.api_version)
+    ).all()
+    return {(version or UNVERSIONED): count for version, count in rows}
 
 
 def _document_counts(db: Session, base: Select) -> dict[str, int]:

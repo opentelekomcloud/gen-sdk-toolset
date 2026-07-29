@@ -23,7 +23,7 @@ function ExcludedRow({ item }: { item: ExcludedService }) {
             {t("excluded.by", { by: item.excluded_by, at: item.excluded_at })}
           </div>
         </div>
-        <button
+        <button type="button"
           onClick={() => setConfirming(true)}
           disabled={include.isPending || confirming}
           className="flex items-center gap-1.5 whitespace-nowrap rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
@@ -38,13 +38,13 @@ function ExcludedRow({ item }: { item: ExcludedService }) {
             {t("excluded.restoreConfirm", { name: item.name })}
           </span>
           <span className="flex shrink-0 gap-2">
-            <button
+            <button type="button"
               onClick={() => setConfirming(false)}
               className="rounded border border-amber-300 px-2.5 py-1 text-xs font-medium text-amber-800 transition hover:border-amber-500"
             >
               {t("exclude.cancel")}
             </button>
-            <button
+            <button type="button"
               onClick={() => {
                 setConfirming(false);
                 include.mutate();
@@ -70,7 +70,7 @@ export function ExcludedSection() {
 
   return (
     <div className="mt-6">
-      <button
+      <button type="button"
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 text-xs font-medium text-gray-400 transition hover:text-gray-600"
       >

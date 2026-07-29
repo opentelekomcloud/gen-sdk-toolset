@@ -62,3 +62,9 @@ Response
        "kind": "Node",
        "apiVersion": "v3"
    }
+
+The block below carries no example label, so nothing may consume it:
+
+.. code-block::
+
+   DELETE /api/v3/projects/{project_id}/clusters/{cluster_id}/nodes/{node_id}

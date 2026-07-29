@@ -56,13 +56,13 @@ export function ExcludeModal({ service, onConfirm, onClose }: Props) {
             {t("exclude.recordedAs", { id: CONFIG.identity, date: today })}
           </span>
           <div className="flex gap-2">
-            <button
+            <button type="button"
               onClick={onClose}
               className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-gray-500"
             >
               {t("exclude.cancel")}
             </button>
-            <button
+            <button type="button"
               disabled={!reason.trim()}
               onClick={() => onConfirm(reason.trim())}
               className={`rounded px-3 py-1.5 text-xs font-semibold text-white transition ${

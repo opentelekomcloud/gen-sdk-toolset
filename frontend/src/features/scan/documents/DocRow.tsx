@@ -71,7 +71,7 @@ export function DocRow({ serviceName, doc }: { serviceName: string; doc: Documen
               <span className="flex items-center gap-2 text-xs text-red-700">
                 <AlertTriangle size={13} /> {t("doc.detailFailed")}
               </span>
-              <button
+              <button type="button"
                 onClick={() => void detail.refetch()}
                 className="flex items-center gap-1 rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 transition hover:border-red-500"
               >

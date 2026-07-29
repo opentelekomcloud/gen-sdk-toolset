@@ -45,7 +45,7 @@ type MockService = {
 
 const svc = (o: Partial<MockService> & { name: string; scan_status: string }): MockService => ({
   scanner_version: V, scanned_at: NOW, docs_changed: false, rescan_reason: null, error: null, error_at: null,
-  overall_breakdown: {}, section_rollup: rollup(0), docs_ok: null, documents: null,
+  overall_breakdown: {}, unread_breakdown: {}, unread_documents: 0, rows_unrecognized: 0, read_in_full: null, section_rollup: rollup(0), docs_ok: null, documents: null,
   top_issues: [], non_endpoint_documents: 0, head_commit: null, interruption: null,
   active_generation: null, latest_generation: null, label: o.name.split("/").pop() ?? o.name, ...o,
 });
@@ -322,7 +322,8 @@ export function mockScanApi(): Plugin {
               ["all", "ok", "partial", "failed", "unsupported"].map((k) => [k, k === "all" ? all.length : all.filter((d) => d.overall_status === k).length]),
             );
             const filtered = status ? all.filter((d) => d.overall_status === status) : all;
-            return json(res, { items: filtered.slice((page - 1) * page_size, page * page_size), total: filtered.length, page, page_size, doc_counts });
+            const version_counts = { "v2.4": filtered.length };
+            return json(res, { items: filtered.slice((page - 1) * page_size, page * page_size), total: filtered.length, page, page_size, doc_counts, version_counts });
           }
           const dm = rest.match(/^\/documents\/(\d+)$/);
           if (dm) return json(res, detail(name, Number(dm[1])));

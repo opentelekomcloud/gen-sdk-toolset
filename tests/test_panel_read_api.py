@@ -141,9 +141,18 @@ def test_services_list_serves_the_active_generation(scanned):
     # partial: the plain page's style was not supported, so it stayed unread.
     assert item["scan_status"] == "partial"
     assert item["documents"] == 2  # both documents carry a status
-    # One of two: the endpoint carries a documentation diagnostic, while the
-    # unsupported page is our gap, not the documentation's, so it stays clean.
-    assert item["docs_ok"] == 50
+    # Neither: the endpoint left rows unrecognized, the page was never read.
+    # The three buckets still add up to the documents with a status.
+    assert item["read_in_full"] == 0
+    assert item["rows_unrecognized"] == 1
+    assert item["unread_documents"] == 1
+    assert (
+        item["read_in_full"] + item["rows_unrecognized"] + item["unread_documents"]
+        == item["documents"]
+    )
+    # Weighted, not counted: the degraded endpoint is worth half a document and
+    # the unsupported page nothing, so half of one document out of two -> 25%.
+    assert item["docs_ok"] == 25
     assert item["scanner_version"] == SCANNER_VERSION
     assert item["scanned_at"] is not None
     assert item["docs_changed"] is False  # no head_commit known yet (issue #25)
@@ -152,6 +161,10 @@ def test_services_list_serves_the_active_generation(scanned):
     assert item["rescan_reason"] is None
     assert item["error"] is None
     assert sum(item["overall_breakdown"].values()) == item["documents"]
+    # The unsupported page is unread (its style defeated us), so the bar shows
+    # it grey - taken out of its colour, never added on top of it.
+    assert item["unread_documents"] == 1
+    assert item["unread_breakdown"] == {"unsupported": 1}
     assert set(item["section_rollup"]) == {
         "path_params",
         "query_params",
@@ -385,6 +398,7 @@ def test_documents_of_an_unscanned_service_are_empty_not_404(client, session_fac
         "page": 1,
         "page_size": 20,
         "doc_counts": {"all": 0},
+        "version_counts": {},
     }
 
 
@@ -507,7 +521,8 @@ def test_messy_documentation_read_in_full_is_scanned_not_partial(
     (item,) = client.get("/api/scan/services").json()["items"]
 
     assert item["scan_status"] == "scanned"  # nothing stayed unread
-    assert item["docs_ok"] == 0  # but the documentation is not clean
+    # The documentation is degraded, not unusable: half a document of one.
+    assert item["docs_ok"] == 50
 
 
 def test_documents_can_be_filtered_by_an_issue_code(scanned):
@@ -531,3 +546,55 @@ def test_issue_filter_also_matches_a_gating_failure(scanned):
     ).json()
 
     assert [item["overall_status"] for item in body["items"]] == ["unsupported"]
+
+
+def test_documents_can_be_filtered_by_api_version(scanned):
+    """The version chips filter the same way the status chips do."""
+    body = scanned.get(f"/api/scan/services/{REPO}/documents").json()
+    assert body["version_counts"] == {"v1": 1, "unversioned": 1}
+
+    versioned = scanned.get(
+        f"/api/scan/services/{REPO}/documents?api_version=v1"
+    ).json()
+    assert [item["path"] for item in versioned["items"]] == [
+        "api-ref/source/create_server.rst"
+    ]
+
+    # The chips survive their own filter: counts ignore api_version, so the
+    # version a user just clicked is still there to be unclicked.
+    assert versioned["version_counts"] == {"v1": 1, "unversioned": 1}
+
+    # A document that names no version is reachable under its own key rather
+    # than disappearing from the chips.
+    unversioned = scanned.get(
+        f"/api/scan/services/{REPO}/documents?api_version=unversioned"
+    ).json()
+    assert unversioned["total"] == 1
+
+
+def test_export_returns_the_scanner_contract_as_a_download(scanned):
+    """The raw report is a RepositoryScanResult - the same shape the CLI emits,
+    not a structure invented for the browser."""
+    response = scanned.get(f"/api/scan/services/{REPO}/export")
+
+    assert response.status_code == 200
+    assert "attachment" in response.headers["content-disposition"]
+    assert COMMIT[:7] in response.headers["content-disposition"]
+
+    payload = response.json()
+    assert payload["commit_hash"] == COMMIT
+    assert payload["repository"]["repo"] == REPO
+    assert {document["path"] for document in payload["repository"]["documents"]} == {
+        "api-ref/source/create_server.rst",
+        "api-ref/source/history.rst",
+    }
+    # It validates as the contract it claims to be.
+    from tools.shared.scan import RepositoryScanResult
+
+    assert RepositoryScanResult.model_validate(payload).commit_hash == COMMIT
+
+
+def test_export_of_an_unscanned_service_is_a_404(client, session_factory):
+    _register(session_factory)
+
+    assert client.get(f"/api/scan/services/{REPO}/export").status_code == 404

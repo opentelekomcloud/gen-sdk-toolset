@@ -123,24 +123,27 @@ def status_documents(generation: Generation) -> int:
 
 
 def clean_endpoint_share(generation: Generation) -> float | None:
-    """Share of documents with nothing wrong **in the documentation**.
+    """How much of this documentation a generator can use, 0..1.
 
-    Diagnostics about our own shortfall - content we saw and could not read -
-    are excluded: they say nothing about the pages themselves and are reported
-    through :func:`unread_documents` instead. ``None`` when the generation has
-    no document with a status: unknown, not zero.
+    Documents are weighted rather than counted: clean 1, degraded 0.5, and 0
+    for the ones we could not interpret at all - a document with one awkward
+    table is not worth the same as one we cannot read, and neither is worth
+    zero. Diagnostics about our own shortfall, and anything found in an example
+    section, are excluded: neither says whether the endpoint can be generated.
+    ``None`` when the generation has no document with a status: unknown, not
+    zero.
 
     :param generation: The generation to measure.
     """
     total = status_documents(generation)
     if total == 0:
         return None
-    clean = generation.analytics.get("documentation_clean")
-    if clean is None:
-        # Ingested before scanner gaps were counted separately; the ok count is
-        # the closest honest answer that generation can give.
-        clean = generation.ok_count
-    return clean / total
+    usable = generation.analytics.get("usable_documents")
+    if usable is None:
+        # Ingested before documents were weighted; the clean count is the
+        # closest honest answer that generation can give.
+        usable = generation.analytics.get("documentation_clean", generation.ok_count)
+    return usable / total
 
 
 def read_in_full_share(generation: Generation) -> float | None:

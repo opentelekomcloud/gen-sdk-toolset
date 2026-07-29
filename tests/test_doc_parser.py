@@ -720,25 +720,47 @@ def test_api_version_from_source_path() -> None:
     assert extract("/elb/pools", "api-ref/source/x.rst") is None
 
 
-def test_unread_example_block_is_recorded_not_reported_as_absent(
+def test_inline_example_is_extracted_from_the_response_section(
     parser: DocutilsParser, cce_inline_examples_doc: str
 ) -> None:
-    """An example written as a bold run-in inside Response is not extracted yet.
-    The section must not claim the document has no example: `missing` is a fact
-    about the documentation, `failed` plus `unmapped_block` is a fact about us.
+    """Style-A documents converted from HTML announce their examples with a bold
+    run-in inside Request/Response instead of a heading. The label is what makes
+    a block an example, so the example lands where a heading would have put it.
     """
     doc = parser.parse(cce_inline_examples_doc, "deleting_a_node.rst")
     sections = {section.name.value: section for section in doc.sections}
 
-    response_example = sections["example_response"].scan_result
-    assert response_example.status is SectionStatus.FAILED
-    assert [issue.code for issue in response_example.issues] == [
-        IssueCode.UNMAPPED_BLOCK
-    ]
-    assert sections["example_response"].examples == []  # nothing was invented
+    example = sections["example_response"]
+    assert example.scan_result.status is SectionStatus.OK
+    assert len(example.examples) == 1
+    assert example.examples[0].label == "Example response:"  # the run-in, as text
+    assert '"kind": "Node"' in example.examples[0].raw
 
-    # The request example really is absent ("N/A" in the source), and absence
-    # keeps reading as absence.
+
+def test_absent_example_stays_absent(
+    parser: DocutilsParser, cce_inline_examples_doc: str
+) -> None:
+    """The request example really is absent ("N/A" in the source): absence must
+    not be dressed up as anything else."""
+    doc = parser.parse(cce_inline_examples_doc, "deleting_a_node.rst")
+    sections = {section.name.value: section for section in doc.sections}
+
     request_example = sections["example_request"].scan_result
     assert request_example.status is SectionStatus.MISSING
     assert request_example.issues == []
+
+
+def test_unlabelled_block_is_reported_rather_than_taken_as_an_example(
+    parser: DocutilsParser, cce_inline_examples_doc: str
+) -> None:
+    """A code block nobody called an example (a bare URI line here) must not
+    become one - and must not vanish either. `unmapped_block` is what keeps
+    "we did not read this" apart from "there was nothing here"."""
+    doc = parser.parse(cce_inline_examples_doc, "deleting_a_node.rst")
+    sections = {section.name.value: section for section in doc.sections}
+
+    example = sections["example_response"]
+    assert [issue.code for issue in example.scan_result.issues] == [
+        IssueCode.UNMAPPED_BLOCK
+    ]
+    assert all("DELETE /api/v3" not in block.raw for block in example.examples)

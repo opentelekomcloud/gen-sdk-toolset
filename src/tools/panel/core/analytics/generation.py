@@ -30,13 +30,28 @@ from tools.domain.report.analytics import (
 from tools.domain.report.analytics import (
     _document_sections as document_sections,
 )
-from tools.domain.report.analytics import (
-    doc_all_issues,
-    doc_overall_status,
-)
+from tools.domain.report.analytics import doc_all_issues
 from tools.domain.report.enums import OverallStatus
-from tools.shared.ir import Document, Endpoint
-from tools.shared.scan import IssueCode
+from tools.shared.ir import Document, Endpoint, SectionName
+from tools.shared.scan import IssueCode, SectionStatus
+
+#: Examples are evidence, not material: a generator builds from the parameter
+#: tables, so a broken example says nothing about whether a service can be
+#: generated. Diagnostics found in these sections stay visible on the document
+#: and in the issue filters - they simply do not move any quality number.
+EXAMPLE_SECTIONS = frozenset(
+    {SectionName.EXAMPLE_REQUEST, SectionName.EXAMPLE_RESPONSE}
+)
+
+#: What one document is worth when the panel measures usable documentation:
+#: a clean document counts fully, a degraded one counts half, and a document we
+#: could not interpret counts for nothing.
+_DOCUMENT_WEIGHT = {
+    OverallStatus.OK: 1.0,
+    OverallStatus.PARTIAL: 0.5,
+    OverallStatus.FAILED: 0.0,
+    OverallStatus.UNSUPPORTED: 0.0,
+}
 
 #: Diagnostics that describe **our** shortfall rather than the documentation's:
 #: content we saw and could not read. They make a scan partial, and they must
@@ -74,8 +89,12 @@ class GenerationAnalytics(BaseModel):
     issues_total: int = 0
 
     #: Documents carrying at least one diagnostic about the documentation.
-    #: Their complement over the documents with a status is `docs_ok`.
     documentation_clean: int = 0
+    #: Documents weighted by how much of them a generator can use: a clean one
+    #: counts 1, a degraded one 0.5, one we could not interpret 0. This is what
+    #: `docs_ok` reports, so "half the endpoints are partial" no longer reads
+    #: the same as "half the endpoints are unusable".
+    usable_documents: float = 0.0
     #: Documents where something stayed unread - our gap, not the docs'.
     unread_documents: int = 0
     #: Documents we read end to end: nothing left unread and every documented
@@ -83,6 +102,10 @@ class GenerationAnalytics(BaseModel):
     #: parser do" actually means - `completeness` only sees table rows and stays
     #: at 100% while whole sections go unread.
     read_in_full: int = 0
+    #: Documents we read completely but whose parameter rows we could not all
+    #: recognize. Together with `read_in_full` and `unread_documents` this
+    #: closes over every document that has a status - no unexplained remainder.
+    rows_unrecognized: int = 0
 
     ok_count: int = 0
     partial_count: int = 0
@@ -96,6 +119,10 @@ class GenerationAnalytics(BaseModel):
     completeness: float | None = None
     fields_total: int = 0
     fields_recognized: int = 0
+
+    #: How the unread documents distribute over the status buckets, so a bar
+    #: can show them as their own slice without double-counting.
+    unread_by_status: dict[str, int] = Field(default_factory=dict)
 
     by_section_status: dict[str, dict[str, int]] = Field(default_factory=dict)
     issues_by_code: dict[str, int] = Field(default_factory=dict)
@@ -155,12 +182,67 @@ def doc_completeness(document: Document) -> float | None:
     return recognized / total
 
 
+def material_sections(document: Document) -> list:
+    """Sections a generator reads: everything except the examples.
+
+    :param document: The scanned document IR.
+    """
+    return [
+        section
+        for section in document_sections(document)
+        if section.name not in EXAMPLE_SECTIONS
+    ]
+
+
+def material_issues(document: Document) -> list:
+    """Diagnostics that bear on generation - examples excluded.
+
+    :param document: The scanned document IR.
+    """
+    issues = []
+    if document.scan_result is not None and document.scan_result.failure_reason:
+        issues.append(document.scan_result.failure_reason)
+    for section in material_sections(document):
+        issues.extend(section.scan_result.issues)
+    return issues
+
+
+def document_status(document: Document) -> OverallStatus | None:
+    """The panel's roll-up: a document is judged on its parameter tables.
+
+    Deliberately different from the legacy report roll-up, which degrades a
+    document when any section - example sections included - is partial or
+    failed. A broken example is a documentation nuisance, not a reason to call
+    the endpoint unusable, so it no longer changes this status. Issue #34 will
+    leave this as the only roll-up.
+
+    :param document: The scanned document IR.
+    """
+    if document.scan_result is None:
+        return None
+    failure = document.scan_result.failure_reason
+    if failure is not None:
+        if failure.code is IssueCode.UNSUPPORTED_DOC_STYLE:
+            return OverallStatus.UNSUPPORTED
+        return OverallStatus.FAILED
+    if not isinstance(document, Endpoint):
+        return None
+
+    degrading = {SectionStatus.PARTIAL, SectionStatus.FAILED}
+    if any(
+        section.scan_result.status in degrading
+        for section in material_sections(document)
+    ):
+        return OverallStatus.PARTIAL
+    return OverallStatus.OK
+
+
 def is_unread(document: Document) -> bool:
     """True when a diagnostic says we could not read part of this document.
 
     :param document: The scanned document IR to inspect.
     """
-    return any(issue.code in SCANNER_GAP_CODES for issue in doc_all_issues(document))
+    return any(issue.code in SCANNER_GAP_CODES for issue in material_issues(document))
 
 
 def has_documentation_defect(document: Document) -> bool:
@@ -169,7 +251,7 @@ def has_documentation_defect(document: Document) -> bool:
     :param document: The scanned document IR to inspect.
     """
     return any(
-        issue.code not in SCANNER_GAP_CODES for issue in doc_all_issues(document)
+        issue.code not in SCANNER_GAP_CODES for issue in material_issues(document)
     )
 
 
@@ -195,7 +277,7 @@ def analyze_document(document: Document) -> DocumentAnalytics:
     :param document: The scanned document IR to analyze.
     """
     return DocumentAnalytics(
-        overall_status=doc_overall_status(document),
+        overall_status=document_status(document),
         completeness=doc_completeness(document),
         issues_count=len(doc_all_issues(document)),
     )
@@ -212,6 +294,7 @@ def analyze_generation(documents: Sequence[Document]) -> GenerationAnalytics:
     :param documents: Every document persisted with this generation.
     """
     status_counts: Counter[str] = Counter()
+    unread_status_counts: Counter[str] = Counter()
     section_counts: dict[str, Counter[str]] = {}
     issue_counts: Counter[str] = Counter()
     version_counts: Counter[str] = Counter()
@@ -219,21 +302,31 @@ def analyze_generation(documents: Sequence[Document]) -> GenerationAnalytics:
     endpoints_total = 0
     issues_total = 0
     documentation_clean = 0
+    usable_documents = 0.0
     unread_documents = 0
     read_in_full = 0
+    rows_unrecognized = 0
     fields_total = 0
     fields_recognized = 0
 
     for document in documents:
-        status = doc_overall_status(document)
+        status = document_status(document)
         status_counts[status.value if status is not None else "unknown"] += 1
 
         issues = doc_all_issues(document)
         issues_total += len(issues)
         if is_unread(document):
             unread_documents += 1
-        if status is not None and is_read_in_full(document):
-            read_in_full += 1
+            if status is not None:
+                unread_status_counts[status.value] += 1
+        if status is not None:
+            if is_read_in_full(document):
+                read_in_full += 1
+            elif not is_unread(document):
+                # Read end to end, but some documented rows stayed unrecognized.
+                rows_unrecognized += 1
+        if status is not None:
+            usable_documents += _DOCUMENT_WEIGHT[status]
         if status is not None and not has_documentation_defect(document):
             # Every diagnostic here is about us, so as far as the documentation
             # goes this document came out clean.
@@ -259,8 +352,10 @@ def analyze_generation(documents: Sequence[Document]) -> GenerationAnalytics:
         documents_total=documents_total,
         endpoints_total=endpoints_total,
         documentation_clean=documentation_clean,
+        usable_documents=usable_documents,
         unread_documents=unread_documents,
         read_in_full=read_in_full,
+        rows_unrecognized=rows_unrecognized,
         non_endpoint_documents=documents_total - endpoints_total,
         issues_total=issues_total,
         ok_count=status_counts[OverallStatus.OK.value],
@@ -271,6 +366,7 @@ def analyze_generation(documents: Sequence[Document]) -> GenerationAnalytics:
         completeness=(fields_recognized / fields_total) if fields_total else None,
         fields_total=fields_total,
         fields_recognized=fields_recognized,
+        unread_by_status=dict(unread_status_counts),
         by_section_status={
             name: dict(counts) for name, counts in section_counts.items()
         },

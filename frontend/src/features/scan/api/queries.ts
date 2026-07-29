@@ -108,6 +108,8 @@ export interface DocumentsParams {
   section_status?: SectionStatus;
   /** Issue-code filter, from the top-issue chips. */
   issue?: string;
+  /** One API version, or "unversioned". */
+  api_version?: string;
 }
 
 export function useDocuments(name: string, params: DocumentsParams) {

@@ -102,6 +102,8 @@ export interface ServiceListItem {
   label: string;
   scan_status: ScanStatus;
   documents: number | null;
+  /** Of those, the documents read end to end (the rest hid content from us). */
+  read_in_full: number | null;
   /** Percent of documents scanned without a single diagnostic (documentation quality). */
   docs_ok: number | null;
   scanner_version: string | null;
@@ -109,6 +111,12 @@ export interface ServiceListItem {
   docs_changed: boolean;
   rescan_reason: RescanReason | null;
   overall_breakdown: Partial<Record<DocStatus, number>>;
+  /** The part of each status bucket that was not read in full (grey in the bar). */
+  unread_breakdown: Partial<Record<DocStatus, number>>;
+  /** While above zero, docs_ok is an upper bound: defects can hide in the unread part. */
+  unread_documents: number;
+  /** Read end to end, but some parameter rows stayed unrecognized. */
+  rows_unrecognized: number;
   section_rollup: Record<Section, SectionCounts>;
   /**
    * Message of the last FAILED job (job.error). A failed job creates no
@@ -177,6 +185,8 @@ export interface DocumentsResponse {
   page_size: number;
   /** Computed with q applied, status ignored (aligned with services counts). */
   doc_counts: Record<DocStatus | "all", number>;
+  /** Matching documents per API version; "unversioned" for those naming none. */
+  version_counts: Record<string, number>;
 }
 
 export interface Parameter {

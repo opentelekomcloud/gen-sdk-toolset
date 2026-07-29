@@ -179,6 +179,9 @@ class ServiceListItem(BaseModel):
     label: str
     scan_status: ScanStatus
     documents: int | None
+    #: Of those documents, the ones read end to end. The rest had content we
+    #: could not read, so nothing about them is claimed with certainty.
+    read_in_full: int | None
     #: Whole percent of documents scanned without a single diagnostic - the
     #: panel's measure of the documentation, not of the parser. The parser's
     #: own coverage lives on the generation as `completeness`.
@@ -188,6 +191,16 @@ class ServiceListItem(BaseModel):
     docs_changed: bool
     rescan_reason: RescanReason | None
     overall_breakdown: dict[str, int]
+    #: The part of each status bucket that was not read in full. The bar shows
+    #: it grey, taken out of the colour rather than added on top of it.
+    unread_breakdown: dict[str, int]
+    #: Documents where something stayed unread. While this is above zero,
+    #: `docs_ok` is an upper bound: defects can hide in what we did not read.
+    unread_documents: int
+    #: Documents read end to end whose parameter rows we could not all
+    #: recognize. read_in_full + rows_unrecognized + unread_documents equals
+    #: `documents`, so nothing is left unaccounted for.
+    rows_unrecognized: int
     section_rollup: dict[str, dict[str, int]]
     error: str | None
     error_at: datetime | None
@@ -205,12 +218,18 @@ class ServiceListItem(BaseModel):
             label=service.name,
             scan_status=state.scan_status,
             documents=_status_documents(generation),
+            read_in_full=(
+                _analytics(generation).get("read_in_full") if generation else None
+            ),
             docs_ok=_docs_ok(generation),
             scanner_version=generation.scanner_version if generation else None,
             scanned_at=generation.created_at if generation else None,
             docs_changed=state.docs_changed,
             rescan_reason=state.rescan_reason,
             overall_breakdown=_overall_breakdown(generation),
+            unread_breakdown=_analytics(generation).get("unread_by_status", {}),
+            unread_documents=_analytics(generation).get("unread_documents", 0),
+            rows_unrecognized=_analytics(generation).get("rows_unrecognized", 0),
             section_rollup=_section_rollup(generation),
             error=failed.error if failed else None,
             error_at=failed.finished_at if failed else None,
@@ -298,6 +317,9 @@ class DocumentsResponse(BaseModel):
     page: int
     page_size: int
     doc_counts: dict[str, int]
+    #: Matching documents per API version, `unversioned` for those that name
+    #: none - the same key the generation analytics uses.
+    version_counts: dict[str, int]
 
 
 class ParameterResponse(BaseModel):
