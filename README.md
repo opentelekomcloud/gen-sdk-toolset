@@ -2,11 +2,12 @@
 
 Automated Python SDK generation from Open Telekom Cloud (OTC) API documentation.
 
-The current focus is the **repository scanner**: it walks the `opentelekomcloud-docs`
-GitHub organisation, locates every repository whose docs contain an
-`api-ref/source/` directory, parses each endpoint RST file, and emits a
-structured JSON report describing which documents can be processed today and
-which can't.
+The current focus is the **repository scanner**: given one `opentelekomcloud-docs`
+repository, it checks that the repo's docs contain an `api-ref/source/`
+directory, parses each endpoint RST file, and emits a structured JSON result
+describing which documents can be processed today and which can't. Scanning a
+whole organization — and aggregating the results into headline numbers — is
+the panel's job, not the scanner's.
 
 ## GitHub token
 
@@ -68,13 +69,14 @@ uv sync --extra dev
 
 The scanner reads its configuration from three sources, in order of precedence:
 
-1. **CLI flags** (`--org`, `--branch`, `--output`, …)
+1. **CLI flags** (`--repo`, `--branch`, `--output`, …)
 2. **Environment variables**, including nested overrides via `__`
    (e.g. `GITHUB__ORG=foo`)
 3. **`scan-config.toml`** in the current working directory, or a custom path
    via `--config <path>`
 
-The supported entrypoint is `uv run gen-sdk-scan`. Choose one target mode:
+The supported entrypoint is `uv run gen-sdk-scan`, which scans exactly one
+repository per run:
 
 ```bash
 # Scan one repository and print one raw RepositoryScanResult (no file written)
@@ -88,23 +90,21 @@ uv run gen-sdk-scan \
   --branch 8ff5254f6b7d669170bdacbdf5058e9adcfbe75f \
   --output reports/anti-ddos.json
 
-# Run the legacy organization scan
-uv run gen-sdk-scan \
-  --org opentelekomcloud-docs \
-  --output reports/organization.json
-
 # Write to a file and also print the same JSON to stdout
 uv run gen-sdk-scan --repo OWNER/NAME --output report.json --stdout
 
 # Use a non-default config file or enable verbose logging
-uv run gen-sdk-scan --config configs/staging.toml -v
+uv run gen-sdk-scan --repo OWNER/NAME --config configs/staging.toml -v
 ```
 
-`--repo` requires exactly two non-empty components in `OWNER/NAME` form.
-`--repo` and `--org` are mutually exclusive. When the configured API reference
-path is absent, the scan succeeds with an empty result whose `repository`
-remains a plain `Repository`. A repository or ref that cannot be confirmed
-instead includes a diagnostic `error` and exits non-zero.
+`--repo` is required and takes an `OWNER/NAME` slug. Scanning a whole
+organization is the panel's job, not the CLI's: it needs durable job state to
+resume after a rate limit, which a one-shot command cannot provide.
+
+When the configured API reference path is absent, the scan succeeds with an
+empty result whose `repository` remains a plain `Repository`. A repository or
+ref that cannot be confirmed instead includes a diagnostic `error` and exits
+non-zero.
 
 ### Command-line flags
 
@@ -112,8 +112,7 @@ instead includes a diagnostic `error` and exits non-zero.
 |---|---|
 | `--config PATH` | Path to TOML config (default: `scan-config.toml`) |
 | `--output PATH` | Output JSON file path. `-` redirects to stdout instead |
-| `--repo OWNER/NAME` | Scan one repository and emit one `RepositoryScanResult` |
-| `--org NAME` | Run the legacy organization scan; mutually exclusive with `--repo` |
+| `--repo OWNER/NAME` | **Required.** Repository to scan; emits one `RepositoryScanResult` |
 | `--branch NAME` | Branch name or fixed commit SHA to scan |
 | `--stdout` | Also print the JSON report to stdout (in addition to the file) |
 | `-v`, `--verbose` | DEBUG-level logging |
@@ -121,13 +120,11 @@ instead includes a diagnostic `error` and exits non-zero.
 
 ### Output
 
-Repository mode produces one raw `RepositoryScanResult`. Legacy organization mode
-produces a quality report (`report_schema_version: 1`) containing repository
-results. During MVP the schema version remains `1`; version bumps start after the
-contract is stabilized. Both forms carry **data only**: derived views
-(per-document overall status and flat issue lists) are no longer
-embedded in the JSON — they are computed by the pure functions in
-`tools.domain.report.analytics`.
+A run produces one raw `RepositoryScanResult`, carrying **data only**: derived
+views (per-document overall status, flat issue lists, version and quality
+roll-ups) are not embedded in the JSON. They are computed by the pure functions
+in `tools.panel.core.analytics`, so every number the panel reports has exactly
+one definition and cannot drift from a second stored copy.
 
 - **Repository data** is represented by `Repository` or its eligible
   specialization `Service`. A service contains `Document` records; recognized
@@ -153,14 +150,15 @@ embedded in the JSON — they are computed by the pure functions in
   - `error` — repo-level failure (e.g. file listing failed, or a truncated
     file tree, so a partial scan is never mistaken for a clean one)
 
-- **Legacy org-level adapter** (`OrgScanResult`):
-  - `report_schema_version`, `scanner_version`, `org`, `branch`,
-    `total_repos`, `eligible_repos`, `skipped_repos`
-  - computed roll-ups: `total_documents`, `by_version`, and
-    `quality_summary` — the headline numbers:
-    - `by_overall_status` — `{"ok": N, "partial": N, "failed": N, "unsupported": N}`
-    - `by_section_status` — distribution per section
-    - `top_issues` — most frequent issue codes across the org
+- **Derived views** (`tools.panel.core.analytics`, computed by the panel —
+  never stored in the scan result):
+  - `quality.py` — the per-document primitives: `document_sections` and
+    `doc_all_issues` (every diagnostic flattened, with section-prefixed
+    locations), plus the `OverallStatus` vocabulary
+  - `generation.py` — the roll-ups a scan is persisted with: `document_status`
+    per document, and `analyze_generation` for the headline numbers
+    (`GenerationAnalytics`: status counters, `by_section_status`,
+    `issues_by_code`, `by_version`, completeness)
 
 ### `scan-config.toml`
 

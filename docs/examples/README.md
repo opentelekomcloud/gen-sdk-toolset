@@ -1,10 +1,10 @@
 # Scan examples
 
-`repo_scan_example.json` is a real single-repository scan of
-`opentelekomcloud-docs/anti-ddos` — one element of the org-wide report's
-`repos[]`, produced by the scanner's single-repo mode.
+No example scan is committed — `repo_scan_example.json` was removed in #79 and
+the JSON is generated on demand instead, so it cannot drift from the current
+`RepositoryScanResult` shape.
 
-Regenerate (requires `GITHUB_TOKEN` in the environment or `.env`):
+Generate one (requires `GITHUB_TOKEN` in the environment or `.env`):
 
 ```bash
 uv run gen-sdk-scan \
@@ -13,6 +13,5 @@ uv run gen-sdk-scan \
   --output docs/examples/repo_scan_example.json
 ```
 
-This committed example intentionally passes a full commit SHA through
-`--branch` to make regeneration reproducible. `RepositoryScanResult.branch`
-may contain a normal branch name in regular scans.
+Passing a full commit SHA through `--branch` makes the output reproducible;
+`RepositoryScanResult.branch` carries a normal branch name in regular scans.

@@ -59,10 +59,10 @@ defect.
 ```
 src/tools/
   shared/     IR models + scan contracts. Leaf: imports nothing internal.
-  domain/     Legacy org-level report, being removed - see issue #34. Add nothing
-              here; the reusable analytics move to panel/core/analytics/.
-  scanner/    GitHub provider, RST parsers, ScannerService.
-  panel/      FastAPI API, SQLAlchemy models, Alembic migrations, jobs.
+  scanner/    GitHub provider, RST parsers, ScannerService. One repo per scan;
+              emits data only, computes no aggregates.
+  panel/      FastAPI API, SQLAlchemy models, Alembic migrations, jobs, and
+              core/analytics/ - every derived number lives here.
 frontend/     React + TypeScript (Vite, TanStack Query).
 tests/        pytest suite; RST fixtures in tests/fixtures/.
 docs/         Architecture, glossary, recipes.
@@ -127,8 +127,8 @@ task as finished with a known-red check.
 
 - Adding a runtime dependency to `pyproject.toml`.
 - Changing the database schema (this needs an Alembic migration).
-- Changing a serialized contract: `REPORT_SCHEMA_VERSION`,
-  `DOCUMENT_SCHEMA_VERSION`, panel routes, `openapi.json`.
+- Changing a serialized contract: `DOCUMENT_SCHEMA_VERSION`,
+  `RepositoryScanResult`, panel routes, `openapi.json`.
 - Deleting code that appears to have no caller — run the `gc` agent first.
 - Relaxing a validator, CHECK constraint or unique index.
 
