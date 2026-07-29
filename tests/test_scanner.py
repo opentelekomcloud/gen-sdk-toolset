@@ -577,6 +577,42 @@ def test_fetch_provider_error_voids_the_whole_scan() -> None:
     assert result.error is not None
 
 
+def test_non_utf8_content_gates_only_that_document() -> None:
+    """A document whose raw bytes aren't valid UTF-8 (e.g. a large file read
+    via the raw-media-type fallback) gates only itself: the client raises a
+    plain UnicodeDecodeError, not a ProviderError, so this is a document
+    problem - not a transport one - exactly like test_fetch_failure_is_gating's
+    generic case, not test_fetch_provider_error_voids_the_whole_scan's."""
+
+    class BadEncodingProvider(FakeDocProvider):
+        def fetch_content(self, repo: str, path: str, branch: str) -> str:
+            if path.endswith("bad.rst"):
+                raise UnicodeDecodeError(
+                    "utf-8", b"\xff\xfe", 0, 1, "invalid start byte"
+                )
+            return super().fetch_content(repo, path, branch)
+
+    fake = BadEncodingProvider(
+        repos={
+            "o/svc": {
+                "api-ref/source/good.rst": load_fixture("style_a_cce_grid.rst"),
+                "api-ref/source/bad.rst": "unused",
+            }
+        }
+    )
+
+    result = make_scanner(fake).scan_repository("o/svc")
+
+    assert isinstance(result.repository, Service)
+    assert result.error is None
+    docs = {document.path: document for document in result.repository.documents}
+    assert (
+        docs["api-ref/source/bad.rst"].scan_result.failure_reason.code
+        is IssueCode.FETCH_FAILED
+    )
+    assert isinstance(docs["api-ref/source/good.rst"], Endpoint)
+
+
 def test_parser_crash_is_parser_error() -> None:
     """An unexpected parser exception is reported as parser_error, never as
     no_uri_match."""

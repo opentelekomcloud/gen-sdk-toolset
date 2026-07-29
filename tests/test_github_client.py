@@ -6,9 +6,12 @@
 
 from __future__ import annotations
 
+import base64
+
 import pytest
 import requests
 
+from tools.scanner.github import client as client_module
 from tools.scanner.github.client import GitHubDocProvider
 from tools.shared.exceptions import ProviderError, ProviderErrorKind
 
@@ -21,11 +24,13 @@ class _Resp:
         headers: dict | None = None,
         json_data=None,
         text: str = "",
+        content: bytes | None = None,
     ):
         self.status_code = status_code
         self.headers = headers or {}
         self._json = json_data
         self.text = text
+        self.content = content if content is not None else text.encode()
 
     def json(self):
         return self._json
@@ -173,3 +178,275 @@ def test_secondary_rate_limits_remain_distinguishable_from_permission_denied(
     with pytest.raises(ProviderError) as exc_info:
         _provider(_Session([response])).path_exists("o/r", "main", "p")
     assert exc_info.value.kind is ProviderErrorKind.rate_limit
+
+
+# --------------------------------------------------------------------------- #
+# fetch_content: base64 vs. raw-media-type fallback
+# --------------------------------------------------------------------------- #
+def test_fetch_content_returns_inline_base64_when_available() -> None:
+    encoded = base64.b64encode(b"Example\n=======\n").decode()
+    session = _Session(
+        [
+            _Resp(
+                200,
+                json_data={"type": "file", "encoding": "base64", "content": encoded},
+            )
+        ]
+    )
+
+    content = _provider(session).fetch_content("o/r", "p/x.rst", "main")
+
+    assert content == "Example\n=======\n"
+    assert session.calls == 1
+
+
+def test_fetch_content_falls_back_to_raw_media_type_when_not_base64() -> None:
+    session = _Session(
+        [
+            _Resp(200, json_data={"type": "file", "encoding": "none"}),
+            _Resp(200, content=b"Example\n=======\n"),
+        ]
+    )
+
+    content = _provider(session).fetch_content("o/r", "p/x.rst", "main")
+
+    assert content == "Example\n=======\n"
+    assert session.calls == 2
+    assert session.requests[1][1]["headers"] == {
+        "Accept": "application/vnd.github.raw+json"
+    }
+
+
+def test_fetch_content_raw_fallback_propagates_provider_error() -> None:
+    session = _Session(
+        [
+            _Resp(200, json_data={"type": "file", "encoding": "none"}),
+            _rate_limited(1_800_000_000),
+        ]
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).fetch_content("o/r", "p/x.rst", "main")
+
+    assert exc_info.value.kind is ProviderErrorKind.rate_limit
+
+
+def test_fetch_content_raw_fallback_non_utf8_content_is_not_a_provider_error() -> None:
+    """A bad-encoding large file is a document problem, not a transport one -
+    it must raise plainly (like the base64 branch already does), not as a
+    ProviderError, so ScannerService gates only this one document instead of
+    failing the whole repository scan (see _fetch_document's except clauses)."""
+    session = _Session(
+        [
+            _Resp(200, json_data={"type": "file", "encoding": "none"}),
+            _Resp(200, content=b"\xff\xfe"),
+        ]
+    )
+
+    with pytest.raises(UnicodeDecodeError):
+        _provider(session).fetch_content("o/r", "p/x.rst", "main")
+
+
+@pytest.mark.parametrize("entry_type", ["dir", "submodule", "symlink", None])
+def test_fetch_content_rejects_anything_but_a_regular_file(entry_type) -> None:
+    """Only a regular file has content to read. Anything else - an unresolved
+    symlink, a submodule, a directory - is refused rather than run through the
+    raw-media-type retry as if it were a large file."""
+    session = _Session([_Resp(200, json_data={"type": entry_type, "encoding": "none"})])
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).fetch_content("o/r", "p/x.rst", "main")
+
+    assert exc_info.value.kind is ProviderErrorKind.unexpected_response
+    assert session.calls == 1  # no raw retry was attempted
+
+
+def test_fetch_content_rejects_an_unrecognized_encoding() -> None:
+    """`none` specifically means "too large to inline", which the raw retry
+    handles. Any other encoding is a shape this client does not understand,
+    so it fails instead of retrying and hoping."""
+    session = _Session([_Resp(200, json_data={"type": "file", "encoding": "utf-16"})])
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).fetch_content("o/r", "p/x.rst", "main")
+
+    assert exc_info.value.kind is ProviderErrorKind.unexpected_response
+    assert session.calls == 1
+
+
+# --------------------------------------------------------------------------- #
+# list_files: truncated-tree directory-walk fallback
+# --------------------------------------------------------------------------- #
+def test_list_files_returns_paths_directly_when_tree_is_not_truncated() -> None:
+    tree = [
+        {"path": "p/a.rst", "type": "blob"},
+        {"path": "p/b.txt", "type": "blob"},
+        {"path": "other/c.rst", "type": "blob"},
+    ]
+    session = _Session([_Resp(200, json_data={"truncated": False, "tree": tree})])
+
+    listing = _provider(session).list_files("o/r", "main")
+
+    assert listing.paths == ["p/a.rst"]
+    assert listing.truncated is False
+    assert listing.truncated_reason is None
+    assert session.calls == 1
+
+
+def test_list_files_walks_prefix_when_tree_is_truncated() -> None:
+    session = _Session(
+        [
+            _Resp(200, json_data={"truncated": True, "tree": []}),
+            _Resp(  # directory listing of "p" (self.prefix stripped of "/")
+                200,
+                json_data=[
+                    {"path": "p/a", "type": "dir"},
+                    {"path": "p/x.rst", "type": "file"},
+                    {"path": "p/readme.md", "type": "file"},
+                ],
+            ),
+            _Resp(  # directory listing of "p/a"
+                200,
+                json_data=[{"path": "p/a/y.rst", "type": "file"}],
+            ),
+        ]
+    )
+
+    listing = _provider(session).list_files("o/r", "main")
+
+    assert sorted(listing.paths) == ["p/a/y.rst", "p/x.rst"]
+    assert listing.truncated is False
+    assert listing.truncated_reason is None
+
+
+def test_list_files_walk_reports_truncated_when_budget_exceeded(monkeypatch) -> None:
+    monkeypatch.setattr(client_module, "_MAX_WALK_REQUESTS", 2)
+    # Each directory yields exactly one more subdirectory, so the stack never
+    # empties on its own - only the request budget stops the walk.
+    session = _Session(
+        [
+            _Resp(200, json_data={"truncated": True, "tree": []}),
+            _Resp(200, json_data=[{"path": "p/a", "type": "dir"}]),
+            _Resp(200, json_data=[{"path": "p/a/b", "type": "dir"}]),
+        ]
+    )
+
+    listing = _provider(session).list_files("o/r", "main")
+
+    assert listing.paths == []
+    assert listing.truncated is True
+    assert "2 requests" in listing.truncated_reason
+    assert session.calls == 3  # 1 tree call + the 2-request walk budget
+
+
+def test_list_files_walk_aborts_on_genuine_provider_error() -> None:
+    session = _Session(
+        [
+            _Resp(200, json_data={"truncated": True, "tree": []}),
+            _rate_limited(1_800_000_000),
+        ]
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).list_files("o/r", "main")
+
+    assert exc_info.value.kind is ProviderErrorKind.rate_limit
+
+
+def test_list_directory_rejects_non_list_response() -> None:
+    session = _Session(
+        [
+            _Resp(200, json_data={"truncated": True, "tree": []}),
+            _Resp(200, json_data={"encoding": "base64", "content": ""}),
+        ]
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).list_files("o/r", "main")
+
+    assert exc_info.value.kind is ProviderErrorKind.unexpected_response
+
+
+def test_list_files_walk_includes_symlinked_rst_entries() -> None:
+    """GitHub resolves an in-repo symlink to the file it points at, so a
+    symlinked .rst is a readable document and must be counted - the git-tree
+    path would have included it as a blob."""
+    session = _Session(
+        [
+            _Resp(200, json_data={"truncated": True, "tree": []}),
+            _Resp(
+                200,
+                json_data=[{"path": "p/linked.rst", "type": "symlink"}],
+            ),
+        ]
+    )
+
+    listing = _provider(session).list_files("o/r", "main")
+
+    assert listing.paths == ["p/linked.rst"]
+    assert listing.truncated is False
+
+
+def test_list_files_walk_skips_submodules() -> None:
+    """A submodule's content lives in another repository, so it is not part
+    of this snapshot - skipped without being walked into or counted."""
+    session = _Session(
+        [
+            _Resp(200, json_data={"truncated": True, "tree": []}),
+            _Resp(
+                200,
+                json_data=[
+                    {"path": "p/vendored", "type": "submodule"},
+                    {"path": "p/vendored.rst", "type": "submodule"},
+                    {"path": "p/real.rst", "type": "file"},
+                ],
+            ),
+        ]
+    )
+
+    listing = _provider(session).list_files("o/r", "main")
+
+    assert listing.paths == ["p/real.rst"]
+    assert listing.truncated is False
+    # The submodule was never listed as a directory.
+    assert session.calls == 2
+
+
+def test_list_files_walk_rejects_an_unknown_entry_type() -> None:
+    """An .rst path of a type this walk does not understand means the listing
+    cannot be classified, so it fails rather than guessing whether to read it."""
+    session = _Session(
+        [
+            _Resp(200, json_data={"truncated": True, "tree": []}),
+            _Resp(200, json_data=[{"path": "p/odd.rst", "type": "gitlink"}]),
+        ]
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).list_files("o/r", "main")
+
+    assert exc_info.value.kind is ProviderErrorKind.unexpected_response
+
+
+def test_list_files_walk_reports_truncated_when_directory_hits_item_cap(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(client_module, "_CONTENTS_API_DIRECTORY_CAP", 2)
+    session = _Session(
+        [
+            _Resp(200, json_data={"truncated": True, "tree": []}),
+            _Resp(
+                200,
+                json_data=[
+                    {"path": "p/a.rst", "type": "file"},
+                    {"path": "p/b.rst", "type": "file"},
+                ],
+            ),
+        ]
+    )
+
+    listing = _provider(session).list_files("o/r", "main")
+
+    assert listing.paths == []
+    assert listing.truncated is True
+    assert "per-directory cap" in listing.truncated_reason
