@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from pydantic import ValidationError
 
@@ -13,6 +15,8 @@ from tools.shared.ir import (
 )
 from tools.shared.scan import (
     DocumentScanResult,
+    Issue,
+    IssueCode,
     RepositoryInterruption,
     RepositoryInterruptionKind,
     RepositoryScanResult,
@@ -213,3 +217,85 @@ def test_endpoint_owns_sections_with_results() -> None:
     )
 
     assert result.repository.endpoints[0].sections == endpoint.sections
+
+
+# --------------------------------------------------------------------------- #
+# Serialized enum vocabulary
+# --------------------------------------------------------------------------- #
+
+
+def test_report_json_writes_enum_values_not_member_names() -> None:
+    """The wire form of every enum in the report is its value.
+
+    Issue #87 moved the enum vocabulary to ``StrEnum``, which changed
+    ``str(SectionStatus.OK)`` from ``'SectionStatus.OK'`` to ``'ok'``. Nothing
+    in the report may depend on that: this pins the exact strings a consumer
+    reads, over the same ``json.dumps(model_dump(mode="json"))`` path
+    ``scanner/main.py`` and the panel's export endpoint use. Note the families
+    differ - ``SectionName.PATH_PARAMS`` serializes as ``path_params`` while
+    ``HttpMethod.GET`` serializes as ``GET`` - so a fallback to the member name
+    would pass on one and fail on the other.
+    """
+    endpoint = Endpoint(
+        path="api-ref/source/list.rst",
+        method=HttpMethod.GET,
+        uri="/v1/resources",
+        sections=[
+            Section(
+                name=name,
+                scan_result=SectionScanResult(
+                    status=SectionStatus.PARTIAL,
+                    issues=[
+                        Issue(code=IssueCode.UNKNOWN_TYPE_FORMAT, location="row 1")
+                    ],
+                    fields_total=1,
+                    fields_unknown_type=1,
+                )
+                if name is SectionName.BODY
+                else SectionScanResult(status=SectionStatus.MISSING),
+            )
+            for name in SectionName
+        ],
+        scan_result=DocumentScanResult(),
+    )
+    result = RepositoryScanResult(
+        repository=Service(repo="org/service", documents=[endpoint]),
+        branch="main",
+    )
+
+    payload = json.loads(json.dumps(result.model_dump(mode="json")))
+    document = payload["repository"]["documents"][0]
+    sections = {section["name"]: section for section in document["sections"]}
+
+    assert document["kind"] == "endpoint"
+    assert document["method"] == "GET"
+    assert set(sections) == {
+        "path_params",
+        "query_params",
+        "headers",
+        "body",
+        "response",
+        "example_request",
+        "example_response",
+    }
+    assert sections["body"]["scan_result"]["status"] == "partial"
+    assert sections["body"]["scan_result"]["issues"][0]["code"] == "unknown_type_format"
+    assert sections["headers"]["scan_result"]["status"] == "missing"
+
+
+def test_interruption_kind_serializes_by_value() -> None:
+    result = RepositoryScanResult(
+        repository=Repository(repo="org/service"),
+        branch="main",
+        interruption=RepositoryInterruption(
+            kind=RepositoryInterruptionKind.rate_limit,
+            repository="org/service",
+            message="rate limited",
+            reset_time=1700000000,
+        ),
+    )
+
+    payload = result.model_dump(mode="json")
+
+    assert payload["interruption"]["kind"] == "rate_limit"
+    assert RepositoryScanResult.model_validate(payload) == result

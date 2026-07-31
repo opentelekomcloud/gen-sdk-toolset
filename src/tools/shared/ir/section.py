@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -11,7 +11,7 @@ from .example import Example
 from .parameter import Parameter
 
 
-class SectionName(str, Enum):
+class SectionName(StrEnum):
     PATH_PARAMS = "path_params"
     QUERY_PARAMS = "query_params"
     HEADERS = "headers"

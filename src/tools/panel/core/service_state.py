@@ -24,7 +24,7 @@ from tools.panel.core.db.models import (
 _ACTIVE_STATUSES = (JobStatus.queued, JobStatus.running)
 
 
-class ScanStatus(str, enum.Enum):
+class ScanStatus(enum.StrEnum):
     """How completely the panel managed to read a service.
 
     This is a statement about the scan, not about the documentation. A document
@@ -41,7 +41,7 @@ class ScanStatus(str, enum.Enum):
     scanning = "scanning"
 
 
-class RescanReason(str, enum.Enum):
+class RescanReason(enum.StrEnum):
     """Why the panel suggests rescanning, in priority order.
 
     Documents that came out partial are deliberately not a reason: the same

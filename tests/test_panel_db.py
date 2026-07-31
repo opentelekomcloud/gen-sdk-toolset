@@ -501,6 +501,38 @@ def test_job_initiated_by_defaults_to_system(db_session):
     assert db_session.get(RepositoryScanJob, job.id).initiated_by == "system"
 
 
+def test_job_enums_persist_as_their_wire_values(db_session):
+    """The stored strings are the enum *values*, not the member names or ``str()``.
+
+    ``JobKind``/``JobStatus`` are ``StrEnum`` (issue #87), which changed
+    ``str(JobStatus.queued)`` from ``'JobStatus.queued'`` to ``'queued'``. The
+    raw read below is what proves the column is unaffected: it bypasses the
+    ORM's own enum coercion, so a base-class change that altered the persisted
+    form would show up here rather than round-tripping invisibly through
+    ``sa.Enum``.
+    """
+    service = Service(repo="org/wire", name="wire", branch="main")
+    db_session.add(service)
+    db_session.flush()
+    job = RepositoryScanJob(
+        service_id=service.id,
+        kind=JobKind.scan,
+        status=JobStatus.queued,
+    )
+    db_session.add(job)
+    db_session.flush()
+
+    stored = db_session.execute(
+        sa.text("SELECT kind, status FROM job WHERE id = :id"), {"id": job.id}
+    ).one()
+    assert stored == ("scan", "queued")
+
+    db_session.expire_all()
+    reloaded = db_session.get(RepositoryScanJob, job.id)
+    assert reloaded.kind is JobKind.scan
+    assert reloaded.status is JobStatus.queued
+
+
 def test_document_overall_status_must_be_valid(db_session):
     endpoint = make_endpoint()
     _, _, generation = make_generation(db_session)

@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class SectionKind(str, Enum):
+class SectionKind(StrEnum):
     """High-level role of a top-level section heading inside an RST doc."""
 
     URI = "uri"
@@ -15,7 +15,7 @@ class SectionKind(str, Enum):
     OTHER = "other"
 
 
-class TableTarget(str, Enum):
+class TableTarget(StrEnum):
     """Internal routing targets that are not endpoint sections."""
 
     NESTED_STRUCT = "nested_struct"
@@ -24,7 +24,7 @@ class TableTarget(str, Enum):
     UNMAPPED = "unmapped"
 
 
-class DocStyle(str, Enum):
+class DocStyle(StrEnum):
     """Layout classification of an RST doc, mapped to report semantics."""
 
     STYLE_A = "style_a"

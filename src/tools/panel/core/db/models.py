@@ -13,13 +13,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from tools.panel.core.db.base import Base
 
 
-class JobKind(str, enum.Enum):
+class JobKind(enum.StrEnum):
     scan = "scan"
     generate = "generate"
     maintain = "maintain"
 
 
-class JobStatus(str, enum.Enum):
+class JobStatus(enum.StrEnum):
     queued = "queued"
     running = "running"
     done = "done"

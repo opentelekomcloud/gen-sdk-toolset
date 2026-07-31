@@ -9,7 +9,7 @@ class GenSdkError(Exception):
     """Base exception for all gen_sdk errors."""
 
 
-class ProviderErrorKind(str, enum.Enum):
+class ProviderErrorKind(enum.StrEnum):
     rate_limit = "rate_limit"
     authentication = "authentication"
     permission_denied = "permission_denied"

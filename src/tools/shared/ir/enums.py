@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class HttpMethod(str, Enum):
+class HttpMethod(StrEnum):
     GET = "GET"
     POST = "POST"
     PUT = "PUT"
@@ -11,7 +11,7 @@ class HttpMethod(str, Enum):
     OPTIONS = "OPTIONS"
 
 
-class ParameterType(str, Enum):
+class ParameterType(StrEnum):
     """Types found in OTC docs parameter tables."""
 
     STRING = "String"

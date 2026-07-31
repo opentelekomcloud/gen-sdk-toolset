@@ -11,7 +11,7 @@ number.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from tools.shared.ir import Document, Endpoint, Section
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 UNVERSIONED_KEY = "unversioned"
 
 
-class OverallStatus(str, Enum):
+class OverallStatus(StrEnum):
     """Document-level roll-up of gating and section results."""
 
     OK = "ok"

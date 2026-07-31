@@ -10,10 +10,8 @@ Formatting, import order and modernisation are handled by `ruff`
 
 **Python versions.** 3.13 everywhere: `requires-python = ">=3.13"`, ruff's
 `target-version = "py313"`, CI runs 3.13 in every job, and the backend image is
-`python:3.13-slim`. One rule is muted while its migration is scheduled - `UP042`
-(`str, Enum` to `StrEnum`) changes `str()` and f-string output on enums that are
-persisted and serialized, so it sits in `ignore` with a pointer to issue #87
-rather than being auto-fixed.
+`python:3.13-slim`. No rule is muted: the `select` list is enforced whole, with
+no `ignore`.
 
 The rules below give you the pattern. The codebase gives you the proof: when a
 rule and an existing module disagree, read the module and say so, rather than
@@ -344,6 +342,13 @@ it.
 ## Naming
 
 Private module helpers are `_snake_case`. There is no other convention.
+
+Every enum in the vocabulary is a `StrEnum` — one base, enforced by `UP042`. The
+consequence worth remembering: `str(member)` and `f"{member}"` produce the
+*value*, not `ClassName.member`. The value is the contract in all three places it
+escapes — pydantic serializes it, `sa.Enum` persists it, and a log line prints
+it — so a member renamed without its value moves nothing, and a value renamed
+breaks stored data.
 
 Enum member casing follows the family you are extending, and the two families
 are genuinely different, so do not mix them inside one file:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .issue import Issue
 
 
-class SectionStatus(str, Enum):
+class SectionStatus(StrEnum):
     """How well one document section was extracted."""
 
     OK = "ok"
