@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from tools.panel.core.analytics.generation import document_status
 from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
@@ -305,15 +304,16 @@ def test_style_a_populates_sections() -> None:
     assert doc.scan_result.failure_reason is None
     assert isinstance(doc, Endpoint)
     sections = {section.name: section for section in doc.sections}
-    # This fixture writes its example request and response as bold run-ins,
-    # which the parser drops. `document_status` judges a document on its
-    # parameter tables only, so that loss does not degrade the status - but it
-    # must still be recorded on the example sections rather than vanish.
-    assert document_status(doc) == "ok"
-    assert any(
-        sections[name].scan_result.status is not SectionStatus.OK
-        for name in (SectionName.EXAMPLE_REQUEST, SectionName.EXAMPLE_RESPONSE)
-    )
+    # Both example sections are read rather than dropped: the request example
+    # parses, the response example is malformed JSON. The point is that the
+    # malformed one is *recorded* - reporting it as `missing` would claim the
+    # document carries no response example at all.
+    assert sections[SectionName.EXAMPLE_REQUEST].scan_result.status is SectionStatus.OK
+    response_example = sections[SectionName.EXAMPLE_RESPONSE].scan_result
+    assert response_example.status is SectionStatus.PARTIAL
+    assert [issue.code for issue in response_example.issues] == [
+        IssueCode.EXAMPLE_INVALID_JSON
+    ]
     assert len(sections) == 7
     assert "path_params" in sections
     assert "body" in sections
@@ -334,7 +334,6 @@ def test_obs_marked_unsupported() -> None:
     doc = result.repository.documents[0]
     assert doc.scan_result.failure_reason is not None
     assert doc.scan_result.failure_reason.code is IssueCode.UNSUPPORTED_DOC_STYLE
-    assert document_status(doc) == "unsupported"
     assert not isinstance(doc, Endpoint)
 
 
@@ -466,7 +465,6 @@ def test_fetch_failure_is_gating() -> None:
     doc = result.repository.documents[0]
     assert doc.scan_result.failure_reason is not None
     assert doc.scan_result.failure_reason.code is IssueCode.FETCH_FAILED
-    assert document_status(doc) == "failed"
 
 
 def test_scan_repository_fails_when_fetch_raises_provider_error() -> None:
@@ -579,7 +577,6 @@ def test_parser_crash_is_parser_error() -> None:
     doc = result.repository.documents[0]
     assert doc.scan_result.failure_reason is not None
     assert doc.scan_result.failure_reason.code is IssueCode.PARSER_ERROR
-    assert document_status(doc) == "failed"
 
 
 def test_repository_context_failure_is_not_silently_ignored() -> None:
@@ -614,7 +611,6 @@ def test_endpoint_doc_without_uri_is_failed() -> None:
     assert doc.title == "Some Endpoint"
     assert doc.scan_result.failure_reason is not None
     assert doc.scan_result.failure_reason.code is IssueCode.NO_URI_MATCH
-    assert document_status(doc) == "failed"
 
 
 # --------------------------------------------------------------------------- #
@@ -682,7 +678,7 @@ def test_scan_repository_fails_when_tree_is_truncated() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# API version analytics
+# API version carried on the endpoint
 # --------------------------------------------------------------------------- #
 def test_api_version_is_carried_on_the_endpoint_not_a_parallel_field() -> None:
     """Version counts are derived by the panel from `Endpoint.api_version`,
