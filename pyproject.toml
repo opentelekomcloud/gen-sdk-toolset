@@ -65,9 +65,6 @@ extend-exclude = ["*/migrations/versions/*"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-# UP042 (str, Enum -> StrEnum) changes str()/f-string output on enums that are
-# persisted and serialized. Deliberate migration with tests - see issue #87.
-ignore = ["UP042"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

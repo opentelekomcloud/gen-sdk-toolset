@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 from docutils import nodes
 
@@ -19,7 +19,7 @@ from .table import TableExtraction, extract_parameter_table
 from .types import SectionKind
 
 
-class RefKind(str, Enum):
+class RefKind(StrEnum):
     """What an in-document ref anchor resolves to, classified by the wire-in.
 
     Repository context can contribute cross-document table entries. Missing

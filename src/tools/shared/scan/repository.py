@@ -19,7 +19,7 @@ from tools import __version__ as _SCANNER_VERSION
 from tools.shared.ir import Endpoint, Repository, Service
 
 
-class RepositoryInterruptionKind(str, enum.Enum):
+class RepositoryInterruptionKind(enum.StrEnum):
     """Operational reasons why a repository scan stopped."""
 
     rate_limit = "rate_limit"

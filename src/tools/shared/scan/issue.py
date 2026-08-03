@@ -1,11 +1,11 @@
 """Structured issues emitted while scanning documents."""
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
 
-class IssueCode(str, Enum):
+class IssueCode(StrEnum):
     """Machine-readable codes for scanner diagnostics."""
 
     FETCH_FAILED = "fetch_failed"
