@@ -1,13 +1,15 @@
 # gen-sdk-toolset scan configuration.
 #
 # Edit these values to change scanner behaviour. Override individual values
-# from the command line with --org / --branch / --output, or point to a
+# from the command line with --branch / --output, or point to a
 # different config file with --config <path>.
 #
 # The GitHub token is intentionally NOT in this file — set GITHUB_TOKEN in
 # .env or your shell environment so it can't be committed accidentally.
 
 [github]
+# Kept as a published config key; nothing in the toolset reads it today. The
+# scanner CLI scans one repository at a time (--repo).
 org = "opentelekomcloud-docs"
 branch = "main"
 api_url = "https://api.github.com"

@@ -1,4 +1,4 @@
-"""CLI entry point: scan an OTC docs organisation and emit a JSON report."""
+"""CLI entry point: scan one OTC docs repository and emit a JSON result."""
 
 from __future__ import annotations
 
@@ -11,9 +11,7 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 
 from tools.config import Settings, load_settings
-from tools.domain.report import OrgScanResult, OverallStatus
 from tools.scanner.factory import build_scanner
-from tools.shared.exceptions import ProviderError
 
 # Exit codes
 EXIT_OK = 0
@@ -25,7 +23,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gen-sdk-scan",
         description=(
-            "Scan an OTC documentation organisation and emit a JSON report "
+            "Scan one OTC documentation repository and emit a JSON result "
             "of discovered API endpoints and per-document parse results."
         ),
     )
@@ -42,21 +40,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "Pass '-' to skip the file and emit the report to stdout instead."
         ),
     )
-    # Org-wide run (--org) and single-repo run (--repo) are mutually exclusive.
-    target = parser.add_mutually_exclusive_group()
-    target.add_argument(
-        "--org",
-        metavar="NAME",
-        help="GitHub organisation to scan (org-wide run). Overrides [github].org.",
-    )
-    target.add_argument(
+    parser.add_argument(
         "--repo",
         metavar="OWNER/NAME",
-        help=(
-            "Scan a single repository instead of the whole org. Emits one "
-            "result in the same shape as an element of the org report's "
-            "repos[]."
-        ),
+        required=True,
+        help="Repository to scan. Emits one RepositoryScanResult.",
     )
     parser.add_argument(
         "--branch",
@@ -127,32 +115,6 @@ def _load_settings_or_exit(config_path: str | None) -> Settings:
         raise SystemExit(EXIT_USAGE_ERROR) from e
 
 
-def _print_human_summary(
-    result: OrgScanResult, api_ref_path: str, logger: logging.Logger
-) -> None:
-    """Display-only roll-up on stderr. Reads the model's computed views."""
-    status_counts = result.quality_summary.by_overall_status
-    logger.info("=" * 60)
-    logger.info("Scan summary for org '%s'", result.org)
-    logger.info("  Total repos discovered : %d", result.total_repos)
-    logger.info("  Eligible (%s)   : %d", api_ref_path, result.eligible_repos)
-    logger.info("  Skipped repos          : %d", len(result.skipped_repos))
-    logger.info("  Total scanned documents: %d", result.total_documents)
-    for status in OverallStatus:
-        if status.value in status_counts:
-            logger.info("  %-22s : %d", status.value, status_counts[status.value])
-    if result.by_version:
-        logger.info("  Parsed by version      :")
-        for version, count in result.by_version.items():
-            logger.info("    - %-12s : %d", version, count)
-    top_issues = result.quality_summary.top_issues[:5]
-    if top_issues:
-        logger.info("  Top issues             :")
-        for entry in top_issues:
-            logger.info("    - %-26s : %d", entry["code"], entry["count"])
-    logger.info("=" * 60)
-
-
 def _emit_report(
     model: BaseModel,
     output_path: str,
@@ -193,32 +155,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USAGE_ERROR
 
-    # Single-repo mode returns one RepositoryScanResult.
-    if args.repo:
-        logger.info("Scanning repository %s@%s", args.repo, branch)
-        repo_result = scanner.scan_repository(repo=args.repo, branch=branch)
-        _emit_report(
-            repo_result, output_path, args.stdout, settings.output.indent, logger
-        )
-        if repo_result.failure_message:
-            logger.error("Repo scan reported an error: %s", repo_result.failure_message)
-            return EXIT_RUNTIME_ERROR
-        return EXIT_OK
-
-    # Org-wide mode (default).
-    org = args.org or settings.github.org
-    logger.info("Starting organization scan for %s@%s", org, branch)
-    try:
-        result = scanner.scan_organization(org=org, branch=branch)
-    except ProviderError as e:
-        # Org-level failures (auth, rate limit, network) surface as a clean
-        # message rather than a traceback. Per-document errors are handled
-        # inside the scanner and recorded in the report.
-        logger.error("Scan aborted: %s", e)
+    logger.info("Scanning repository %s@%s", args.repo, branch)
+    repo_result = scanner.scan_repository(repo=args.repo, branch=branch)
+    _emit_report(repo_result, output_path, args.stdout, settings.output.indent, logger)
+    if repo_result.failure_message:
+        logger.error("Repo scan reported an error: %s", repo_result.failure_message)
         return EXIT_RUNTIME_ERROR
-
-    _emit_report(result, output_path, args.stdout, settings.output.indent, logger)
-    _print_human_summary(result, settings.scanner.api_ref_path, logger)
     return EXIT_OK
 
 

@@ -21,19 +21,15 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel, Field
 
-# TODO(#34): these come from tools.domain.report, which issue #34 moves into
-# this package. When that lands only these imports change - the roll-ups below
-# are already in their final home.
-from tools.domain.report.analytics import (
-    _UNVERSIONED_KEY as UNVERSIONED_KEY,
-)
-from tools.domain.report.analytics import (
-    _document_sections as document_sections,
-)
-from tools.domain.report.analytics import doc_all_issues
-from tools.domain.report.enums import OverallStatus
 from tools.shared.ir import Document, Endpoint, SectionName
 from tools.shared.scan import IssueCode, SectionStatus
+
+from .quality import (
+    UNVERSIONED_KEY,
+    OverallStatus,
+    doc_all_issues,
+    document_sections,
+)
 
 #: Examples are evidence, not material: a generator builds from the parameter
 #: tables, so a broken example says nothing about whether a service can be
@@ -210,11 +206,11 @@ def material_issues(document: Document) -> list:
 def document_status(document: Document) -> OverallStatus | None:
     """The panel's roll-up: a document is judged on its parameter tables.
 
-    Deliberately different from the legacy report roll-up, which degrades a
-    document when any section - example sections included - is partial or
+    Deliberately different from the legacy report roll-up, which degraded a
+    document when any section - example sections included - was partial or
     failed. A broken example is a documentation nuisance, not a reason to call
-    the endpoint unusable, so it no longer changes this status. Issue #34 will
-    leave this as the only roll-up.
+    the endpoint unusable, so it does not change this status. Issue #34 removed
+    that legacy roll-up, leaving this as the only one.
 
     :param document: The scanned document IR.
     """

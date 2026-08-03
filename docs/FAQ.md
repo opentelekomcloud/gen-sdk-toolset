@@ -83,15 +83,18 @@ attribute load after the commit would quietly reopen one.
 
 ## The numbers look wrong. Where do I start?
 
-Numbers in the panel come from the analytics functions - `tools.domain.report`
-today, moving to `tools.panel.core.analytics` with issue #34 - computed from the
-nested scan results. In order:
+Numbers in the panel come from the analytics functions in
+`tools.panel.core.analytics`, computed from the nested scan results. The
+scanner stores no aggregates, so a wrong number is either a wrong scan result
+or a wrong derivation - never a third, stale copy. In order:
 
 1. Run the scanner on a pinned SHA and read the raw JSON, not the panel.
 2. Look for impossibilities rather than for wrong values: a declared
    `IssueCode` with zero occurrences across thousands of documents, counts that
-   do not reconcile (`ok + partial + failed + unsupported` against the document
-   total), buckets split by case or by a trailing slash, suspicious names in
+   do not reconcile (`ok + partial + failed + unsupported` against the
+   *endpoint* total — non-endpoint documents have no endpoint status and are
+   deliberately absent, so these never sum to the document total), buckets
+   split by case or by a trailing slash, suspicious names in
    `excluded_documents`.
 3. When something looks wrong, fetch a handful of the actual documents behind it
    and check the hypothesis before projecting a rate. The first sampling

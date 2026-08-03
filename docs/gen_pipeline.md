@@ -494,8 +494,8 @@ not foundation.**
 
 The quality report informs the Phase 3 generator decision (Jinja2 sufficient
 vs. LLM-assisted). It is produced on the **panel side** by aggregating the
-per-service raw scan results stored in the panel DB — not by the scanner
-emitting an org-wide `OrgScanResult`. It is rendered in the panel UI (and
+per-service raw scan results stored in the panel DB — the scanner emits one
+result per repository and no org-wide aggregate. It is rendered in the panel UI (and
 exportable as JSON/markdown) once the full org has been scanned
 service-by-service.
 

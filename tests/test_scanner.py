@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from tools.domain.report.analytics import doc_overall_status
 from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
 from tools.shared.exceptions import ProviderError, ProviderErrorKind
-from tools.shared.ir import Endpoint, Service
+from tools.shared.ir import Endpoint, SectionName, Service
 from tools.shared.scan import (
     IssueCode,
     RepositoryInterruptionKind,
     RepositoryScanResult,
+    SectionStatus,
 )
 
 from .conftest import load_fixture
@@ -88,38 +88,6 @@ def make_scanner(fake: FakeDocProvider, **kwargs) -> ScannerService:
 
 
 # --------------------------------------------------------------------------- #
-# Org-level filtering
-# --------------------------------------------------------------------------- #
-def test_skips_repo_without_api_ref() -> None:
-    fake = FakeDocProvider(
-        repos={"o/svc-a": {}, "o/svc-b": {}},
-        has_api_ref={"o/svc-a"},  # only svc-a has api-ref
-    )
-    scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
-    assert result.skipped_repos == ["o/svc-b"]
-    assert {r.repository.repo for r in result.repos} == {"o/svc-a"}
-    assert [call for call in fake.calls if call.startswith("path_exists:")] == [
-        "path_exists:o/svc-a@" + "0" * 40 + ":api-ref/source",
-        "path_exists:o/svc-b@" + "0" * 40 + ":api-ref/source",
-    ]
-    assert fake.calls.index("get_commit_hash:o/svc-a@main") < fake.calls.index(
-        "path_exists:o/svc-a@" + "0" * 40 + ":api-ref/source"
-    )
-
-
-def test_eligible_count_excludes_skipped() -> None:
-    fake = FakeDocProvider(
-        repos={"o/a": {}, "o/b": {}, "o/c": {}},
-        has_api_ref={"o/a", "o/c"},
-    )
-    scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
-    assert result.total_repos == 3
-    assert result.eligible_repos == 2
-
-
-# --------------------------------------------------------------------------- #
 # commit_hash (S2)
 # --------------------------------------------------------------------------- #
 def test_commit_hash_emitted() -> None:
@@ -127,11 +95,10 @@ def test_commit_hash_emitted() -> None:
         repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
         commit_hash="a" * 40,
     )
-    result = make_scanner(fake).scan_organization(org="o")
-    repo = result.repos[0]
-    assert repo.commit_hash == "a" * 40
-    # Present in the serialized report, not just the model.
-    assert result.model_dump(mode="json")["repos"][0]["commit_hash"] == "a" * 40
+    result = make_scanner(fake).scan_repository("o/cce")
+    assert result.commit_hash == "a" * 40
+    # Present in the serialized result, not just the model.
+    assert result.model_dump(mode="json")["commit_hash"] == "a" * 40
 
 
 def test_commit_hash_error_stops_before_eligibility_and_scan() -> None:
@@ -139,12 +106,13 @@ def test_commit_hash_error_stops_before_eligibility_and_scan() -> None:
         repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
         commit_error="commit lookup failed",
     )
-    result = make_scanner(fake).scan_organization(org="o")
-    repo = result.repos[0]
-    assert repo.commit_hash is None
-    assert not isinstance(repo.repository, Service)
-    assert repo.error == "Could not resolve commit for o/cce@main: commit lookup failed"
-    assert fake.calls == ["list_repos:o", "get_commit_hash:o/cce@main"]
+    result = make_scanner(fake).scan_repository("o/cce")
+    assert result.commit_hash is None
+    assert not isinstance(result.repository, Service)
+    assert (
+        result.error == "Could not resolve commit for o/cce@main: commit lookup failed"
+    )
+    assert fake.calls == ["get_commit_hash:o/cce@main"]
 
 
 def _refs_used_by_scan(commit_hash: str | None) -> list[str]:
@@ -164,7 +132,7 @@ def _refs_used_by_scan(commit_hash: str | None) -> list[str]:
         repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
         commit_hash=commit_hash,
     )
-    make_scanner(provider).scan_organization(org="o")
+    make_scanner(provider).scan_repository("o/cce")
     return seen
 
 
@@ -300,26 +268,6 @@ def test_scan_repository_repeated_call_preserves_result_contract() -> None:
     assert second == first
 
 
-def test_scan_repository_matches_repos_element_shape() -> None:
-    fake = FakeDocProvider(
-        repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
-    )
-    scanner = make_scanner(fake)
-
-    repo_result = scanner.scan_repository(repo="o/cce", branch="main")
-    org = scanner.scan_organization(org="o")
-
-    # Same type and same serialised shape as an element of the org report's
-    # repos[], so F2 ingest accepts it unchanged.
-    assert type(repo_result) is type(org.repos[0])
-    assert repo_result.model_dump(mode="json").keys() == (
-        org.repos[0].model_dump(mode="json").keys()
-    )
-    assert repo_result.repository.repo == "o/cce"
-    assert isinstance(repo_result.repository, Service)
-    assert len(repo_result.repository.documents) == 1
-
-
 def test_scan_repository_captures_error_without_raising() -> None:
     class ListFailProvider(FakeDocProvider):
         def list_files(self, repo: str, branch: str) -> FileListing:
@@ -348,20 +296,24 @@ def test_style_a_populates_sections() -> None:
         }
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
-    repo = result.repos[0]
-    assert isinstance(repo.repository, Service)
-    docs = repo.repository.documents
+    result = scanner.scan_repository("o/cce")
+    assert isinstance(result.repository, Service)
+    docs = result.repository.documents
     assert len(docs) == 1
     doc = docs[0]
     assert doc.scan_result.failure_reason is None
-    # `ok` used to be asserted here, and it was wrong: this fixture carries an
-    # example request and an example response written as bold run-ins, both of
-    # which the parser drops. The document is partial because that loss is now
-    # recorded instead of passing for a clean parse.
-    assert doc_overall_status(doc) == "partial"
     assert isinstance(doc, Endpoint)
     sections = {section.name: section for section in doc.sections}
+    # Both example sections are read rather than dropped: the request example
+    # parses, the response example is malformed JSON. The point is that the
+    # malformed one is *recorded* - reporting it as `missing` would claim the
+    # document carries no response example at all.
+    assert sections[SectionName.EXAMPLE_REQUEST].scan_result.status is SectionStatus.OK
+    response_example = sections[SectionName.EXAMPLE_RESPONSE].scan_result
+    assert response_example.status is SectionStatus.PARTIAL
+    assert [issue.code for issue in response_example.issues] == [
+        IssueCode.EXAMPLE_INVALID_JSON
+    ]
     assert len(sections) == 7
     assert "path_params" in sections
     assert "body" in sections
@@ -377,13 +329,11 @@ def test_obs_marked_unsupported() -> None:
         repos={"o/obs": {"api-ref/source/x.rst": load_fixture("style_b_obs.rst")}}
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
-    repo = result.repos[0]
-    assert isinstance(repo.repository, Service)
-    doc = repo.repository.documents[0]
+    result = scanner.scan_repository("o/obs")
+    assert isinstance(result.repository, Service)
+    doc = result.repository.documents[0]
     assert doc.scan_result.failure_reason is not None
     assert doc.scan_result.failure_reason.code is IssueCode.UNSUPPORTED_DOC_STYLE
-    assert doc_overall_status(doc) == "unsupported"
     assert not isinstance(doc, Endpoint)
 
 
@@ -397,21 +347,16 @@ def test_non_endpoint_materialized_as_document() -> None:
         }
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
-    repo = result.repos[0]
+    result = scanner.scan_repository("o/svc")
     assert "non_endpoint_documents" not in RepositoryScanResult.model_fields
-    assert isinstance(repo.repository, Service)
-    assert len(repo.repository.documents) == 2
-    documents = {document.path: document for document in repo.repository.documents}
+    assert isinstance(result.repository, Service)
+    assert len(result.repository.documents) == 2
+    documents = {document.path: document for document in result.repository.documents}
     intro = documents["api-ref/source/intro.rst"]
     assert not isinstance(intro, Endpoint)
     assert intro.title == "Intro"
     assert intro.scan_result.failure_reason is None
     assert isinstance(documents["api-ref/source/real.rst"], Endpoint)
-    assert result.total_documents == 2
-    # The CCE fixture's inline examples are still unread, so its one endpoint is
-    # partial - the count is about the roll-up, not about that gap.
-    assert result.quality_summary.by_overall_status == {"partial": 1}
 
 
 def test_successful_endpoint_title_is_extracted_only_by_parser(monkeypatch) -> None:
@@ -515,13 +460,11 @@ def test_fetch_failure_is_gating() -> None:
         repos={"o/svc": {"api-ref/source/x.rst": ""}},
     )
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
-    repo = result.repos[0]
-    assert isinstance(repo.repository, Service)
-    doc = repo.repository.documents[0]
+    result = scanner.scan_repository("o/svc")
+    assert isinstance(result.repository, Service)
+    doc = result.repository.documents[0]
     assert doc.scan_result.failure_reason is not None
     assert doc.scan_result.failure_reason.code is IssueCode.FETCH_FAILED
-    assert doc_overall_status(doc) == "failed"
 
 
 def test_scan_repository_fails_when_fetch_raises_provider_error() -> None:
@@ -629,13 +572,11 @@ def test_parser_crash_is_parser_error() -> None:
         repos={"o/svc": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
     )
     scanner = make_scanner(fake, parser=CrashingParser())
-    result = scanner.scan_organization(org="o")
-    repo = result.repos[0]
-    assert isinstance(repo.repository, Service)
-    doc = repo.repository.documents[0]
+    result = scanner.scan_repository("o/svc")
+    assert isinstance(result.repository, Service)
+    doc = result.repository.documents[0]
     assert doc.scan_result.failure_reason is not None
     assert doc.scan_result.failure_reason.code is IssueCode.PARSER_ERROR
-    assert doc_overall_status(doc) == "failed"
 
 
 def test_repository_context_failure_is_not_silently_ignored() -> None:
@@ -664,14 +605,12 @@ def test_endpoint_doc_without_uri_is_failed() -> None:
     )
     fake = FakeDocProvider(repos={"o/svc": {"api-ref/source/x.rst": content}})
     scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
-    repo = result.repos[0]
-    assert isinstance(repo.repository, Service)
-    doc = repo.repository.documents[0]
+    result = scanner.scan_repository("o/svc")
+    assert isinstance(result.repository, Service)
+    doc = result.repository.documents[0]
     assert doc.title == "Some Endpoint"
     assert doc.scan_result.failure_reason is not None
     assert doc.scan_result.failure_reason.code is IssueCode.NO_URI_MATCH
-    assert doc_overall_status(doc) == "failed"
 
 
 # --------------------------------------------------------------------------- #
@@ -687,15 +626,14 @@ def test_excluded_segments_drop_paths() -> None:
         }
     )
     scanner = make_scanner(fake, excluded_segments=["out-of-date_apis"])
-    result = scanner.scan_organization(org="o")
-    repo = result.repos[0]
-    assert isinstance(repo.repository, Service)
+    result = scanner.scan_repository("o/svc")
+    assert isinstance(result.repository, Service)
     # Excluded file is not parsed, not counted as a non_endpoint doc...
     assert all(
         "out-of-date_apis" not in document.path
-        for document in repo.repository.documents
+        for document in result.repository.documents
     )
-    assert repo.excluded_documents == ["api-ref/source/out-of-date_apis/old.rst"]
+    assert result.excluded_documents == ["api-ref/source/out-of-date_apis/old.rst"]
 
 
 def test_excluded_default_empty() -> None:
@@ -715,24 +653,11 @@ def test_excluded_segments_not_shared() -> None:
 # --------------------------------------------------------------------------- #
 # Truncated tree → failed repo
 # --------------------------------------------------------------------------- #
-def test_truncated_tree_fails_the_scan() -> None:
+def test_scan_repository_fails_when_tree_is_truncated() -> None:
     """A capped file tree means the scanner never saw the complete pinned
     snapshot, so the whole repo scan must fail rather than silently continue
-    with whatever GitHub happened to return."""
-    fake = FakeDocProvider(
-        repos={"o/svc": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
-        truncated={"o/svc"},
-    )
-    scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
-    repo = result.repos[0]
-    assert isinstance(repo.repository, Service)
-    assert repo.repository.documents == []
-    assert repo.error
-    assert not any(call.startswith("fetch_content:") for call in fake.calls)
-
-
-def test_scan_repository_fails_when_tree_is_truncated() -> None:
+    with whatever the provider happened to return. The exact call list proves
+    no content was fetched against that partial listing."""
     sha = "a" * 40
     fake = FakeDocProvider(
         repos={"o/svc": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}},
@@ -753,9 +678,11 @@ def test_scan_repository_fails_when_tree_is_truncated() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# API version analytics
+# API version carried on the endpoint
 # --------------------------------------------------------------------------- #
-def test_by_version_is_derived_from_endpoints() -> None:
+def test_api_version_is_carried_on_the_endpoint_not_a_parallel_field() -> None:
+    """Version counts are derived by the panel from `Endpoint.api_version`,
+    so the scanner must not store a second, drifting copy of them."""
     fake = FakeDocProvider(
         repos={
             "o/cce": {
@@ -763,67 +690,28 @@ def test_by_version_is_derived_from_endpoints() -> None:
             },
         }
     )
-    scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
+
+    result = make_scanner(fake).scan_repository("o/cce")
+
     assert "documents_by_version" not in RepositoryScanResult.model_fields
-    assert result.by_version == {"v3": 1}
-
-
-def test_by_version_excludes_non_endpoints() -> None:
-    fake = FakeDocProvider(
-        repos={
-            "o/svc": {
-                "api-ref/source/obs.rst": load_fixture("style_b_obs.rst"),
-            }
-        }
-    )
-    scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
-    assert result.by_version == {}
+    endpoint = result.repository.documents[0]
+    assert endpoint.api_version == "v3"
 
 
 # --------------------------------------------------------------------------- #
-# Org-level quality summary
+# Scanner version stamped on the result
 # --------------------------------------------------------------------------- #
-def test_quality_summary_counts() -> None:
-    fake = FakeDocProvider(
-        repos={
-            "o/cce": {
-                "api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst"),
-            },
-            "o/obs": {
-                "api-ref/source/y.rst": load_fixture("style_b_obs.rst"),
-            },
-        }
-    )
-    scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
-    qs = result.quality_summary
-    # CCE is ok (nested struct resolved), OBS is unsupported.
-    # The Style-A fixture carries inline examples the parser does not read yet,
-    # which is recorded rather than ignored - so it rolls up as partial.
-    assert qs.by_overall_status.get("partial", 0) >= 1
-    assert qs.by_overall_status.get("unsupported", 0) == 1
-
-
-# --------------------------------------------------------------------------- #
-# Scanner version stamped on the report (review addition A)
-# --------------------------------------------------------------------------- #
-def test_report_stamps_scanner_version() -> None:
-    """Every report carries scanner and fixed MVP schema versions."""
+def test_result_stamps_scanner_version() -> None:
+    """Every result carries the scanner version that produced it, so consumers
+    can tell "docs changed" apart from "parser improved"."""
     from tools import __version__
-    from tools.domain.report import REPORT_SCHEMA_VERSION
 
     fake = FakeDocProvider(
         repos={"o/cce": {"api-ref/source/x.rst": load_fixture("style_a_cce_grid.rst")}}
     )
-    scanner = make_scanner(fake)
-    result = scanner.scan_organization(org="o")
 
-    assert result.report_schema_version == REPORT_SCHEMA_VERSION == 1
+    result = make_scanner(fake).scan_repository("o/cce")
+
     assert result.scanner_version == __version__
-    assert result.repos[0].scanner_version == __version__
     # Present in the serialized JSON, not just the model.
-    dumped = result.model_dump(mode="json")
-    assert dumped["scanner_version"] == __version__
-    assert dumped["repos"][0]["scanner_version"] == __version__
+    assert result.model_dump(mode="json")["scanner_version"] == __version__

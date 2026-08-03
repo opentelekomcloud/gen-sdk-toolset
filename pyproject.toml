@@ -41,10 +41,10 @@ packages = ["src/tools"]
 root_package = "tools"
 
 [[tool.importlinter.contracts]]
-name = "domain is independent of the scanner"
+name = "the scanner does not depend on the panel"
 type = "forbidden"
-source_modules = ["tools.domain"]
-forbidden_modules = ["tools.scanner"]
+source_modules = ["tools.scanner"]
+forbidden_modules = ["tools.panel"]
 
 [[tool.importlinter.contracts]]
 name = "panel analytics is pure (no persistence, no HTTP, no scanner)"
@@ -56,7 +56,7 @@ forbidden_modules = ["tools.panel.core.db", "tools.panel.api", "tools.scanner"]
 name = "shared is a leaf (imports nothing internal)"
 type = "forbidden"
 source_modules = ["tools.shared"]
-forbidden_modules = ["tools.domain", "tools.scanner", "tools.panel"]
+forbidden_modules = ["tools.scanner", "tools.panel"]
 
 [tool.ruff]
 line-length = 88

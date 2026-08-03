@@ -12,8 +12,7 @@
 
 <!-- Delete if none. Tick what moved and say what consumers must do. -->
 
-- [ ] Serialized IR or scan models (`DOCUMENT_SCHEMA_VERSION`)
-- [ ] Report contract (`REPORT_SCHEMA_VERSION`)
+- [ ] Serialized IR or scan models (`DOCUMENT_SCHEMA_VERSION`, `RepositoryScanResult`)
 - [ ] Panel routes or schemas — `openapi.json` + `schema.gen.ts` regenerated and committed
 - [ ] Database schema — new Alembic revision, no committed revision edited
 - [ ] New vocabulary recorded in `docs/GLOSSARY.md`

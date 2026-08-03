@@ -28,6 +28,9 @@ DEFAULT_CONFIG_PATH = "scan-config.toml"
 
 
 class GitHubSection(BaseModel):
+    # No in-repo reader since the CLI became one-repository-per-run. It stays
+    # because it is a published contract (scan-config.toml, GITHUB__ORG):
+    # removing it would silently ignore a key users already set.
     org: str = "opentelekomcloud-docs"
     branch: str = "main"
     api_url: str = "https://api.github.com"

@@ -33,15 +33,15 @@ Postgres or FastAPI, it is in the wrong module.
 
 Analytics - the pure computation over scan results, with no I/O, no clock and no
 network - belongs to `panel/core/analytics/`. Purity is what makes it testable
-without fixtures, so keep it that way wherever it lives.
+without fixtures, so keep it that way.
 
-**`tools.domain` is on its way out.** It currently holds the organization-level
-report, which is being removed along with `ScannerService.scan_organization()`
-and `OrgScanResult`; the reusable analytics move into `panel/core/analytics/`.
-See **issue #34**. Add nothing new to `tools.domain`, and do not build on
-`OrgScanResult`. Note that the legacy `--org` scan path still imports it from
-`scanner/main.py` and `scanner/service.py`, so the removal has to deal with that
-first.
+**The scanner emits data; the panel derives numbers from it.** The scanner
+scans one repository per call and returns a `RepositoryScanResult`. It computes
+no aggregates and knows nothing about organizations: enumerating an org and
+surviving a rate limit halfway through needs durable job state, which is the
+panel's. `tools.domain` and its `OrgScanResult` held the old org-level report
+and were removed in issue #34; `lint-imports` now enforces that the scanner
+cannot import the panel, so analytics cannot drift back across that line.
 
 When you add a module, ask which question it answers: does it touch GitHub or
 RST parsing (`scanner`), is it a pure computation over the IR

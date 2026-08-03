@@ -75,20 +75,28 @@ afford: it turns a silent loss into a clean number.
 
 ## Derived analytics
 
-Currently in `src/tools/domain/report/`, **being relocated to
-`src/tools/panel/core/analytics/` by issue #34**. Nothing here is stored in the scan
-snapshot - it is computed from it, in one place. Add nothing new to
-`tools.domain`.
+Defined in `src/tools/panel/core/analytics/`. Nothing here is stored in the scan
+snapshot - it is computed from it, in one place, by the panel. The scanner emits
+data only.
 
 | Name | Where | Meaning |
 |---|---|---|
-| `OverallStatus` | `report/enums.py` | Document-level roll-up: `ok`, `partial`, `failed`, `unsupported`. `unsupported` specifically means the document style was not recognized. |
-| `QualitySummary` | `report/analytics.py` | `by_overall_status`, `by_section_status`, `top_issues`. |
-| `doc_overall_status`, `doc_all_issues`, `count_by_version` | `report/analytics.py` | The pure functions the roll-ups are made of. These are the reusable part that moves to the panel. |
+| `OverallStatus` | `analytics/quality.py` | Document-level roll-up: `ok`, `partial`, `failed`, `unsupported`. `unsupported` specifically means the document style was not recognized. |
+| `UNVERSIONED_KEY` (`"unversioned"`) | `analytics/quality.py` | The `by_version` bucket for an endpoint whose `api_version` could not be read from its URI or path. A real bucket, not an error. |
+| `document_sections`, `doc_all_issues` | `analytics/quality.py` | The two per-document primitives the roll-ups are built from: the sections that were actually scanned, and every diagnostic on a document flattened with a section-prefixed location. |
+| `assemble_nesting_from_examples`, `example_documentation_issues` | `analytics/assemble.py`, `analytics/validate.py` | On-demand example-driven views: rebuild the nesting an example proves, and flag where documentation and example disagree. |
 
-`OrgScanResult` and `REPORT_SCHEMA_VERSION` (`report/aggregates.py`) are the
-organization-level report contract. They are **scheduled for removal** together
-with `ScannerService.scan_organization()` - see issue #34. Do not build on them.
+The roll-ups themselves live in `analytics/generation.py` (`document_status`,
+`analyze_document`, `analyze_generation`, `GenerationAnalytics`) — see the panel
+section below. Issue #34 removed the older parallel set that used to sit beside
+them in `tools.domain.report` (`doc_overall_status`, `QualitySummary`,
+`compute_quality_summary`, `count_by_version`), so one number now has one
+definition.
+
+Organization-level reporting is **not** part of the scanner: it emitted an
+`OrgScanResult` aggregate, which was removed with `ScannerService.scan_organization()`
+in issue #34. The panel owns organization orchestration, because that is where
+the job state making it resumable across rate limits lives.
 
 ### What ingest computes (panel-owned)
 
@@ -146,7 +154,7 @@ jobs and generations on every read - never stored, so it cannot go stale.
 | `status_documents` | Documents that carry a status - the sum of the overall breakdown, and what the UI calls `documents`. Pages that are not API documents are reported as `non_endpoint_documents` (the generation analytics' `unknown_count`), never folded into a status. |
 | `docs_ok` (`clean_endpoint_share`) | **Documentation quality**: how much of the documentation a generator can use, `0..1`. Documents are **weighted**, not counted - clean `1`, degraded `0.5`, uninterpretable `0` - so "half the endpoints are partial" stops reading like "half are unusable". `None` when nothing carries a status: unknown, not zero. |
 | `EXAMPLE_SECTIONS` | `example_request`, `example_response`. Diagnostics found there (invalid JSON, an unread example block) stay visible on the document and in the issue filters but move **no** quality number: a generator builds from the parameter tables, so a broken example says nothing about whether the endpoint can be generated. Decided with the team on 2026-07-29. |
-| `document_status` | The panel's document roll-up, judged on the material sections only. Deliberately different from the legacy `doc_overall_status` in `tools.domain`, which still degrades a document for an example; issue #34 removes that one. |
+| `document_status` | The panel's document roll-up, and since issue #34 the only one: judged on the material sections only, so an example defect never degrades it. The legacy `doc_overall_status` in `tools.domain`, which did degrade a document for an example, was removed with that issue. |
 
 Two numbers answer two different questions and must not be swapped: `docs_ok`
 measures the documentation, `Generation.completeness` measures our parser (the
@@ -173,7 +181,6 @@ racy.
 |---|---|---|
 | `__version__` | `src/tools/__init__.py` | The scanner/parser version, read from package metadata and stamped on every result. Lets consumers tell "docs changed" apart from "parser improved". |
 | `DOCUMENT_SCHEMA_VERSION` | `shared/ir/__init__.py` | The serialized `Document`/`Endpoint` contract. |
-| `REPORT_SCHEMA_VERSION` | `domain/report/aggregates.py` | The organization-level report contract. Being removed with issue #34 - do not build on it. |
 
 ## Scanner vocabulary
 

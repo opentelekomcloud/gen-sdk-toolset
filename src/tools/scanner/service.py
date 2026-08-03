@@ -3,7 +3,6 @@ from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
-from tools.domain.report import OrgScanResult
 from tools.scanner.interfaces import DocProvider, RepositoryContextParser, RstParser
 from tools.scanner.parsers import (
     extract_document_title,
@@ -29,7 +28,12 @@ class _FetchedDocument:
 
 
 class ScannerService:
-    """Scan API endpoint documentation and produce quality reports."""
+    """Scan one repository's API documentation into a canonical scan result.
+
+    One repository per call, and no derived numbers: scanning a whole
+    organization needs durable job state to resume after a rate limit, and an
+    aggregate must have a single definition. Both belong to the panel.
+    """
 
     def __init__(
         self,
@@ -46,38 +50,6 @@ class ScannerService:
         self.max_workers = max_workers
         self.api_ref_path = api_ref_path.rstrip("/")
         self.excluded_segments = frozenset(excluded_segments)
-
-    def scan_organization(
-        self,
-        org: str,
-        branch: str = "main",
-    ) -> OrgScanResult:
-        """Scan every eligible repo in `org` and aggregate per-document results."""
-        logger.info("Scanning organization %s (branch=%s)", org, branch)
-        repos = self.doc_provider.list_repos(org)
-        result = OrgScanResult(org=org, branch=branch, total_repos=len(repos))
-
-        for repo in repos:
-            repo_result = self.scan_repository(repo=repo, branch=branch)
-            if (
-                not isinstance(repo_result.repository, Service)
-                and repo_result.failure_message is None
-            ):
-                logger.debug("Skipping %s (no %s)", repo, self.api_ref_path)
-                result.skipped_repos.append(repo)
-                continue
-            result.repos.append(repo_result)
-
-        result.eligible_repos = sum(
-            isinstance(repo.repository, Service) for repo in result.repos
-        )
-        logger.info(
-            "Org scan complete: %d/%d eligible, %d total documents",
-            result.eligible_repos,
-            result.total_repos,
-            result.total_documents,
-        )
-        return result
 
     def scan_repository(self, repo: str, branch: str = "main") -> RepositoryScanResult:
         """Scan one repository and return per-document parse results.
