@@ -23,6 +23,7 @@ import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tools.panel.core.analytics import analyze_document, analyze_snapshot
@@ -63,7 +64,16 @@ def ingest_service_result(
     """
     get_engine()  # ensure SessionLocal is bound
     with SessionLocal() as session:
-        job = session.get(RepositoryScanJob, job_id)
+        # Locked for the length of this transaction: cancellation is a plain
+        # UPDATE from the request thread, and without the lock it could land
+        # between the status check below and the commit - persisting a snapshot
+        # for a Job somebody had already stopped. Every remaining statement is
+        # local database work, so nothing holds this lock across the network.
+        job = session.scalar(
+            select(RepositoryScanJob)
+            .where(RepositoryScanJob.id == job_id)
+            .with_for_update()
+        )
         _reject_unless_running_scan_job(job, job_id)
         scanned = _validated_service(result, service_repo=service_repo, job=job)
         _persist(session, job=job, result=result, scanned=scanned)
