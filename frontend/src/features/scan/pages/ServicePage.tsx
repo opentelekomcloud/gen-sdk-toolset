@@ -3,10 +3,10 @@ import type { DocFilter } from "../api/types.local";
 import { AlertTriangle, ArrowLeft, Ban, CheckCircle2, Download, FolderOpen, Loader2, RefreshCw } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ApiError } from "../api/client";
-import { useActivateGeneration, useExclude, useRescan } from "../api/mutations";
+import { useActivateSnapshot, useExclude, useRescan } from "../api/mutations";
 import { useService, useSummary } from "../api/queries";
-import { GenerationBanner } from "../components/GenerationBanner";
-import { GenerationSelector } from "../components/GenerationSelector";
+import { SnapshotBanner } from "../components/SnapshotBanner";
+import { SnapshotSelector } from "../components/SnapshotSelector";
 import { RescanButton } from "../components/RescanButton";
 import { ScanJobWatcher } from "../components/ScanJobWatcher";
 import { SectionCard } from "../components/SectionCard";
@@ -15,14 +15,14 @@ import { OverallBar } from "../components/OverallBar";
 import { SECTIONS } from "../constants";
 import { DocumentsBlock } from "../documents/DocumentsBlock";
 import { ExcludeModal } from "../excluded/ExcludeModal";
-import { fmtGenAt } from "../lib/generation";
+import { fmtGenAt } from "../lib/snapshot";
 import { DOC_STATUS_CLS, structOkCls } from "../styles";
 import type { DocStatus } from "../api/types.local";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
 
 const OVERALL_ORDER: DocStatus[] = ["ok", "partial", "failed", "unsupported"];
 
-/** Service page (PS11 + G1): header with generation selector, metrics, terminal states, documents, admin zone. */
+/** Service page (PS11 + G1): header with snapshot selector, metrics, terminal states, documents, admin zone. */
 export function ServicePage() {
   const { name = "" } = useParams();
   const navigate = useNavigate();
@@ -34,7 +34,7 @@ export function ServicePage() {
   const { data: service, isPending, isError, error, refetch } = useService(name);
   const { data: summary } = useSummary();
   const rescan = useRescan(name);
-  const activate = useActivateGeneration(name);
+  const activate = useActivateSnapshot(name);
   const exclude = useExclude(name);
 
   if (isPending) {
@@ -73,7 +73,7 @@ export function ServicePage() {
   const scanning = service.scan_status === "scanning";
   const switching = activate.isPending;
   const scannerVersion = summary?.scanner_version ?? "";
-  /* a failed job persists nothing — with an active generation the failure is a warning, without one a terminal state */
+  /* a failed job persists nothing — with an active snapshot the failure is a warning, without one a terminal state */
   const jobFailed = service.error != null || service.interruption != null;
 
   return (
@@ -89,7 +89,7 @@ export function ServicePage() {
             <StatusPill kind={service.scan_status} />
           </div>
           {/* G1: replaces the static "scanned with …" line; RollbackButton is gone — the selector covers it */}
-          <GenerationSelector
+          <SnapshotSelector
             service={service}
             disabled={scanning || switching}
             onActivate={(id) => activate.mutate(id)}
@@ -139,13 +139,13 @@ export function ServicePage() {
       )}
 
       {!scanning && (
-        <GenerationBanner
+        <SnapshotBanner
           service={service}
-          onActivateLatest={() => service.latest_generation && activate.mutate(service.latest_generation.id)}
+          onActivateLatest={() => service.latest_snapshot && activate.mutate(service.latest_snapshot.id)}
         />
       )}
 
-      {!scanning && jobFailed && service.active_generation != null && (
+      {!scanning && jobFailed && service.active_snapshot != null && (
         <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-800">
           <AlertTriangle size={14} className="mt-px shrink-0 text-red-500" />
           <div className="min-w-0">
@@ -162,7 +162,7 @@ export function ServicePage() {
               </span>
             )}
             <div className="mt-0.5 text-red-600/80">
-              {t("service.failedKeptData", { gen: service.active_generation.id, at: fmtGenAt(service.active_generation.created_at) })}
+              {t("service.failedKeptData", { gen: service.active_snapshot.id, at: fmtGenAt(service.active_snapshot.created_at) })}
             </div>
           </div>
           <button type="button"
@@ -174,7 +174,7 @@ export function ServicePage() {
         </div>
       )}
 
-      {jobFailed && service.active_generation == null ? (
+      {jobFailed && service.active_snapshot == null ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center">
           <AlertTriangle size={22} className="mx-auto mb-2 text-red-500" />
           <div className="mb-1 text-sm font-semibold text-red-800">
@@ -257,7 +257,7 @@ export function ServicePage() {
             ))}
           </div>
 
-          {service.active_generation && (
+          {service.active_snapshot && (
             <div className="mb-4 text-xs">
               <a
                 href={`/api/scan/services/${encodeURIComponent(service.name)}/export`}

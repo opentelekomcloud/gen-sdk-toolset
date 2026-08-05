@@ -31,7 +31,7 @@ function ExcludedRow({ item }: { item: ExcludedService }) {
           <Undo2 size={12} /> {t("excluded.restore")}
         </button>
       </div>
-      {/* inline confirmation — same pattern as the generation selector, instead of window.confirm */}
+      {/* inline confirmation — same pattern as the snapshot selector, instead of window.confirm */}
       {confirming && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-100 bg-amber-50 px-4 py-2">
           <span className="whitespace-pre-line text-xs leading-relaxed text-amber-800">

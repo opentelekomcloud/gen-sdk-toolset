@@ -37,9 +37,8 @@ without fixtures, so keep it that way.
 scans one repository per call and returns a `RepositoryScanResult`. It computes
 no aggregates and knows nothing about organizations: enumerating an org and
 surviving a rate limit halfway through needs durable job state, which is the
-panel's. `tools.domain` and its `OrgScanResult` held the old org-level report
-and were removed in issue #34; `lint-imports` now enforces that the scanner
-cannot import the panel, so analytics cannot drift back across that line.
+panel's. `lint-imports` enforces that the scanner cannot import the panel, so
+analytics cannot drift back across that line.
 
 When you add a module, ask which question it answers: does it touch GitHub or
 RST parsing (`scanner`), is it a pure computation over the IR

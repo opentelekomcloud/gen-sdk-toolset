@@ -1,8 +1,8 @@
 /**
- * Contract types (PS1 + PS15 + G1 generations).
+ * Contract types (PS1 + PS15 + G1 snapshots).
  * TEMPORARY — once openapi.json covers /scan, delete this file and import from
  * `src/shared/api/schema.gen.ts` instead. Shapes mirror the DTOs the panel API
- * builds from the persistence models (service / job / generation / document),
+ * builds from the persistence models (service / job / snapshot / document),
  * so the swap is mechanical.
  */
 
@@ -20,7 +20,7 @@ export type Section =
   | "example_request"
   | "example_response";
 export type AttentionRuleCode = "failed" | "version" | "drift" | "new";
-export type PanelName = "scan" | "generation" | "maintenance";
+export type PanelName = "scan" | "snapshot" | "maintenance";
 /** Mirrors JobKind / JobStatus enums on the `job` table. */
 export type JobKind = "scan" | "generate" | "maintain";
 export type JobStatus = "queued" | "running" | "done" | "failed";
@@ -43,11 +43,11 @@ export interface SectionCounts {
 
 /**
  * G1: one immutable successfully persisted scan snapshot — DTO of the
- * `generation` table (a failed job creates no generation). `created_at` is
- * the scan timestamp; `completeness` is a 0..1 float — use lib/generation.ts
+ * `snapshot` table (a failed job creates no snapshot). `created_at` is
+ * the scan timestamp; `completeness` is a 0..1 float — use lib/snapshot.ts
  * helpers for percent and short commit display.
  */
-export interface Generation {
+export interface Snapshot {
   id: number;
   source_job_id: number;
   branch: string;
@@ -72,15 +72,15 @@ export interface Generation {
   created_at: string;
 }
 
-export interface GenerationsResponse {
-  /** Newest first (ix_generation_service_created_at DESC). */
-  items: Generation[];
-  /** Mirror Service.active_generation_id / latest_generation_id — nullable in the DB. */
+export interface SnapshotsResponse {
+  /** Newest first (ix_snapshot_service_created_at DESC). */
+  items: Snapshot[];
+  /** Mirror Service.active_snapshot_id / latest_snapshot_id — nullable in the DB. */
   active_id: number | null;
   latest_id: number | null;
 }
 
-export interface ActivateGenerationRequest {
+export interface ActivateSnapshotRequest {
   initiated_by: string;
 }
 
@@ -120,7 +120,7 @@ export interface ServiceListItem {
   section_rollup: Record<Section, SectionCounts>;
   /**
    * Message of the last FAILED job (job.error). A failed job creates no
-   * generation — when active_generation exists alongside error, the service
+   * snapshot — when active_snapshot exists alongside error, the service
    * still serves that snapshot and the failure is only a warning, not a
    * data-loss state. Cleared by the next successful scan.
    */
@@ -141,17 +141,17 @@ export interface ServicesResponse {
 
 export interface ServiceDetail extends ServiceListItem {
   /**
-   * G1: snapshot currently displayed / served (Service.active_generation).
+   * G1: snapshot currently displayed / served (Service.active_snapshot).
    * Null when no successful scan exists yet. All flat scan-result fields on
    * this DTO (documents, docs_ok, overall_breakdown, section_rollup,
-   * top_issues, …) are served FROM this generation.
+   * top_issues, …) are served FROM this snapshot.
    */
-  active_generation: Generation | null;
-  /** G1: newest persisted snapshot (Service.latest_generation) — may deliberately differ from active. */
-  latest_generation: Generation | null;
+  active_snapshot: Snapshot | null;
+  /** G1: newest persisted snapshot (Service.latest_snapshot) — may deliberately differ from active. */
+  latest_snapshot: Snapshot | null;
   /**
    * Service.head_commit — current HEAD of the docs repo; drift =
-   * head_commit !== active_generation.commit_hash (docs_changed is the
+   * head_commit !== active_snapshot.commit_hash (docs_changed is the
    * server-computed shortcut for exactly that).
    */
   head_commit: string | null;
@@ -274,7 +274,7 @@ export interface Job {
   repository: string;
   kind: JobKind;
   status: JobStatus;
-  /** Available once ingest creates the generation for a completed scan. */
+  /** Available once ingest creates the snapshot for a completed scan. */
   scanner_version: string | null;
   commit_hash: string | null;
   error: string | null;

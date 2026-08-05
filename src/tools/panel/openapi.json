@@ -198,7 +198,7 @@
         "type": "object"
       },
       "DocumentsResponse": {
-        "description": "One page of a generation's documents, with the counts behind the chips.",
+        "description": "One page of a snapshot's documents, with the counts behind the chips.",
         "properties": {
           "doc_counts": {
             "additionalProperties": {
@@ -311,168 +311,6 @@
           "excluded_at"
         ],
         "title": "ExcludedServiceResponse",
-        "type": "object"
-      },
-      "GenerationResponse": {
-        "description": "One persisted scan snapshot (the `generation` row).",
-        "properties": {
-          "branch": {
-            "title": "Branch",
-            "type": "string"
-          },
-          "commit_hash": {
-            "title": "Commit Hash",
-            "type": "string"
-          },
-          "completeness": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Completeness"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "docs_ok": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Docs Ok"
-          },
-          "document_schema_version": {
-            "title": "Document Schema Version",
-            "type": "string"
-          },
-          "documents_total": {
-            "title": "Documents Total",
-            "type": "integer"
-          },
-          "endpoints_total": {
-            "title": "Endpoints Total",
-            "type": "integer"
-          },
-          "failed_count": {
-            "title": "Failed Count",
-            "type": "integer"
-          },
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "issues_total": {
-            "title": "Issues Total",
-            "type": "integer"
-          },
-          "non_endpoint_documents": {
-            "title": "Non Endpoint Documents",
-            "type": "integer"
-          },
-          "ok_count": {
-            "title": "Ok Count",
-            "type": "integer"
-          },
-          "parser_ok": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parser Ok"
-          },
-          "partial_count": {
-            "title": "Partial Count",
-            "type": "integer"
-          },
-          "scanner_version": {
-            "title": "Scanner Version",
-            "type": "string"
-          },
-          "source_job_id": {
-            "title": "Source Job Id",
-            "type": "integer"
-          },
-          "unsupported_count": {
-            "title": "Unsupported Count",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "source_job_id",
-          "branch",
-          "commit_hash",
-          "scanner_version",
-          "document_schema_version",
-          "documents_total",
-          "endpoints_total",
-          "non_endpoint_documents",
-          "issues_total",
-          "ok_count",
-          "partial_count",
-          "failed_count",
-          "unsupported_count",
-          "docs_ok",
-          "parser_ok",
-          "completeness",
-          "created_at"
-        ],
-        "title": "GenerationResponse",
-        "type": "object"
-      },
-      "GenerationsResponse": {
-        "description": "A service's generation history, newest first.",
-        "properties": {
-          "active_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Active Id"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/GenerationResponse"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "latest_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Id"
-          }
-        },
-        "required": [
-          "items",
-          "active_id",
-          "latest_id"
-        ],
-        "title": "GenerationsResponse",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -797,10 +635,10 @@
       "ServiceDetailResponse": {
         "description": "The service page: the registry row plus what only the detail view shows.",
         "properties": {
-          "active_generation": {
+          "active_snapshot": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/GenerationResponse"
+                "$ref": "#/components/schemas/SnapshotResponse"
               },
               {
                 "type": "null"
@@ -905,10 +743,10 @@
             "title": "Label",
             "type": "string"
           },
-          "latest_generation": {
+          "latest_snapshot": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/GenerationResponse"
+                "$ref": "#/components/schemas/SnapshotResponse"
               },
               {
                 "type": "null"
@@ -1040,8 +878,8 @@
           "section_rollup",
           "error",
           "error_at",
-          "active_generation",
-          "latest_generation",
+          "active_snapshot",
+          "latest_snapshot",
           "head_commit",
           "interruption",
           "top_issues",
@@ -1051,7 +889,7 @@
         "type": "object"
       },
       "ServiceListItem": {
-        "description": "One row of the registry, served from the service's active Generation.\n\n``documents`` counts the documents that have a scan status, so it always\nequals the sum of ``overall_breakdown``. Pages that are not API documents\nare counted separately (see ``ServiceDetailResponse.non_endpoint_documents``)\nrather than folded into a status they do not have.",
+        "description": "One row of the registry, served from the service's active Snapshot.\n\n``documents`` counts the documents that have a scan status, so it always\nequals the sum of ``overall_breakdown``. Pages that are not API documents\nare counted separately (see ``ServiceDetailResponse.non_endpoint_documents``)\nrather than folded into a status they do not have.",
         "properties": {
           "docs_changed": {
             "title": "Docs Changed",
@@ -1269,6 +1107,168 @@
           "counts"
         ],
         "title": "ServicesResponse",
+        "type": "object"
+      },
+      "SnapshotResponse": {
+        "description": "One persisted scan snapshot (the `snapshot` row).",
+        "properties": {
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "commit_hash": {
+            "title": "Commit Hash",
+            "type": "string"
+          },
+          "completeness": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completeness"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "docs_ok": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Docs Ok"
+          },
+          "document_schema_version": {
+            "title": "Document Schema Version",
+            "type": "string"
+          },
+          "documents_total": {
+            "title": "Documents Total",
+            "type": "integer"
+          },
+          "endpoints_total": {
+            "title": "Endpoints Total",
+            "type": "integer"
+          },
+          "failed_count": {
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "issues_total": {
+            "title": "Issues Total",
+            "type": "integer"
+          },
+          "non_endpoint_documents": {
+            "title": "Non Endpoint Documents",
+            "type": "integer"
+          },
+          "ok_count": {
+            "title": "Ok Count",
+            "type": "integer"
+          },
+          "parser_ok": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Ok"
+          },
+          "partial_count": {
+            "title": "Partial Count",
+            "type": "integer"
+          },
+          "scanner_version": {
+            "title": "Scanner Version",
+            "type": "string"
+          },
+          "source_job_id": {
+            "title": "Source Job Id",
+            "type": "integer"
+          },
+          "unsupported_count": {
+            "title": "Unsupported Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "source_job_id",
+          "branch",
+          "commit_hash",
+          "scanner_version",
+          "document_schema_version",
+          "documents_total",
+          "endpoints_total",
+          "non_endpoint_documents",
+          "issues_total",
+          "ok_count",
+          "partial_count",
+          "failed_count",
+          "unsupported_count",
+          "docs_ok",
+          "parser_ok",
+          "completeness",
+          "created_at"
+        ],
+        "title": "SnapshotResponse",
+        "type": "object"
+      },
+      "SnapshotsResponse": {
+        "description": "A service's snapshot history, newest first.",
+        "properties": {
+          "active_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "latest_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Id"
+          }
+        },
+        "required": [
+          "items",
+          "active_id",
+          "latest_id"
+        ],
+        "title": "SnapshotsResponse",
         "type": "object"
       },
       "StartScanResponse": {
@@ -1585,7 +1585,7 @@
     },
     "/api/scan/services/{repo}/documents": {
       "get": {
-        "description": "One page of the active generation's API documents.\n\nPages that carry no scan status are not API documents; they are counted in\nthe service detail's ``non_endpoint_documents`` instead of being listed here\nunder a status they never had.\n\n``section`` and ``section_status`` together answer \"which documents have a\nfailed body\": both are required for the filter to apply, because either one\nalone would silently mean something else. ``issue`` answers the same\nquestion for a diagnostic code, and ``api_version`` narrows to one version\nof the API (``unversioned`` for the documents that name none).",
+        "description": "One page of the active snapshot's API documents.\n\nPages that carry no scan status are not API documents; they are counted in\nthe service detail's ``non_endpoint_documents`` instead of being listed here\nunder a status they never had.\n\n``section`` and ``section_status`` together answer \"which documents have a\nfailed body\": both are required for the filter to apply, because either one\nalone would silently mean something else. ``issue`` answers the same\nquestion for a diagnostic code, and ``api_version`` narrows to one version\nof the API (``unversioned`` for the documents that name none).",
         "operationId": "list_documents_api_scan_services__repo__documents_get",
         "parameters": [
           {
@@ -1726,7 +1726,7 @@
     },
     "/api/scan/services/{repo}/documents/{document_id}": {
       "get": {
-        "description": "One document of the active generation, with its sections and parameters.",
+        "description": "One document of the active snapshot, with its sections and parameters.",
         "operationId": "get_document_api_scan_services__repo__documents__document_id__get",
         "parameters": [
           {
@@ -1775,8 +1775,8 @@
     },
     "/api/scan/services/{repo}/export": {
       "get": {
-        "description": "The active generation as a ``RepositoryScanResult`` - the scanner's own\ncontract, not a shape invented for this endpoint.\n\nRebuilt from the stored payloads and validated on the way out: if anything\nin the database no longer satisfies the contract, this fails loudly instead\nof handing out a file that only looks right.",
-        "operationId": "export_generation_api_scan_services__repo__export_get",
+        "description": "The active snapshot as a ``RepositoryScanResult`` - the scanner's own\ncontract, not a shape invented for this endpoint.\n\nRebuilt from the stored payloads and validated on the way out: if anything\nin the database no longer satisfies the contract, this fails loudly instead\nof handing out a file that only looks right.",
+        "operationId": "export_snapshot_api_scan_services__repo__export_get",
         "parameters": [
           {
             "in": "path",
@@ -1808,47 +1808,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Export Generation"
-      }
-    },
-    "/api/scan/services/{repo}/generations": {
-      "get": {
-        "description": "A service's scan history, newest first.",
-        "operationId": "list_generations_api_scan_services__repo__generations_get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "repo",
-            "required": true,
-            "schema": {
-              "title": "Repo",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GenerationsResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "List Generations"
+        "summary": "Export Snapshot"
       }
     },
     "/api/scan/services/{repo}/rescan": {
@@ -1899,6 +1859,46 @@
           }
         },
         "summary": "Start Scan"
+      }
+    },
+    "/api/scan/services/{repo}/snapshots": {
+      "get": {
+        "description": "A service's scan history, newest first.",
+        "operationId": "list_snapshots_api_scan_services__repo__snapshots_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Snapshots"
       }
     },
     "/api/scan/summary": {

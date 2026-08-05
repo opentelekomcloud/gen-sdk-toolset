@@ -1,7 +1,7 @@
 """Pydantic request/response models for the panel API.
 
 The read models are projections of what ingest already persisted: a Service
-plus its active Generation and that generation's documents. Nothing here
+plus its active Snapshot and that snapshot's documents. Nothing here
 recomputes a scan number - if a value is not in the database, it is derived by
 :mod:`tools.panel.core.service_state`, never guessed.
 """
@@ -16,11 +16,11 @@ from pydantic import BaseModel, Field
 from tools.panel.core.analytics import document_from_payload, issues_by_code
 from tools.panel.core.db.models import (
     DocumentRecord,
-    Generation,
     JobKind,
     JobStatus,
     RepositoryScanJob,
     Service,
+    Snapshot,
 )
 from tools.panel.core.service_state import (
     RescanReason,
@@ -79,18 +79,18 @@ class JobResponse(BaseModel):
     def from_job(cls, job: RepositoryScanJob) -> JobResponse:
         """Build the response from a Job.
 
-        ``scanner_version`` and ``commit_hash`` come from the linked Generation,
-        or None when the Job has no Generation.
+        ``scanner_version`` and ``commit_hash`` come from the linked Snapshot,
+        or None when the Job has no Snapshot.
         """
-        generation = job.generation
+        snapshot = job.snapshot
         return cls(
             id=job.id,
             service_id=job.service_id,
             repository=job.service.repo,
             kind=job.kind,
             status=job.status,
-            scanner_version=generation.scanner_version if generation else None,
-            commit_hash=generation.commit_hash if generation else None,
+            scanner_version=snapshot.scanner_version if snapshot else None,
+            commit_hash=snapshot.commit_hash if snapshot else None,
             error=job.error,
             created_at=job.created_at,
             started_at=job.started_at,
@@ -105,8 +105,8 @@ class IssueCount(BaseModel):
     count: int
 
 
-class GenerationResponse(BaseModel):
-    """One persisted scan snapshot (the `generation` row)."""
+class SnapshotResponse(BaseModel):
+    """One persisted scan snapshot (the `snapshot` row)."""
 
     id: int
     source_job_id: int
@@ -133,39 +133,39 @@ class GenerationResponse(BaseModel):
     created_at: datetime
 
     @classmethod
-    def from_generation(cls, generation: Generation) -> GenerationResponse:
+    def from_snapshot(cls, snapshot: Snapshot) -> SnapshotResponse:
         return cls(
-            id=generation.id,
-            source_job_id=generation.source_job_id,
-            branch=generation.branch,
-            commit_hash=generation.commit_hash,
-            scanner_version=generation.scanner_version,
-            document_schema_version=generation.document_schema_version,
-            documents_total=generation.documents_total,
-            endpoints_total=generation.endpoints_total,
-            non_endpoint_documents=generation.non_endpoint_documents,
-            issues_total=generation.issues_total,
-            ok_count=generation.ok_count,
-            partial_count=generation.partial_count,
-            failed_count=generation.failed_count,
-            unsupported_count=generation.unsupported_count,
-            docs_ok=_docs_ok(generation),
-            parser_ok=_parser_ok(generation),
-            completeness=generation.completeness,
-            created_at=generation.created_at,
+            id=snapshot.id,
+            source_job_id=snapshot.source_job_id,
+            branch=snapshot.branch,
+            commit_hash=snapshot.commit_hash,
+            scanner_version=snapshot.scanner_version,
+            document_schema_version=snapshot.document_schema_version,
+            documents_total=snapshot.documents_total,
+            endpoints_total=snapshot.endpoints_total,
+            non_endpoint_documents=snapshot.non_endpoint_documents,
+            issues_total=snapshot.issues_total,
+            ok_count=snapshot.ok_count,
+            partial_count=snapshot.partial_count,
+            failed_count=snapshot.failed_count,
+            unsupported_count=snapshot.unsupported_count,
+            docs_ok=_docs_ok(snapshot),
+            parser_ok=_parser_ok(snapshot),
+            completeness=snapshot.completeness,
+            created_at=snapshot.created_at,
         )
 
 
-class GenerationsResponse(BaseModel):
-    """A service's generation history, newest first."""
+class SnapshotsResponse(BaseModel):
+    """A service's snapshot history, newest first."""
 
-    items: list[GenerationResponse]
+    items: list[SnapshotResponse]
     active_id: int | None
     latest_id: int | None
 
 
 class ServiceListItem(BaseModel):
-    """One row of the registry, served from the service's active Generation.
+    """One row of the registry, served from the service's active Snapshot.
 
     ``documents`` counts the documents that have a scan status, so it always
     equals the sum of ``overall_breakdown``. Pages that are not API documents
@@ -184,7 +184,7 @@ class ServiceListItem(BaseModel):
     read_in_full: int | None
     #: Whole percent of documents scanned without a single diagnostic - the
     #: panel's measure of the documentation, not of the parser. The parser's
-    #: own coverage lives on the generation as `completeness`.
+    #: own coverage lives on the snapshot as `completeness`.
     docs_ok: int | None
     scanner_version: str | None
     scanned_at: datetime | None
@@ -210,27 +210,27 @@ class ServiceListItem(BaseModel):
 
     @classmethod
     def from_service(cls, service: Service, state: ServiceState) -> ServiceListItem:
-        generation = state.active_generation
+        snapshot = state.active_snapshot
         failed = _failed_job(state)
         active_job = state.active_job
         return cls(
             name=service.repo,
             label=service.name,
             scan_status=state.scan_status,
-            documents=_status_documents(generation),
+            documents=_status_documents(snapshot),
             read_in_full=(
-                _analytics(generation).get("read_in_full") if generation else None
+                _analytics(snapshot).get("read_in_full") if snapshot else None
             ),
-            docs_ok=_docs_ok(generation),
-            scanner_version=generation.scanner_version if generation else None,
-            scanned_at=generation.created_at if generation else None,
+            docs_ok=_docs_ok(snapshot),
+            scanner_version=snapshot.scanner_version if snapshot else None,
+            scanned_at=snapshot.created_at if snapshot else None,
             docs_changed=state.docs_changed,
             rescan_reason=state.rescan_reason,
-            overall_breakdown=_overall_breakdown(generation),
-            unread_breakdown=_analytics(generation).get("unread_by_status", {}),
-            unread_documents=_analytics(generation).get("unread_documents", 0),
-            rows_unrecognized=_analytics(generation).get("rows_unrecognized", 0),
-            section_rollup=_section_rollup(generation),
+            overall_breakdown=_overall_breakdown(snapshot),
+            unread_breakdown=_analytics(snapshot).get("unread_by_status", {}),
+            unread_documents=_analytics(snapshot).get("unread_documents", 0),
+            rows_unrecognized=_analytics(snapshot).get("rows_unrecognized", 0),
+            section_rollup=_section_rollup(snapshot),
             error=failed.error if failed else None,
             error_at=failed.finished_at if failed else None,
             job_id=active_job.id if active_job else None,
@@ -249,8 +249,8 @@ class ServicesResponse(BaseModel):
 class ServiceDetailResponse(ServiceListItem):
     """The service page: the registry row plus what only the detail view shows."""
 
-    active_generation: GenerationResponse | None
-    latest_generation: GenerationResponse | None
+    active_snapshot: SnapshotResponse | None
+    latest_snapshot: SnapshotResponse | None
     head_commit: str | None
     interruption: dict[str, Any] | None
     top_issues: list[IssueCount]
@@ -261,22 +261,22 @@ class ServiceDetailResponse(ServiceListItem):
         cls, service: Service, state: ServiceState
     ) -> ServiceDetailResponse:
         row = ServiceListItem.from_service(service, state)
-        generation = state.active_generation
+        snapshot = state.active_snapshot
         failed = _failed_job(state)
         return cls(
             **row.model_dump(),
-            active_generation=(
-                GenerationResponse.from_generation(generation) if generation else None
+            active_snapshot=(
+                SnapshotResponse.from_snapshot(snapshot) if snapshot else None
             ),
-            latest_generation=(
-                GenerationResponse.from_generation(state.latest_generation)
-                if state.latest_generation
+            latest_snapshot=(
+                SnapshotResponse.from_snapshot(state.latest_snapshot)
+                if state.latest_snapshot
                 else None
             ),
             head_commit=service.head_commit,
             interruption=failed.interruption if failed else None,
-            top_issues=_top_issues(generation),
-            non_endpoint_documents=_analytics(generation).get("unknown_count", 0),
+            top_issues=_top_issues(snapshot),
+            non_endpoint_documents=_analytics(snapshot).get("unknown_count", 0),
         )
 
 
@@ -310,7 +310,7 @@ class DocumentListItem(BaseModel):
 
 
 class DocumentsResponse(BaseModel):
-    """One page of a generation's documents, with the counts behind the chips."""
+    """One page of a snapshot's documents, with the counts behind the chips."""
 
     items: list[DocumentListItem]
     total: int
@@ -318,7 +318,7 @@ class DocumentsResponse(BaseModel):
     page_size: int
     doc_counts: dict[str, int]
     #: Matching documents per API version, `unversioned` for those that name
-    #: none - the same key the generation analytics uses.
+    #: none - the same key the snapshot analytics uses.
     version_counts: dict[str, int]
 
 
@@ -441,57 +441,57 @@ def _failed_job(state: ServiceState) -> RepositoryScanJob | None:
     return failed_job(state)
 
 
-def _analytics(generation: Generation | None) -> dict[str, Any]:
-    return generation.analytics if generation is not None else {}
+def _analytics(snapshot: Snapshot | None) -> dict[str, Any]:
+    return snapshot.analytics if snapshot is not None else {}
 
 
-def _status_documents(generation: Generation | None) -> int | None:
+def _status_documents(snapshot: Snapshot | None) -> int | None:
     """Documents that carry a status - the denominator of the overall bar."""
-    if generation is None:
+    if snapshot is None:
         return None
-    return status_documents(generation)
+    return status_documents(snapshot)
 
 
-def _docs_ok(generation: Generation | None) -> int | None:
+def _docs_ok(snapshot: Snapshot | None) -> int | None:
     """Clean-document share as whole percent; None stays None.
 
     Rounded **down**: 100% has to mean every document, not 99.6% of them. A
     percent that rounds up hides exactly the documents someone would go and
     look for.
     """
-    if generation is None:
+    if snapshot is None:
         return None
-    share = clean_endpoint_share(generation)
+    share = clean_endpoint_share(snapshot)
     return None if share is None else int(share * 100)
 
 
-def _parser_ok(generation: Generation | None) -> int | None:
+def _parser_ok(snapshot: Snapshot | None) -> int | None:
     """Read-in-full share as whole percent, rounded down. None stays None."""
-    if generation is None:
+    if snapshot is None:
         return None
-    share = read_in_full_share(generation)
+    share = read_in_full_share(snapshot)
     return None if share is None else int(share * 100)
 
 
-def _overall_breakdown(generation: Generation | None) -> dict[str, int]:
-    if generation is None:
+def _overall_breakdown(snapshot: Snapshot | None) -> dict[str, int]:
+    if snapshot is None:
         return {}
     return {
-        "ok": generation.ok_count,
-        "partial": generation.partial_count,
-        "failed": generation.failed_count,
-        "unsupported": generation.unsupported_count,
+        "ok": snapshot.ok_count,
+        "partial": snapshot.partial_count,
+        "failed": snapshot.failed_count,
+        "unsupported": snapshot.unsupported_count,
     }
 
 
-def _section_rollup(generation: Generation | None) -> dict[str, dict[str, int]]:
-    stored = _analytics(generation).get("by_section_status", {})
+def _section_rollup(snapshot: Snapshot | None) -> dict[str, dict[str, int]]:
+    stored = _analytics(snapshot).get("by_section_status", {})
     return {name: stored.get(name, {}) for name in _SECTION_NAMES}
 
 
-def _top_issues(generation: Generation | None) -> list[IssueCount]:
-    """The loudest issue codes. The full map stays in the generation's analytics."""
-    counts = _analytics(generation).get("issues_by_code", {})
+def _top_issues(snapshot: Snapshot | None) -> list[IssueCount]:
+    """The loudest issue codes. The full map stays in the snapshot's analytics."""
+    counts = _analytics(snapshot).get("issues_by_code", {})
     ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return [
         IssueCount(code=code, count=count)

@@ -1,14 +1,14 @@
-"""Document- and generation-level roll-ups computed by the panel (issue #16).
+"""Document- and snapshot-level roll-ups computed by the panel (issue #16).
 
 Pure tests: no database, no fixtures on disk - the input is hand-built IR.
 """
 
 from tools.panel.core.analytics import (
     analyze_document,
-    analyze_generation,
+    analyze_snapshot,
     doc_completeness,
 )
-from tools.panel.core.analytics.generation import OverallStatus
+from tools.panel.core.analytics.snapshot import OverallStatus
 from tools.shared.ir import (
     Document,
     Endpoint,
@@ -134,10 +134,10 @@ def test_unmeasurable_completeness_is_none_not_zero() -> None:
     assert analyze_document(_plain()).completeness is None
 
 
-def test_generation_completeness_is_field_weighted() -> None:
+def test_snapshot_completeness_is_field_weighted() -> None:
     """Weighted by fields, not a mean of per-document means: a one-row endpoint
     must not weigh as much as a three-row one (mean would say 0.5)."""
-    analytics = analyze_generation(
+    analytics = analyze_snapshot(
         [
             _endpoint("a.rst", body=_measured_body(1, 1)),
             _endpoint("b.rst", body=_measured_body(3, 0)),
@@ -149,12 +149,12 @@ def test_generation_completeness_is_field_weighted() -> None:
     assert analytics.completeness == 0.25
 
 
-def test_generation_completeness_is_none_without_measurable_fields() -> None:
-    assert analyze_generation([_plain(), _endpoint()]).completeness is None
+def test_snapshot_completeness_is_none_without_measurable_fields() -> None:
+    assert analyze_snapshot([_plain(), _endpoint()]).completeness is None
 
 
 # ---------------------------------------------------------------------------
-# Generation roll-up
+# Snapshot roll-up
 # ---------------------------------------------------------------------------
 
 
@@ -171,7 +171,7 @@ def _mixed_documents() -> list[Document]:
 def test_status_counters_account_for_every_document() -> None:
     """ok + partial + failed + unsupported + unknown == documents_total: a
     document that fits no status must still be counted somewhere."""
-    analytics = analyze_generation(_mixed_documents())
+    analytics = analyze_snapshot(_mixed_documents())
 
     assert analytics.documents_total == 5
     assert (analytics.ok_count, analytics.partial_count) == (1, 1)
@@ -187,10 +187,10 @@ def test_status_counters_account_for_every_document() -> None:
     )
 
 
-def test_document_counts_satisfy_the_generation_check_constraint() -> None:
+def test_document_counts_satisfy_the_snapshot_check_constraint() -> None:
     """endpoints_total + non_endpoint_documents = documents_total is a CHECK
-    constraint on the generation table; assert it before the database does."""
-    analytics = analyze_generation(_mixed_documents())
+    constraint on the snapshot table; assert it before the database does."""
+    analytics = analyze_snapshot(_mixed_documents())
 
     assert analytics.endpoints_total == 2
     assert analytics.non_endpoint_documents == 3
@@ -213,7 +213,7 @@ def test_issues_count_document_level_and_section_level() -> None:
     )
     gated = _plain("gated.rst", failure=Issue(code=IssueCode.PARSER_ERROR))
 
-    analytics = analyze_generation([endpoint, gated])
+    analytics = analyze_snapshot([endpoint, gated])
 
     assert analyze_document(endpoint).issues_count == 2
     assert analyze_document(gated).issues_count == 1
@@ -226,7 +226,7 @@ def test_issues_count_document_level_and_section_level() -> None:
 
 
 def test_section_rollup_counts_every_section_of_every_endpoint() -> None:
-    analytics = analyze_generation([_endpoint("a.rst"), _endpoint("b.rst")])
+    analytics = analyze_snapshot([_endpoint("a.rst"), _endpoint("b.rst")])
 
     assert analytics.by_section_status["body"] == {"ok": 2}
     assert analytics.by_section_status["response"] == {"missing": 2}
@@ -234,7 +234,7 @@ def test_section_rollup_counts_every_section_of_every_endpoint() -> None:
 
 
 def test_endpoints_without_api_version_land_in_the_unversioned_bucket() -> None:
-    analytics = analyze_generation(
+    analytics = analyze_snapshot(
         [
             _endpoint("v1.rst", api_version="v1"),
             _endpoint("v2.rst", api_version="v2"),
@@ -247,7 +247,7 @@ def test_endpoints_without_api_version_land_in_the_unversioned_bucket() -> None:
 
 
 def test_empty_scan_produces_zeroed_analytics_with_unknown_completeness() -> None:
-    analytics = analyze_generation([])
+    analytics = analyze_snapshot([])
 
     assert analytics.documents_total == 0
     assert analytics.completeness is None
@@ -258,7 +258,7 @@ def test_read_buckets_account_for_every_document_with_a_status() -> None:
     """read_in_full + rows_unrecognized + unread == documents with a status:
     the three ways a document can end up must leave no remainder, or the
     difference becomes an unexplained number in the UI."""
-    analytics = analyze_generation(
+    analytics = analyze_snapshot(
         [
             _endpoint("clean.rst", body=_measured_body(3, 3)),
             _endpoint("rows.rst", body=_measured_body(3, 1)),
@@ -313,7 +313,7 @@ def test_a_broken_example_does_not_degrade_the_document() -> None:
 
     assert analyze_document(endpoint).overall_status is OverallStatus.OK
 
-    analytics = analyze_generation([endpoint])
+    analytics = analyze_snapshot([endpoint])
     assert analytics.ok_count == 1
     assert analytics.documentation_clean == 1
     assert analytics.usable_documents == 1.0
@@ -335,7 +335,7 @@ def test_an_unread_example_block_does_not_make_the_scan_partial() -> None:
         issues=[Issue(code=IssueCode.UNMAPPED_BLOCK, location="request block 1")],
     )
 
-    analytics = analyze_generation([endpoint])
+    analytics = analyze_snapshot([endpoint])
 
     assert analytics.unread_documents == 0
     assert analytics.read_in_full == 1
@@ -344,7 +344,7 @@ def test_an_unread_example_block_does_not_make_the_scan_partial() -> None:
 def test_documents_are_weighted_by_how_much_is_usable() -> None:
     """ok counts 1, partial 0.5, failed and unsupported 0 - so "everything is
     partial" and "everything is unusable" stop reading the same."""
-    analytics = analyze_generation(
+    analytics = analyze_snapshot(
         [
             _endpoint("ok.rst", body=_measured_body(2, 2)),
             _endpoint(

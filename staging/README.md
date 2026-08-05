@@ -18,7 +18,7 @@ scan run. Nothing but Caddy is published.
 From the laptop that holds the scanned database:
 
 ```bash
-# a dump of the local panel database (services, generations, documents)
+# a dump of the local panel database (services, snapshots, documents)
 docker exec gen_sdk_tooling-db-1 pg_dump -U panel -d panel --no-owner --no-privileges \
   | gzip -9 > panel.sql.gz
 

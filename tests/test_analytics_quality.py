@@ -1,7 +1,7 @@
 """Per-document views shared by the panel's analytics.
 
 The roll-ups these feed are covered by `test_document_analytics.py`; what is
-pinned here is the two primitives `generation` builds on.
+pinned here is the two primitives `snapshot` builds on.
 """
 
 from __future__ import annotations

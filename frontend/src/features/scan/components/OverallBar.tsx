@@ -8,7 +8,7 @@ const PARTS: [DocStatus, string][] = [
 ];
 
 /**
- * Status shares of one generation. Documents that were not read in full are
+ * Status shares of one snapshot. Documents that were not read in full are
  * taken OUT of their colour and shown as one grey slice at the end: they are
  * already counted in a status, and painting them twice would overstate the
  * bar. Grey therefore reads as "we cannot vouch for these yet".

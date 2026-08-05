@@ -84,7 +84,7 @@ Escalate depth by what the diff touches:
 
 | Touched | Add |
 |---|---|
-| `scanner/parsers/**`, any analytics module (`domain/report/**` today, `panel/core/analytics/**`) | The full data cross-check: run the scanner on a pinned SHA and read the JSON |
+| `scanner/parsers/**`, any analytics module (`panel/core/analytics/**`) | The full data cross-check: run the scanner on a pinned SHA and read the JSON |
 | `shared/**` | The full vocabulary registry, not just the delta - this is the canon |
 | `panel/core/db/models.py`, `migrations/**` | Verify CHECK constraints and partial indexes against the code that relies on them |
 | only `frontend/**` | The omission checklist in its TypeScript form; skip the Python runs |

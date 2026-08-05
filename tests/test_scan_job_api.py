@@ -34,11 +34,11 @@ from tools.panel.api.app import create_app  # noqa: E402
 from tools.panel.core import ingest as ingest_module  # noqa: E402
 from tools.panel.core import jobs as jobs_module  # noqa: E402
 from tools.panel.core.db.models import (  # noqa: E402
-    Generation,
     JobKind,
     JobStatus,
     RepositoryScanJob,
     Service,
+    Snapshot,
 )
 from tools.shared.ir import Repository  # noqa: E402
 from tools.shared.ir import Service as IrService
@@ -182,7 +182,7 @@ def test_get_job_returns_full_polling_shape(client, session_factory):
     assert body["repository"] == "kms-api"
     assert body["kind"] == "scan"
     assert body["status"] == "queued"
-    assert body["scanner_version"] is None  # no generation until ingest
+    assert body["scanner_version"] is None  # no snapshot until ingest
     assert body["commit_hash"] is None
     assert body["error"] is None
     assert body["started_at"] is None
@@ -522,7 +522,7 @@ def test_successful_scan_is_ingested_and_served_by_the_job_api(
     assert body["scanner_version"] == SCANNER_VERSION
 
     with session_factory() as s:
-        generation = s.scalars(select(Generation)).one()
-        assert generation.source_job_id == job_id
-        assert generation.documents_total == 1
-        assert [record.kind for record in generation.documents] == ["endpoint"]
+        snapshot = s.scalars(select(Snapshot)).one()
+        assert snapshot.source_job_id == job_id
+        assert snapshot.documents_total == 1
+        assert [record.kind for record in snapshot.documents] == ["endpoint"]

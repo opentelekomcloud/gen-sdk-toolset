@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
-import { invalidateGeneration, keys } from "./queries";
+import { invalidateSnapshot, keys } from "./queries";
 import { CONFIG } from "../constants";
 import type {
-  ActivateGenerationRequest,
+  ActivateSnapshotRequest,
   ExcludeRequest,
-  GenerationsResponse,
+  SnapshotsResponse,
   ScanRequest,
   ScanResponse,
   ServiceDetail,
@@ -54,23 +54,23 @@ export function useRescan(name: string) {
 }
 
 /**
- * G1: make another persisted generation active (moves Service.active_generation_id).
+ * G1: make another persisted snapshot active (moves Service.active_snapshot_id).
  * Replaces useRollback — rollback is activate(previous). Never triggers a scan;
  * only changes which snapshot every scan-result view is served from.
  * Server answers 409 while a scan job is queued/running for this service.
  */
-export function useActivateGeneration(name: string) {
+export function useActivateSnapshot(name: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (generationId: number) =>
-      apiFetch<GenerationsResponse>(
-        `/scan/services/${encodeURIComponent(name)}/generations/${generationId}/activate`,
+    mutationFn: (snapshotId: number) =>
+      apiFetch<SnapshotsResponse>(
+        `/scan/services/${encodeURIComponent(name)}/snapshots/${snapshotId}/activate`,
         {
           method: "POST",
-          body: JSON.stringify({ initiated_by: CONFIG.identity } satisfies ActivateGenerationRequest),
+          body: JSON.stringify({ initiated_by: CONFIG.identity } satisfies ActivateSnapshotRequest),
         },
       ),
-    onSettled: () => invalidateGeneration(qc, name),
+    onSettled: () => invalidateSnapshot(qc, name),
   });
 }
 
@@ -84,7 +84,7 @@ export function useExclude(name: string) {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.excluded });
-      invalidateGeneration(qc, name);
+      invalidateSnapshot(qc, name);
     },
   });
 }
@@ -95,7 +95,7 @@ export function useInclude(name: string) {
     mutationFn: () => apiFetch<void>(`/scan/services/${encodeURIComponent(name)}/include`, { method: "POST" }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.excluded });
-      invalidateGeneration(qc, name);
+      invalidateSnapshot(qc, name);
     },
   });
 }

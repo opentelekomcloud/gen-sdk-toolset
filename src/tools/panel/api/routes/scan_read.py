@@ -26,20 +26,20 @@ from tools.panel.api.schemas import (
     DocumentListItem,
     DocumentsResponse,
     ExcludedServiceResponse,
-    GenerationResponse,
-    GenerationsResponse,
     ServiceDetailResponse,
     ServiceListItem,
     ServicesResponse,
+    SnapshotResponse,
+    SnapshotsResponse,
     SummaryResponse,
 )
 from tools.panel.core.analytics import document_from_payload
-from tools.panel.core.analytics.generation import UNVERSIONED_KEY as UNVERSIONED
+from tools.panel.core.analytics.snapshot import UNVERSIONED_KEY as UNVERSIONED
 from tools.panel.core.db.models import (
     DocumentRecord,
     ExcludedService,
-    Generation,
     Service,
+    Snapshot,
 )
 from tools.panel.core.service_state import (
     ScanStatus,
@@ -90,16 +90,16 @@ _ATTENTION_LABELS = {
 def get_summary(db: Session = Depends(get_db)) -> SummaryResponse:
     """Panel-wide counters for the header strip."""
     states = _all_states(db)
-    scanned = [state for state in states if state.active_generation is not None]
+    scanned = [state for state in states if state.active_snapshot is not None]
     return SummaryResponse(
         scanner_version=SCANNER_VERSION,
         last_scanned_at=max(
-            (state.active_generation.created_at for state in scanned), default=None
+            (state.active_snapshot.created_at for state in scanned), default=None
         ),
         services_total=len(states),
         failed_services=sum(failed_job(state) is not None for state in states),
         documents_total=sum(
-            status_documents(state.active_generation) for state in scanned
+            status_documents(state.active_snapshot) for state in scanned
         ),
         scans_running=sum(state.active_job is not None for state in states),
     )
@@ -117,13 +117,13 @@ def get_attention(db: Session = Depends(get_db)) -> list[AttentionRule]:
     counts = {
         "failed": sum(failed_job(state) is not None for state in states),
         "version": sum(
-            state.active_generation is not None
-            and state.active_generation.scanner_version != SCANNER_VERSION
+            state.active_snapshot is not None
+            and state.active_snapshot.scanner_version != SCANNER_VERSION
             for state in states
         ),
         "drift": sum(state.docs_changed for state in states),
         "new": sum(
-            state.active_generation is None and failed_job(state) is None
+            state.active_snapshot is None and failed_job(state) is None
             for state in states
         ),
     }
@@ -187,21 +187,19 @@ def list_services(
     return ServicesResponse(items=_sorted(items, sort), counts=counts)
 
 
-@router.get(
-    "/scan/services/{repo:path}/generations", response_model=GenerationsResponse
-)
-def list_generations(repo: str, db: Session = Depends(get_db)) -> GenerationsResponse:
+@router.get("/scan/services/{repo:path}/snapshots", response_model=SnapshotsResponse)
+def list_snapshots(repo: str, db: Session = Depends(get_db)) -> SnapshotsResponse:
     """A service's scan history, newest first."""
     service = _service_or_404(db, repo)
-    generations = db.scalars(
-        select(Generation)
-        .where(Generation.service_id == service.id)
-        .order_by(Generation.created_at.desc(), Generation.id.desc())
+    snapshots = db.scalars(
+        select(Snapshot)
+        .where(Snapshot.service_id == service.id)
+        .order_by(Snapshot.created_at.desc(), Snapshot.id.desc())
     ).all()
-    return GenerationsResponse(
-        items=[GenerationResponse.from_generation(row) for row in generations],
-        active_id=service.active_generation_id,
-        latest_id=service.latest_generation_id,
+    return SnapshotsResponse(
+        items=[SnapshotResponse.from_snapshot(row) for row in snapshots],
+        active_id=service.active_snapshot_id,
+        latest_id=service.latest_snapshot_id,
     )
 
 
@@ -209,14 +207,14 @@ def list_generations(repo: str, db: Session = Depends(get_db)) -> GenerationsRes
 def get_document(
     repo: str, document_id: int, db: Session = Depends(get_db)
 ) -> DocumentDetailResponse:
-    """One document of the active generation, with its sections and parameters."""
+    """One document of the active snapshot, with its sections and parameters."""
     service = _service_or_404(db, repo)
     record = db.scalar(
         select(DocumentRecord)
         .options(undefer(DocumentRecord.payload))
         .where(
             DocumentRecord.id == document_id,
-            DocumentRecord.generation_id == service.active_generation_id,
+            DocumentRecord.snapshot_id == service.active_snapshot_id,
         )
     )
     if record is None:
@@ -224,7 +222,7 @@ def get_document(
     return DocumentDetailResponse.from_record(
         record,
         repo=service.repo,
-        commit_hash=service.active_generation.commit_hash,
+        commit_hash=service.active_snapshot.commit_hash,
     )
 
 
@@ -240,7 +238,7 @@ def list_documents(
     issue: str | None = Query(default=None),
     api_version: str | None = Query(default=None),
 ) -> DocumentsResponse:
-    """One page of the active generation's API documents.
+    """One page of the active snapshot's API documents.
 
     Pages that carry no scan status are not API documents; they are counted in
     the service detail's ``non_endpoint_documents`` instead of being listed here
@@ -253,7 +251,7 @@ def list_documents(
     of the API (``unversioned`` for the documents that name none).
     """
     service = _service_or_404(db, repo)
-    if service.active_generation_id is None:
+    if service.active_snapshot_id is None:
         return DocumentsResponse(
             items=[],
             total=0,
@@ -264,7 +262,7 @@ def list_documents(
         )
 
     base = select(DocumentRecord).where(
-        DocumentRecord.generation_id == service.active_generation_id,
+        DocumentRecord.snapshot_id == service.active_snapshot_id,
         DocumentRecord.overall_status.is_not(None),
     )
     if q:
@@ -330,8 +328,8 @@ def list_documents(
 
 
 @router.get("/scan/services/{repo:path}/export")
-def export_generation(repo: str, db: Session = Depends(get_db)) -> Response:
-    """The active generation as a ``RepositoryScanResult`` - the scanner's own
+def export_snapshot(repo: str, db: Session = Depends(get_db)) -> Response:
+    """The active snapshot as a ``RepositoryScanResult`` - the scanner's own
     contract, not a shape invented for this endpoint.
 
     Rebuilt from the stored payloads and validated on the way out: if anything
@@ -339,14 +337,14 @@ def export_generation(repo: str, db: Session = Depends(get_db)) -> Response:
     of handing out a file that only looks right.
     """
     service = _service_or_404(db, repo)
-    generation = service.active_generation
-    if generation is None:
+    snapshot = service.active_snapshot
+    if snapshot is None:
         raise HTTPException(status_code=404, detail="Service has no scan result")
 
     payloads = db.scalars(
         select(DocumentRecord)
         .options(undefer(DocumentRecord.payload))
-        .where(DocumentRecord.generation_id == generation.id)
+        .where(DocumentRecord.snapshot_id == snapshot.id)
         .order_by(DocumentRecord.path)
     ).all()
 
@@ -355,12 +353,12 @@ def export_generation(repo: str, db: Session = Depends(get_db)) -> Response:
             repo=service.repo,
             documents=[document_from_payload(record.payload) for record in payloads],
         ),
-        branch=generation.branch,
-        commit_hash=generation.commit_hash,
-        scanner_version=generation.scanner_version,
-        excluded_documents=list(generation.excluded_documents),
+        branch=snapshot.branch,
+        commit_hash=snapshot.commit_hash,
+        scanner_version=snapshot.scanner_version,
+        excluded_documents=list(snapshot.excluded_documents),
     )
-    filename = f"{service.name}-{generation.commit_hash[:7]}.json"
+    filename = f"{service.name}-{snapshot.commit_hash[:7]}.json"
     return Response(
         content=json.dumps(result.model_dump(mode="json"), ensure_ascii=False),
         media_type="application/json",
@@ -384,8 +382,8 @@ def get_service(repo: str, db: Session = Depends(get_db)) -> ServiceDetailRespon
 def _service_query():
     return select(Service).options(
         selectinload(Service.jobs),
-        joinedload(Service.active_generation),
-        joinedload(Service.latest_generation),
+        joinedload(Service.active_snapshot),
+        joinedload(Service.latest_snapshot),
     )
 
 
@@ -420,12 +418,12 @@ def _matches_rule(state: ServiceState, rule: str) -> bool:
     if rule == "failed":
         return failed_job(state) is not None
     if rule == "version":
-        generation = state.active_generation
-        return generation is not None and generation.scanner_version != SCANNER_VERSION
+        snapshot = state.active_snapshot
+        return snapshot is not None and snapshot.scanner_version != SCANNER_VERSION
     if rule == "drift":
         return state.docs_changed
     if rule == "new":
-        return state.active_generation is None and failed_job(state) is None
+        return state.active_snapshot is None and failed_job(state) is None
     return False
 
 
@@ -446,7 +444,7 @@ def _version_counts(db: Session, base: Select) -> dict[str, int]:
     being irrelevant here: the UI sorts them itself.
 
     Documents that name no version are grouped under ``unversioned`` - the same
-    key the generation analytics uses, so the two never disagree.
+    key the snapshot analytics uses, so the two never disagree.
     """
     matched = base.subquery()
     rows = db.execute(
