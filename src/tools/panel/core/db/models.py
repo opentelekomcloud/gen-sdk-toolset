@@ -26,6 +26,13 @@ class JobStatus(enum.StrEnum):
     failed = "failed"
 
 
+#: Statuses a Job can never move out of again. Cancellation and the background
+#: runner write the same row from different threads, so both sides decide
+#: "may I still change this Job?" against this one set rather than each
+#: spelling out its own pair of statuses.
+TERMINAL_JOB_STATUSES = frozenset({JobStatus.done, JobStatus.failed})
+
+
 class Service(Base):
     """Repository registered in the panel.
 
@@ -663,6 +670,7 @@ class DocumentRecord(Base):
 
 
 __all__ = [
+    "TERMINAL_JOB_STATUSES",
     "DocumentRecord",
     "ExcludedService",
     "JobKind",
