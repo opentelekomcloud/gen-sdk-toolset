@@ -156,3 +156,4 @@ def require_github_token(settings: Settings) -> SecretStr:
             "environment variable or a .env file to scan repositories."
         )
     return settings.github_token
+
