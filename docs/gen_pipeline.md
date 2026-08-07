@@ -1,7 +1,7 @@
 # SDK Generation Pipeline
 
 > **Status:** draft for discussion
-> **Last aligned with the codebase:** 2026-07-29 (panel: full generation
+> **Last aligned with the codebase:** 2026-07-29 (panel: full snapshot
 > history, background scan jobs and ingest are implemented; `generator/` and
 > `llm/` remain planned)
 
@@ -40,16 +40,14 @@ that output is *produced*, not what it looks like.
 
 `gen-sdk-tooling` is a single repository with modules sharing a common
 type layer. Today `shared/`, `scanner/` and `panel/` exist; `generator/` and
-`llm/` are planned (this document). `domain/` is a legacy org-report module
-being folded into the panel (issue #34) — nothing new lands there.
+`llm/` are planned (this document).
 
 ```
 gen-sdk-tooling/
 └── src/tools/
     ├── shared/        # IR, IssueCode, scan result models, exceptions — type contracts
     ├── scanner/       # RST → RepositoryScanResult (IR + scan diagnostics)   [exists]
-    ├── panel/         # FastAPI + React control plane: scans, generations    [exists]
-    ├── domain/        # legacy org-level report — being removed, issue #34   [exists]
+    ├── panel/         # FastAPI + React control plane: scans, snapshots      [exists]
     ├── generator/     # IR → Python files (via Jinja2)                       [planned]
     └── llm/           # FIXME placeholders → resolved (via Ollama)           [planned]
 ```
@@ -255,14 +253,14 @@ a time and accumulated in a database.
 
 - **Per-service scan orchestration** — background scan jobs launched from the
   UI (FastAPI BackgroundTasks; `queued → running → done/failed`), each
-  successful scan ingested as a new generation. Registry filled by
+  successful scan ingested as a new snapshot. Registry filled by
   `panel discover` (nightly discovery planned).
-- **Full generation history per service** — every successful scan is persisted
-  as an immutable `Generation`; the service tracks `active_generation` and
-  `latest_generation` pointers. Activating an older snapshot (rollback) swaps
+- **Full snapshot history per service** — every successful scan is persisted
+  as an immutable `Snapshot`; the service tracks `active_snapshot` and
+  `latest_snapshot` pointers. Activating an older snapshot (rollback) swaps
   the pointer — no rescanning, nothing deleted, switch back anytime.
 - **Aggregation** — computed at ingest by the pure functions in
-  `panel/core/analytics` and stored on the Generation (`docs_ok` — weighted
+  `panel/core/analytics` and stored on the Snapshot (`docs_ok` — weighted
   usable share, `parser_ok`/`read_in_full`, `completeness`, status counters,
   issue totals). Not in the scanner, not in shared.
 - **Phase 3 decision surface** — the org-wide quality picture is read from the
@@ -270,7 +268,7 @@ a time and accumulated in a database.
 - **Drift** — stores repo HEAD per service; `docs_changed = commit_hash != head_commit`.
 
 Read endpoints never call GitHub; they read stored state. Detailed schema and
-the generations model are covered in the panel design issues.
+the snapshots model are covered in the panel design issues.
 
 ### Gating check
 

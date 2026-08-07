@@ -131,7 +131,7 @@ def scanned(client, session_factory):
 # ---------------------------------------------------------------------------
 
 
-def test_services_list_serves_the_active_generation(scanned):
+def test_services_list_serves_the_active_snapshot(scanned):
     body = scanned.get("/api/scan/services").json()
 
     assert body["counts"]["all"] == 1
@@ -274,16 +274,16 @@ def test_excluded_services_are_listed(client, session_factory):
 
 
 # ---------------------------------------------------------------------------
-# Service detail, documents, generations
+# Service detail, documents, snapshots
 # ---------------------------------------------------------------------------
 
 
-def test_service_detail_adds_generation_and_issue_roll_ups(scanned):
+def test_service_detail_adds_snapshot_and_issue_roll_ups(scanned):
     body = scanned.get(f"/api/scan/services/{REPO}").json()
 
     assert body["name"] == REPO
-    assert body["active_generation"]["commit_hash"] == COMMIT
-    assert body["active_generation"]["id"] == body["latest_generation"]["id"]
+    assert body["active_snapshot"]["commit_hash"] == COMMIT
+    assert body["active_snapshot"]["id"] == body["latest_snapshot"]["id"]
     assert body["head_commit"] is None
     assert body["interruption"] is None
     assert body["non_endpoint_documents"] == 0  # both documents have a status
@@ -379,8 +379,8 @@ def test_document_of_another_service_is_not_served(scanned, session_factory):
     assert resp.status_code == 404
 
 
-def test_generations_list_marks_active_and_latest(scanned, session_factory):
-    body = scanned.get(f"/api/scan/services/{REPO}/generations").json()
+def test_snapshots_list_marks_active_and_latest(scanned, session_factory):
+    body = scanned.get(f"/api/scan/services/{REPO}/snapshots").json()
 
     assert len(body["items"]) == 1
     assert body["active_id"] == body["items"][0]["id"]

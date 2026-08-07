@@ -120,7 +120,7 @@ export interface paths {
         };
         /**
          * List Documents
-         * @description One page of the active generation's API documents.
+         * @description One page of the active snapshot's API documents.
          *
          *     Pages that carry no scan status are not API documents; they are counted in
          *     the service detail's ``non_endpoint_documents`` instead of being listed here
@@ -150,7 +150,7 @@ export interface paths {
         };
         /**
          * Get Document
-         * @description One document of the active generation, with its sections and parameters.
+         * @description One document of the active snapshot, with its sections and parameters.
          */
         get: operations["get_document_api_scan_services__repo__documents__document_id__get"];
         put?: never;
@@ -169,35 +169,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Export Generation
-         * @description The active generation as a ``RepositoryScanResult`` - the scanner's own
+         * Export Snapshot
+         * @description The active snapshot as a ``RepositoryScanResult`` - the scanner's own
          *     contract, not a shape invented for this endpoint.
          *
          *     Rebuilt from the stored payloads and validated on the way out: if anything
          *     in the database no longer satisfies the contract, this fails loudly instead
          *     of handing out a file that only looks right.
          */
-        get: operations["export_generation_api_scan_services__repo__export_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/scan/services/{repo}/generations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Generations
-         * @description A service's scan history, newest first.
-         */
-        get: operations["list_generations_api_scan_services__repo__generations_get"];
+        get: operations["export_snapshot_api_scan_services__repo__export_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -223,6 +203,26 @@ export interface paths {
          *     returned immediately without waiting for the scan.
          */
         post: operations["start_scan_api_scan_services__repo__rescan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scan/services/{repo}/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Snapshots
+         * @description A service's scan history, newest first.
+         */
+        get: operations["list_snapshots_api_scan_services__repo__snapshots_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -330,7 +330,7 @@ export interface components {
         };
         /**
          * DocumentsResponse
-         * @description One page of a generation's documents, with the counts behind the chips.
+         * @description One page of a snapshot's documents, with the counts behind the chips.
          */
         DocumentsResponse: {
             /** Doc Counts */
@@ -384,63 +384,6 @@ export interface components {
             name: string;
             /** Reason */
             reason: string;
-        };
-        /**
-         * GenerationResponse
-         * @description One persisted scan snapshot (the `generation` row).
-         */
-        GenerationResponse: {
-            /** Branch */
-            branch: string;
-            /** Commit Hash */
-            commit_hash: string;
-            /** Completeness */
-            completeness: number | null;
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Docs Ok */
-            docs_ok: number | null;
-            /** Document Schema Version */
-            document_schema_version: string;
-            /** Documents Total */
-            documents_total: number;
-            /** Endpoints Total */
-            endpoints_total: number;
-            /** Failed Count */
-            failed_count: number;
-            /** Id */
-            id: number;
-            /** Issues Total */
-            issues_total: number;
-            /** Non Endpoint Documents */
-            non_endpoint_documents: number;
-            /** Ok Count */
-            ok_count: number;
-            /** Parser Ok */
-            parser_ok: number | null;
-            /** Partial Count */
-            partial_count: number;
-            /** Scanner Version */
-            scanner_version: string;
-            /** Source Job Id */
-            source_job_id: number;
-            /** Unsupported Count */
-            unsupported_count: number;
-        };
-        /**
-         * GenerationsResponse
-         * @description A service's generation history, newest first.
-         */
-        GenerationsResponse: {
-            /** Active Id */
-            active_id: number | null;
-            /** Items */
-            items: components["schemas"]["GenerationResponse"][];
-            /** Latest Id */
-            latest_id: number | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -577,7 +520,7 @@ export interface components {
          * @description The service page: the registry row plus what only the detail view shows.
          */
         ServiceDetailResponse: {
-            active_generation: components["schemas"]["GenerationResponse"] | null;
+            active_snapshot: components["schemas"]["SnapshotResponse"] | null;
             /** Docs Changed */
             docs_changed: boolean;
             /** Docs Ok */
@@ -600,7 +543,7 @@ export interface components {
             job_id?: number | null;
             /** Label */
             label: string;
-            latest_generation: components["schemas"]["GenerationResponse"] | null;
+            latest_snapshot: components["schemas"]["SnapshotResponse"] | null;
             /** Name */
             name: string;
             /** Non Endpoint Documents */
@@ -638,7 +581,7 @@ export interface components {
         };
         /**
          * ServiceListItem
-         * @description One row of the registry, served from the service's active Generation.
+         * @description One row of the registry, served from the service's active Snapshot.
          *
          *     ``documents`` counts the documents that have a scan status, so it always
          *     equals the sum of ``overall_breakdown``. Pages that are not API documents
@@ -704,6 +647,63 @@ export interface components {
             };
             /** Items */
             items: components["schemas"]["ServiceListItem"][];
+        };
+        /**
+         * SnapshotResponse
+         * @description One persisted scan snapshot (the `snapshot` row).
+         */
+        SnapshotResponse: {
+            /** Branch */
+            branch: string;
+            /** Commit Hash */
+            commit_hash: string;
+            /** Completeness */
+            completeness: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Docs Ok */
+            docs_ok: number | null;
+            /** Document Schema Version */
+            document_schema_version: string;
+            /** Documents Total */
+            documents_total: number;
+            /** Endpoints Total */
+            endpoints_total: number;
+            /** Failed Count */
+            failed_count: number;
+            /** Id */
+            id: number;
+            /** Issues Total */
+            issues_total: number;
+            /** Non Endpoint Documents */
+            non_endpoint_documents: number;
+            /** Ok Count */
+            ok_count: number;
+            /** Parser Ok */
+            parser_ok: number | null;
+            /** Partial Count */
+            partial_count: number;
+            /** Scanner Version */
+            scanner_version: string;
+            /** Source Job Id */
+            source_job_id: number;
+            /** Unsupported Count */
+            unsupported_count: number;
+        };
+        /**
+         * SnapshotsResponse
+         * @description A service's snapshot history, newest first.
+         */
+        SnapshotsResponse: {
+            /** Active Id */
+            active_id: number | null;
+            /** Items */
+            items: components["schemas"]["SnapshotResponse"][];
+            /** Latest Id */
+            latest_id: number | null;
         };
         /**
          * StartScanResponse
@@ -960,7 +960,7 @@ export interface operations {
             };
         };
     };
-    export_generation_api_scan_services__repo__export_get: {
+    export_snapshot_api_scan_services__repo__export_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -978,37 +978,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_generations_api_scan_services__repo__generations_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                repo: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GenerationsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1044,6 +1013,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StartScanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_snapshots_api_scan_services__repo__snapshots_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotsResponse"];
                 };
             };
             /** @description Validation Error */

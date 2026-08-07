@@ -1,8 +1,8 @@
-"""Ingest a completed repository scan result into a persisted Generation.
+"""Ingest a completed repository scan result into a persisted Snapshot.
 
 Issue #16 (F14). This is the stable call site the scan runner hands its
 completed result to: it takes a Job that is already ``running`` and a scan
-result that already succeeded, and turns them into one immutable Generation
+result that already succeeded, and turns them into one immutable Snapshot
 plus its documents, completing the Job in the same transaction.
 
 Two contracts hold this module together:
@@ -14,7 +14,7 @@ Two contracts hold this module together:
   ``uq_active_scan_job_per_service``.
 * **Everything becomes visible at once.** One ``commit()`` at the end is the
   only visibility boundary, so no reader can observe half the documents or a
-  switched active-generation pointer before the Job says ``done``.
+  switched active-snapshot pointer before the Job says ``done``.
 """
 
 from __future__ import annotations
@@ -25,14 +25,14 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from tools.panel.core.analytics import analyze_document, analyze_generation
+from tools.panel.core.analytics import analyze_document, analyze_snapshot
 from tools.panel.core.db.engine import SessionLocal, get_engine
 from tools.panel.core.db.models import (
     DocumentRecord,
-    Generation,
     JobKind,
     JobStatus,
     RepositoryScanJob,
+    Snapshot,
 )
 from tools.shared.exceptions import GenSdkError
 from tools.shared.ir import DOCUMENT_SCHEMA_VERSION, Document
@@ -49,10 +49,10 @@ class IngestRejected(GenSdkError):
 def ingest_service_result(
     *, job_id: int, service_repo: str, result: RepositoryScanResult
 ) -> None:
-    """Persist a completed scan result as a Generation and complete the Job.
+    """Persist a completed scan result as a Snapshot and complete the Job.
 
     Opens its own session (background work never borrows the request's) and
-    writes the Generation, its documents, the Service scan metadata and the
+    writes the Snapshot, its documents, the Service scan metadata and the
     Job's ``done`` transition in a single transaction.
 
     :param job_id: The ``running`` scan Job that produced this result.
@@ -121,13 +121,13 @@ def _persist(
     result: RepositoryScanResult,
     scanned: IrService,
 ) -> None:
-    """Write the Generation, its documents, the Service metadata and the Job."""
-    # One timestamp for one event: the frontend reads generation.created_at as
+    """Write the Snapshot, its documents, the Service metadata and the Job."""
+    # One timestamp for one event: the frontend reads snapshot.created_at as
     # the scan time, and job.finished_at is that same moment.
     finished_at = datetime.now(tz=UTC)
-    analytics = analyze_generation(scanned.documents)
+    analytics = analyze_snapshot(scanned.documents)
 
-    generation = Generation(
+    snapshot = Snapshot(
         service_id=job.service_id,
         source_job_id=job.id,
         branch=result.branch,
@@ -147,15 +147,15 @@ def _persist(
         analytics=analytics.model_dump(mode="json"),
         created_at=finished_at,
     )
-    session.add(generation)
-    session.flush()  # assigns generation.id without ending the transaction
-    session.add_all(_document_records(generation.id, scanned.documents))
+    session.add(snapshot)
+    session.flush()  # assigns snapshot.id without ending the transaction
+    session.add_all(_document_records(snapshot.id, scanned.documents))
 
     service = job.service
     service.has_api_ref = True  # the scan just read its api-ref path
     service.eligibility_checked_at = finished_at
-    service.latest_generation_id = generation.id
-    service.active_generation_id = generation.id
+    service.latest_snapshot_id = snapshot.id
+    service.active_snapshot_id = snapshot.id
     # TODO(#25): head_commit is refreshed by drift detection, not by ingest -
     # the scanned commit is not necessarily the current branch HEAD.
 
@@ -164,16 +164,16 @@ def _persist(
 
     session.commit()
     logger.info(
-        "job %s ingested as generation %s (%d documents, %d issues)",
+        "job %s ingested as snapshot %s (%d documents, %d issues)",
         job.id,
-        generation.id,
+        snapshot.id,
         analytics.documents_total,
         analytics.issues_total,
     )
 
 
 def _document_records(
-    generation_id: int, documents: Sequence[Document]
+    snapshot_id: int, documents: Sequence[Document]
 ) -> list[DocumentRecord]:
     """Build one persistence envelope per scanned document.
 
@@ -186,7 +186,7 @@ def _document_records(
         stats = analyze_document(document)
         records.append(
             DocumentRecord(
-                generation_id=generation_id,
+                snapshot_id=snapshot_id,
                 payload=document.model_dump(mode="json"),
                 overall_status=(
                     stats.overall_status.value

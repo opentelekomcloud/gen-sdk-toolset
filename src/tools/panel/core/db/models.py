@@ -30,10 +30,10 @@ class Service(Base):
     """Repository registered in the panel.
 
     The Service owns the history of execution Jobs and successfully persisted
-    Generations.
+    Snapshots.
 
-    active_generation_id selects the Generation displayed as the current
-    repository scan result. It may point to any Generation belonging to this
+    active_snapshot_id selects the Snapshot displayed as the current
+    repository scan result. It may point to any Snapshot belonging to this
     Service, not necessarily the latest one.
     """
 
@@ -87,10 +87,10 @@ class Service(Base):
         nullable=True,
     )
 
-    active_generation_id: Mapped[int | None] = mapped_column(
+    active_snapshot_id: Mapped[int | None] = mapped_column(
         sa.ForeignKey(
-            "generation.id",
-            name="fk_service_active_generation",
+            "snapshot.id",
+            name="fk_service_active_snapshot",
             ondelete="SET NULL",
             use_alter=True,
         ),
@@ -98,12 +98,12 @@ class Service(Base):
         index=True,
     )
 
-    # The most recently persisted Generation, regardless of which one is
-    # displayed (active_generation_id may deliberately lag behind).
-    latest_generation_id: Mapped[int | None] = mapped_column(
+    # The most recently persisted Snapshot, regardless of which one is
+    # displayed (active_snapshot_id may deliberately lag behind).
+    latest_snapshot_id: Mapped[int | None] = mapped_column(
         sa.ForeignKey(
-            "generation.id",
-            name="fk_service_latest_generation",
+            "snapshot.id",
+            name="fk_service_latest_snapshot",
             ondelete="SET NULL",
             use_alter=True,
         ),
@@ -122,19 +122,19 @@ class Service(Base):
         cascade="all, delete-orphan",
     )
 
-    generations: Mapped[list[Generation]] = relationship(
+    snapshots: Mapped[list[Snapshot]] = relationship(
         back_populates="service",
         cascade="all, delete-orphan",
-        foreign_keys="Generation.service_id",
+        foreign_keys="Snapshot.service_id",
     )
 
-    active_generation: Mapped[Generation | None] = relationship(
-        foreign_keys=[active_generation_id],
+    active_snapshot: Mapped[Snapshot | None] = relationship(
+        foreign_keys=[active_snapshot_id],
         post_update=True,
     )
 
-    latest_generation: Mapped[Generation | None] = relationship(
-        foreign_keys=[latest_generation_id],
+    latest_snapshot: Mapped[Snapshot | None] = relationship(
+        foreign_keys=[latest_snapshot_id],
         post_update=True,
     )
 
@@ -179,7 +179,7 @@ class RepositoryScanJob(Base):
     """One background operation attempt.
 
     Job owns execution lifecycle only. Successful scan data belongs to the
-    Generation created from this Job.
+    Snapshot created from this Job.
 
     A queued or running Job has no finished_at.
     A failed Job may have no started_at when it was interrupted before the
@@ -263,7 +263,7 @@ class RepositoryScanJob(Base):
         back_populates="jobs",
     )
 
-    generation: Mapped[Generation | None] = relationship(
+    snapshot: Mapped[Snapshot | None] = relationship(
         back_populates="source_job",
         uselist=False,
     )
@@ -321,16 +321,19 @@ class RepositoryScanJob(Base):
     )
 
 
-class Generation(Base):
-    """Immutable successfully persisted repository scan snapshot.
+class Snapshot(Base):
+    """Immutable successfully persisted repository scan result.
 
-    A failed Job does not create a Generation.
+    A failed Job does not create a Snapshot.
 
-    Generation stores repository-level provenance, analytics, and the complete
+    Snapshot stores repository-level provenance, analytics, and the complete
     list of persisted document payloads produced by one successful scan.
+
+    Named Snapshot rather than Generation so it cannot be confused with SDK
+    code generation, where "generation" means emitted code.
     """
 
-    __tablename__ = "generation"
+    __tablename__ = "snapshot"
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
@@ -445,16 +448,16 @@ class Generation(Base):
     )
 
     service: Mapped[Service] = relationship(
-        back_populates="generations",
+        back_populates="snapshots",
         foreign_keys=[service_id],
     )
 
     source_job: Mapped[RepositoryScanJob] = relationship(
-        back_populates="generation",
+        back_populates="snapshot",
     )
 
     documents: Mapped[list[DocumentRecord]] = relationship(
-        back_populates="generation",
+        back_populates="snapshot",
         cascade="all, delete-orphan",
     )
 
@@ -491,7 +494,7 @@ class Generation(Base):
             name="document_counts_match",
         ),
         sa.Index(
-            "ix_generation_service_created_at",
+            "ix_snapshot_service_created_at",
             "service_id",
             "created_at",
         ),
@@ -519,9 +522,9 @@ class DocumentRecord(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
-    generation_id: Mapped[int] = mapped_column(
+    snapshot_id: Mapped[int] = mapped_column(
         sa.ForeignKey(
-            "generation.id",
+            "snapshot.id",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -605,15 +608,15 @@ class DocumentRecord(Base):
         server_default="0",
     )
 
-    generation: Mapped[Generation] = relationship(
+    snapshot: Mapped[Snapshot] = relationship(
         back_populates="documents",
     )
 
     __table_args__ = (
         sa.UniqueConstraint(
-            "generation_id",
+            "snapshot_id",
             "path",
-            name="uq_document_generation_path",
+            name="uq_document_snapshot_path",
         ),
         sa.CheckConstraint(
             "jsonb_typeof(payload) = 'object'",
@@ -637,23 +640,23 @@ class DocumentRecord(Base):
             name="issues_count_non_negative",
         ),
         sa.Index(
-            "ix_document_generation_kind",
-            "generation_id",
+            "ix_document_snapshot_kind",
+            "snapshot_id",
             "kind",
         ),
         sa.Index(
-            "ix_document_generation_status",
-            "generation_id",
+            "ix_document_snapshot_status",
+            "snapshot_id",
             "overall_status",
         ),
         sa.Index(
-            "ix_document_generation_method",
-            "generation_id",
+            "ix_document_snapshot_method",
+            "snapshot_id",
             "method",
         ),
         sa.Index(
-            "ix_document_generation_api_version",
-            "generation_id",
+            "ix_document_snapshot_api_version",
+            "snapshot_id",
             "api_version",
         ),
     )
@@ -662,9 +665,9 @@ class DocumentRecord(Base):
 __all__ = [
     "DocumentRecord",
     "ExcludedService",
-    "Generation",
     "JobKind",
     "JobStatus",
     "RepositoryScanJob",
     "Service",
+    "Snapshot",
 ]

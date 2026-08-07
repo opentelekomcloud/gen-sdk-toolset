@@ -9,7 +9,7 @@ import { useI18n } from "../../../shared/i18n";
 /**
  * Collapsed row + lazy drill-down (PS12/PS13). Detail is fetched on first
  * expansion (enabled: open) and cached; loading/error/retry come from the
- * query. A 404 on a cached id (generation changed underneath) lands in the
+ * query. A 404 on a cached id (snapshot changed underneath) lands in the
  * same error state — retry refetches.
  */
 export function DocRow({ serviceName, doc }: { serviceName: string; doc: DocumentListItem }) {

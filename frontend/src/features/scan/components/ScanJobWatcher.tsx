@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { JOB_TERMINAL, invalidateGeneration, invalidateScanFailure, useJob } from "../api/queries";
+import { JOB_TERMINAL, invalidateSnapshot, invalidateScanFailure, useJob } from "../api/queries";
 
 interface Props {
   serviceName: string;
@@ -10,7 +10,7 @@ interface Props {
 /**
  * While a scan job runs, polls it via useJob and refreshes the panel once the
  * job reaches a terminal status. Renders nothing — it only drives cache
- * invalidation: a done job refreshes the full generation set, a failed one
+ * invalidation: a done job refreshes the full snapshot set, a failed one
  * only the service state and the aggregates that surface the error.
  */
 export function ScanJobWatcher({ serviceName, jobId }: Props) {
@@ -23,7 +23,7 @@ export function ScanJobWatcher({ serviceName, jobId }: Props) {
     if (JOB_TERMINAL.has(job.status) && !handled.current) {
       handled.current = true;
       if (job.status === "done") {
-        invalidateGeneration(qc, serviceName);
+        invalidateSnapshot(qc, serviceName);
       } else {
         invalidateScanFailure(qc, serviceName);
       }

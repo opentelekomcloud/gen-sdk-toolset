@@ -28,11 +28,11 @@ from tests.test_panel_db import (  # noqa: E402,F401  (reused DB fixtures)
 from tools.panel.core import ingest as ingest_module  # noqa: E402
 from tools.panel.core.db.models import (  # noqa: E402
     DocumentRecord,
-    Generation,
     JobKind,
     JobStatus,
     RepositoryScanJob,
     Service,
+    Snapshot,
 )
 from tools.panel.core.ingest import IngestRejected, ingest_service_result  # noqa: E402
 from tools.shared.ir import (  # noqa: E402
@@ -142,44 +142,44 @@ def _ingest(job_id: int, result: RepositoryScanResult, repo: str = REPO) -> None
 # ---------------------------------------------------------------------------
 
 
-def test_successful_ingest_persists_generation_and_completes_job(session_factory):
+def test_successful_ingest_persists_snapshot_and_completes_job(session_factory):
     service_id, job_id = _seed_running_job(session_factory)
 
     _ingest(job_id, _result())
 
     with session_factory() as session:
-        generation = session.scalars(select(Generation)).one()
+        snapshot = session.scalars(select(Snapshot)).one()
         job = session.get(RepositoryScanJob, job_id)
 
-        assert generation.service_id == service_id
-        assert generation.source_job_id == job_id
-        assert generation.branch == "main"
-        assert generation.commit_hash == COMMIT
+        assert snapshot.service_id == service_id
+        assert snapshot.source_job_id == job_id
+        assert snapshot.branch == "main"
+        assert snapshot.commit_hash == COMMIT
         assert (
-            generation.scanner_version
+            snapshot.scanner_version
             == RepositoryScanResult(
                 repository=IrService(repo=REPO), branch="main"
             ).scanner_version
         )
-        assert generation.document_schema_version == DOCUMENT_SCHEMA_VERSION
-        assert generation.excluded_documents == [
+        assert snapshot.document_schema_version == DOCUMENT_SCHEMA_VERSION
+        assert snapshot.excluded_documents == [
             "api-ref/source/out-of-date_apis/old.rst"
         ]
 
-        assert generation.documents_total == 2
-        assert generation.endpoints_total == 1
-        assert generation.non_endpoint_documents == 1
-        assert generation.partial_count == 1
-        assert generation.unsupported_count == 1
-        assert generation.ok_count == generation.failed_count == 0
-        assert generation.issues_total == 2
-        assert generation.completeness == 0.5
+        assert snapshot.documents_total == 2
+        assert snapshot.endpoints_total == 1
+        assert snapshot.non_endpoint_documents == 1
+        assert snapshot.partial_count == 1
+        assert snapshot.unsupported_count == 1
+        assert snapshot.ok_count == snapshot.failed_count == 0
+        assert snapshot.issues_total == 2
+        assert snapshot.completeness == 0.5
 
         assert job.status is JobStatus.done
         assert job.error is None
         assert job.finished_at is not None
         # One event, one timestamp: the UI reads created_at as the scan time.
-        assert generation.created_at == job.finished_at
+        assert snapshot.created_at == job.finished_at
 
 
 def test_documents_persist_with_their_kind_and_payload(session_factory):
@@ -221,7 +221,7 @@ def test_analytics_payload_accounts_for_every_document(session_factory):
     _ingest(job_id, _result())
 
     with session_factory() as session:
-        analytics = session.scalars(select(Generation)).one().analytics
+        analytics = session.scalars(select(Snapshot)).one().analytics
 
     assert analytics["documents_total"] == 2
     assert (
@@ -249,12 +249,12 @@ def test_service_scan_metadata_is_updated(session_factory):
 
     with session_factory() as session:
         service = session.get(Service, service_id)
-        generation = session.scalars(select(Generation)).one()
+        snapshot = session.scalars(select(Snapshot)).one()
 
         assert service.has_api_ref is True
-        assert service.eligibility_checked_at == generation.created_at
-        assert service.latest_generation_id == generation.id
-        assert service.active_generation_id == generation.id
+        assert service.eligibility_checked_at == snapshot.created_at
+        assert service.latest_snapshot_id == snapshot.id
+        assert service.active_snapshot_id == snapshot.id
         # Drift detection owns head_commit (issue #25); ingest leaves it alone.
         assert service.head_commit is None
 
@@ -269,20 +269,20 @@ def test_ingest_does_not_create_a_second_job(session_factory):
             select(RepositoryScanJob).where(RepositoryScanJob.service_id == service_id)
         ).all()
         assert [job.id for job in jobs] == [job_id]
-        assert session.scalars(select(Generation)).one().source_job_id == job_id
+        assert session.scalars(select(Snapshot)).one().source_job_id == job_id
 
 
-def test_scan_without_documents_persists_an_empty_generation(session_factory):
+def test_scan_without_documents_persists_an_empty_snapshot(session_factory):
     """An eligible repository with no API-reference documents is a successful
-    scan, not a failure - it must still produce a Generation."""
+    scan, not a failure - it must still produce a Snapshot."""
     _, job_id = _seed_running_job(session_factory)
 
     _ingest(job_id, _result(documents=[], excluded=[]))
 
     with session_factory() as session:
-        generation = session.scalars(select(Generation)).one()
-        assert generation.documents_total == 0
-        assert generation.completeness is None
+        snapshot = session.scalars(select(Snapshot)).one()
+        assert snapshot.documents_total == 0
+        assert snapshot.completeness is None
         assert session.get(RepositoryScanJob, job_id).status is JobStatus.done
 
 
@@ -297,16 +297,16 @@ def _assert_nothing_persisted(
     *,
     job_status: JobStatus | None = JobStatus.running,
 ) -> None:
-    """No Generation, no documents, and the Job left exactly as it was found."""
+    """No Snapshot, no documents, and the Job left exactly as it was found."""
     with session_factory() as session:
-        assert session.scalars(select(Generation)).all() == []
+        assert session.scalars(select(Snapshot)).all() == []
         assert session.scalars(select(DocumentRecord)).all() == []
         if job_id is not None:
             job = session.get(RepositoryScanJob, job_id)
             assert job.status is job_status
             service = session.get(Service, job.service_id)
-            assert service.active_generation_id is None
-            assert service.latest_generation_id is None
+            assert service.active_snapshot_id is None
+            assert service.latest_snapshot_id is None
 
 
 def test_rejects_unknown_job(session_factory):
@@ -417,11 +417,11 @@ def test_rejects_request_for_another_service(session_factory):
 # ---------------------------------------------------------------------------
 
 
-def test_failure_after_the_generation_insert_leaves_nothing_behind(
+def test_failure_after_the_snapshot_insert_leaves_nothing_behind(
     session_factory, monkeypatch
 ):
-    """The Generation is already flushed when the documents are built - a
-    failure there must roll it back, not leave an empty generation visible."""
+    """The Snapshot is already flushed when the documents are built - a
+    failure there must roll it back, not leave an empty snapshot visible."""
     _, job_id = _seed_running_job(session_factory)
 
     def boom(_document):
@@ -445,4 +445,4 @@ def test_second_ingest_of_the_same_job_is_rejected(session_factory):
         _ingest(job_id, _result())
 
     with session_factory() as session:
-        assert len(session.scalars(select(Generation)).all()) == 1
+        assert len(session.scalars(select(Snapshot)).all()) == 1

@@ -4,7 +4,7 @@
  * Enable with MOCK_API=1. DELETE this file once the real routes land.
  *
  * Shapes mirror src/features/scan/api/types.local.ts, which in turn mirrors
- * the persistence models (service / job / generation / document): full
+ * the persistence models (service / job / snapshot / document): full
  * commit_hash, created_at as scan timestamp, completeness as 0..1 float,
  * ok/partial/failed/unsupported counts, nullable active/latest ids.
  */
@@ -47,7 +47,7 @@ const svc = (o: Partial<MockService> & { name: string; scan_status: string }): M
   scanner_version: V, scanned_at: NOW, docs_changed: false, rescan_reason: null, error: null, error_at: null,
   overall_breakdown: {}, unread_breakdown: {}, unread_documents: 0, rows_unrecognized: 0, read_in_full: null, section_rollup: rollup(0), docs_ok: null, documents: null,
   top_issues: [], non_endpoint_documents: 0, head_commit: null, interruption: null,
-  active_generation: null, latest_generation: null, label: o.name.split("/").pop() ?? o.name, ...o,
+  active_snapshot: null, latest_snapshot: null, label: o.name.split("/").pop() ?? o.name, ...o,
 });
 
 const SERVICES = [
@@ -80,7 +80,7 @@ const SERVICES = [
   svc({ name: "roaming-info", scan_status: "not_scanned", scanned_at: null, scanner_version: null }),
 ];
 
-/* ---------- G1: generation history (newest first) + active pointer ---------- */
+/* ---------- G1: snapshot history (newest first) + active pointer ---------- */
 const GENS: Record<string, Gen[]> = {};
 const ACTIVE: Record<string, number> = {};
 let genId = 500;
@@ -109,10 +109,10 @@ const mkGen = (name: string, s: MockService, at: string, ver: string, delta: { d
 };
 
 for (const s of SERVICES) {
-  /* s.error alone does NOT skip: a failed job creates no generation, but earlier successful gens survive */
+  /* s.error alone does NOT skip: a failed job creates no snapshot, but earlier successful gens survive */
   if (s.documents == null || s.scan_status === "not_scanned" || s.documents === 0) continue;
   const history: Gen[] = [];
-  /* older generations first so ids ascend, then reverse to newest-first */
+  /* older snapshots first so ids ascend, then reverse to newest-first */
   if (s.name === "customer-core")
     history.push(mkGen(s.name, s, "2026-05-02T08:40:00Z", "3.0.2", { docs: -9, ok: -8, partial: -1, struct: -6 }));
   if (["billing-api", "customer-core", "device-mgmt", "notifications-hub", "payments-gw"].includes(s.name))
@@ -134,7 +134,7 @@ const applyActive = (s: MockService) => {
   const history = GENS[s.name as string];
   if (!history) return s;
   const active = history.find((g) => g.id === ACTIVE[s.name as string]) ?? history[0];
-  return { ...s, ...active.view, active_generation: pub(active), latest_generation: pub(history[0]) };
+  return { ...s, ...active.view, active_snapshot: pub(active), latest_snapshot: pub(history[0]) };
 };
 
 const DOCS: Record<string, Doc[]> = {};
@@ -154,7 +154,7 @@ for (const s of SERVICES) {
     };
   }).sort((a, b) => "failed,partial,unsupported,ok".indexOf(a.overall_status) - "failed,partial,unsupported,ok".indexOf(b.overall_status));
 }
-/* documents served from the ACTIVE generation: older gens expose a truncated list */
+/* documents served from the ACTIVE snapshot: older gens expose a truncated list */
 const docsForActive = (name: string): Doc[] => {
   const history = GENS[name];
   const all = DOCS[name] ?? [];
@@ -291,8 +291,8 @@ export function mockScanApi(): Plugin {
 
           if (rest === "" && req.method === "GET") return json(res, applyActive(service));
 
-          /* G1: generation history + activation */
-          if (rest === "/generations") {
+          /* G1: snapshot history + activation */
+          if (rest === "/snapshots") {
             const history = GENS[name] ?? [];
             return json(res, {
               items: history.map(pub),
@@ -300,15 +300,15 @@ export function mockScanApi(): Plugin {
               latest_id: history[0]?.id ?? null,
             });
           }
-          const am = rest.match(/^\/generations\/(\d+)\/activate$/);
+          const am = rest.match(/^\/snapshots\/(\d+)\/activate$/);
           if (am && req.method === "POST") {
             const history = GENS[name] ?? [];
             const g = history.find((x) => x.id === Number(am[1]));
-            if (!g) return json(res, { error: { code: "not_found", message: `generation ${am[1]} not found` } }, 404);
+            if (!g) return json(res, { error: { code: "not_found", message: `snapshot ${am[1]} not found` } }, 404);
             if (service.scan_status === "scanning")
               return json(res, { error: { code: "conflict", message: "a scan job is running" } }, 409);
             ACTIVE[name] = g.id;
-            /* drift is relative to the ACTIVE generation's commit */
+            /* drift is relative to the ACTIVE snapshot's commit */
             service.docs_changed = service.head_commit != null && service.head_commit !== g.commit_hash;
             return json(res, { items: history.map(pub), active_id: g.id, latest_id: history[0].id });
           }

@@ -9,7 +9,7 @@ import type {
   DocumentDetail,
   DocumentsResponse,
   ExcludedService,
-  GenerationsResponse,
+  SnapshotsResponse,
   Job,
   JobStatus,
   ServiceDetail,
@@ -27,8 +27,8 @@ export const keys = {
   /** Prefix for all cached document details of a service — invalidation target. */
   documentDetails: (name: string) => ["document", name] as const,
   document: (name: string, id: number) => ["document", name, id] as const,
-  /** G1: generation history of a service. */
-  generations: (name: string) => ["generations", name] as const,
+  /** G1: snapshot history of a service. */
+  snapshots: (name: string) => ["snapshots", name] as const,
   job: (id: number) => ["job", id] as const,
   summary: ["summary"] as const,
   attention: ["attention"] as const,
@@ -36,27 +36,27 @@ export const keys = {
 };
 
 /**
- * The full invalidation set (PS11/PS14/G1): a completed scan, a generation
- * activation, or an exclusion changes the active generation or the working
- * set — service detail, documents, cached document details, generations list,
+ * The full invalidation set (PS11/PS14/G1): a completed scan, a snapshot
+ * activation, or an exclusion changes the active snapshot or the working
+ * set — service detail, documents, cached document details, snapshots list,
  * services list, summary, and attention are all stale together.
  * Lives here (next to `keys`) so both mutations.ts and useService can use it
  * without an import cycle.
  */
-export function invalidateGeneration(qc: QueryClient, name: string) {
+export function invalidateSnapshot(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.service(name) });
   void qc.invalidateQueries({ queryKey: keys.documents(name) });
   void qc.invalidateQueries({ queryKey: keys.documentDetails(name) });
-  void qc.invalidateQueries({ queryKey: keys.generations(name) });
+  void qc.invalidateQueries({ queryKey: keys.snapshots(name) });
   void qc.invalidateQueries({ queryKey: keys.services() });
   void qc.invalidateQueries({ queryKey: keys.summary });
   void qc.invalidateQueries({ queryKey: keys.attention });
 }
 
 /**
- * A failed scan produces no new generation: only the service state (the error,
+ * A failed scan produces no new snapshot: only the service state (the error,
  * the cleared job) and the aggregates that surface it are stale. The documents,
- * document details and generations of the still-active generation are not —
+ * document details and snapshots of the still-active snapshot are not —
  * invalidating them would refetch data that cannot have changed.
  */
 export function invalidateScanFailure(qc: QueryClient, name: string) {
@@ -90,11 +90,11 @@ export function useService(name: string) {
   });
 }
 
-/** G1: lazy — call with enabled: open (popover); trigger renders from ServiceDetail.active_generation. */
-export function useGenerations(name: string, enabled = true) {
+/** G1: lazy — call with enabled: open (popover); trigger renders from ServiceDetail.active_snapshot. */
+export function useSnapshots(name: string, enabled = true) {
   return useQuery({
-    queryKey: keys.generations(name),
-    queryFn: () => apiFetch<GenerationsResponse>(`/scan/services/${encodeURIComponent(name)}/generations`),
+    queryKey: keys.snapshots(name),
+    queryFn: () => apiFetch<SnapshotsResponse>(`/scan/services/${encodeURIComponent(name)}/snapshots`),
     enabled,
   });
 }
@@ -132,7 +132,7 @@ export function useDocumentDetail(name: string, id: number, enabled: boolean) {
     queryKey: keys.document(name, id),
     queryFn: () => apiFetch<DocumentDetail>(`/scan/services/${encodeURIComponent(name)}/documents/${id}`),
     enabled,
-    staleTime: Infinity, // immutable within a generation; invalidated on rescan/activate
+    staleTime: Infinity, // immutable within a snapshot; invalidated on rescan/activate
   });
 }
 
