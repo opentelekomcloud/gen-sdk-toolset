@@ -24,6 +24,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Job
+         * @description Cancel a queued or running Job, returning its terminal state.
+         *
+         *     Cancellation is a database-only operation: ``BackgroundTasks`` runs the scan
+         *     in a worker thread that cannot be terminated from outside, so a scan already
+         *     in flight keeps running to completion. What this guarantees is that the Job
+         *     is closed and its result never persisted - the runner re-checks the Job
+         *     before ingesting, and ingest refuses a Job that is no longer running.
+         *
+         *     There is no ``cancelled`` status: a cancelled Job is ``failed`` with the
+         *     reason in ``error``, so every consumer that already handles failure handles
+         *     this too, and no persisted status is added that nothing would ever produce.
+         *     Cancelling a Job that already finished is a ``409`` rather than a silent
+         *     no-op - it tells the caller their cancellation changed nothing.
+         */
+        post: operations["cancel_job_api_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scan/attention": {
         parameters: {
             query?: never;
@@ -754,6 +786,37 @@ export interface components {
 export type $defs = Record<string, never>;
 export interface operations {
     get_job_api_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_job_api_jobs__job_id__cancel_post: {
         parameters: {
             query?: never;
             header?: never;
