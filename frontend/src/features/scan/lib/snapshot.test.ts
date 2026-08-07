@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fmtGenAt, genBreakdown, isLatest, shortCommit, structPct } from "./snapshot";
+import { fmtSnapshotAt, snapshotBreakdown, isLatest, shortCommit, structPct } from "./snapshot";
 import type { Snapshot } from "../api/types.local";
 
 describe("shortCommit", () => {
@@ -8,16 +8,16 @@ describe("shortCommit", () => {
   });
 });
 
-describe("fmtGenAt", () => {
+describe("fmtSnapshotAt", () => {
   it("renders — for missing timestamps", () => {
-    expect(fmtGenAt(null)).toBe("—");
-    expect(fmtGenAt(undefined)).toBe("—");
+    expect(fmtSnapshotAt(null)).toBe("—");
+    expect(fmtSnapshotAt(undefined)).toBe("—");
   });
 
   it("formats in the viewer's locale (en-GB slashes, de-DE dots)", () => {
     const iso = "2026-07-23T09:15:00Z";
-    expect(fmtGenAt(iso, "en-GB")).toMatch(/^\d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}$/);
-    expect(fmtGenAt(iso, "de-DE")).toMatch(/^\d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}$/);
+    expect(fmtSnapshotAt(iso, "en-GB")).toMatch(/^\d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}$/);
+    expect(fmtSnapshotAt(iso, "de-DE")).toMatch(/^\d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}$/);
   });
 });
 
@@ -33,10 +33,10 @@ describe("structPct", () => {
   });
 });
 
-describe("genBreakdown", () => {
+describe("snapshotBreakdown", () => {
   it("projects the persisted status counts into the OverallBar shape", () => {
     const g = { ok_count: 40, partial_count: 2, failed_count: 1, unsupported_count: 3 } as Snapshot;
-    expect(genBreakdown(g)).toEqual({ ok: 40, partial: 2, failed: 1, unsupported: 3 });
+    expect(snapshotBreakdown(g)).toEqual({ ok: 40, partial: 2, failed: 1, unsupported: 3 });
   });
 });
 

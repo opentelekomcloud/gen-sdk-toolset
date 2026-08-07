@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ChevronDown, GitCommit, History, Loader2 } from "lucide-react";
 import { useSnapshots } from "../api/queries";
 import type { Snapshot, ServiceDetail } from "../api/types.local";
-import { fmtGenAt, shortCommit, structPct } from "../lib/snapshot";
+import { fmtSnapshotAt, shortCommit, structPct } from "../lib/snapshot";
 import { structOkCls } from "../styles";
 import { useI18n } from "../../../shared/i18n";
 
@@ -46,7 +46,7 @@ export function SnapshotSelector({ service, disabled, onActivate }: Props) {
     return (
       <div className="mt-1 font-mono text-xs text-gray-400">
         {service.scanner_version ? t("snap.scannedWith", { v: service.scanner_version }) : t("snap.neverScanned")}
-        {service.scanned_at ? ` · ${fmtGenAt(service.scanned_at, locale)}` : ""}
+        {service.scanned_at ? ` · ${fmtSnapshotAt(service.scanned_at, locale)}` : ""}
       </div>
     );
   }
@@ -85,7 +85,7 @@ export function SnapshotSelector({ service, disabled, onActivate }: Props) {
         <History size={12} className={onLatest ? "text-gray-400" : "text-amber-500"} />
         <span className="font-semibold">{t("snap.pill", { id: active.id })}</span>
         <span className="opacity-40">·</span>
-        <span>{fmtGenAt(active.created_at, locale)}</span>
+        <span>{fmtSnapshotAt(active.created_at, locale)}</span>
         <span className="opacity-40">·</span>
         <span className="flex items-center gap-1">
           <GitCommit size={11} /> {shortCommit(active.commit_hash)}
@@ -142,7 +142,7 @@ export function SnapshotSelector({ service, disabled, onActivate }: Props) {
                           )}
                         </div>
                         <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-gray-400">
-                          <span>{fmtGenAt(g.created_at, locale)}</span>
+                          <span>{fmtSnapshotAt(g.created_at, locale)}</span>
                           <span className="flex items-center gap-1">
                             <GitCommit size={10} /> {shortCommit(g.commit_hash)}
                           </span>
@@ -176,7 +176,7 @@ export function SnapshotSelector({ service, disabled, onActivate }: Props) {
                 <div className="text-xs font-semibold text-amber-900">{t("snap.confirmTitle", { id: pending.id })}</div>
                 <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
                   {t("snap.confirmBody", {
-                    at: fmtGenAt(pending.created_at, locale),
+                    at: fmtSnapshotAt(pending.created_at, locale),
                     ver: pending.scanner_version,
                     commit: shortCommit(pending.commit_hash),
                     latest: latest.id,

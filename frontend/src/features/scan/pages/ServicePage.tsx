@@ -15,7 +15,7 @@ import { OverallBar } from "../components/OverallBar";
 import { SECTIONS } from "../constants";
 import { DocumentsBlock } from "../documents/DocumentsBlock";
 import { ExcludeModal } from "../excluded/ExcludeModal";
-import { fmtGenAt } from "../lib/snapshot";
+import { fmtSnapshotAt } from "../lib/snapshot";
 import { DOC_STATUS_CLS, structOkCls } from "../styles";
 import type { DocStatus } from "../api/types.local";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
@@ -154,7 +154,7 @@ export function ServicePage() {
             </span>
             {" — "}
             <span className="font-mono">{service.interruption?.message ?? service.error}</span>
-            {service.error_at != null && <span className="font-mono text-red-500"> · {fmtGenAt(service.error_at)}</span>}
+            {service.error_at != null && <span className="font-mono text-red-500"> · {fmtSnapshotAt(service.error_at)}</span>}
             {service.interruption?.kind === "rate_limit" && service.interruption.reset_time != null && (
               <span className="font-mono text-red-500">
                 {" · "}
@@ -162,7 +162,7 @@ export function ServicePage() {
               </span>
             )}
             <div className="mt-0.5 text-red-600/80">
-              {t("service.failedKeptData", { gen: service.active_snapshot.id, at: fmtGenAt(service.active_snapshot.created_at) })}
+              {t("service.failedKeptData", { gen: service.active_snapshot.id, at: fmtSnapshotAt(service.active_snapshot.created_at) })}
             </div>
           </div>
           <button type="button"

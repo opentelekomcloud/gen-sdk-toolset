@@ -1,6 +1,6 @@
 import { History } from "lucide-react";
 import type { ServiceDetail } from "../api/types.local";
-import { fmtGenAt } from "../lib/snapshot";
+import { fmtSnapshotAt } from "../lib/snapshot";
 import { useI18n } from "../../../shared/i18n";
 
 interface Props {
@@ -20,10 +20,10 @@ export function SnapshotBanner({ service, onActivateLatest }: Props) {
         <History size={14} />
         {t("snapBanner.text", {
           activeId: active.id,
-          at: fmtGenAt(active.created_at, locale),
+          at: fmtSnapshotAt(active.created_at, locale),
           ver: active.scanner_version,
           latestId: latest.id,
-          latestAt: fmtGenAt(latest.created_at, locale),
+          latestAt: fmtSnapshotAt(latest.created_at, locale),
         })}
       </span>
       <button

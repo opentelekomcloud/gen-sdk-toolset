@@ -20,7 +20,7 @@ export type Section =
   | "example_request"
   | "example_response";
 export type AttentionRuleCode = "failed" | "version" | "drift" | "new";
-export type PanelName = "scan" | "snapshot" | "maintenance";
+export type PanelName = "scan" | "generation" | "maintenance";
 /** Mirrors JobKind / JobStatus enums on the `job` table. */
 export type JobKind = "scan" | "generate" | "maintain";
 export type JobStatus = "queued" | "running" | "done" | "failed";
