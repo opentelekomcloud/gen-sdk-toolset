@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy.exc import InterfaceError, OperationalError
 from starlette.middleware.cors import CORSMiddleware
 
 from tools.config import load_settings
@@ -25,15 +26,31 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     ``uq_active_scan_job_per_service`` allows only one active scan job per
     service.
 
-    A failure here must not stop the panel from starting. Every read endpoint
-    works without the cleanup, and a database that is unreachable at boot is an
-    operational problem to surface in the log rather than a reason to refuse to
-    serve.
+    Only the failures we actually expect are caught, and they are the
+    operational ones: the database being unreachable or refusing the connection.
+    Those are somebody else's to fix, the panel still serves every read endpoint
+    without the cleanup, and refusing to boot would take the whole panel down
+    over a janitorial step - the compose service has no ``restart`` policy, so
+    it would stay down.
+
+    Everything else propagates and stops startup on purpose. A ``TypeError`` or
+    a constraint violation in here is our bug, and a bug that no-ops silently on
+    every boot is exactly what this project treats as the expensive kind of
+    failure.
+
+    Degrading is not the same as ignoring: the outcome is recorded so ``/health``
+    stops reporting ``ok``.
     """
+    app.state.startup_cleanup_failed = False
     try:
         terminate_orphaned_jobs()
-    except Exception:
-        logger.exception("startup: could not terminate orphaned jobs")
+    except (OperationalError, InterfaceError):
+        logger.exception(
+            "startup: could not reach the database to terminate orphaned jobs — "
+            "services with a job left running may refuse a rescan until it is "
+            "cancelled"
+        )
+        app.state.startup_cleanup_failed = True
     yield
 
 
@@ -41,6 +58,9 @@ def create_app() -> FastAPI:
     settings = load_settings()
 
     app = FastAPI(title="Panel API", lifespan=_lifespan)
+    # Set before the lifespan runs: `/health` is reachable in tests and tooling
+    # that never enter the lifespan, and it must not have to guess.
+    app.state.startup_cleanup_failed = False
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.panel.frontend_origin],

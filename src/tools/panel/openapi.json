@@ -327,8 +327,24 @@
         "type": "object"
       },
       "HealthResponse": {
+        "description": "Whether the panel is fully functional, not merely running.\n\n``degraded`` still answers ``200``: the panel serves every read endpoint in\nthat state, and this response is what a container healthcheck polls. Failing\nthe check would stop the frontend from starting over a janitorial problem,\nwhich is a worse outcome than the problem.",
         "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
           "status": {
+            "enum": [
+              "ok",
+              "degraded"
+            ],
             "title": "Status",
             "type": "string"
           }
@@ -1962,6 +1978,7 @@
     },
     "/health": {
       "get": {
+        "description": "Report liveness, and any capability the panel knows it is missing.",
         "operationId": "health_health_get",
         "responses": {
           "200": {

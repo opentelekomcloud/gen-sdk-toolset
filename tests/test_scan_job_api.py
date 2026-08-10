@@ -20,6 +20,7 @@ pytest.importorskip("httpx")  # required by fastapi.testclient.TestClient
 from alembic import command  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy.exc import OperationalError  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from tests.test_panel_db import (  # noqa: E402,F401  (reused DB fixtures)
@@ -29,6 +30,7 @@ from tests.test_panel_db import (  # noqa: E402,F401  (reused DB fixtures)
     scratch_database,
 )
 from tools import __version__ as SCANNER_VERSION  # noqa: E402
+from tools.panel.api import app as app_module  # noqa: E402
 from tools.panel.api import deps  # noqa: E402
 from tools.panel.api.app import create_app  # noqa: E402
 from tools.panel.core import ingest as ingest_module  # noqa: E402
@@ -796,14 +798,47 @@ def test_startup_cleanup_is_idempotent(session_factory, monkeypatch):
     assert jobs_module.terminate_orphaned_jobs() == 0
 
 
-def test_startup_failure_does_not_stop_the_panel_from_serving(monkeypatch):
-    """The API is useful without the cleanup; refusing to boot is not."""
-    import tools.panel.api.app as app_module
+def test_an_unreachable_database_degrades_startup_instead_of_stopping_it(monkeypatch):
+    """The panel still serves every read endpoint without the cleanup, and the
+    compose service has no restart policy - refusing to boot would take it down
+    and leave it down over a janitorial step."""
 
-    def explode() -> int:
-        raise RuntimeError("database unreachable")
+    def unreachable() -> int:
+        raise OperationalError("SELECT 1", {}, Exception("connection refused"))
 
-    monkeypatch.setattr(app_module, "terminate_orphaned_jobs", explode)
+    monkeypatch.setattr(app_module, "terminate_orphaned_jobs", unreachable)
 
     with TestClient(app_module.create_app()) as client:
-        assert client.get("/health").status_code == 200
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
+    assert "rescan" in response.json()["detail"]
+
+
+def test_health_is_ok_when_startup_cleanup_succeeded(monkeypatch):
+    monkeypatch.setattr(app_module, "terminate_orphaned_jobs", lambda: 0)
+
+    with TestClient(app_module.create_app()) as client:
+        body = client.get("/health").json()
+
+    assert body["status"] == "ok"
+    assert body["detail"] is None
+
+
+def test_a_defect_in_startup_cleanup_stops_the_panel_rather_than_no_opping(
+    monkeypatch,
+):
+    """Only the operational failures are tolerated.
+
+    A bug in our own cleanup would otherwise be swallowed on every boot, leaving
+    orphaned jobs behind forever with one log line as the only evidence.
+    """
+
+    def broken() -> int:
+        raise TypeError("cleanup is broken")
+
+    monkeypatch.setattr(app_module, "terminate_orphaned_jobs", broken)
+
+    with pytest.raises(TypeError), TestClient(app_module.create_app()):
+        pass  # pragma: no cover - startup raises before the body runs

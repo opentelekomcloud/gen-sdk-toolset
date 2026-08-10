@@ -288,7 +288,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health */
+        /**
+         * Health
+         * @description Report liveness, and any capability the panel knows it is missing.
+         */
         get: operations["health_health_get"];
         put?: never;
         post?: never;
@@ -422,10 +425,23 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** HealthResponse */
+        /**
+         * HealthResponse
+         * @description Whether the panel is fully functional, not merely running.
+         *
+         *     ``degraded`` still answers ``200``: the panel serves every read endpoint in
+         *     that state, and this response is what a container healthcheck polls. Failing
+         *     the check would stop the frontend from starting over a janitorial problem,
+         *     which is a worse outcome than the problem.
+         */
         HealthResponse: {
-            /** Status */
-            status: string;
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "degraded";
         };
         /**
          * IssueCount
