@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = 30
 # Max length of an error-response body we quote back in an exception message.
 _ERROR_BODY_MAX = 200
+# Lower-cased body marker for GitHub's secondary (abuse) rate limit, which
+# does not always carry a Retry-After header to identify it by.
+_SECONDARY_LIMIT_MARKER = "secondary rate limit"
 # Cap on directory-listing calls the truncated-tree fallback walk (see
 # list_files) will make before giving up rather than risk exhausting the
 # rate-limit budget for the rest of an org-wide scan on one pathological repo.
@@ -330,11 +333,16 @@ class GitHubDocProvider(DocProvider):
             )
         if resp.status_code in (403, 429):
             remaining = resp.headers.get("X-RateLimit-Remaining")
+            # The body marker must stay narrow: GitHub's permission denials
+            # mention rate limits in passing, and matching those would send the
+            # caller off to wait for a reset that is never coming. Primary
+            # limits remain covered by X-RateLimit-Remaining, which GitHub
+            # always sends on a primary 403.
             rate_limited = (
                 resp.status_code == 429
                 or remaining == "0"
                 or "Retry-After" in resp.headers
-                or "rate limit" in resp.text.lower()
+                or _SECONDARY_LIMIT_MARKER in resp.text.lower()
             )
             if rate_limited:
                 reset = int(resp.headers.get("X-RateLimit-Reset", 0))
@@ -352,7 +360,7 @@ class GitHubDocProvider(DocProvider):
                 resource=resource,
             )
         raise ProviderError(
-            f"Unexpected HTTP {resp.status_code} for {resource}: "
+            f"Unexpected HTTP {resp.status_code} for {resource} in {repo}: "
             f"{resp.text[:_ERROR_BODY_MAX]}",
             kind=ProviderErrorKind.unexpected_response,
             status_code=resp.status_code,
