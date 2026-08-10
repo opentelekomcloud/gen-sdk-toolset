@@ -20,6 +20,7 @@ pytest.importorskip("httpx")  # required by fastapi.testclient.TestClient
 from alembic import command  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy.exc import OperationalError  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from tests.test_panel_db import (  # noqa: E402,F401  (reused DB fixtures)
@@ -29,6 +30,7 @@ from tests.test_panel_db import (  # noqa: E402,F401  (reused DB fixtures)
     scratch_database,
 )
 from tools import __version__ as SCANNER_VERSION  # noqa: E402
+from tools.panel.api import app as app_module  # noqa: E402
 from tools.panel.api import deps  # noqa: E402
 from tools.panel.api.app import create_app  # noqa: E402
 from tools.panel.core import ingest as ingest_module  # noqa: E402
@@ -526,3 +528,317 @@ def test_successful_scan_is_ingested_and_served_by_the_job_api(
         assert snapshot.source_job_id == job_id
         assert snapshot.documents_total == 1
         assert [record.kind for record in snapshot.documents] == ["endpoint"]
+
+
+# --------------------------------------------------------------------------- #
+# Termination (F17)
+# --------------------------------------------------------------------------- #
+def _seed_job(session_factory, service_id: int, status: JobStatus) -> int:
+    """Insert one Job directly, honouring the status_timestamps constraint."""
+    now = datetime.now(tz=UTC)
+    with session_factory() as s:
+        job = RepositoryScanJob(
+            service_id=service_id,
+            kind=JobKind.scan,
+            status=status,
+            initiated_by="tester",
+            started_at=None if status is JobStatus.queued else now,
+            finished_at=now if status in (JobStatus.done, JobStatus.failed) else None,
+            error="boom" if status is JobStatus.failed else None,
+        )
+        s.add(job)
+        s.commit()
+        s.refresh(job)
+        return job.id
+
+
+@pytest.mark.parametrize("status", [JobStatus.queued, JobStatus.running])
+def test_cancel_moves_a_non_terminal_job_to_failed(client, session_factory, status):
+    service_id = _seed_service(session_factory, f"cancel-{status.value}")
+    job_id = _seed_job(session_factory, service_id, status)
+
+    resp = client.post(f"/api/jobs/{job_id}/cancel")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "failed"
+    assert body["error"] == "cancelled by user"
+    assert body["finished_at"] is not None
+
+    with session_factory() as s:
+        job = s.get(RepositoryScanJob, job_id)
+        assert job.status is JobStatus.failed
+        assert job.error == "cancelled by user"
+        assert job.finished_at is not None
+
+
+@pytest.mark.parametrize("status", [JobStatus.done, JobStatus.failed])
+def test_cancel_conflicts_on_a_finished_job_and_leaves_it_untouched(
+    client, session_factory, status
+):
+    service_id = _seed_service(session_factory, f"cancel-late-{status.value}")
+    job_id = _seed_job(session_factory, service_id, status)
+    with session_factory() as s:
+        before = s.get(RepositoryScanJob, job_id)
+        original = (before.status, before.error, before.finished_at)
+
+    resp = client.post(f"/api/jobs/{job_id}/cancel")
+
+    assert resp.status_code == 409
+    assert status.value in resp.json()["error"]["message"]
+    with session_factory() as s:
+        job = s.get(RepositoryScanJob, job_id)
+        assert (job.status, job.error, job.finished_at) == original
+
+
+def test_cancel_unknown_job_returns_404(client):
+    assert client.post("/api/jobs/9999/cancel").status_code == 404
+
+
+def test_cancelling_unblocks_the_service_for_a_new_scan(
+    client, session_factory, monkeypatch
+):
+    """The partial unique index allows one active scan job per service, so a
+    stuck Job blocks the service until something closes it. That unblocking is
+    the whole point of cancelling by ID."""
+    service_id = _seed_service(session_factory, "stuck-api")
+    _seed_job(session_factory, service_id, JobStatus.running)
+
+    blocked = client.post(
+        "/api/scan/services/stuck-api/rescan", json={"initiated_by": "tester"}
+    )
+    assert blocked.status_code == 409
+
+    with session_factory() as s:
+        stuck = s.scalars(
+            select(RepositoryScanJob).where(RepositoryScanJob.service_id == service_id)
+        ).one()
+        stuck_id = stuck.id
+    assert client.post(f"/api/jobs/{stuck_id}/cancel").status_code == 200
+
+    def fake_build_scanner(_settings):
+        class _Scanner:
+            def scan_repository(self, repo, branch):
+                return RepositoryScanResult(
+                    repository=IrService(repo=repo),
+                    branch=branch,
+                    commit_hash="f" * 40,
+                )
+
+        return _Scanner()
+
+    monkeypatch.setattr(jobs_module, "build_scanner", fake_build_scanner)
+    monkeypatch.setattr(jobs_module, "ingest_service_result", lambda **kwargs: None)
+    again = client.post(
+        "/api/scan/services/stuck-api/rescan", json={"initiated_by": "tester"}
+    )
+    assert again.status_code == 202
+
+
+def test_a_scan_cancelled_while_running_persists_nothing(
+    client, session_factory, monkeypatch
+):
+    """The scan cannot be stopped, so it must not be allowed to land.
+
+    BackgroundTasks gives no way to kill the worker thread, so termination is a
+    database decision only: the scan runs to completion and the runner then
+    finds the Job is no longer its own. If this regressed, a cancelled scan
+    would quietly overwrite the cancellation with a snapshot and a `done` Job.
+    """
+    service_id = _seed_service(session_factory, "ecs-cancelled")
+
+    def fake_build_scanner(_settings):
+        class _Scanner:
+            def scan_repository(self, repo, branch):
+                # The operator cancels while this scan is in flight.
+                with session_factory() as s:
+                    job = s.scalars(
+                        select(RepositoryScanJob).where(
+                            RepositoryScanJob.service_id == service_id
+                        )
+                    ).one()
+                    job.status = JobStatus.failed
+                    job.error = "cancelled by user"
+                    job.finished_at = datetime.now(tz=UTC)
+                    s.commit()
+                return RepositoryScanResult(
+                    repository=IrService(repo=repo),
+                    branch=branch,
+                    commit_hash="e" * 40,
+                )
+
+        return _Scanner()
+
+    ingested = []
+    monkeypatch.setattr(jobs_module, "build_scanner", fake_build_scanner)
+    monkeypatch.setattr(
+        jobs_module, "ingest_service_result", lambda **kw: ingested.append(kw)
+    )
+
+    resp = client.post(
+        "/api/scan/services/ecs-cancelled/rescan", json={"initiated_by": "tester"}
+    )
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+
+    assert ingested == []  # the result never reached ingest
+    with session_factory() as s:
+        assert s.scalars(select(Snapshot)).all() == []
+        job = s.get(RepositoryScanJob, job_id)
+        assert job.status is JobStatus.failed
+        assert job.error == "cancelled by user"  # not overwritten
+
+
+def test_a_failure_after_cancellation_keeps_the_cancellation_reason(
+    client, session_factory, monkeypatch
+):
+    """Whoever stopped the Job stays on the record.
+
+    A scan that fails after being cancelled must not replace "cancelled by user"
+    with a provider error - that would erase the only evidence of why the Job
+    stopped.
+    """
+    service_id = _seed_service(session_factory, "ecs-cancel-then-fail")
+
+    def fake_build_scanner(_settings):
+        class _Scanner:
+            def scan_repository(self, repo, branch):
+                with session_factory() as s:
+                    job = s.scalars(
+                        select(RepositoryScanJob).where(
+                            RepositoryScanJob.service_id == service_id
+                        )
+                    ).one()
+                    job.status = JobStatus.failed
+                    job.error = "cancelled by user"
+                    job.finished_at = datetime.now(tz=UTC)
+                    s.commit()
+                raise RuntimeError("provider exploded")
+
+        return _Scanner()
+
+    monkeypatch.setattr(jobs_module, "build_scanner", fake_build_scanner)
+
+    resp = client.post(
+        "/api/scan/services/ecs-cancel-then-fail/rescan",
+        json={"initiated_by": "tester"},
+    )
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+
+    with session_factory() as s:
+        assert s.get(RepositoryScanJob, job_id).error == "cancelled by user"
+
+
+def test_a_job_cancelled_before_the_runner_starts_is_never_scanned(
+    client, session_factory, monkeypatch
+):
+    service_id = _seed_service(session_factory, "ecs-cancel-early")
+    job_id = _seed_job(session_factory, service_id, JobStatus.queued)
+    scanned = []
+
+    def fake_build_scanner(_settings):
+        class _Scanner:
+            def scan_repository(self, repo, branch):  # pragma: no cover - must not run
+                scanned.append(repo)
+                raise AssertionError("a cancelled job must not be scanned")
+
+        return _Scanner()
+
+    monkeypatch.setattr(jobs_module, "build_scanner", fake_build_scanner)
+    client.post(f"/api/jobs/{job_id}/cancel")
+
+    jobs_module.run_scan_job(job_id)
+
+    assert scanned == []
+    with session_factory() as s:
+        job = s.get(RepositoryScanJob, job_id)
+        assert job.status is JobStatus.failed
+        assert job.error == "cancelled by user"
+        assert job.started_at is None  # never transitioned to running
+
+
+# --------------------------------------------------------------------------- #
+# Startup cleanup (F17)
+# --------------------------------------------------------------------------- #
+def test_startup_terminates_jobs_orphaned_by_a_restart(session_factory, monkeypatch):
+    """Nothing resumes a Job across a restart, so leaving one non-terminal
+    strands its service behind uq_active_scan_job_per_service forever."""
+    monkeypatch.setattr(jobs_module, "SessionLocal", session_factory)
+    monkeypatch.setattr(jobs_module, "get_engine", lambda: None)
+
+    queued_service = _seed_service(session_factory, "orphan-queued", name="q")
+    running_service = _seed_service(session_factory, "orphan-running", name="r")
+    done_service = _seed_service(session_factory, "orphan-done", name="d")
+    queued = _seed_job(session_factory, queued_service, JobStatus.queued)
+    running = _seed_job(session_factory, running_service, JobStatus.running)
+    done = _seed_job(session_factory, done_service, JobStatus.done)
+
+    terminated = jobs_module.terminate_orphaned_jobs()
+
+    assert terminated == 2
+    with session_factory() as s:
+        for job_id in (queued, running):
+            job = s.get(RepositoryScanJob, job_id)
+            assert job.status is JobStatus.failed
+            assert job.error == "interrupted by panel restart"
+            assert job.finished_at is not None
+        untouched = s.get(RepositoryScanJob, done)
+        assert untouched.status is JobStatus.done
+        assert untouched.error is None
+
+
+def test_startup_cleanup_is_idempotent(session_factory, monkeypatch):
+    monkeypatch.setattr(jobs_module, "SessionLocal", session_factory)
+    monkeypatch.setattr(jobs_module, "get_engine", lambda: None)
+    service_id = _seed_service(session_factory, "orphan-twice")
+    _seed_job(session_factory, service_id, JobStatus.running)
+
+    assert jobs_module.terminate_orphaned_jobs() == 1
+    assert jobs_module.terminate_orphaned_jobs() == 0
+
+
+def test_an_unreachable_database_degrades_startup_instead_of_stopping_it(monkeypatch):
+    """The panel still serves every read endpoint without the cleanup, and the
+    compose service has no restart policy - refusing to boot would take it down
+    and leave it down over a janitorial step."""
+
+    def unreachable() -> int:
+        raise OperationalError("SELECT 1", {}, Exception("connection refused"))
+
+    monkeypatch.setattr(app_module, "terminate_orphaned_jobs", unreachable)
+
+    with TestClient(app_module.create_app()) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "degraded"
+    assert "rescan" in response.json()["detail"]
+
+
+def test_health_is_ok_when_startup_cleanup_succeeded(monkeypatch):
+    monkeypatch.setattr(app_module, "terminate_orphaned_jobs", lambda: 0)
+
+    with TestClient(app_module.create_app()) as client:
+        body = client.get("/health").json()
+
+    assert body["status"] == "ok"
+    assert body["detail"] is None
+
+
+def test_a_defect_in_startup_cleanup_stops_the_panel_rather_than_no_opping(
+    monkeypatch,
+):
+    """Only the operational failures are tolerated.
+
+    A bug in our own cleanup would otherwise be swallowed on every boot, leaving
+    orphaned jobs behind forever with one log line as the only evidence.
+    """
+
+    def broken() -> int:
+        raise TypeError("cleanup is broken")
+
+    monkeypatch.setattr(app_module, "terminate_orphaned_jobs", broken)
+
+    with pytest.raises(TypeError), TestClient(app_module.create_app()):
+        pass  # pragma: no cover - startup raises before the body runs

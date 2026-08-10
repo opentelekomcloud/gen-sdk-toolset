@@ -327,8 +327,24 @@
         "type": "object"
       },
       "HealthResponse": {
+        "description": "Whether the panel is fully functional, not merely running.\n\n``degraded`` still answers ``200``: the panel serves every read endpoint in\nthat state, and this response is what a container healthcheck polls. Failing\nthe check would stop the frontend from starting over a janitorial problem,\nwhich is a worse outcome than the problem.",
         "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
           "status": {
+            "enum": [
+              "ok",
+              "degraded"
+            ],
             "title": "Status",
             "type": "string"
           }
@@ -1420,6 +1436,46 @@
         "summary": "Get Job"
       }
     },
+    "/api/jobs/{job_id}/cancel": {
+      "post": {
+        "description": "Cancel a queued or running Job, returning its terminal state.\n\nCancellation is a database-only operation: ``BackgroundTasks`` runs the scan\nin a worker thread that cannot be terminated from outside, so a scan already\nin flight keeps running to completion. What this guarantees is that the Job\nis closed and its result never persisted - the runner re-checks the Job\nbefore ingesting, and ingest refuses a Job that is no longer running.\n\nThere is no ``cancelled`` status: a cancelled Job is ``failed`` with the\nreason in ``error``, so every consumer that already handles failure handles\nthis too, and no persisted status is added that nothing would ever produce.\nCancelling a Job that already finished is a ``409`` rather than a silent\nno-op - it tells the caller their cancellation changed nothing.",
+        "operationId": "cancel_job_api_jobs__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Job"
+      }
+    },
     "/api/scan/attention": {
       "get": {
         "description": "Reasons the panel wants attention, with the number of services behind each.\n\nThe predicates are independent, unlike ``rescan_reason``: a service whose\ndocuments are partial *and* whose scanner is outdated is counted under both\nrules, because hiding one behind the other would understate the work.",
@@ -1922,6 +1978,7 @@
     },
     "/health": {
       "get": {
+        "description": "Report liveness, and any capability the panel knows it is missing.",
         "operationId": "health_health_get",
         "responses": {
           "200": {
