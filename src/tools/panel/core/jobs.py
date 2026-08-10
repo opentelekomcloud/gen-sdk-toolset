@@ -27,7 +27,7 @@ def run_scan_job(job_id: int) -> None:
     then hands a successful result to ingest. A provider failure, an ingest
     failure, or any unexpected error transitions the Job to ``failed`` with the
     error recorded — the runner never leaves a Job stuck in ``running``. The
-    ``done`` transition and generation persistence belong to ingest
+    ``done`` transition and snapshot persistence belong to ingest
     (issue #16, F14).
     """
     settings = load_settings()

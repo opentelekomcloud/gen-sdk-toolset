@@ -155,9 +155,9 @@ one definition and cannot drift from a second stored copy.
   - `quality.py` — the per-document primitives: `document_sections` and
     `doc_all_issues` (every diagnostic flattened, with section-prefixed
     locations), plus the `OverallStatus` vocabulary
-  - `generation.py` — the roll-ups a scan is persisted with: `document_status`
-    per document, and `analyze_generation` for the headline numbers
-    (`GenerationAnalytics`: status counters, `by_section_status`,
+  - `snapshot.py` — the roll-ups a scan is persisted with: `document_status`
+    per document, and `analyze_snapshot` for the headline numbers
+    (`SnapshotAnalytics`: status counters, `by_section_status`,
     `issues_by_code`, `by_version`, completeness)
 
 ### `scan-config.toml`

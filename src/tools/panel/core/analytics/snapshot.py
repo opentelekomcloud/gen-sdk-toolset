@@ -1,7 +1,7 @@
-"""Document- and generation-level roll-ups over one repository scan result.
+"""Document- and snapshot-level roll-ups over one repository scan result.
 
 Pure: no I/O, no clock, no database. :mod:`tools.panel.core.ingest` turns what
-these functions return into the ``generation`` and ``document`` rows, so this is
+these functions return into the ``snapshot`` and ``document`` rows, so this is
 the only place that decides what a persisted number means.
 
 Two rules shape everything here:
@@ -70,10 +70,10 @@ class DocumentAnalytics(BaseModel):
     issues_count: int = 0
 
 
-class GenerationAnalytics(BaseModel):
-    """Everything one ``Generation`` row records about its documents.
+class SnapshotAnalytics(BaseModel):
+    """Everything one ``Snapshot`` row records about its documents.
 
-    The counter fields map onto ``generation`` columns; the whole model is also
+    The counter fields map onto ``snapshot`` columns; the whole model is also
     stored as the ``analytics`` JSONB, so a reader gets the full picture -
     including the parts that have no column - from a single value. The row is
     immutable once ingested, so the two representations cannot drift apart.
@@ -279,15 +279,15 @@ def analyze_document(document: Document) -> DocumentAnalytics:
     )
 
 
-def analyze_generation(documents: Sequence[Document]) -> GenerationAnalytics:
-    """Roll one scanned service's documents up into its ``Generation`` numbers.
+def analyze_snapshot(documents: Sequence[Document]) -> SnapshotAnalytics:
+    """Roll one scanned service's documents up into its ``Snapshot`` numbers.
 
-    Walks the documents once. Generation completeness is field-weighted (the
+    Walks the documents once. Snapshot completeness is field-weighted (the
     summed recognized rows over the summed documented rows), not a mean of
     per-document means: a one-row endpoint must not weigh as much as a
     fifty-row one.
 
-    :param documents: Every document persisted with this generation.
+    :param documents: Every document persisted with this snapshot.
     """
     status_counts: Counter[str] = Counter()
     unread_status_counts: Counter[str] = Counter()
@@ -344,7 +344,7 @@ def analyze_generation(documents: Sequence[Document]) -> GenerationAnalytics:
             version_counts[document.api_version or UNVERSIONED_KEY] += 1
 
     documents_total = len(documents)
-    return GenerationAnalytics(
+    return SnapshotAnalytics(
         documents_total=documents_total,
         endpoints_total=endpoints_total,
         documentation_clean=documentation_clean,

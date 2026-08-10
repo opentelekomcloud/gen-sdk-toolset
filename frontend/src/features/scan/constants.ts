@@ -22,7 +22,7 @@ export const CONFIG = {
 
 /**
  * The bucket the API uses for documents that name no API version. It is the
- * same key the generation analytics writes, so the chip, the counts and the
+ * same key the snapshot analytics writes, so the chip, the counts and the
  * stored roll-up can never mean different things.
  */
 export const UNVERSIONED = "unversioned";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fmtGenAt, genBreakdown, isLatest, shortCommit, structPct } from "./generation";
-import type { Generation } from "../api/types.local";
+import { fmtSnapshotAt, snapshotBreakdown, isLatest, shortCommit, structPct } from "./snapshot";
+import type { Snapshot } from "../api/types.local";
 
 describe("shortCommit", () => {
   it("shows the git-style 7-char short form of the full stored hash", () => {
@@ -8,16 +8,16 @@ describe("shortCommit", () => {
   });
 });
 
-describe("fmtGenAt", () => {
+describe("fmtSnapshotAt", () => {
   it("renders — for missing timestamps", () => {
-    expect(fmtGenAt(null)).toBe("—");
-    expect(fmtGenAt(undefined)).toBe("—");
+    expect(fmtSnapshotAt(null)).toBe("—");
+    expect(fmtSnapshotAt(undefined)).toBe("—");
   });
 
   it("formats in the viewer's locale (en-GB slashes, de-DE dots)", () => {
     const iso = "2026-07-23T09:15:00Z";
-    expect(fmtGenAt(iso, "en-GB")).toMatch(/^\d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}$/);
-    expect(fmtGenAt(iso, "de-DE")).toMatch(/^\d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}$/);
+    expect(fmtSnapshotAt(iso, "en-GB")).toMatch(/^\d{2}\/\d{2}\/\d{4}, \d{2}:\d{2}$/);
+    expect(fmtSnapshotAt(iso, "de-DE")).toMatch(/^\d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}$/);
   });
 });
 
@@ -33,15 +33,15 @@ describe("structPct", () => {
   });
 });
 
-describe("genBreakdown", () => {
+describe("snapshotBreakdown", () => {
   it("projects the persisted status counts into the OverallBar shape", () => {
-    const g = { ok_count: 40, partial_count: 2, failed_count: 1, unsupported_count: 3 } as Generation;
-    expect(genBreakdown(g)).toEqual({ ok: 40, partial: 2, failed: 1, unsupported: 3 });
+    const g = { ok_count: 40, partial_count: 2, failed_count: 1, unsupported_count: 3 } as Snapshot;
+    expect(snapshotBreakdown(g)).toEqual({ ok: 40, partial: 2, failed: 1, unsupported: 3 });
   });
 });
 
 describe("isLatest", () => {
-  it("treats unknown ids as latest (no stale-generation warning without data)", () => {
+  it("treats unknown ids as latest (no stale-snapshot warning without data)", () => {
     expect(isLatest(null, 5)).toBe(true);
     expect(isLatest(5, null)).toBe(true);
   });

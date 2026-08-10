@@ -1,10 +1,10 @@
 """Status vocabulary and per-document views shared by the panel's analytics.
 
-Relocated from the deleted `tools.domain.report` with issue #34. Only the parts
-:mod:`generation` builds on survived the move: the organization-level roll-ups
+Relocated from the deleted `tools.domain.report`. Only the parts
+:mod:`snapshot` builds on survived the move: the organization-level roll-ups
 that used to live beside them (`QualitySummary`, `compute_quality_summary`,
 `count_by_version`, `doc_overall_status`) were superseded by
-:class:`~tools.panel.core.analytics.generation.GenerationAnalytics` and its
+:class:`~tools.panel.core.analytics.snapshot.SnapshotAnalytics` and its
 `document_status`, so keeping them would have left two definitions of one
 number.
 """

@@ -1,5 +1,5 @@
-/** G1 display helpers over the Generation DTO (mirrors the `generation` table). */
-import type { Generation } from "../api/types.local";
+/** G1 display helpers over the Snapshot DTO (mirrors the `snapshot` table). */
+import type { Snapshot } from "../api/types.local";
 
 /** DB stores the full commit_hash (64); UI shows the git-style short form. */
 export const shortCommit = (hash: string): string => hash.slice(0, 7);
@@ -7,11 +7,11 @@ export const shortCommit = (hash: string): string => hash.slice(0, 7);
 const FMT_CACHE: Record<string, Intl.DateTimeFormat> = {};
 
 /**
- * `created_at` of a generation IS the scan timestamp (no separate scanned_at
+ * `created_at` of a snapshot IS the scan timestamp (no separate scanned_at
  * column). Rendered in the viewer's locale and timezone (en-GB: 23/07/2026,
  * 09:15 · de-DE: 23.07.2026, 09:15) — pass `locale` from useI18n().
  */
-export const fmtGenAt = (iso: string | null | undefined, locale = "en-GB"): string => {
+export const fmtSnapshotAt = (iso: string | null | undefined, locale = "en-GB"): string => {
   if (!iso) return "—";
   const fmt = (FMT_CACHE[locale] ??= new Intl.DateTimeFormat(locale, {
     year: "numeric",
@@ -31,8 +31,8 @@ export const fmtGenAt = (iso: string | null | undefined, locale = "en-GB"): stri
 export const structPct = (completeness: number | null): number | null =>
   completeness == null ? null : Math.floor(completeness * 100);
 
-/** Breakdown for OverallBar from the generation's persisted status counts. */
-export const genBreakdown = (g: Generation) => ({
+/** Breakdown for OverallBar from the snapshot's persisted status counts. */
+export const snapshotBreakdown = (g: Snapshot) => ({
   ok: g.ok_count,
   partial: g.partial_count,
   failed: g.failed_count,
