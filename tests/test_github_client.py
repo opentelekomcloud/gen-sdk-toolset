@@ -123,25 +123,38 @@ def test_list_repos_paginates_and_omits_archived_repositories() -> None:
     assert {request[1]["params"]["type"] for request in session.requests} == {"public"}
 
 
-@pytest.mark.parametrize(
-    "second_page",
-    [[], {"message": "Not Found"}],
-    ids=["empty-page", "non-list-page"],
-)
-def test_list_repos_stops_on_an_empty_or_non_list_page(second_page) -> None:
-    """A full first page means "ask for another"; a page that is empty - or not
-    a listing at all - ends the loop rather than looping on it forever."""
-    first_page = [
-        {"full_name": f"o/repo-{index}", "archived": False} for index in range(100)
-    ]
+def _full_repo_page() -> list[dict]:
+    """One page at the per_page limit, so the loop asks for another."""
+    return [{"full_name": f"o/repo-{index}", "archived": False} for index in range(100)]
+
+
+def test_list_repos_stops_on_an_empty_page() -> None:
     session = _Session(
-        [_Resp(200, json_data=first_page), _Resp(200, json_data=second_page)]
+        [_Resp(200, json_data=_full_repo_page()), _Resp(200, json_data=[])]
     )
 
     repos = _provider(session).list_repos("o")
 
     assert len(repos) == 100
     assert session.calls == 2
+
+
+def test_list_repos_rejects_a_non_list_page() -> None:
+    """A JSON object where the API documents an array is a provider fault, not
+    the end of the inventory. Reading it as "no more pages" would return a
+    truncated org listing under a clean status - every repository after the
+    fault silently absent, with nothing downstream able to tell."""
+    session = _Session(
+        [
+            _Resp(200, json_data=_full_repo_page()),
+            _Resp(200, json_data={"message": "Not Found"}),
+        ]
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).list_repos("o")
+
+    assert exc_info.value.kind is ProviderErrorKind.unexpected_response
 
 
 def test_path_exists_forwards_branch_as_ref() -> None:
@@ -281,21 +294,35 @@ def test_get_commit_hash_returns_the_head_sha_of_the_branch() -> None:
 
 @pytest.mark.parametrize(
     "response",
-    [
-        _Resp(200, json_data=[]),
-        _Resp(200, json_data={"message": "Git Repository is empty."}),
-        _Resp(404),
-        _Resp(409),
-    ],
-    ids=["empty-listing", "non-list-body", "missing-repo", "empty-repo"],
+    [_Resp(200, json_data=[]), _Resp(404), _Resp(409)],
+    ids=["empty-listing", "missing-repo", "empty-repo"],
 )
-def test_get_commit_hash_returns_none_when_the_ref_cannot_be_resolved(
+def test_get_commit_hash_returns_none_when_the_ref_is_confirmed_absent(
     response: _Resp,
 ) -> None:
     """`None` is the provider's way of saying the ref is confirmed absent -
     the alternative would be inventing a SHA, or reading at the mutable branch
-    name and calling the result a pinned snapshot."""
+    name and calling the result a pinned snapshot. Only an empty listing or a
+    status that says so earns it."""
     assert _provider(_Session([response])).get_commit_hash("o/r", "main") is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"message": "Git Repository is empty."}, [{"commit": {}}]],
+    ids=["non-list-body", "entry-without-sha"],
+)
+def test_get_commit_hash_rejects_a_response_it_cannot_read(payload) -> None:
+    """Neither of these is a ref confirmed absent, so neither may become None:
+    the caller turns None into "commit SHA could not be resolved"
+    (`service.py::_unresolved_commit_result`), which would report a provider
+    fault as a repository that simply has no such branch."""
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(_Session([_Resp(200, json_data=payload)])).get_commit_hash(
+            "o/r", "main"
+        )
+
+    assert exc_info.value.kind is ProviderErrorKind.unexpected_response
 
 
 @pytest.mark.parametrize(

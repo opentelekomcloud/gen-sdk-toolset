@@ -56,16 +56,22 @@ class GitHubDocProvider(DocProvider):
     def list_repos(self, org: str) -> list[str]:
         """List all non-archived repositories for an organization (paginated)."""
         repos: list[str] = []
+        resource = f"orgs/{org}/repos"
         page = 1
         while True:
             resp = self._get(
                 f"{self.api_url}/orgs/{org}/repos",
                 repo=org,
-                resource=f"orgs/{org}/repos",
+                resource=resource,
                 params={"per_page": 100, "page": page, "type": "public"},
             )
-            batch = resp.json()
-            if not isinstance(batch, list) or not batch:
+            batch = self._require_list(
+                resp.json(),
+                repo=org,
+                resource=resource,
+                description="a repository listing",
+            )
+            if not batch:
                 break
 
             repos.extend(
@@ -204,15 +210,12 @@ class GitHubDocProvider(DocProvider):
         """Return the immediate child entries of one directory."""
         url = f"{self.api_url}/repos/{repo}/contents/{path}"
         resp = self._get(url, repo=repo, resource=path, params={"ref": branch})
-        data = resp.json()
-        if not isinstance(data, list):
-            raise ProviderError(
-                f"Expected a directory listing at {path} in {repo}, "
-                f"got {type(data).__name__}",
-                kind=ProviderErrorKind.unexpected_response,
-                resource=path,
-            )
-        return data
+        return self._require_list(
+            resp.json(),
+            repo=repo,
+            resource=path,
+            description="a directory listing",
+        )
 
     def fetch_content(self, repo: str, path: str, branch: str) -> str:
         """Return the text content of `path`.
@@ -269,23 +272,40 @@ class GitHubDocProvider(DocProvider):
 
         Uses the commits listing capped at one entry so the response stays
         small (the single-commit endpoint would carry the full diff).
+
+        None means the ref is *confirmed* absent - an empty listing, or a
+        status saying so. A response this client cannot read raises instead,
+        because the caller reports None as a missing ref
+        (`service.py::_unresolved_commit_result`) and a provider fault would
+        then be recorded as a repository that has no such branch.
         """
         url = f"{self.api_url}/repos/{repo}/commits"
+        resource = f"commits@{branch}"
         try:
             resp = self._get(
                 url,
                 repo=repo,
-                resource=f"commits@{branch}",
+                resource=resource,
                 params={"sha": branch, "per_page": 1},
             )
         except ProviderError as error:
             if error.kind is not ProviderErrorKind.not_found:
                 raise
             return None
-        commits = resp.json()
-        if isinstance(commits, list) and commits:
-            return commits[0].get("sha")
-        return None
+
+        commits = self._require_list(
+            resp.json(), repo=repo, resource=resource, description="a commit listing"
+        )
+        if not commits:
+            return None
+        sha = commits[0].get("sha")
+        if not sha:
+            raise ProviderError(
+                f"Commit listing for {branch} in {repo} carried no SHA",
+                kind=ProviderErrorKind.unexpected_response,
+                resource=resource,
+            )
+        return sha
 
     # ------------------------------------------------------------------ #
     # Helpers
@@ -311,6 +331,27 @@ class GitHubDocProvider(DocProvider):
 
         self._raise_for_status(resp, repo=repo, resource=resource)
         return resp
+
+    @staticmethod
+    def _require_list(
+        data: object, *, repo: str, resource: str, description: str
+    ) -> list:
+        """Return `data` as a listing, or fail.
+
+        Every endpoint this client reads a listing from documents an array. A
+        JSON object arriving instead is a response this client was not written
+        against, and the two plausible readings of it - "no more pages" and
+        "nothing is there" - both turn a provider fault into missing data that
+        no consumer can tell from a genuine empty result.
+        """
+        if not isinstance(data, list):
+            raise ProviderError(
+                f"Expected {description} at {resource} in {repo}, "
+                f"got {type(data).__name__}",
+                kind=ProviderErrorKind.unexpected_response,
+                resource=resource,
+            )
+        return data
 
     @staticmethod
     def _raise_for_status(resp: requests.Response, *, repo: str, resource: str) -> None:
