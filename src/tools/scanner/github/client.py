@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 _TIMEOUT = 30
 # Max length of an error-response body we quote back in an exception message.
 _ERROR_BODY_MAX = 200
+# Lower-cased body marker for GitHub's secondary (abuse) rate limit, which
+# does not always carry a Retry-After header to identify it by.
+_SECONDARY_LIMIT_MARKER = "secondary rate limit"
 # Cap on directory-listing calls the truncated-tree fallback walk (see
 # list_files) will make before giving up rather than risk exhausting the
 # rate-limit budget for the rest of an org-wide scan on one pathological repo.
@@ -53,16 +56,22 @@ class GitHubDocProvider(DocProvider):
     def list_repos(self, org: str) -> list[str]:
         """List all non-archived repositories for an organization (paginated)."""
         repos: list[str] = []
+        resource = f"orgs/{org}/repos"
         page = 1
         while True:
             resp = self._get(
                 f"{self.api_url}/orgs/{org}/repos",
                 repo=org,
-                resource=f"orgs/{org}/repos",
+                resource=resource,
                 params={"per_page": 100, "page": page, "type": "public"},
             )
-            batch = resp.json()
-            if not isinstance(batch, list) or not batch:
+            batch = self._require_list(
+                resp.json(),
+                repo=org,
+                resource=resource,
+                description="a repository listing",
+            )
+            if not batch:
                 break
 
             repos.extend(
@@ -201,15 +210,12 @@ class GitHubDocProvider(DocProvider):
         """Return the immediate child entries of one directory."""
         url = f"{self.api_url}/repos/{repo}/contents/{path}"
         resp = self._get(url, repo=repo, resource=path, params={"ref": branch})
-        data = resp.json()
-        if not isinstance(data, list):
-            raise ProviderError(
-                f"Expected a directory listing at {path} in {repo}, "
-                f"got {type(data).__name__}",
-                kind=ProviderErrorKind.unexpected_response,
-                resource=path,
-            )
-        return data
+        return self._require_list(
+            resp.json(),
+            repo=repo,
+            resource=path,
+            description="a directory listing",
+        )
 
     def fetch_content(self, repo: str, path: str, branch: str) -> str:
         """Return the text content of `path`.
@@ -266,23 +272,40 @@ class GitHubDocProvider(DocProvider):
 
         Uses the commits listing capped at one entry so the response stays
         small (the single-commit endpoint would carry the full diff).
+
+        None means the ref is *confirmed* absent - an empty listing, or a
+        status saying so. A response this client cannot read raises instead,
+        because the caller reports None as a missing ref
+        (`service.py::_unresolved_commit_result`) and a provider fault would
+        then be recorded as a repository that has no such branch.
         """
         url = f"{self.api_url}/repos/{repo}/commits"
+        resource = f"commits@{branch}"
         try:
             resp = self._get(
                 url,
                 repo=repo,
-                resource=f"commits@{branch}",
+                resource=resource,
                 params={"sha": branch, "per_page": 1},
             )
         except ProviderError as error:
             if error.kind is not ProviderErrorKind.not_found:
                 raise
             return None
-        commits = resp.json()
-        if isinstance(commits, list) and commits:
-            return commits[0].get("sha")
-        return None
+
+        commits = self._require_list(
+            resp.json(), repo=repo, resource=resource, description="a commit listing"
+        )
+        if not commits:
+            return None
+        sha = commits[0].get("sha")
+        if not sha:
+            raise ProviderError(
+                f"Commit listing for {branch} in {repo} carried no SHA",
+                kind=ProviderErrorKind.unexpected_response,
+                resource=resource,
+            )
+        return sha
 
     # ------------------------------------------------------------------ #
     # Helpers
@@ -310,6 +333,27 @@ class GitHubDocProvider(DocProvider):
         return resp
 
     @staticmethod
+    def _require_list(
+        data: object, *, repo: str, resource: str, description: str
+    ) -> list:
+        """Return `data` as a listing, or fail.
+
+        Every endpoint this client reads a listing from documents an array. A
+        JSON object arriving instead is a response this client was not written
+        against, and the two plausible readings of it - "no more pages" and
+        "nothing is there" - both turn a provider fault into missing data that
+        no consumer can tell from a genuine empty result.
+        """
+        if not isinstance(data, list):
+            raise ProviderError(
+                f"Expected {description} at {resource} in {repo}, "
+                f"got {type(data).__name__}",
+                kind=ProviderErrorKind.unexpected_response,
+                resource=resource,
+            )
+        return data
+
+    @staticmethod
     def _raise_for_status(resp: requests.Response, *, repo: str, resource: str) -> None:
         """Translate HTTP errors to typed domain exceptions."""
         if resp.status_code < 400:
@@ -330,11 +374,16 @@ class GitHubDocProvider(DocProvider):
             )
         if resp.status_code in (403, 429):
             remaining = resp.headers.get("X-RateLimit-Remaining")
+            # The body marker must stay narrow: GitHub's permission denials
+            # mention rate limits in passing, and matching those would send the
+            # caller off to wait for a reset that is never coming. Primary
+            # limits remain covered by X-RateLimit-Remaining, which GitHub
+            # always sends on a primary 403.
             rate_limited = (
                 resp.status_code == 429
                 or remaining == "0"
                 or "Retry-After" in resp.headers
-                or "rate limit" in resp.text.lower()
+                or _SECONDARY_LIMIT_MARKER in resp.text.lower()
             )
             if rate_limited:
                 reset = int(resp.headers.get("X-RateLimit-Reset", 0))
@@ -352,7 +401,7 @@ class GitHubDocProvider(DocProvider):
                 resource=resource,
             )
         raise ProviderError(
-            f"Unexpected HTTP {resp.status_code} for {resource}: "
+            f"Unexpected HTTP {resp.status_code} for {resource} in {repo}: "
             f"{resp.text[:_ERROR_BODY_MAX]}",
             kind=ProviderErrorKind.unexpected_response,
             status_code=resp.status_code,

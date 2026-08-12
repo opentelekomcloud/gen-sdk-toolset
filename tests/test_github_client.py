@@ -119,6 +119,42 @@ def test_list_repos_paginates_and_omits_archived_repositories() -> None:
     assert "o/active" in repos
     assert "o/archived" not in repos
     assert [request[1]["params"]["page"] for request in session.requests] == [1, 2]
+    # Only public repositories are in scope for a docs scan.
+    assert {request[1]["params"]["type"] for request in session.requests} == {"public"}
+
+
+def _full_repo_page() -> list[dict]:
+    """One page at the per_page limit, so the loop asks for another."""
+    return [{"full_name": f"o/repo-{index}", "archived": False} for index in range(100)]
+
+
+def test_list_repos_stops_on_an_empty_page() -> None:
+    session = _Session(
+        [_Resp(200, json_data=_full_repo_page()), _Resp(200, json_data=[])]
+    )
+
+    repos = _provider(session).list_repos("o")
+
+    assert len(repos) == 100
+    assert session.calls == 2
+
+
+def test_list_repos_rejects_a_non_list_page() -> None:
+    """A JSON object where the API documents an array is a provider fault, not
+    the end of the inventory. Reading it as "no more pages" would return a
+    truncated org listing under a clean status - every repository after the
+    fault silently absent, with nothing downstream able to tell."""
+    session = _Session(
+        [
+            _Resp(200, json_data=_full_repo_page()),
+            _Resp(200, json_data={"message": "Not Found"}),
+        ]
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).list_repos("o")
+
+    assert exc_info.value.kind is ProviderErrorKind.unexpected_response
 
 
 def test_path_exists_forwards_branch_as_ref() -> None:
@@ -162,6 +198,9 @@ def test_path_exists_wraps_transport_errors_instead_of_returning_false() -> None
 
     assert exc_info.value.kind is ProviderErrorKind.connection_error
     assert isinstance(exc_info.value.cause, requests.ConnectionError)
+    # The original transport failure also stays on the exception chain, so a
+    # traceback shows what actually broke and not just the domain wrapper.
+    assert exc_info.value.__cause__ is exc_info.value.cause
 
 
 @pytest.mark.parametrize(
@@ -178,6 +217,135 @@ def test_secondary_rate_limits_remain_distinguishable_from_permission_denied(
     with pytest.raises(ProviderError) as exc_info:
         _provider(_Session([response])).path_exists("o/r", "main", "p")
     assert exc_info.value.kind is ProviderErrorKind.rate_limit
+
+
+def test_ordinary_403_mentioning_rate_limits_is_permission_denied() -> None:
+    """A 403 body that mentions rate limits only in passing is a permission
+    failure, and the kind is not cosmetic: `eligibility.py` turns it into a
+    stored `RepositoryInterruptionKind`, so a broad body match files an access
+    problem as a throttle - one that reads as "retry later" forever, since no
+    amount of waiting grants the token access it was never given."""
+    response = _Resp(
+        403,
+        text=(
+            "Although you appear to have the correct authorization credentials,"
+            " the organization has enabled OAuth App access restrictions."
+            " See the rate limit documentation for details."
+        ),
+    )
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(_Session([response])).path_exists("o/r", "main", "p")
+
+    assert exc_info.value.kind is ProviderErrorKind.permission_denied
+
+
+def test_unexpected_http_error_names_repository_and_resource() -> None:
+    """An unexpected status is only actionable if the message says which
+    repository and which resource produced it: during an org-wide scan a bare
+    status and a wall of HTML identifies neither. The body stays capped so one
+    server error page cannot bury the log it lands in."""
+    session = _Session([_Resp(500, text="x" * 500)])
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(session).path_exists("o/r", "main", "api-ref/source")
+
+    message = str(exc_info.value)
+    assert "o/r" in message
+    assert "api-ref/source" in message
+    assert message.endswith("x" * 200)
+    assert "x" * 201 not in message
+
+
+def test_every_request_uses_the_configured_timeout() -> None:
+    """No GitHub call may hang indefinitely: a scan that never returns is
+    indistinguishable from one that produced nothing."""
+    session = _Session(
+        [
+            _Resp(200, json_data={"truncated": False, "tree": []}),
+            _Resp(200, json_data=[{"sha": "abc"}]),
+            _Resp(200, json_data={"type": "file", "encoding": "none"}),
+            _Resp(200, content=b""),
+        ]
+    )
+    provider = _provider(session)
+
+    provider.list_files("o/r", "main")
+    provider.get_commit_hash("o/r", "main")
+    provider.fetch_content("o/r", "p/x.rst", "main")
+
+    assert session.calls == 4
+    assert [request[1]["timeout"] for request in session.requests] == [30] * 4
+
+
+# --------------------------------------------------------------------------- #
+# get_commit_hash
+# --------------------------------------------------------------------------- #
+def test_get_commit_hash_returns_the_head_sha_of_the_branch() -> None:
+    session = _Session([_Resp(200, json_data=[{"sha": "deadbeef"}, {"sha": "older"}])])
+
+    assert _provider(session).get_commit_hash("o/r", "stable") == "deadbeef"
+    url, kwargs = session.requests[0]
+    assert url == "https://api/repos/o/r/commits"
+    # The branch is the `sha` filter, and one entry is all that is needed -
+    # asking for more would carry a page of commits nobody reads.
+    assert kwargs["params"] == {"sha": "stable", "per_page": 1}
+
+
+@pytest.mark.parametrize(
+    "response",
+    [_Resp(200, json_data=[]), _Resp(404), _Resp(409)],
+    ids=["empty-listing", "missing-repo", "empty-repo"],
+)
+def test_get_commit_hash_returns_none_when_the_ref_is_confirmed_absent(
+    response: _Resp,
+) -> None:
+    """`None` is the provider's way of saying the ref is confirmed absent -
+    the alternative would be inventing a SHA, or reading at the mutable branch
+    name and calling the result a pinned snapshot. Only an empty listing or a
+    status that says so earns it."""
+    assert _provider(_Session([response])).get_commit_hash("o/r", "main") is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"message": "Git Repository is empty."}, [{"commit": {}}]],
+    ids=["non-list-body", "entry-without-sha"],
+)
+def test_get_commit_hash_rejects_a_response_it_cannot_read(payload) -> None:
+    """Neither of these is a ref confirmed absent, so neither may become None:
+    the caller turns None into "commit SHA could not be resolved"
+    (`service.py::_unresolved_commit_result`), which would report a provider
+    fault as a repository that simply has no such branch."""
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(_Session([_Resp(200, json_data=payload)])).get_commit_hash(
+            "o/r", "main"
+        )
+
+    assert exc_info.value.kind is ProviderErrorKind.unexpected_response
+
+
+@pytest.mark.parametrize(
+    ("response", "expected_kind"),
+    [
+        (_Resp(401), ProviderErrorKind.authentication),
+        (_rate_limited(1_800_000_000), ProviderErrorKind.rate_limit),
+        (_Resp(403), ProviderErrorKind.permission_denied),
+        (_Resp(500, text="server failed"), ProviderErrorKind.unexpected_response),
+        (requests.ConnectionError("offline"), ProviderErrorKind.connection_error),
+    ],
+)
+def test_get_commit_hash_preserves_operational_errors(
+    response: _Resp | Exception,
+    expected_kind: ProviderErrorKind,
+) -> None:
+    """Only `not_found` means "no such ref". Every other failure is one where
+    we never got to look, and flattening it into None would report a branch as
+    confirmed absent - `service.py::_unresolved_commit_result` would then log a
+    missing ref where the real reason was an expired token or a rate limit."""
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(_Session([response])).get_commit_hash("o/r", "main")
+    assert exc_info.value.kind is expected_kind
 
 
 # --------------------------------------------------------------------------- #
@@ -291,6 +459,9 @@ def test_list_files_returns_paths_directly_when_tree_is_not_truncated() -> None:
     assert listing.truncated is False
     assert listing.truncated_reason is None
     assert session.calls == 1
+    # A non-recursive tree would list only the repository root, so every path
+    # under the prefix would silently vanish from the listing.
+    assert session.requests[0][1]["params"]["recursive"] == "1"
 
 
 def test_list_files_walks_prefix_when_tree_is_truncated() -> None:
