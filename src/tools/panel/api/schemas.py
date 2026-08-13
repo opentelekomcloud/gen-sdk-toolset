@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from tools.panel.core.analytics import document_from_payload, issues_by_code
 from tools.panel.core.db.models import (
@@ -52,6 +52,27 @@ class ScanRequest(BaseModel):
     """Body for launching a scan: who initiated it."""
 
     initiated_by: str = Field(min_length=1)
+
+
+class ExcludeRequest(BaseModel):
+    """Body for excluding a service: why, and who decided.
+
+    The reason is the entire audit record. Restoring a service deletes its
+    exclusion row rather than archiving it, so this text is the only thing
+    that ever explains why the service was hidden - a blank one is refused
+    rather than stored as whitespace that reads as filled in.
+    """
+
+    reason: str = Field(min_length=1)
+    initiated_by: str = Field(min_length=1)
+
+    @field_validator("reason", "initiated_by")
+    @classmethod
+    def _reject_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
 
 
 class StartScanResponse(BaseModel):

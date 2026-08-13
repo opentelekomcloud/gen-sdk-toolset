@@ -193,6 +193,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/scan/services/{repo}/exclude": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exclude Service
+         * @description Hide a Service from the registry without deleting anything it owns.
+         *
+         *     Exclusion is non-destructive: no Job, Snapshot or document row is touched,
+         *     so restoring the Service brings back the same history it had. Only the
+         *     listing endpoints filter it out - the detail endpoints keep answering, so
+         *     the UI can still read an excluded Service in order to restore it.
+         *
+         *     A Job already queued or running when this lands is deliberately left alone
+         *     and will ingest its result normally. Killing it would mean either
+         *     discarding a scan that already cost its rate-limit budget, or writing a
+         *     half-ingested Snapshot; the exclusion takes effect from the next launch
+         *     instead, which ``start_scan`` refuses.
+         *
+         *     The Service row is locked for the whole check-then-insert, which is what
+         *     makes that refusal reliable - see ``start_scan``.
+         */
+        post: operations["exclude_service_api_scan_services__repo__exclude_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scan/services/{repo}/export": {
         parameters: {
             query?: never;
@@ -218,6 +252,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/scan/services/{repo}/include": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Include Service
+         * @description Restore an excluded Service to the registry.
+         *
+         *     The exclusion row is deleted rather than archived, so no audit trail
+         *     survives a restore - the reason text lives only while the exclusion does.
+         *     Restoring a Service that is not excluded is a ``409`` rather than a silent
+         *     no-op: it tells the caller their request changed nothing.
+         */
+        post: operations["include_service_api_scan_services__repo__include_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scan/services/{repo}/rescan": {
         parameters: {
             query?: never;
@@ -233,6 +292,11 @@ export interface paths {
          *
          *     The Job is created ``queued`` and committed before scheduling; the Job ID is
          *     returned immediately without waiting for the scan.
+         *
+         *     An excluded Service is a ``409``. The Service row is locked for the whole
+         *     check so this cannot interleave with ``exclude_service``: without the lock
+         *     both could read "not excluded yet" and commit, leaving a scan running
+         *     against a service the operator had just hidden.
          */
         post: operations["start_scan_api_scan_services__repo__rescan_post"];
         delete?: never;
@@ -402,6 +466,21 @@ export interface components {
             language: string | null;
             /** Raw */
             raw: string;
+        };
+        /**
+         * ExcludeRequest
+         * @description Body for excluding a service: why, and who decided.
+         *
+         *     The reason is the entire audit record. Restoring a service deletes its
+         *     exclusion row rather than archiving it, so this text is the only thing
+         *     that ever explains why the service was hidden - a blank one is refused
+         *     rather than stored as whitespace that reads as filled in.
+         */
+        ExcludeRequest: {
+            /** Initiated By */
+            initiated_by: string;
+            /** Reason */
+            reason: string;
         };
         /**
          * ExcludedServiceResponse
@@ -1039,6 +1118,39 @@ export interface operations {
             };
         };
     };
+    exclude_service_api_scan_services__repo__exclude_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExcludeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_snapshot_api_scan_services__repo__export_get: {
         parameters: {
             query?: never;
@@ -1058,6 +1170,35 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    include_service_api_scan_services__repo__include_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

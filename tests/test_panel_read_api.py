@@ -273,6 +273,92 @@ def test_excluded_services_are_listed(client, session_factory):
     assert row["excluded_by"] == "tester"
 
 
+def _exclude(client, repo: str = REPO, reason: str = "retired upstream"):
+    return client.post(
+        f"/api/scan/services/{repo}/exclude",
+        json={"reason": reason, "initiated_by": "operator"},
+    )
+
+
+def test_an_excluded_service_leaves_every_list_but_keeps_its_own_page(scanned):
+    """The filter lives in ``_all_services``, so one decision covers the
+    registry, the summary counters and the attention rules at once - a service
+    hidden from the table but still counted in the header would make the two
+    disagree.
+
+    The detail endpoints deliberately keep answering: the UI reads the service
+    page to offer the restore, so filtering them too would strand an excluded
+    service with no way back through the interface.
+    """
+    assert _exclude(scanned).status_code == 204
+
+    registry = scanned.get("/api/scan/services").json()
+    assert registry["items"] == []
+    assert registry["counts"]["all"] == 0
+
+    summary = scanned.get("/api/scan/summary").json()
+    assert summary["services_total"] == 0
+    assert summary["documents_total"] == 0
+    assert summary["last_scanned_at"] is None
+
+    assert scanned.get("/api/scan/attention").json() == []
+
+    detail = scanned.get(f"/api/scan/services/{REPO}")
+    assert detail.status_code == 200
+    assert detail.json()["name"] == REPO
+    assert detail.json()["active_snapshot"]["commit_hash"] == COMMIT
+    assert scanned.get(f"/api/scan/services/{REPO}/documents").json()["total"] == 2
+    assert scanned.get(f"/api/scan/services/{REPO}/snapshots").status_code == 200
+    assert scanned.get(f"/api/scan/services/{REPO}/export").status_code == 200
+
+
+def test_restoring_a_service_returns_it_to_the_lists_with_its_data(scanned):
+    """Exclusion is non-destructive, so a restored service comes back with the
+    snapshot it already had rather than as a never-scanned one."""
+    assert _exclude(scanned).status_code == 204
+    assert scanned.post(f"/api/scan/services/{REPO}/include").status_code == 204
+
+    (item,) = scanned.get("/api/scan/services").json()["items"]
+    assert item["name"] == REPO
+    assert item["documents"] == 2
+    assert item["scan_status"] == "partial"
+    assert item["scanner_version"] == SCANNER_VERSION
+
+    summary = scanned.get("/api/scan/summary").json()
+    assert summary["services_total"] == 1
+    assert summary["documents_total"] == 2
+
+
+def test_excluding_one_service_leaves_the_others_counted(client, session_factory):
+    """Guards the filter against the opposite failure: hiding more than asked.
+    The remaining service keeps its own row, its chip count and its rule."""
+    _register(session_factory)
+    _register(session_factory, "opentelekomcloud-docs/vpc")
+
+    assert _exclude(client).status_code == 204
+
+    registry = client.get("/api/scan/services").json()
+    assert [item["name"] for item in registry["items"]] == ["opentelekomcloud-docs/vpc"]
+    assert registry["counts"]["all"] == 1
+    assert client.get("/api/scan/summary").json()["services_total"] == 1
+    rules = {
+        rule["code"]: rule["count"] for rule in client.get("/api/scan/attention").json()
+    }
+    assert rules == {"new": 1}  # only vpc is still counted as never scanned
+
+
+def test_an_excluded_service_stays_on_the_excluded_list(scanned):
+    """The one list that must still show it - otherwise an excluded service
+    would be invisible everywhere and impossible to find again."""
+    assert _exclude(scanned, reason="retired upstream").status_code == 204
+
+    (row,) = scanned.get("/api/scan/excluded").json()
+
+    assert row["name"] == REPO
+    assert row["reason"] == "retired upstream"
+    assert row["excluded_by"] == "operator"
+
+
 # ---------------------------------------------------------------------------
 # Service detail, documents, snapshots
 # ---------------------------------------------------------------------------

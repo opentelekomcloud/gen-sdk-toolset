@@ -283,6 +283,27 @@
         "title": "ExampleResponse",
         "type": "object"
       },
+      "ExcludeRequest": {
+        "description": "Body for excluding a service: why, and who decided.\n\nThe reason is the entire audit record. Restoring a service deletes its\nexclusion row rather than archiving it, so this text is the only thing\nthat ever explains why the service was hidden - a blank one is refused\nrather than stored as whitespace that reads as filled in.",
+        "properties": {
+          "initiated_by": {
+            "minLength": 1,
+            "title": "Initiated By",
+            "type": "string"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "initiated_by"
+        ],
+        "title": "ExcludeRequest",
+        "type": "object"
+      },
       "ExcludedServiceResponse": {
         "description": "One deliberately excluded service.",
         "properties": {
@@ -1829,6 +1850,49 @@
         "summary": "Get Document"
       }
     },
+    "/api/scan/services/{repo}/exclude": {
+      "post": {
+        "description": "Hide a Service from the registry without deleting anything it owns.\n\nExclusion is non-destructive: no Job, Snapshot or document row is touched,\nso restoring the Service brings back the same history it had. Only the\nlisting endpoints filter it out - the detail endpoints keep answering, so\nthe UI can still read an excluded Service in order to restore it.\n\nA Job already queued or running when this lands is deliberately left alone\nand will ingest its result normally. Killing it would mean either\ndiscarding a scan that already cost its rate-limit budget, or writing a\nhalf-ingested Snapshot; the exclusion takes effect from the next launch\ninstead, which ``start_scan`` refuses.\n\nThe Service row is locked for the whole check-then-insert, which is what\nmakes that refusal reliable - see ``start_scan``.",
+        "operationId": "exclude_service_api_scan_services__repo__exclude_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExcludeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Exclude Service"
+      }
+    },
     "/api/scan/services/{repo}/export": {
       "get": {
         "description": "The active snapshot as a ``RepositoryScanResult`` - the scanner's own\ncontract, not a shape invented for this endpoint.\n\nRebuilt from the stored payloads and validated on the way out: if anything\nin the database no longer satisfies the contract, this fails loudly instead\nof handing out a file that only looks right.",
@@ -1867,9 +1931,42 @@
         "summary": "Export Snapshot"
       }
     },
+    "/api/scan/services/{repo}/include": {
+      "post": {
+        "description": "Restore an excluded Service to the registry.\n\nThe exclusion row is deleted rather than archived, so no audit trail\nsurvives a restore - the reason text lives only while the exclusion does.\nRestoring a Service that is not excluded is a ``409`` rather than a silent\nno-op: it tells the caller their request changed nothing.",
+        "operationId": "include_service_api_scan_services__repo__include_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Include Service"
+      }
+    },
     "/api/scan/services/{repo}/rescan": {
       "post": {
-        "description": "Queue a scan Job for an existing Service and schedule it in the background.\n\nThe Job is created ``queued`` and committed before scheduling; the Job ID is\nreturned immediately without waiting for the scan.",
+        "description": "Queue a scan Job for an existing Service and schedule it in the background.\n\nThe Job is created ``queued`` and committed before scheduling; the Job ID is\nreturned immediately without waiting for the scan.\n\nAn excluded Service is a ``409``. The Service row is locked for the whole\ncheck so this cannot interleave with ``exclude_service``: without the lock\nboth could read \"not excluded yet\" and commit, leaving a scan running\nagainst a service the operator had just hidden.",
         "operationId": "start_scan_api_scan_services__repo__rescan_post",
         "parameters": [
           {
