@@ -62,11 +62,14 @@ class Service(Base):
         nullable=False,
     )
 
-    has_api_ref: Mapped[bool] = mapped_column(
+    # Tri-state on purpose: NULL means "never checked", False means "checked
+    # and has no API reference", True means eligible. A default would collapse
+    # the first two into one value, and an unchecked repository would then be
+    # indistinguishable from one discovery had ruled out - the read filters and
+    # the scan guards below both turn on exactly that difference.
+    has_api_ref: Mapped[bool | None] = mapped_column(
         sa.Boolean,
-        nullable=False,
-        default=False,
-        server_default=sa.false(),
+        nullable=True,
     )
     # Present when the service is excluded from scanning; None otherwise.
     # Rich exclusion data (who/when/why) lives in ExcludedService for the UI.

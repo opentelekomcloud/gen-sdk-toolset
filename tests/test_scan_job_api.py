@@ -1020,6 +1020,56 @@ def test_rescan_is_allowed_again_once_the_service_is_included(
     assert resp.status_code == 202
 
 
+def _set_eligibility(session_factory, repo: str, has_api_ref: bool | None) -> None:
+    with session_factory() as s:
+        service = s.scalar(select(Service).where(Service.repo == repo))
+        service.has_api_ref = has_api_ref
+        s.commit()
+
+
+@pytest.mark.parametrize("action", ["rescan", "exclude"])
+def test_an_ineligible_service_can_be_neither_scanned_nor_excluded(
+    client, session_factory, action
+):
+    """There is nothing to scan, so a scan would fail on the first lookup; and
+    excluding one is meaningless, because it is already out of every list the
+    exclusion would remove it from."""
+    _seed_service(session_factory, "no-docs-api")
+    _set_eligibility(session_factory, "no-docs-api", False)
+
+    resp = client.post(
+        f"/api/scan/services/no-docs-api/{action}",
+        json={"initiated_by": "tester", "reason": "retired"},
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "conflict"
+    assert "no-docs-api" in resp.json()["error"]["message"]
+    with session_factory() as s:
+        assert s.scalars(select(RepositoryScanJob)).all() == []
+        assert s.scalars(select(ExcludedService)).all() == []
+
+
+@pytest.mark.parametrize("action", ["rescan", "exclude"])
+def test_a_service_never_checked_for_eligibility_stays_usable(
+    client, session_factory, monkeypatch, action
+):
+    """NULL means discovery has never looked at this repository - every
+    hand-registered service starts there. Treating it as ineligible would lock
+    the panel's own `register-service` command out of its own endpoints."""
+    _seed_service(session_factory, "unchecked-api")
+    with session_factory() as s:
+        assert s.scalars(select(Service)).one().has_api_ref is None
+    monkeypatch.setattr(jobs_module, "run_scan_job", lambda _job_id: None)
+
+    resp = client.post(
+        f"/api/scan/services/unchecked-api/{action}",
+        json={"initiated_by": "tester", "reason": "retired"},
+    )
+
+    assert resp.status_code == (202 if action == "rescan" else 204)
+
+
 def test_exclusion_and_scan_launch_serialize_on_the_service_row(session_factory):
     """The exclusion guard in ``start_scan`` is only worth the lock under it.
 

@@ -258,6 +258,16 @@ export interface ExcludedService {
   excluded_at: string;
 }
 
+/** A repository discovery checked and found to have no API reference. Not an
+ *  exclusion: nobody decided this, and it reverses itself once the path
+ *  appears — `checked_at` is what says how stale the finding is. */
+export interface Ineligible {
+  repo: string;
+  name: string;
+  branch: string;
+  checked_at: string | null;
+}
+
 export interface ScanRequest {
   initiated_by: string;
 }

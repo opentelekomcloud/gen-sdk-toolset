@@ -418,6 +418,75 @@ def test_generation_to_snapshot_rename_preserves_data_and_leaves_no_old_names(
     engine.dispose()
 
 
+def test_has_api_ref_backfill_separates_unchecked_from_ineligible(scratch_database):
+    """Before this revision, false meant both "checked, no API reference" and
+    "never checked" - the column had a NOT NULL default nobody set explicitly.
+    The backfill has to recover the difference, and the only evidence of it is
+    ``eligibility_checked_at``: a row with no timestamp was never checked, so
+    its false was a placeholder rather than a finding.
+
+    The dropped DEFAULT is asserted too. Autogenerate kept it, and left in
+    place it would put every future row straight into "checked and ineligible"
+    - a claim discovery never made, and one that would hide the row from the
+    registry.
+    """
+    url = scratch_database("panel_test_has_api_ref")
+    config = _alembic_config(url)
+    engine = create_engine(url)
+    revision = "3c0847043ef9"
+
+    command.upgrade(config, f"{revision}-1")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("""
+            INSERT INTO service (repo, name, branch, has_api_ref,
+                    eligibility_checked_at)
+                VALUES ('org/checked-eligible', 'a', 'main', true, now()),
+                    ('org/checked-ineligible', 'b', 'main', false, now()),
+                    ('org/never-checked', 'c', 'main', false, NULL),
+                    ('org/never-checked-true', 'd', 'main', true, NULL);
+            """)
+        )
+
+    command.upgrade(config, revision)
+    with engine.begin() as connection:
+        assert dict(
+            connection.execute(
+                sa.text("SELECT repo, has_api_ref FROM service ORDER BY repo")
+            ).all()
+        ) == {
+            "org/checked-eligible": True,
+            "org/checked-ineligible": False,
+            # No timestamp means the check never ran, whatever the column said.
+            "org/never-checked": None,
+            "org/never-checked-true": None,
+        }
+        connection.execute(
+            sa.text(
+                "INSERT INTO service (repo, name, branch) "
+                "VALUES ('org/fresh', 'e', 'main')"
+            )
+        )
+        assert (
+            connection.execute(
+                sa.text("SELECT has_api_ref FROM service WHERE repo = 'org/fresh'")
+            ).scalar_one()
+            is None
+        )
+
+    # Downgrading re-collapses the two meanings, which is lossy by nature; what
+    # it may not do is fail against rows the new state allows.
+    command.downgrade(config, f"{revision}-1")
+    with engine.begin() as connection:
+        assert (
+            connection.execute(
+                sa.text("SELECT count(*) FROM service WHERE has_api_ref IS NULL")
+            ).scalar_one()
+            == 0
+        )
+    engine.dispose()
+
+
 # ---------------------------------------------------------------------------
 # Model tests
 # ---------------------------------------------------------------------------

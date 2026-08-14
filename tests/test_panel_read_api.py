@@ -273,6 +273,76 @@ def test_excluded_services_are_listed(client, session_factory):
     assert row["excluded_by"] == "tester"
 
 
+def _set_eligibility(session_factory, repo: str, has_api_ref: bool | None) -> None:
+    with session_factory() as session:
+        service = session.scalar(select(Service).where(Service.repo == repo))
+        service.has_api_ref = has_api_ref
+        service.eligibility_checked_at = datetime.now(tz=UTC)
+        session.commit()
+
+
+def test_an_ineligible_repository_is_hidden_from_the_registry_and_counters(
+    scanned, session_factory
+):
+    """``has_api_ref = False`` is discovery's finding that there is nothing to
+    scan. Such a row stays in the database - that is the point of storing it -
+    but it is not a service the registry, the summary or the attention rules
+    should count, or every ineligible repository would sit there forever as a
+    service that has never been scanned."""
+    _set_eligibility(session_factory, REPO, False)
+
+    registry = scanned.get("/api/scan/services").json()
+    assert registry["items"] == []
+    assert registry["counts"]["all"] == 0
+    assert scanned.get("/api/scan/summary").json()["services_total"] == 0
+    assert scanned.get("/api/scan/attention").json() == []
+
+
+def test_a_repository_never_checked_stays_in_the_registry(client, session_factory):
+    """NULL is not False. A service registered by hand has never been through
+    discovery, and filtering on ``IS NOT TRUE`` instead would make the whole
+    hand-registered registry vanish."""
+    _register(session_factory)
+
+    with session_factory() as session:
+        assert session.scalars(select(Service)).one().has_api_ref is None
+
+    registry = client.get("/api/scan/services").json()
+    assert [item["name"] for item in registry["items"]] == [REPO]
+    assert client.get("/api/scan/summary").json()["services_total"] == 1
+
+
+def test_ineligible_endpoint_serves_the_checked_repositories_alphabetically(
+    client, session_factory
+):
+    _register(session_factory, "opentelekomcloud-docs/website")
+    _register(session_factory, "opentelekomcloud-docs/apimon")
+    _register(session_factory)  # REPO stays eligible-unknown (NULL)
+    _set_eligibility(session_factory, "opentelekomcloud-docs/website", False)
+    _set_eligibility(session_factory, "opentelekomcloud-docs/apimon", False)
+
+    rows = client.get("/api/scan/ineligible").json()
+
+    assert [row["repo"] for row in rows] == [
+        "opentelekomcloud-docs/apimon",
+        "opentelekomcloud-docs/website",
+    ]
+    assert rows[0]["name"] == "apimon"
+    assert rows[0]["branch"] == "main"
+    assert rows[0]["checked_at"] is not None
+
+
+def test_ineligible_endpoint_omits_unchecked_and_eligible_repositories(
+    scanned, session_factory
+):
+    """Only ``IS FALSE`` belongs here. A NULL row is one discovery has not
+    reached, and listing it as ineligible would report a check that never ran."""
+    _register(session_factory, "opentelekomcloud-docs/vpc")  # NULL
+    _set_eligibility(session_factory, REPO, True)
+
+    assert scanned.get("/api/scan/ineligible").json() == []
+
+
 def _exclude(client, repo: str = REPO, reason: str = "retired upstream"):
     return client.post(
         f"/api/scan/services/{repo}/exclude",

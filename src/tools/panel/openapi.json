@@ -376,6 +376,43 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "IneligibleRepositoryResponse": {
+        "description": "One repository discovery checked and found to have no API reference.\n\nDistinct from an excluded service: nobody decided this, a lookup did, and\nit reverses itself the moment the repository gains the path. ``checked_at``\nis what makes the row readable - without the date, \"ineligible\" carries no\nhint of how stale the finding is.",
+        "properties": {
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "repo": {
+            "title": "Repo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "name",
+          "branch",
+          "checked_at"
+        ],
+        "title": "IneligibleRepositoryResponse",
+        "type": "object"
+      },
       "IssueCount": {
         "description": "One issue code and how often it occurred.",
         "properties": {
@@ -1541,6 +1578,29 @@
           }
         },
         "summary": "List Excluded"
+      }
+    },
+    "/api/scan/ineligible": {
+      "get": {
+        "description": "Repositories discovery checked and found to have no API reference.\n\nKept out of the registry but not out of the database: the result of the\ncheck is what tells an operator the repository was looked at, rather than\nmissed. ``has_api_ref IS FALSE`` specifically - a NULL is a repository\ndiscovery has not reached yet, which is not the same claim.",
+        "operationId": "list_ineligible_api_scan_ineligible_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IneligibleRepositoryResponse"
+                  },
+                  "title": "Response List Ineligible Api Scan Ineligible Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Ineligible"
       }
     },
     "/api/scan/services": {
