@@ -8,8 +8,19 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from tools.panel.api.deps import get_db
-from tools.panel.api.schemas import JobResponse, ScanRequest, StartScanResponse
-from tools.panel.core.db.models import JobKind, JobStatus, RepositoryScanJob, Service
+from tools.panel.api.schemas import (
+    ExcludeRequest,
+    JobResponse,
+    ScanRequest,
+    StartScanResponse,
+)
+from tools.panel.core.db.models import (
+    ExcludedService,
+    JobKind,
+    JobStatus,
+    RepositoryScanJob,
+    Service,
+)
 from tools.panel.core.jobs import run_scan_job, terminate_job
 
 router = APIRouter()
@@ -30,10 +41,18 @@ def start_scan(
 
     The Job is created ``queued`` and committed before scheduling; the Job ID is
     returned immediately without waiting for the scan.
+
+    An excluded Service is a ``409``. The Service row is locked for the whole
+    check so this cannot interleave with ``exclude_service``: without the lock
+    both could read "not excluded yet" and commit, leaving a scan running
+    against a service the operator had just hidden.
     """
-    service = db.scalar(select(Service).where(Service.repo == repo))
-    if service is None:
-        raise HTTPException(status_code=404, detail="Service not found")
+    service = _locked_service_or_404(db, repo)
+    if _exclusion_of(db, service) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Service {repo} is excluded from scanning",
+        )
 
     job = RepositoryScanJob(
         service_id=service.id,
@@ -65,6 +84,66 @@ def start_scan(
 
     background_tasks.add_task(run_scan_job, job.id)
     return StartScanResponse(job_id=job.id)
+
+
+@router.post("/scan/services/{repo:path}/exclude", status_code=204)
+def exclude_service(
+    repo: str,
+    body: ExcludeRequest,
+    db: Session = Depends(get_db),
+) -> None:
+    """Hide a Service from the registry without deleting anything it owns.
+
+    Exclusion is non-destructive: no Job, Snapshot or document row is touched,
+    so restoring the Service brings back the same history it had. Only the
+    listing endpoints filter it out - the detail endpoints keep answering, so
+    the UI can still read an excluded Service in order to restore it.
+
+    A Job already queued or running when this lands is deliberately left alone
+    and will ingest its result normally. Killing it would mean either
+    discarding a scan that already cost its rate-limit budget, or writing a
+    half-ingested Snapshot; the exclusion takes effect from the next launch
+    instead, which ``start_scan`` refuses.
+
+    The Service row is locked for the whole check-then-insert, which is what
+    makes that refusal reliable - see ``start_scan``.
+    """
+    service = _locked_service_or_404(db, repo)
+    if _exclusion_of(db, service) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Service {repo} is already excluded",
+        )
+
+    db.add(
+        ExcludedService(
+            service_id=service.id,
+            reason=body.reason,
+            excluded_by=body.initiated_by,
+        )
+    )
+    db.commit()
+
+
+@router.post("/scan/services/{repo:path}/include", status_code=204)
+def include_service(repo: str, db: Session = Depends(get_db)) -> None:
+    """Restore an excluded Service to the registry.
+
+    The exclusion row is deleted rather than archived, so no audit trail
+    survives a restore - the reason text lives only while the exclusion does.
+    Restoring a Service that is not excluded is a ``409`` rather than a silent
+    no-op: it tells the caller their request changed nothing.
+    """
+    service = _locked_service_or_404(db, repo)
+    exclusion = _exclusion_of(db, service)
+    if exclusion is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Service {repo} is not excluded",
+        )
+
+    db.delete(exclusion)
+    db.commit()
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
@@ -110,3 +189,35 @@ def cancel_job(job_id: int, db: Session = Depends(get_db)) -> JobResponse:
 
     db.refresh(job)  # terminate_job committed in its own session
     return JobResponse.from_job(job)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _locked_service_or_404(db: Session, repo: str) -> Service:
+    """Load one Service and hold a row lock on it until the request commits.
+
+    Exclusion state has no unique index to lean on the way active Jobs do -
+    ``ExcludedService`` is keyed by ``service_id``, which stops a double insert
+    but says nothing about a scan launching at the same moment. Serializing
+    every writer on the Service row is what closes that gap, so the check each
+    of them makes is still true when it commits.
+    """
+    service = db.scalar(select(Service).where(Service.repo == repo).with_for_update())
+    if service is None:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return service
+
+
+def _exclusion_of(db: Session, service: Service) -> ExcludedService | None:
+    """Read the Service's exclusion row, if any.
+
+    Queried directly rather than through ``service.exclusion`` so the read is
+    a fresh statement under the lock taken above, rather than whatever the
+    identity map happens to be holding.
+    """
+    return db.scalar(
+        select(ExcludedService).where(ExcludedService.service_id == service.id)
+    )

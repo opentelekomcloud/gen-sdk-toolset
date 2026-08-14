@@ -33,9 +33,11 @@ from tools import __version__ as SCANNER_VERSION  # noqa: E402
 from tools.panel.api import app as app_module  # noqa: E402
 from tools.panel.api import deps  # noqa: E402
 from tools.panel.api.app import create_app  # noqa: E402
+from tools.panel.api.routes import scans as scans_module  # noqa: E402
 from tools.panel.core import ingest as ingest_module  # noqa: E402
 from tools.panel.core import jobs as jobs_module  # noqa: E402
 from tools.panel.core.db.models import (  # noqa: E402
+    ExcludedService,
     JobKind,
     JobStatus,
     RepositoryScanJob,
@@ -842,3 +844,249 @@ def test_a_defect_in_startup_cleanup_stops_the_panel_rather_than_no_opping(
 
     with pytest.raises(TypeError), TestClient(app_module.create_app()):
         pass  # pragma: no cover - startup raises before the body runs
+
+
+# --------------------------------------------------------------------------- #
+# Exclusion (PS2-1)
+# --------------------------------------------------------------------------- #
+def _exclude(client, repo: str, reason: str = "deprecated upstream"):
+    return client.post(
+        f"/api/scan/services/{repo}/exclude",
+        json={"reason": reason, "initiated_by": "operator"},
+    )
+
+
+def _exclusion_row(session_factory, service_id: int) -> ExcludedService | None:
+    with session_factory() as s:
+        return s.get(ExcludedService, service_id)
+
+
+def test_exclude_records_who_asked_and_why(client, session_factory):
+    service_id = _seed_service(session_factory, "dms-api")
+
+    resp = _exclude(client, "dms-api", reason="retired by the service team")
+
+    assert resp.status_code == 204
+    assert resp.content == b""
+    row = _exclusion_row(session_factory, service_id)
+    assert row.reason == "retired by the service team"
+    # The body calls it initiated_by, like every other mutation; the column is
+    # excluded_by. The mapping is the endpoint's job, so assert it here.
+    assert row.excluded_by == "operator"
+    assert row.excluded_at is not None
+
+
+def test_exclude_leaves_jobs_and_snapshots_untouched(
+    client, session_factory, monkeypatch
+):
+    """Exclusion hides a service; it never deletes what the service owns. If it
+    did, restoring one would silently return an empty history."""
+    _seed_service(session_factory, "css-api", name="css")
+
+    def fake_build_scanner(_settings):
+        class _Scanner:
+            def scan_repository(self, repo, branch):
+                return RepositoryScanResult(
+                    repository=IrService(repo=repo, documents=[make_endpoint()]),
+                    branch=branch,
+                    commit_hash="e" * 40,
+                )
+
+        return _Scanner()
+
+    monkeypatch.setattr(jobs_module, "build_scanner", fake_build_scanner)
+    monkeypatch.setattr(ingest_module, "SessionLocal", session_factory)
+    monkeypatch.setattr(ingest_module, "get_engine", lambda: None)
+    client.post("/api/scan/services/css-api/rescan", json={"initiated_by": "tester"})
+
+    assert _exclude(client, "css-api").status_code == 204
+
+    with session_factory() as s:
+        assert s.scalars(select(Snapshot)).one().documents_total == 1
+        assert s.scalars(select(RepositoryScanJob)).one().status is JobStatus.done
+
+
+def test_exclude_unknown_service_returns_404(client):
+    resp = _exclude(client, "does-not-exist")
+
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "not_found"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"initiated_by": "operator"},
+        {"reason": "", "initiated_by": "operator"},
+        {"reason": "   ", "initiated_by": "operator"},
+        {"reason": "deprecated", "initiated_by": ""},
+    ],
+    ids=["missing", "empty", "blank", "no-initiator"],
+)
+def test_exclude_requires_a_reason_and_an_initiator(client, session_factory, body):
+    """The reason is the only record of why a service is hidden - `include`
+    deletes the row rather than archiving it. Whitespace is refused too: stored
+    as-is it would read as filled in on the excluded list."""
+    _seed_service(session_factory, "swr-api")
+
+    resp = client.post("/api/scan/services/swr-api/exclude", json=body)
+
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "validation_error"
+
+
+def test_excluding_an_already_excluded_service_conflicts(client, session_factory):
+    _seed_service(session_factory, "rds-api")
+    assert _exclude(client, "rds-api").status_code == 204
+
+    resp = _exclude(client, "rds-api", reason="second thoughts")
+
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "conflict"
+    assert "rds-api" in resp.json()["error"]["message"]
+
+
+def test_exclude_and_include_resolve_a_repo_containing_slashes(client, session_factory):
+    """The URL segment carries ``Service.repo``, which contains a ``/``; seeded
+    with repo != name so a name-based lookup cannot pass by accident."""
+    repo = "opentelekomcloud-docs/vpc-api"
+    service_id = _seed_service(session_factory, repo, name="vpc-api")
+
+    assert _exclude(client, repo).status_code == 204
+    assert _exclusion_row(session_factory, service_id) is not None
+
+    assert client.post(f"/api/scan/services/{repo}/include").status_code == 204
+    assert _exclusion_row(session_factory, service_id) is None
+
+
+def test_include_removes_the_exclusion_without_an_audit_trail(client, session_factory):
+    """Restoring deletes the row outright - there is no archived copy, so the
+    reason text lives exactly as long as the exclusion does."""
+    service_id = _seed_service(session_factory, "dcs-api")
+    assert _exclude(client, "dcs-api").status_code == 204
+
+    resp = client.post("/api/scan/services/dcs-api/include")
+
+    assert resp.status_code == 204
+    assert resp.content == b""
+    assert _exclusion_row(session_factory, service_id) is None
+
+
+def test_include_unknown_service_returns_404(client):
+    resp = client.post("/api/scan/services/does-not-exist/include")
+
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "not_found"
+
+
+def test_including_a_service_that_is_not_excluded_conflicts(client, session_factory):
+    """A no-op 204 would tell the operator their restore worked when there was
+    nothing to restore."""
+    _seed_service(session_factory, "waf-api")
+
+    resp = client.post("/api/scan/services/waf-api/include")
+
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "conflict"
+    assert "waf-api" in resp.json()["error"]["message"]
+
+
+def test_rescanning_an_excluded_service_conflicts(client, session_factory):
+    _seed_service(session_factory, "sfs-api")
+    assert _exclude(client, "sfs-api").status_code == 204
+
+    resp = client.post(
+        "/api/scan/services/sfs-api/rescan", json={"initiated_by": "tester"}
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "conflict"
+    with session_factory() as s:
+        assert s.scalars(select(RepositoryScanJob)).all() == []
+
+
+def test_rescan_is_allowed_again_once_the_service_is_included(
+    client, session_factory, monkeypatch
+):
+    _seed_service(session_factory, "as-api")
+    assert _exclude(client, "as-api").status_code == 204
+    assert client.post("/api/scan/services/as-api/include").status_code == 204
+
+    monkeypatch.setattr(jobs_module, "run_scan_job", lambda _job_id: None)
+    resp = client.post(
+        "/api/scan/services/as-api/rescan", json={"initiated_by": "tester"}
+    )
+
+    assert resp.status_code == 202
+
+
+def test_exclusion_and_scan_launch_serialize_on_the_service_row(session_factory):
+    """The exclusion guard in ``start_scan`` is only worth the lock under it.
+
+    Without ``with_for_update`` an exclude and a launch could both read "not
+    excluded yet" and both commit, leaving a scan running against a service the
+    operator had just hidden - and no unique index would catch it, because the
+    two writes touch different tables. Proven by asking for the same row from a
+    second transaction with ``NOWAIT``: it is refused, so the row is genuinely
+    held rather than merely read.
+    """
+    _seed_service(session_factory, "lock-api")
+
+    with session_factory() as holder:
+        scans_module._locked_service_or_404(holder, "lock-api")
+
+        with session_factory() as other, pytest.raises(OperationalError):
+            other.scalar(
+                select(Service)
+                .where(Service.repo == "lock-api")
+                .with_for_update(nowait=True)
+            )
+
+
+def test_a_scan_already_running_when_exclusion_lands_still_ingests(
+    client, session_factory, monkeypatch
+):
+    """The documented edge case: exclusion takes effect from the next launch,
+    not retroactively. Killing an in-flight scan would either throw away work
+    that already cost its rate-limit budget or persist half a snapshot, so the
+    job runs to completion and its data lands."""
+    service_id = _seed_service(session_factory, "obs-api", name="obs")
+
+    def fake_build_scanner(_settings):
+        class _Scanner:
+            def scan_repository(self, repo, branch):
+                # The operator excludes the service while this scan is in flight.
+                with session_factory() as s:
+                    s.add(
+                        ExcludedService(
+                            service_id=service_id,
+                            reason="retired mid-scan",
+                            excluded_by="operator",
+                        )
+                    )
+                    s.commit()
+                return RepositoryScanResult(
+                    repository=IrService(repo=repo, documents=[make_endpoint()]),
+                    branch=branch,
+                    commit_hash="f" * 40,
+                )
+
+        return _Scanner()
+
+    monkeypatch.setattr(jobs_module, "build_scanner", fake_build_scanner)
+    monkeypatch.setattr(ingest_module, "SessionLocal", session_factory)
+    monkeypatch.setattr(ingest_module, "get_engine", lambda: None)
+
+    resp = client.post(
+        "/api/scan/services/obs-api/rescan", json={"initiated_by": "tester"}
+    )
+    assert resp.status_code == 202
+    job_id = resp.json()["job_id"]
+
+    body = client.get(f"/api/jobs/{job_id}").json()
+    assert body["status"] == "done"
+    assert body["error"] is None
+    with session_factory() as s:
+        snapshot = s.scalars(select(Snapshot)).one()
+        assert snapshot.source_job_id == job_id
+        assert snapshot.documents_total == 1

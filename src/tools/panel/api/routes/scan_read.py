@@ -395,7 +395,22 @@ def _service_or_404(db: Session, repo: str) -> Service:
 
 
 def _all_services(db: Session) -> list[tuple[Service, ServiceState]]:
-    services = db.scalars(_service_query().order_by(Service.repo)).unique().all()
+    """Every Service the panel counts, excluded ones left out.
+
+    The filter belongs here and not in ``_service_query``: this is what the
+    registry, the summary counters and the attention rules are all built from,
+    so one place decides what "the services" means and none of them can drift
+    apart. ``_service_query`` stays unfiltered on purpose - the detail
+    endpoints must keep answering for an excluded Service, or the UI could
+    never load the page that restores it.
+    """
+    services = (
+        db.scalars(
+            _service_query().where(~Service.exclusion.has()).order_by(Service.repo)
+        )
+        .unique()
+        .all()
+    )
     return [
         (service, derive_service_state(service, scanner_version=SCANNER_VERSION))
         for service in services
