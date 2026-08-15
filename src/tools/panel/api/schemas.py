@@ -100,10 +100,13 @@ class JobResponse(BaseModel):
     def from_job(cls, job: RepositoryScanJob) -> JobResponse:
         """Build the response from a Job.
 
-        ``scanner_version`` and ``commit_hash`` come from the linked Snapshot,
-        or None when the Job has no Snapshot.
+        ``scanner_version`` and ``commit_hash`` come from the Job's *result*
+        Snapshot, or None when the Job produced no result. That is the reused
+        Snapshot when the scan found nothing changed, so a poll after an
+        unchanged re-scan still reports the commit that was read rather than
+        blanking out because this Job created no Snapshot of its own.
         """
-        snapshot = job.snapshot
+        snapshot = job.result_snapshot
         return cls(
             id=job.id,
             service_id=job.service_id,
@@ -208,6 +211,10 @@ class ServiceListItem(BaseModel):
     #: own coverage lives on the snapshot as `completeness`.
     docs_ok: int | None
     scanner_version: str | None
+    #: When the repository was last scanned successfully - every success, not
+    #: only the ones that changed something. Read from the latest snapshot's
+    #: `last_scanned_at`, so it is distinct from that snapshot's `created_at`,
+    #: which is when the result last moved.
     scanned_at: datetime | None
     docs_changed: bool
     rescan_reason: RescanReason | None
@@ -244,7 +251,12 @@ class ServiceListItem(BaseModel):
             ),
             docs_ok=_docs_ok(snapshot),
             scanner_version=snapshot.scanner_version if snapshot else None,
-            scanned_at=snapshot.created_at if snapshot else None,
+            # From the *latest* Snapshot, not the active one: an unchanged
+            # rescan bumps its last_scanned_at instead of storing a new row, so
+            # this is the last successful scan whichever snapshot is on screen.
+            scanned_at=(
+                state.latest_snapshot.last_scanned_at if state.latest_snapshot else None
+            ),
             docs_changed=state.docs_changed,
             rescan_reason=state.rescan_reason,
             overall_breakdown=_overall_breakdown(snapshot),
@@ -428,7 +440,6 @@ class SummaryResponse(BaseModel):
     """The header strip: one number per thing the panel is currently doing."""
 
     scanner_version: str
-    last_scanned_at: datetime | None
     services_total: int
     failed_services: int
     documents_total: int

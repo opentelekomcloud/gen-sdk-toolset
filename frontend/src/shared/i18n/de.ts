@@ -53,7 +53,6 @@ export const de: Record<keyof typeof en, string> = {
   "registry.scanning": "wird gescannt…",
   "registry.empty": "Kein Service entspricht dem aktuellen Filter.",
   "registry.failedBanner": "{failed} Repos fehlgeschlagen, ohne Daten. Metriken decken {ok} gescannte Repos ab.",
-  "registry.lastUpdate": "letzte Aktualisierung {at}",
   "legend.ok": "ok",
   "legend.partial": "teilweise",
   "legend.failed": "fehlgeschlagen",
@@ -113,7 +112,7 @@ export const de: Record<keyof typeof en, string> = {
   "snap.neverScanned": "nie gescannt",
   "snap.popoverTitle": "Scan-Snapshots",
   "snap.popoverHint":
-    "Jeder erfolgreiche Scan wird als Snapshot gespeichert. Das Umschalten ändert nur den aktiven Snapshot — es startet keinen neuen Scan und verändert keine Daten.",
+    "Ein Snapshot wird gespeichert, sobald sich das Scan-Ergebnis ändert; ein Scan ohne Änderung aktualisiert den vorhandenen. Das Umschalten ändert nur den aktiven Snapshot — es startet keinen neuen Scan und verändert keine Daten.",
   "snap.loading": "Snapshots werden geladen…",
   "snap.latestBadge": "neueste",
   "snap.activeBadge": "aktiv",

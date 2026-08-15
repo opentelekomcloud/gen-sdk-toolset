@@ -112,7 +112,9 @@ def _result(
     documents: list[Document] | None = None,
     commit_hash: str | None = COMMIT,
     excluded: list[str] | None = None,
+    scanner_version: str | None = None,
 ) -> RepositoryScanResult:
+    fields = {} if scanner_version is None else {"scanner_version": scanner_version}
     return RepositoryScanResult(
         repository=IrService(
             repo=repo,
@@ -125,6 +127,7 @@ def _result(
             if excluded is None
             else excluded
         ),
+        **fields,
     )
 
 
@@ -253,6 +256,7 @@ def test_service_scan_metadata_is_updated(session_factory):
 
         assert service.has_api_ref is True
         assert service.eligibility_checked_at == snapshot.created_at
+        assert snapshot.last_scanned_at == snapshot.created_at
         assert service.latest_snapshot_id == snapshot.id
         assert service.active_snapshot_id == snapshot.id
         # Drift detection owns head_commit (issue #25); ingest leaves it alone.
@@ -287,6 +291,174 @@ def test_scan_without_documents_persists_an_empty_snapshot(session_factory):
 
 
 # ---------------------------------------------------------------------------
+# Snapshot deduplication (PS2-3)
+# ---------------------------------------------------------------------------
+
+
+def _seed_next_job(session_factory, service_id: int) -> int:
+    """A second running scan Job for a service whose first Job has finished."""
+    with session_factory() as session:
+        job = RepositoryScanJob(
+            service_id=service_id,
+            kind=JobKind.scan,
+            status=JobStatus.running,
+            initiated_by="tester",
+            started_at=_now(),
+        )
+        session.add(job)
+        session.commit()
+        return job.id
+
+
+def _ingest_twice(
+    session_factory, second: RepositoryScanResult, first: RepositoryScanResult | None
+) -> tuple[int, int, int]:
+    """Ingest two results for one service; return (service_id, job1, job2)."""
+    service_id, first_job = _seed_running_job(session_factory)
+    _ingest(first_job, _result() if first is None else first)
+    second_job = _seed_next_job(session_factory, service_id)
+    _ingest(second_job, second)
+    return service_id, first_job, second_job
+
+
+def test_an_unchanged_result_reuses_the_latest_snapshot(session_factory):
+    """A Snapshot marks a change in the result, not an execution attempt.
+
+    Re-scanning an untouched repository used to copy every document row again
+    and push a new entry into the history that said nothing - the history then
+    counted how often somebody pressed rescan rather than how often the
+    documentation moved.
+    """
+    service_id, first_job, second_job = _ingest_twice(
+        session_factory, _result(), first=None
+    )
+
+    with session_factory() as session:
+        snapshot = session.scalars(select(Snapshot)).one()  # still exactly one
+        assert snapshot.source_job_id == first_job  # the original creator
+        assert len(session.scalars(select(DocumentRecord)).all()) == 2  # not copied
+
+        job = session.get(RepositoryScanJob, second_job)
+        assert job.status is JobStatus.done
+        assert job.finished_at is not None
+        assert job.error is None
+        # The Job still names the result it produced, even though it stored none.
+        assert job.result_snapshot_id == snapshot.id
+
+        service = session.get(Service, service_id)
+        assert service.latest_snapshot_id == snapshot.id
+        assert service.active_snapshot_id == snapshot.id
+        # The scan still happened, so what it proves about the repo is recorded.
+        assert service.has_api_ref is True
+        assert service.eligibility_checked_at > snapshot.created_at
+        # The reused Snapshot is the one mark this scan leaves: its result did
+        # not move, so created_at stands, but it was confirmed again just now.
+        assert snapshot.created_at < snapshot.last_scanned_at
+        assert snapshot.last_scanned_at == service.eligibility_checked_at
+
+
+@pytest.mark.parametrize(
+    ("second", "differs_by"),
+    [
+        (_result(commit_hash="b" * 40), "commit"),
+        (_result(documents=[make_endpoint()]), "analytics"),
+    ],
+    ids=["commit", "analytics"],
+)
+def test_a_changed_result_stores_a_new_snapshot(session_factory, second, differs_by):
+    """Any of the three compared fields moving is a new Snapshot. `analytics`
+    is the whole reading of the source, so a document count, a completeness or
+    a per-version breakdown changing all land here."""
+    service_id, _first_job, second_job = _ingest_twice(
+        session_factory, second, first=None
+    )
+
+    with session_factory() as session:
+        snapshots = session.scalars(select(Snapshot).order_by(Snapshot.id)).all()
+        assert len(snapshots) == 2, differs_by
+        assert snapshots[1].source_job_id == second_job
+
+        service = session.get(Service, service_id)
+        assert service.latest_snapshot_id == snapshots[1].id
+        assert service.active_snapshot_id == snapshots[1].id
+        assert (
+            session.get(RepositoryScanJob, second_job).result_snapshot_id
+            == snapshots[1].id
+        )
+
+
+def test_a_new_scanner_version_stores_a_new_snapshot(session_factory):
+    """The same source read by different code is a different result: a newer
+    scanner may recognize rows the older one could not, so the reading changes
+    even though nothing in the repository did."""
+    _service_id, _first_job, second_job = _ingest_twice(
+        session_factory, _result(scanner_version="99.0.0"), first=None
+    )
+
+    with session_factory() as session:
+        snapshots = session.scalars(select(Snapshot).order_by(Snapshot.id)).all()
+        assert len(snapshots) == 2
+        assert snapshots[1].scanner_version == "99.0.0"
+        assert snapshots[1].source_job_id == second_job
+
+
+def test_an_unchanged_empty_scan_reuses_its_snapshot(session_factory):
+    """An empty result is a result like any other: the first one is stored,
+    the second changes nothing and must not be stored again."""
+    empty = _result(documents=[], excluded=[])
+    _service_id, first_job, second_job = _ingest_twice(
+        session_factory, empty, first=empty
+    )
+
+    with session_factory() as session:
+        snapshot = session.scalars(select(Snapshot)).one()
+        assert snapshot.documents_total == 0
+        assert snapshot.source_job_id == first_job
+        assert session.get(RepositoryScanJob, second_job).result_snapshot_id == (
+            snapshot.id
+        )
+
+
+def test_documents_appearing_in_an_empty_repository_store_a_new_snapshot(
+    session_factory,
+):
+    """The mirror of the case above: going from nothing to something is the
+    most important change there is, and it moves only the analytics."""
+    _service_id, _first, second_job = _ingest_twice(
+        session_factory, _result(), first=_result(documents=[], excluded=[])
+    )
+
+    with session_factory() as session:
+        snapshots = session.scalars(select(Snapshot).order_by(Snapshot.id)).all()
+        assert [s.documents_total for s in snapshots] == [0, 2]
+        assert snapshots[1].source_job_id == second_job
+
+
+def test_an_unchanged_rescan_leaves_a_pinned_active_snapshot_alone(session_factory):
+    """An operator may pin an older Snapshot as the active one. An unchanged
+    rescan has no new Snapshot to show and must not quietly re-point active at
+    latest, which would undo that choice with no trace."""
+    service_id, first_job = _seed_running_job(session_factory)
+    _ingest(first_job, _result())
+    second_job = _seed_next_job(session_factory, service_id)
+    _ingest(second_job, _result(commit_hash="b" * 40))
+    with session_factory() as session:  # pin the older one
+        service = session.get(Service, service_id)
+        pinned = session.scalars(select(Snapshot).order_by(Snapshot.id)).first().id
+        service.active_snapshot_id = pinned
+        session.commit()
+
+    third_job = _seed_next_job(session_factory, service_id)
+    _ingest(third_job, _result(commit_hash="b" * 40))  # unchanged since the second
+
+    with session_factory() as session:
+        service = session.get(Service, service_id)
+        assert service.active_snapshot_id == pinned
+        assert service.latest_snapshot_id != pinned
+        assert len(session.scalars(select(Snapshot)).all()) == 2
+
+
+# ---------------------------------------------------------------------------
 # Rejections
 # ---------------------------------------------------------------------------
 
@@ -304,6 +476,9 @@ def _assert_nothing_persisted(
         if job_id is not None:
             job = session.get(RepositoryScanJob, job_id)
             assert job.status is job_status
+            # A Job with no result points at no Snapshot: the column means
+            # "the result this Job produced", not "the last one anyone saw".
+            assert job.result_snapshot_id is None
             service = session.get(Service, job.service_id)
             assert service.active_snapshot_id is None
             assert service.latest_snapshot_id is None

@@ -41,6 +41,7 @@ from tools.panel.core.db.models import (  # noqa: E402
     JobStatus,
     RepositoryScanJob,
     Service,
+    Snapshot,
 )
 from tools.panel.core.ingest import ingest_service_result  # noqa: E402
 from tools.shared.ir import Service as IrService  # noqa: E402
@@ -243,7 +244,6 @@ def test_summary_counts_services_and_documents(scanned):
     assert body["failed_services"] == 0
     assert body["documents_total"] == 2
     assert body["scans_running"] == 0
-    assert body["last_scanned_at"] is not None
 
 
 def test_attention_reports_only_rules_that_fire(client, session_factory):
@@ -271,6 +271,35 @@ def test_excluded_services_are_listed(client, session_factory):
     assert row["name"] == REPO
     assert row["reason"] == "deprecated"
     assert row["excluded_by"] == "tester"
+
+
+def test_scanned_at_advances_on_a_rescan_that_changed_nothing(scanned, session_factory):
+    """`scanned_at` answers "when did we last read this repository", so an
+    unchanged rescan must move it. It reads the latest Snapshot's
+    `last_scanned_at`, not its `created_at`: the row is not replaced when
+    nothing changed, so a date taken from `created_at` would leave a service
+    scanned an hour ago looking untouched for as long as its documentation
+    stood still."""
+    before = scanned.get("/api/scan/services").json()["items"][0]["scanned_at"]
+
+    _run_scan(session_factory)  # same commit, same documents
+
+    (item,) = scanned.get("/api/scan/services").json()["items"]
+    assert item["scanned_at"] > before
+    detail = scanned.get(f"/api/scan/services/{REPO}").json()
+    assert detail["scanned_at"] == item["scanned_at"]
+    # The snapshot itself did not move, which is exactly why the two differ.
+    assert detail["active_snapshot"]["created_at"] == before
+    with session_factory() as session:
+        assert len(session.scalars(select(Snapshot)).all()) == 1
+
+
+def test_scanned_at_is_absent_until_a_scan_succeeds(client, session_factory):
+    _register(session_factory)
+
+    (item,) = client.get("/api/scan/services").json()["items"]
+
+    assert item["scanned_at"] is None
 
 
 def _set_eligibility(session_factory, repo: str, has_api_ref: bool | None) -> None:
@@ -369,7 +398,6 @@ def test_an_excluded_service_leaves_every_list_but_keeps_its_own_page(scanned):
     summary = scanned.get("/api/scan/summary").json()
     assert summary["services_total"] == 0
     assert summary["documents_total"] == 0
-    assert summary["last_scanned_at"] is None
 
     assert scanned.get("/api/scan/attention").json() == []
 

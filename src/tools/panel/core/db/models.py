@@ -269,13 +269,37 @@ class RepositoryScanJob(Base):
         nullable=True,
     )
 
+    # The Snapshot this Job's result is represented by: the one it created, or
+    # the already-stored latest Snapshot when the result was identical to it.
+    # Many Jobs may share one - unlike Snapshot.source_job_id, which names the
+    # single Job that first produced it. NULL until a Job succeeds.
+    result_snapshot_id: Mapped[int | None] = mapped_column(
+        sa.ForeignKey(
+            "snapshot.id",
+            name="fk_job_result_snapshot",
+            ondelete="SET NULL",
+            use_alter=True,
+        ),
+        nullable=True,
+        index=True,
+    )
+
     service: Mapped[Service] = relationship(
         back_populates="jobs",
     )
 
+    # The Snapshot this Job created, if it created one. A Job whose result
+    # matched the latest Snapshot creates none but still has a result_snapshot.
+    # Both sides name their foreign key explicitly: with two paths from job to
+    # snapshot, SQLAlchemy cannot pick one for us.
     snapshot: Mapped[Snapshot | None] = relationship(
         back_populates="source_job",
         uselist=False,
+        foreign_keys="Snapshot.source_job_id",
+    )
+
+    result_snapshot: Mapped[Snapshot | None] = relationship(
+        foreign_keys=[result_snapshot_id],
     )
 
     __table_args__ = (
@@ -332,9 +356,20 @@ class RepositoryScanJob(Base):
 
 
 class Snapshot(Base):
-    """Immutable successfully persisted repository scan result.
+    """One successfully persisted repository scan result.
 
-    A failed Job does not create a Snapshot.
+    A failed Job does not create a Snapshot, and neither does a successful one
+    whose result is identical to the latest stored Snapshot - that Job points
+    at the existing row through ``RepositoryScanJob.result_snapshot_id``. So a
+    Snapshot marks a *change* in the scan result, not an execution attempt, and
+    ``source_job_id`` names only the Job that first produced it.
+
+    The *result* is immutable: nothing rewrites the commit, the analytics or
+    the documents of a stored Snapshot. One field is not part of that result
+    and does move - ``last_scanned_at``, which records the most recent scan
+    that reproduced it. Without it an unchanged rescan would leave no trace at
+    all, and the panel could not tell a repository read minutes ago from one
+    nobody had looked at since its documentation last changed.
 
     Snapshot stores repository-level provenance, analytics, and the complete
     list of persisted document payloads produced by one successful scan.
@@ -450,11 +485,22 @@ class Snapshot(Base):
         nullable=False,
     )
 
+    #: When this result was first seen.
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
         server_default=sa.func.now(),
         index=True,
+    )
+    #: When a successful scan last reproduced this result. Equal to
+    #: ``created_at`` for a Snapshot nothing has re-confirmed yet, and moved
+    #: forward by every unchanged rescan - which is the only mark such a scan
+    #: leaves, since it stores no Snapshot of its own. The pair reads as "this
+    #: result held from `created_at` and was still true at `last_scanned_at`".
+    last_scanned_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
     )
 
     service: Mapped[Service] = relationship(
@@ -464,6 +510,7 @@ class Snapshot(Base):
 
     source_job: Mapped[RepositoryScanJob] = relationship(
         back_populates="snapshot",
+        foreign_keys=[source_job_id],
     )
 
     documents: Mapped[list[DocumentRecord]] = relationship(

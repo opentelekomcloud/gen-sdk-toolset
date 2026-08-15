@@ -1370,18 +1370,6 @@
             "title": "Failed Services",
             "type": "integer"
           },
-          "last_scanned_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Scanned At"
-          },
           "scanner_version": {
             "title": "Scanner Version",
             "type": "string"
@@ -1397,7 +1385,6 @@
         },
         "required": [
           "scanner_version",
-          "last_scanned_at",
           "services_total",
           "failed_services",
           "documents_total",

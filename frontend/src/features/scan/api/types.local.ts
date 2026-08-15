@@ -42,10 +42,12 @@ export interface SectionCounts {
 }
 
 /**
- * G1: one immutable successfully persisted scan snapshot — DTO of the
- * `snapshot` table (a failed job creates no snapshot). `created_at` is
- * the scan timestamp; `completeness` is a 0..1 float — use lib/snapshot.ts
- * helpers for percent and short commit display.
+ * G1: one successfully persisted scan snapshot — DTO of the `snapshot` table.
+ * A failed job creates no snapshot, and neither does a scan whose result is
+ * unchanged, so `created_at` is when this result first appeared rather than
+ * when the repo was last scanned (that is the service's `scanned_at`).
+ * `completeness` is a 0..1 float — use lib/snapshot.ts helpers for percent
+ * and short commit display.
  */
 export interface Snapshot {
   id: number;
@@ -236,7 +238,6 @@ export interface DocumentDetail {
 
 export interface Summary {
   scanner_version: string;
-  last_scanned_at: string | null;
   services_total: number;
   failed_services: number;
   documents_total: number;

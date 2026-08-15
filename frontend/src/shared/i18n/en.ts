@@ -51,7 +51,6 @@ export const en = {
   "registry.scanning": "scanning…",
   "registry.empty": "No services match the current filter.",
   "registry.failedBanner": "{failed} repos failed and hold no data. Metrics cover {ok} scanned repos.",
-  "registry.lastUpdate": "last update {at}",
   "legend.ok": "ok",
   "legend.partial": "partial",
   "legend.failed": "failed",
@@ -111,7 +110,7 @@ export const en = {
   "snap.neverScanned": "never scanned",
   "snap.popoverTitle": "Scan snapshots",
   "snap.popoverHint":
-    "Every successful scan is persisted as a snapshot. Switching only changes which snapshot is active — it never starts a new scan or alters data.",
+    "A snapshot is stored each time the scan result changes; a scan that finds nothing changed updates the existing one instead. Switching only changes which snapshot is active — it never starts a new scan or alters data.",
   "snap.loading": "Loading snapshots…",
   "snap.latestBadge": "latest",
   "snap.activeBadge": "active",

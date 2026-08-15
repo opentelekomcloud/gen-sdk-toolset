@@ -893,8 +893,6 @@ export interface components {
             documents_total: number;
             /** Failed Services */
             failed_services: number;
-            /** Last Scanned At */
-            last_scanned_at: string | null;
             /** Scanner Version */
             scanner_version: string;
             /** Scans Running */
