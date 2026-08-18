@@ -9,6 +9,7 @@ import type {
   DocumentDetail,
   DocumentsResponse,
   ExcludedService,
+  Ineligible,
   SnapshotsResponse,
   Job,
   JobStatus,
@@ -33,6 +34,7 @@ export const keys = {
   summary: ["summary"] as const,
   attention: ["attention"] as const,
   excluded: ["excluded"] as const,
+  ineligible: ["ineligible"] as const,
 };
 
 /**
@@ -146,6 +148,10 @@ export function useAttention() {
 
 export function useExcluded() {
   return useQuery({ queryKey: keys.excluded, queryFn: () => apiFetch<ExcludedService[]>("/scan/excluded") });
+}
+
+export function useIneligible() {
+  return useQuery({ queryKey: keys.ineligible, queryFn: () => apiFetch<Ineligible[]>("/scan/ineligible") });
 }
 
 /** Terminal job statuses — polling stops here. */

@@ -26,6 +26,7 @@ from tools.panel.api.schemas import (
     DocumentListItem,
     DocumentsResponse,
     ExcludedServiceResponse,
+    IneligibleRepositoryResponse,
     ServiceDetailResponse,
     ServiceListItem,
     ServicesResponse,
@@ -150,6 +151,31 @@ def list_excluded(db: Session = Depends(get_db)) -> list[ExcludedServiceResponse
             excluded_at=row.excluded_at,
         )
         for row in rows
+    ]
+
+
+@router.get("/scan/ineligible", response_model=list[IneligibleRepositoryResponse])
+def list_ineligible(
+    db: Session = Depends(get_db),
+) -> list[IneligibleRepositoryResponse]:
+    """Repositories discovery checked and found to have no API reference.
+
+    Kept out of the registry but not out of the database: the result of the
+    check is what tells an operator the repository was looked at, rather than
+    missed. ``has_api_ref IS FALSE`` specifically - a NULL is a repository
+    discovery has not reached yet, which is not the same claim.
+    """
+    services = db.scalars(
+        select(Service).where(Service.has_api_ref.is_(False)).order_by(Service.repo)
+    ).all()
+    return [
+        IneligibleRepositoryResponse(
+            repo=service.repo,
+            name=service.name,
+            branch=service.branch,
+            checked_at=service.eligibility_checked_at,
+        )
+        for service in services
     ]
 
 
@@ -380,10 +406,21 @@ def get_service(repo: str, db: Session = Depends(get_db)) -> ServiceDetailRespon
 
 
 def _service_query():
-    return select(Service).options(
-        selectinload(Service.jobs),
-        joinedload(Service.active_snapshot),
-        joinedload(Service.latest_snapshot),
+    """Every Service the panel treats as a scannable subject.
+
+    ``has_api_ref IS NOT FALSE`` rather than ``IS TRUE``: NULL means discovery
+    has never looked at the repository, and a service registered by hand has
+    always been scannable. Only a repository discovery actually checked and
+    ruled out drops away here - it is served by ``/scan/ineligible`` instead.
+    """
+    return (
+        select(Service)
+        .where(Service.has_api_ref.is_not(False))
+        .options(
+            selectinload(Service.jobs),
+            joinedload(Service.active_snapshot),
+            joinedload(Service.latest_snapshot),
+        )
     )
 
 

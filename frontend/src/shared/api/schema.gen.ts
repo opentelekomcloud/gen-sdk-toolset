@@ -100,6 +100,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/scan/ineligible": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ineligible
+         * @description Repositories discovery checked and found to have no API reference.
+         *
+         *     Kept out of the registry but not out of the database: the result of the
+         *     check is what tells an operator the repository was looked at, rather than
+         *     missed. ``has_api_ref IS FALSE`` specifically - a NULL is a repository
+         *     discovery has not reached yet, which is not the same claim.
+         */
+        get: operations["list_ineligible_api_scan_ineligible_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scan/services": {
         parameters: {
             query?: never;
@@ -521,6 +546,25 @@ export interface components {
              * @enum {string}
              */
             status: "ok" | "degraded";
+        };
+        /**
+         * IneligibleRepositoryResponse
+         * @description One repository discovery checked and found to have no API reference.
+         *
+         *     Distinct from an excluded service: nobody decided this, a lookup did, and
+         *     it reverses itself the moment the repository gains the path. ``checked_at``
+         *     is what makes the row readable - without the date, "ineligible" carries no
+         *     hint of how stale the finding is.
+         */
+        IneligibleRepositoryResponse: {
+            /** Branch */
+            branch: string;
+            /** Checked At */
+            checked_at: string | null;
+            /** Name */
+            name: string;
+            /** Repo */
+            repo: string;
         };
         /**
          * IssueCount
@@ -978,6 +1022,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExcludedServiceResponse"][];
+                };
+            };
+        };
+    };
+    list_ineligible_api_scan_ineligible_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IneligibleRepositoryResponse"][];
                 };
             };
         };

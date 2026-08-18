@@ -195,4 +195,10 @@ export const de: Record<keyof typeof en, string> = {
     "{name} in die Registry zurückholen?\n\nDer Service kehrt mit seinen bisherigen Scan-Daten zurück und wird von der nächtlichen Discovery wieder erfasst.",
   "excluded.empty":
     "Nichts ausgeschlossen. Hier ausgeschlossene Repos behalten ihre Scan-Historie, verschwinden aus allen Zählern und werden von der nächtlichen Discovery übersprungen, bis sie wiederhergestellt werden.",
+
+  "ineligible.title": "Keine API-Referenz",
+  "ineligible.checked": "{branch} · geprüft {at}",
+  "ineligible.neverChecked": "{branch} · noch nicht geprüft",
+  "ineligible.empty":
+    "Jedes gefundene Repository hat eine API-Referenz. Repos landen hier, wenn die Discovery keinen api-ref-Pfad findet; sie verschwinden von selbst wieder, sobald einer auftaucht.",
 };

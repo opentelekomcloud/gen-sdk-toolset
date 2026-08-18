@@ -453,6 +453,21 @@ class ExcludedServiceResponse(BaseModel):
     excluded_at: datetime
 
 
+class IneligibleRepositoryResponse(BaseModel):
+    """One repository discovery checked and found to have no API reference.
+
+    Distinct from an excluded service: nobody decided this, a lookup did, and
+    it reverses itself the moment the repository gains the path. ``checked_at``
+    is what makes the row readable - without the date, "ineligible" carries no
+    hint of how stale the finding is.
+    """
+
+    repo: str
+    name: str
+    branch: str
+    checked_at: datetime | None
+
+
 # ---------------------------------------------------------------------------
 # Projections shared by the read models
 # ---------------------------------------------------------------------------

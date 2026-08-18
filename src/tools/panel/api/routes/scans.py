@@ -48,6 +48,7 @@ def start_scan(
     against a service the operator had just hidden.
     """
     service = _locked_service_or_404(db, repo)
+    _reject_ineligible(service)
     if _exclusion_of(db, service) is not None:
         raise HTTPException(
             status_code=409,
@@ -109,6 +110,7 @@ def exclude_service(
     makes that refusal reliable - see ``start_scan``.
     """
     service = _locked_service_or_404(db, repo)
+    _reject_ineligible(service)
     if _exclusion_of(db, service) is not None:
         raise HTTPException(
             status_code=409,
@@ -209,6 +211,20 @@ def _locked_service_or_404(db: Session, repo: str) -> Service:
     if service is None:
         raise HTTPException(status_code=404, detail="Service not found")
     return service
+
+
+def _reject_ineligible(service: Service) -> None:
+    """Refuse a Service discovery checked and found to have no API reference.
+
+    ``is False`` and not a falsy test: NULL means discovery has never looked at
+    this repository, and those stay scannable and excludable. Collapsing the two
+    would lock every hand-registered service out of the panel.
+    """
+    if service.has_api_ref is False:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Service {service.repo} has no API reference to scan",
+        )
 
 
 def _exclusion_of(db: Session, service: Service) -> ExcludedService | None:

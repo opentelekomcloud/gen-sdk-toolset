@@ -9,6 +9,7 @@ import { SectionStrip } from "../components/SectionStrip";
 import { StatusPill } from "../components/StatusPill";
 import { OverallBar } from "../components/OverallBar";
 import { ExcludedSection } from "../excluded/ExcludedSection";
+import { IneligibleSection } from "../ineligible/IneligibleSection";
 import { shortError } from "../lib/errors";
 import { chipCls, structOkCls } from "../styles";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
@@ -194,6 +195,7 @@ export function RegistryPage() {
         </div>
 
         <ExcludedSection />
+        <IneligibleSection />
       </div>
     </>
   );

@@ -193,4 +193,10 @@ export const en = {
     "Restore {name} to the registry?\n\nIt returns with its previous scan data and will be picked up by nightly discovery again.",
   "excluded.empty":
     "Nothing excluded. Repos excluded here keep their scan history, disappear from all counts, and are skipped by nightly discovery until restored.",
+
+  "ineligible.title": "No API reference",
+  "ineligible.checked": "{branch} · checked {at}",
+  "ineligible.neverChecked": "{branch} · not yet checked",
+  "ineligible.empty":
+    "Every discovered repository has an API reference. Repos land here when discovery finds no api-ref path; they leave again by themselves once one appears.",
 } as const;
