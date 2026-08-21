@@ -60,12 +60,27 @@ def bound_cli(session_factory, monkeypatch):
 
 
 class FakeProvider:
-    """Answers the two calls discovery makes, and can fail on a chosen repo."""
+    """Answers the calls discovery makes, and can fail on a chosen repo.
 
-    def __init__(self, repos: list[str], with_api_ref: set[str], failing: str = ""):
+    ``heads`` maps a repository to the branch HEAD it resolves to. A repository
+    absent from it answers ``None`` (the ref does not exist), and one listed in
+    ``head_errors`` raises - the two ways a lookup can fail to produce a commit.
+    """
+
+    def __init__(
+        self,
+        repos: list[str],
+        with_api_ref: set[str],
+        failing: str = "",
+        heads: dict[str, str] | None = None,
+        head_errors: set[str] = frozenset(),
+    ):
         self.repos = repos
         self.with_api_ref = with_api_ref
         self.failing = failing
+        self.heads = {} if heads is None else heads
+        self.head_errors = head_errors
+        self.head_calls: list[tuple[str, str]] = []
 
     def list_repos(self, org: str) -> list[str]:
         assert org == ORG
@@ -80,6 +95,16 @@ class FakeProvider:
             )
         assert path == API_REF
         return repo in self.with_api_ref
+
+    def get_commit_hash(self, repo: str, branch: str) -> str | None:
+        self.head_calls.append((repo, branch))
+        if repo in self.head_errors:
+            raise ProviderError(
+                "API rate limit exceeded",
+                kind=ProviderErrorKind.rate_limit,
+                reset_time=1234,
+            )
+        return self.heads.get(repo)
 
 
 def _run(monkeypatch, provider: FakeProvider) -> int:
@@ -328,3 +353,106 @@ def test_interrupted_discovery_keeps_its_progress_and_reports_the_reason(
     captured = capsys.readouterr()
     assert "rate_limit" in captured.err
     assert "API rate limit exceeded" in captured.err
+    # The provider has just refused, so no HEAD lookups are attempted: they
+    # could not succeed, and against a rate limit they would deepen it.
+    assert provider.head_calls == []
+    assert "branch HEADs not refreshed" in captured.out
+
+
+# --------------------------------------------------------------------------- #
+# Branch HEAD / drift (PS2-4)
+# --------------------------------------------------------------------------- #
+HEAD_A = "a" * 40
+HEAD_B = "b" * 40
+
+
+def _head_of(session_factory, repo: str) -> str | None:
+    with session_factory() as session:
+        return session.scalar(select(Service).where(Service.repo == repo)).head_commit
+
+
+def test_discovery_stores_the_branch_head_of_eligible_repositories(
+    session_factory, monkeypatch
+):
+    provider = FakeProvider(
+        repos=[f"{ORG}/ecs"], with_api_ref={f"{ORG}/ecs"}, heads={f"{ORG}/ecs": HEAD_A}
+    )
+
+    _run(monkeypatch, provider)
+
+    assert _head_of(session_factory, f"{ORG}/ecs") == HEAD_A
+    # Resolved against the configured branch, not a default.
+    assert provider.head_calls == [(f"{ORG}/ecs", "main")]
+
+
+def test_discovery_refreshes_the_head_on_a_later_run(session_factory, monkeypatch):
+    """Drift is only as current as the last HEAD read, so a repeat run has to
+    move it - otherwise a repository that moved on would keep reporting the
+    commit it had when it was first discovered."""
+    _run(
+        monkeypatch,
+        FakeProvider(
+            repos=[f"{ORG}/ecs"],
+            with_api_ref={f"{ORG}/ecs"},
+            heads={f"{ORG}/ecs": HEAD_A},
+        ),
+    )
+
+    _run(
+        monkeypatch,
+        FakeProvider(
+            repos=[f"{ORG}/ecs"],
+            with_api_ref={f"{ORG}/ecs"},
+            heads={f"{ORG}/ecs": HEAD_B},
+        ),
+    )
+
+    assert _head_of(session_factory, f"{ORG}/ecs") == HEAD_B
+
+
+@pytest.mark.parametrize("failure", ["missing-ref", "provider-error"])
+def test_an_unresolved_head_keeps_the_one_already_stored(
+    session_factory, monkeypatch, capsys, failure
+):
+    """Neither way a lookup can fail is evidence about the documentation, so
+    neither may clear the stored HEAD: dropping it would retract a drift flag
+    the panel is still entitled to raise, and both must leave the run standing
+    rather than raising."""
+    _run(
+        monkeypatch,
+        FakeProvider(
+            repos=[f"{ORG}/ecs"],
+            with_api_ref={f"{ORG}/ecs"},
+            heads={f"{ORG}/ecs": HEAD_A},
+        ),
+    )
+    capsys.readouterr()
+
+    exit_code = _run(
+        monkeypatch,
+        FakeProvider(
+            repos=[f"{ORG}/ecs"],
+            with_api_ref={f"{ORG}/ecs"},
+            heads={} if failure == "missing-ref" else {f"{ORG}/ecs": HEAD_B},
+            head_errors=set() if failure == "missing-ref" else {f"{ORG}/ecs"},
+        ),
+    )
+
+    assert exit_code == 0  # a failed HEAD lookup is not a failed discovery
+    assert _head_of(session_factory, f"{ORG}/ecs") == HEAD_A  # untouched
+    # The skip is visible, not just logged: the drift flag now answers from an
+    # older reading and the operator has to be able to tell.
+    assert "branch HEAD unresolved for 1" in capsys.readouterr().out
+
+
+def test_an_ineligible_repository_gets_no_head_lookup(session_factory, monkeypatch):
+    """A repository with no API reference cannot be scanned, so it has no scan
+    to drift from - spending a request per run on its HEAD would buy nothing."""
+    provider = FakeProvider(
+        repos=[f"{ORG}/website"], with_api_ref=set(), heads={f"{ORG}/website": HEAD_A}
+    )
+
+    _run(monkeypatch, provider)
+
+    assert provider.head_calls == []
+    assert _head_of(session_factory, f"{ORG}/website") is None
