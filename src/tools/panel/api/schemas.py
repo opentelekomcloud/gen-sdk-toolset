@@ -154,7 +154,13 @@ class SnapshotResponse(BaseModel):
     #: The row-level detail behind parser_ok: the share of documented parameter
     #: rows that were recognized. Blind to content that was never read at all.
     completeness: float | None
+    #: When this result first appeared.
     created_at: datetime
+    #: When a successful scan last reproduced this result. Equal to
+    #: `created_at` until a rescan finds nothing changed, which stores no new
+    #: snapshot and moves this instead - so it is what the UI shows as the date
+    #: of a snapshot, or an unchanged rescan would look like nothing happened.
+    last_scanned_at: datetime
 
     @classmethod
     def from_snapshot(cls, snapshot: Snapshot) -> SnapshotResponse:
@@ -177,6 +183,7 @@ class SnapshotResponse(BaseModel):
             parser_ok=_parser_ok(snapshot),
             completeness=snapshot.completeness,
             created_at=snapshot.created_at,
+            last_scanned_at=snapshot.last_scanned_at,
         )
 
 

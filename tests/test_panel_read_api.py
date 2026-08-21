@@ -571,6 +571,23 @@ def test_snapshots_list_marks_active_and_latest(scanned, session_factory):
     assert body["latest_id"] == body["items"][0]["id"]
 
 
+def test_snapshots_list_moves_last_scanned_at_on_an_unchanged_rescan(
+    scanned, session_factory
+):
+    """The snapshot picker shows `last_scanned_at`, so this is what makes a
+    rescan that changed nothing visible at all. Serving only `created_at`
+    would leave the UI identical after a scan the operator just launched, and
+    they would have no way to tell it ran."""
+    before = scanned.get(f"/api/scan/services/{REPO}/snapshots").json()["items"][0]
+
+    _run_scan(session_factory)  # same commit, same documents
+
+    (item,) = scanned.get(f"/api/scan/services/{REPO}/snapshots").json()["items"]
+    assert item["id"] == before["id"]  # still the same snapshot
+    assert item["created_at"] == before["created_at"]  # the result did not move
+    assert item["last_scanned_at"] > before["last_scanned_at"]  # but it was read
+
+
 def test_documents_of_an_unscanned_service_are_empty_not_404(client, session_factory):
     _register(session_factory)
 

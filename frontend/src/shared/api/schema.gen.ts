@@ -849,6 +849,11 @@ export interface components {
             id: number;
             /** Issues Total */
             issues_total: number;
+            /**
+             * Last Scanned At
+             * Format: date-time
+             */
+            last_scanned_at: string;
             /** Non Endpoint Documents */
             non_endpoint_documents: number;
             /** Ok Count */

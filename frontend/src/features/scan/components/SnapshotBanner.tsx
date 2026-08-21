@@ -23,7 +23,7 @@ export function SnapshotBanner({ service, onActivateLatest }: Props) {
           at: fmtSnapshotAt(active.created_at, locale),
           ver: active.scanner_version,
           latestId: latest.id,
-          latestAt: fmtSnapshotAt(latest.created_at, locale),
+          latestAt: fmtSnapshotAt(latest.last_scanned_at, locale),
         })}
       </span>
       <button

@@ -1245,6 +1245,11 @@
             "title": "Issues Total",
             "type": "integer"
           },
+          "last_scanned_at": {
+            "format": "date-time",
+            "title": "Last Scanned At",
+            "type": "string"
+          },
           "non_endpoint_documents": {
             "title": "Non Endpoint Documents",
             "type": "integer"
@@ -1299,7 +1304,8 @@
           "docs_ok",
           "parser_ok",
           "completeness",
-          "created_at"
+          "created_at",
+          "last_scanned_at"
         ],
         "title": "SnapshotResponse",
         "type": "object"

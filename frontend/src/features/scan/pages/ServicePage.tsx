@@ -162,7 +162,7 @@ export function ServicePage() {
               </span>
             )}
             <div className="mt-0.5 text-red-600/80">
-              {t("service.failedKeptData", { gen: service.active_snapshot.id, at: fmtSnapshotAt(service.active_snapshot.created_at) })}
+              {t("service.failedKeptData", { gen: service.active_snapshot.id, at: fmtSnapshotAt(service.active_snapshot.last_scanned_at) })}
             </div>
           </div>
           <button type="button"
