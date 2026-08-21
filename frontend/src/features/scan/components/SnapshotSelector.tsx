@@ -85,7 +85,7 @@ export function SnapshotSelector({ service, disabled, onActivate }: Props) {
         <History size={12} className={onLatest ? "text-gray-400" : "text-amber-500"} />
         <span className="font-semibold">{t("snap.pill", { id: active.id })}</span>
         <span className="opacity-40">·</span>
-        <span>{fmtSnapshotAt(active.created_at, locale)}</span>
+        <span>{fmtSnapshotAt(active.last_scanned_at, locale)}</span>
         <span className="opacity-40">·</span>
         <span className="flex items-center gap-1">
           <GitCommit size={11} /> {shortCommit(active.commit_hash)}
@@ -142,7 +142,7 @@ export function SnapshotSelector({ service, disabled, onActivate }: Props) {
                           )}
                         </div>
                         <div className="mt-0.5 flex items-center gap-2 font-mono text-[11px] text-gray-400">
-                          <span>{fmtSnapshotAt(g.created_at, locale)}</span>
+                          <span>{fmtSnapshotAt(g.last_scanned_at, locale)}</span>
                           <span className="flex items-center gap-1">
                             <GitCommit size={10} /> {shortCommit(g.commit_hash)}
                           </span>
@@ -176,7 +176,7 @@ export function SnapshotSelector({ service, disabled, onActivate }: Props) {
                 <div className="text-xs font-semibold text-amber-900">{t("snap.confirmTitle", { id: pending.id })}</div>
                 <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
                   {t("snap.confirmBody", {
-                    at: fmtSnapshotAt(pending.created_at, locale),
+                    at: fmtSnapshotAt(pending.last_scanned_at, locale),
                     ver: pending.scanner_version,
                     commit: shortCommit(pending.commit_hash),
                     latest: latest.id,

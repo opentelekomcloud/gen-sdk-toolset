@@ -2,8 +2,10 @@
 
 Issue #16 (F14). This is the stable call site the scan runner hands its
 completed result to: it takes a Job that is already ``running`` and a scan
-result that already succeeded, and turns them into one immutable Snapshot
-plus its documents, completing the Job in the same transaction.
+result that already succeeded, and completes the Job in the same transaction.
+A result that differs from the latest stored one becomes a new Snapshot with
+its documents; one that does not is recorded against the Snapshot already
+holding it, so the history stays a record of changes rather than of attempts.
 
 Two contracts hold this module together:
 
@@ -27,12 +29,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tools.panel.core.analytics import analyze_document, analyze_snapshot
+from tools.panel.core.analytics.snapshot import SnapshotAnalytics
 from tools.panel.core.db.engine import SessionLocal, get_engine
 from tools.panel.core.db.models import (
     DocumentRecord,
     JobKind,
     JobStatus,
     RepositoryScanJob,
+    Service,
     Snapshot,
 )
 from tools.shared.exceptions import GenSdkError
@@ -131,11 +135,27 @@ def _persist(
     result: RepositoryScanResult,
     scanned: IrService,
 ) -> None:
-    """Write the Snapshot, its documents, the Service metadata and the Job."""
-    # One timestamp for one event: the frontend reads snapshot.created_at as
-    # the scan time, and job.finished_at is that same moment.
+    """Complete the Job, storing a Snapshot only when the result changed.
+
+    A Snapshot is meant to be a snapshot: a point where the scan result was
+    different, not a receipt for every execution. Re-scanning an unchanged
+    repository would otherwise copy every document row again and push the
+    history forward by an entry that says nothing.
+
+    The comparison runs inside the transaction that already holds the Job's
+    ``FOR UPDATE`` lock, so no second ingest can insert a Snapshot between the
+    decision and the commit.
+    """
+    # One timestamp for one event: whichever Snapshot ends up representing this
+    # scan is stamped with it, and job.finished_at is that same moment.
     finished_at = datetime.now(tz=UTC)
     analytics = analyze_snapshot(scanned.documents)
+    service = job.service
+
+    unchanged = _unchanged_from_latest(service.latest_snapshot, result, analytics)
+    if unchanged is not None:
+        _complete_reusing(session, job=job, snapshot=unchanged, finished_at=finished_at)
+        return
 
     snapshot = Snapshot(
         service_id=job.service_id,
@@ -156,14 +176,13 @@ def _persist(
         completeness=analytics.completeness,
         analytics=analytics.model_dump(mode="json"),
         created_at=finished_at,
+        last_scanned_at=finished_at,
     )
     session.add(snapshot)
     session.flush()  # assigns snapshot.id without ending the transaction
     session.add_all(_document_records(snapshot.id, scanned.documents))
 
-    service = job.service
-    service.has_api_ref = True  # the scan just read its api-ref path
-    service.eligibility_checked_at = finished_at
+    _record_eligibility(service, finished_at)
     service.latest_snapshot_id = snapshot.id
     service.active_snapshot_id = snapshot.id
     # TODO(#25): head_commit is refreshed by drift detection, not by ingest -
@@ -171,6 +190,7 @@ def _persist(
 
     job.status = JobStatus.done
     job.finished_at = finished_at
+    job.result_snapshot_id = snapshot.id
 
     session.commit()
     logger.info(
@@ -180,6 +200,74 @@ def _persist(
         analytics.documents_total,
         analytics.issues_total,
     )
+
+
+def _unchanged_from_latest(
+    latest: Snapshot | None,
+    result: RepositoryScanResult,
+    analytics: SnapshotAnalytics,
+) -> Snapshot | None:
+    """Return the latest Snapshot when this result is identical to it.
+
+    Three fields decide it. ``commit_hash`` and ``scanner_version`` say the
+    same code read the same source; ``analytics`` is the whole reading of that
+    source, so anything the panel reports moving - a count, a completeness, a
+    per-version breakdown - is a difference. The denormalized counter columns
+    are projections of that same value and would only ever repeat the answer.
+
+    Document payloads are deliberately not compared. At an identical commit
+    and scanner version they cannot differ, and comparing them would mean
+    loading every stored payload on every scan to learn nothing.
+
+    Compared against ``latest_snapshot`` and never ``active_snapshot``: active
+    is a display choice an operator may have pinned to an older entry, and
+    comparing against it would store a duplicate of whatever is on screen.
+    """
+    if latest is None:
+        return None
+    if (
+        latest.commit_hash == result.commit_hash
+        and latest.scanner_version == result.scanner_version
+        and latest.analytics == analytics.model_dump(mode="json")
+    ):
+        return latest
+    return None
+
+
+def _complete_reusing(
+    session: Session,
+    *,
+    job: RepositoryScanJob,
+    snapshot: Snapshot,
+    finished_at: datetime,
+) -> None:
+    """Finish an unchanged scan against the Snapshot that already holds it.
+
+    The Job is a full success - it reached the repository and read it - so it
+    completes as ``done`` and refreshes the eligibility the scan just proved.
+    What it does not do is move either pointer: there is no new Snapshot to
+    move them to, and re-pointing ``active`` at ``latest`` would silently undo
+    an operator's decision to pin an older entry.
+
+    Moving ``last_scanned_at`` is the one mark this scan leaves. Without it a
+    rescan that changed nothing would be indistinguishable from never having
+    run, and the panel would report a repository read seconds ago as untouched
+    since its documentation last moved.
+    """
+    snapshot.last_scanned_at = finished_at
+    _record_eligibility(job.service, finished_at)
+    job.status = JobStatus.done
+    job.finished_at = finished_at
+    job.result_snapshot_id = snapshot.id
+
+    session.commit()
+    logger.info("job %s produced no change; reusing snapshot %s", job.id, snapshot.id)
+
+
+def _record_eligibility(service: Service, checked_at: datetime) -> None:
+    """A completed scan is itself proof the api-ref path was there to read."""
+    service.has_api_ref = True
+    service.eligibility_checked_at = checked_at
 
 
 def _document_records(

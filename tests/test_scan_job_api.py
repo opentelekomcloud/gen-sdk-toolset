@@ -1020,6 +1020,47 @@ def test_rescan_is_allowed_again_once_the_service_is_included(
     assert resp.status_code == 202
 
 
+def test_an_unchanged_rescan_still_reports_the_commit_it_read(
+    client, session_factory, monkeypatch
+):
+    """The Job API reads scanner_version and commit_hash from the Job's result
+    Snapshot, not from one it created. A rescan that finds nothing changed
+    creates no Snapshot, and sourcing these from the created one would blank
+    them out - the UI would show a finished scan that read nothing."""
+    _seed_service(session_factory, "steady-api", name="steady")
+
+    def fake_build_scanner(_settings):
+        class _Scanner:
+            def scan_repository(self, repo, branch):
+                return RepositoryScanResult(
+                    repository=IrService(repo=repo, documents=[make_endpoint()]),
+                    branch=branch,
+                    commit_hash="c" * 40,
+                )
+
+        return _Scanner()
+
+    monkeypatch.setattr(jobs_module, "build_scanner", fake_build_scanner)
+    monkeypatch.setattr(ingest_module, "SessionLocal", session_factory)
+    monkeypatch.setattr(ingest_module, "get_engine", lambda: None)
+
+    first = client.post(
+        "/api/scan/services/steady-api/rescan", json={"initiated_by": "tester"}
+    ).json()["job_id"]
+    second = client.post(
+        "/api/scan/services/steady-api/rescan", json={"initiated_by": "tester"}
+    ).json()["job_id"]
+
+    assert second != first
+    body = client.get(f"/api/jobs/{second}").json()
+    assert body["status"] == "done"
+    assert body["commit_hash"] == "c" * 40
+    assert body["scanner_version"] == SCANNER_VERSION
+    with session_factory() as s:
+        # The second scan changed nothing, so it stored no second Snapshot.
+        assert len(s.scalars(select(Snapshot)).all()) == 1
+
+
 def _set_eligibility(session_factory, repo: str, has_api_ref: bool | None) -> None:
     with session_factory() as s:
         service = s.scalar(select(Service).where(Service.repo == repo))

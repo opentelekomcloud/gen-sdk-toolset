@@ -75,8 +75,10 @@ class SnapshotAnalytics(BaseModel):
 
     The counter fields map onto ``snapshot`` columns; the whole model is also
     stored as the ``analytics`` JSONB, so a reader gets the full picture -
-    including the parts that have no column - from a single value. The row is
-    immutable once ingested, so the two representations cannot drift apart.
+    including the parts that have no column - from a single value. Nothing
+    rewrites either after ingest, so the two representations cannot drift
+    apart. (``Snapshot.last_scanned_at`` does move, but it describes when the
+    result was last reproduced, not the result itself.)
     """
 
     documents_total: int = 0

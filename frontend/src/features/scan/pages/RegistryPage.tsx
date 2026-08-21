@@ -184,7 +184,6 @@ export function RegistryPage() {
         <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
           <span>
             {t("header.scanner", { v: scannerVersion })}
-            {summary?.last_scanned_at ? ` · ${t("registry.lastUpdate", { at: summary.last_scanned_at })}` : ""}
           </span>
           <span className="flex items-center gap-3">
             <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> {t("legend.ok")}</span>

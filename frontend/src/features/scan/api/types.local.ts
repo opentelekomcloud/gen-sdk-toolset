@@ -42,10 +42,13 @@ export interface SectionCounts {
 }
 
 /**
- * G1: one immutable successfully persisted scan snapshot — DTO of the
- * `snapshot` table (a failed job creates no snapshot). `created_at` is
- * the scan timestamp; `completeness` is a 0..1 float — use lib/snapshot.ts
- * helpers for percent and short commit display.
+ * G1: one successfully persisted scan snapshot — DTO of the `snapshot` table.
+ * A failed job creates no snapshot, and neither does a scan whose result is
+ * unchanged: that scan moves `last_scanned_at` on the existing row instead, so
+ * `created_at` is when this result first appeared and `last_scanned_at` when it
+ * was last confirmed.
+ * `completeness` is a 0..1 float — use lib/snapshot.ts helpers for percent
+ * and short commit display.
  */
 export interface Snapshot {
   id: number;
@@ -69,7 +72,11 @@ export interface Snapshot {
   parser_ok: number | null;
   /** Row-level detail behind parser_ok: recognized share of documented rows. */
   completeness: number | null;
+  /** When this result first appeared. */
   created_at: string;
+  /** When a successful scan last reproduced this result — what the UI shows as
+   *  the snapshot's date, so an unchanged rescan is visible rather than silent. */
+  last_scanned_at: string;
 }
 
 export interface SnapshotsResponse {
@@ -236,7 +243,6 @@ export interface DocumentDetail {
 
 export interface Summary {
   scanner_version: string;
-  last_scanned_at: string | null;
   services_total: number;
   failed_services: number;
   documents_total: number;
