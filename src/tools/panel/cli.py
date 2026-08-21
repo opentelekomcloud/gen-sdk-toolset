@@ -12,10 +12,12 @@ from tools.panel.api.app import create_app
 from tools.panel.core.db.engine import SessionLocal, get_engine
 from tools.panel.core.db.models import ExcludedService, Service, Snapshot
 from tools.scanner.factory import build_doc_provider
+from tools.scanner.interfaces import DocProvider
 from tools.scanner.repositories.discovery import (
     DiscoveredRepository,
     discover_repositories,
 )
+from tools.shared.exceptions import ProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -67,14 +69,30 @@ def _discover_command(org: str | None, branch: str | None) -> int:
     org = org or settings.github.org
     branch = branch or settings.github.branch
 
+    provider = build_doc_provider(settings)
     result = discover_repositories(
-        build_doc_provider(settings),
+        provider,
         org=org,
         api_ref_path=settings.scanner.api_ref_path,
         branch=branch,
     )
     eligible = [repo for repo in result.repositories if repo.has_api_ref]
-    created, updated = _persist_discovered(result.repositories, branch=branch)
+    # Resolved before the session opens: these are network calls, and the
+    # persistence loop below runs inside one transaction.
+    #
+    # Skipped entirely once discovery has been interrupted. The provider has
+    # just refused - the loop stops on the first operational failure - so one
+    # lookup per eligible repository would be a burst of calls that cannot
+    # succeed, and against a rate limit it would only dig the hole deeper.
+    heads: dict[str, str] = {}
+    unresolved: list[str] = []
+    if result.interruption is None:
+        heads, unresolved = _resolve_heads(
+            provider, [repo.repo for repo in eligible], branch=branch
+        )
+    created, updated = _persist_discovered(
+        result.repositories, branch=branch, heads=heads
+    )
 
     print(
         f"checked {len(result.repositories)} repositories in {org}: "
@@ -82,8 +100,18 @@ def _discover_command(org: str | None, branch: str | None) -> int:
         f"{len(result.repositories) - len(eligible)} without "
         f"({created} new, {updated} already registered)"
     )
+    if unresolved:
+        # Printed, not only logged: each of these keeps whatever head_commit it
+        # had, so its drift flag is now answering from an older reading.
+        print(
+            f"branch HEAD unresolved for {len(unresolved)}, "
+            f"drift not refreshed: {', '.join(unresolved)}"
+        )
 
     if result.interruption is not None:
+        # Every stored head_commit is now from an earlier run, so the drift
+        # flags this registry shows are as old as the last complete discovery.
+        print("branch HEADs not refreshed: discovery stopped early")
         print(
             f"discovery stopped early ({result.interruption.kind.value}): "
             f"{result.interruption.message}",
@@ -93,8 +121,40 @@ def _discover_command(org: str | None, branch: str | None) -> int:
     return 0
 
 
+def _resolve_heads(
+    provider: DocProvider, repos: list[str], *, branch: str
+) -> tuple[dict[str, str], list[str]]:
+    """Resolve the branch HEAD of each repository, before any session is open.
+
+    Every call here is a network round trip, so this runs with no transaction
+    held - the persistence loop below is one transaction over local work only.
+
+    A repository whose HEAD cannot be read is returned in the second list
+    rather than mapped to ``None``. The caller must leave such a service's
+    stored ``head_commit`` alone: clearing it would silently retract a drift
+    flag, and writing a guess would invent one. A lookup failure is also not
+    fatal - discovery has already learned what it came for, and one
+    unreadable ref should not throw that away.
+    """
+    heads: dict[str, str] = {}
+    unresolved: list[str] = []
+    for repo in repos:
+        try:
+            head = provider.get_commit_hash(repo, branch)
+        except ProviderError as error:
+            logger.warning("Could not resolve %s@%s: %s", repo, branch, error)
+            unresolved.append(repo)
+            continue
+        if head is None:
+            logger.warning("No commit resolved for %s@%s", repo, branch)
+            unresolved.append(repo)
+            continue
+        heads[repo] = head
+    return heads, unresolved
+
+
 def _persist_discovered(
-    repositories: list[DiscoveredRepository], *, branch: str
+    repositories: list[DiscoveredRepository], *, branch: str, heads: dict[str, str]
 ) -> tuple[int, int]:
     """Insert or refresh one Service per discovered repository, eligible or not.
 
@@ -137,6 +197,13 @@ def _persist_discovered(
                     blocked_by,
                 )
             service.eligibility_checked_at = checked_at
+            # Only ever written from a HEAD that resolved. A repository missing
+            # from `heads` keeps the one it had: the drift flag it feeds is a
+            # claim about the documentation, and a failed lookup is no evidence
+            # either way.
+            head = heads.get(discovered.repo)
+            if head is not None:
+                service.head_commit = head
         session.commit()
     return created, updated
 

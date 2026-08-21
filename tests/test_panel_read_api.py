@@ -89,7 +89,9 @@ def _register(session_factory, repo: str = REPO) -> int:
         return service.id
 
 
-def _run_scan(session_factory, repo: str = REPO, *, documents=None) -> int:
+def _run_scan(
+    session_factory, repo: str = REPO, *, documents=None, commit_hash: str = COMMIT
+) -> int:
     """Take a service through a running Job and a successful ingest."""
     with session_factory() as session:
         service_id = session.scalar(select(Service.id).where(Service.repo == repo))
@@ -112,7 +114,7 @@ def _run_scan(session_factory, repo: str = REPO, *, documents=None) -> int:
             else documents,
         ),
         branch="main",
-        commit_hash=COMMIT,
+        commit_hash=commit_hash,
     )
     ingest_service_result(job_id=job_id, service_repo=repo, result=result)
     return job_id
@@ -155,7 +157,7 @@ def test_services_list_serves_the_active_snapshot(scanned):
     assert item["docs_ok"] == 25
     assert item["scanner_version"] == SCANNER_VERSION
     assert item["scanned_at"] is not None
-    assert item["docs_changed"] is False  # no head_commit known yet (issue #25)
+    assert item["docs_changed"] is False  # this fixture never ran discovery
     # Partial documents are a documentation problem, not something a rescan of
     # the same commit could fix - so no rescan is suggested.
     assert item["rescan_reason"] is None
@@ -432,6 +434,57 @@ def test_an_excluded_service_stays_on_the_excluded_list(scanned):
 # ---------------------------------------------------------------------------
 # Service detail, documents, snapshots
 # ---------------------------------------------------------------------------
+
+
+def _set_head(session_factory, commit: str, repo: str = REPO) -> None:
+    """What discovery writes when it resolves the branch HEAD (PS2-4)."""
+    with session_factory() as session:
+        service = session.scalar(select(Service).where(Service.repo == repo))
+        service.head_commit = commit
+        session.commit()
+
+
+def test_a_head_ahead_of_the_active_snapshot_raises_drift(scanned, session_factory):
+    """Populating head_commit is all drift needs: the documentation moved past
+    the commit the stored scan was taken at, so the panel says so and suggests
+    a rescan. It never launches one - the operator decides."""
+    _set_head(session_factory, "f" * 40)
+
+    (item,) = scanned.get("/api/scan/services").json()["items"]
+    assert item["docs_changed"] is True
+    assert item["rescan_reason"] == "drift"
+
+    rules = {
+        rule["code"]: rule["count"]
+        for rule in scanned.get("/api/scan/attention").json()
+    }
+    assert rules["drift"] == 1
+    assert scanned.get(f"/api/scan/services/{REPO}").json()["head_commit"] == "f" * 40
+
+
+def test_drift_clears_once_that_commit_has_been_scanned(scanned, session_factory):
+    """Drift is a comparison, not a flag anyone resets: scanning the commit the
+    HEAD points at makes the two equal, and the reason disappears on its own."""
+    _set_head(session_factory, "f" * 40)
+    assert scanned.get("/api/scan/services").json()["items"][0]["docs_changed"] is True
+
+    _run_scan(session_factory, commit_hash="f" * 40)
+
+    (item,) = scanned.get("/api/scan/services").json()["items"]
+    assert item["docs_changed"] is False
+    assert item["rescan_reason"] is None
+    assert "drift" not in {
+        rule["code"] for rule in scanned.get("/api/scan/attention").json()
+    }
+
+
+def test_a_head_matching_the_active_snapshot_is_not_drift(scanned, session_factory):
+    _set_head(session_factory, COMMIT)
+
+    (item,) = scanned.get("/api/scan/services").json()["items"]
+
+    assert item["docs_changed"] is False
+    assert item["rescan_reason"] is None
 
 
 def test_service_detail_adds_snapshot_and_issue_roll_ups(scanned):

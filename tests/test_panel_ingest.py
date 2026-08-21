@@ -255,7 +255,8 @@ def test_service_scan_metadata_is_updated(session_factory):
         assert service.eligibility_checked_at == snapshot.created_at
         assert service.latest_snapshot_id == snapshot.id
         assert service.active_snapshot_id == snapshot.id
-        # Drift detection owns head_commit (issue #25); ingest leaves it alone.
+        # Discovery owns head_commit — the branch HEAD, which is not the
+        # commit this scan read; ingest leaves it alone.
         assert service.head_commit is None
 
 
