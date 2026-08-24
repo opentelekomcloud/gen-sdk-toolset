@@ -7,9 +7,12 @@ export const shortCommit = (hash: string): string => hash.slice(0, 7);
 const FMT_CACHE: Record<string, Intl.DateTimeFormat> = {};
 
 /**
- * `created_at` of a snapshot IS the scan timestamp (no separate scanned_at
- * column). Rendered in the viewer's locale and timezone (en-GB: 23/07/2026,
- * 09:15 · de-DE: 23.07.2026, 09:15) — pass `locale` from useI18n().
+ * `created_at` of a snapshot is when that result first appeared — not when the
+ * repository was last read. An unchanged rescan stores no new snapshot and
+ * bumps `last_scanned_at` instead, which is what the service's `scanned_at`
+ * reports; the two only agree until the first rescan that changes nothing.
+ * Rendered in the viewer's locale and timezone (en-GB: 23/07/2026, 09:15 ·
+ * de-DE: 23.07.2026, 09:15) — pass `locale` from useI18n().
  */
 export const fmtSnapshotAt = (iso: string | null | undefined, locale = "en-GB"): string => {
   if (!iso) return "—";

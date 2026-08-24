@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -481,6 +482,118 @@ def test_has_api_ref_backfill_separates_unchecked_from_ineligible(scratch_databa
         assert (
             connection.execute(
                 sa.text("SELECT count(*) FROM service WHERE has_api_ref IS NULL")
+            ).scalar_one()
+            == 0
+        )
+    engine.dispose()
+
+
+def test_result_snapshot_backfill_links_every_job_that_produced_one(scratch_database):
+    """Before this revision the link existed only as ``snapshot.source_job_id``,
+    and every successful Job had its own Snapshot - so that column is a complete
+    source for the backfill. A Job that never produced a result keeps NULL,
+    which is what the column means from here on.
+    """
+    url = scratch_database("panel_test_result_snapshot")
+    config = _alembic_config(url)
+    engine = create_engine(url)
+    revision = "9430782bbec1"
+
+    command.upgrade(config, f"{revision}-1")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("""
+            INSERT INTO service (repo, name, branch) VALUES ('org/ecs', 'ecs', 'main');
+            INSERT INTO job (service_id, kind, status, started_at, finished_at)
+                SELECT id, 'scan', 'done', now(), now() FROM service;
+            INSERT INTO job (service_id, kind, status, finished_at, error)
+                SELECT id, 'scan', 'failed', now(), 'boom' FROM service;
+            INSERT INTO snapshot (service_id, source_job_id, branch, commit_hash,
+                    scanner_version, document_schema_version, analytics)
+                SELECT s.id, j.id, 'main', repeat('a', 40), '0.1.0', '1', '{}'::jsonb
+                FROM service s JOIN job j ON j.service_id = s.id
+                WHERE j.status = 'done';
+            """)
+        )
+
+    command.upgrade(config, revision)
+    with engine.begin() as connection:
+        rows = connection.execute(
+            sa.text("""
+            SELECT j.status, j.result_snapshot_id, s.id
+            FROM job j LEFT JOIN snapshot s ON s.source_job_id = j.id
+            ORDER BY j.id
+            """)
+        ).all()
+        done, failed = rows
+        assert done[1] == done[2] is not None  # linked to the one it created
+        assert failed[1] is None  # nothing to point at
+
+    command.downgrade(config, f"{revision}-1")
+    with engine.begin() as connection:
+        assert "result_snapshot_id" not in {
+            column["name"] for column in inspect(engine).get_columns("job")
+        }
+        # The original direction is untouched, so nothing was lost either way.
+        assert (
+            connection.execute(
+                sa.text("SELECT count(*) FROM snapshot WHERE source_job_id IS NOT NULL")
+            ).scalar_one()
+            == 1
+        )
+    engine.dispose()
+
+
+def test_last_scanned_at_backfill_starts_from_created_at(scratch_database):
+    """Every existing Snapshot was produced by a scan that succeeded at its
+    ``created_at`` and has not been re-confirmed since, so that is its true
+    value rather than a placeholder - which is why the column can be made NOT
+    NULL in the same revision without leaving a row behind.
+    """
+    url = scratch_database("panel_test_last_scanned_at")
+    config = _alembic_config(url)
+    engine = create_engine(url)
+    revision = "f1aec34a6321"
+
+    command.upgrade(config, f"{revision}-1")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("""
+            INSERT INTO service (repo, name, branch)
+                VALUES ('org/ecs', 'ecs', 'main');
+            INSERT INTO job (service_id, kind, status, started_at, finished_at)
+                SELECT id, 'scan', 'done', now(), now() FROM service;
+            INSERT INTO snapshot (service_id, source_job_id, branch, commit_hash,
+                    scanner_version, document_schema_version, analytics, created_at)
+                SELECT s.id, j.id, 'main', repeat('a', 40), '0.1.0', '1', '{}'::jsonb,
+                    TIMESTAMPTZ '2026-01-01 10:00:00+00'
+                FROM service s JOIN job j ON j.service_id = s.id;
+            """)
+        )
+
+    command.upgrade(config, revision)
+    with engine.begin() as connection:
+        created, last_scanned = connection.execute(
+            sa.text("SELECT created_at, last_scanned_at FROM snapshot")
+        ).one()
+        assert last_scanned == created == datetime(2026, 1, 1, 10, 0, tzinfo=UTC)
+        # NOT NULL with a server default, so a row inserted without one still
+        # gets a real value rather than being rejected.
+        connection.execute(
+            sa.text("""
+            INSERT INTO job (service_id, kind, status, started_at, finished_at)
+                SELECT id, 'scan', 'done', now(), now() FROM service;
+            INSERT INTO snapshot (service_id, source_job_id, branch, commit_hash,
+                    scanner_version, document_schema_version, analytics)
+                SELECT s.id, max(j.id), 'main', repeat('b', 40), '0.1.0', '1',
+                    '{}'::jsonb
+                FROM service s JOIN job j ON j.service_id = s.id
+                GROUP BY s.id;
+            """)
+        )
+        assert (
+            connection.execute(
+                sa.text("SELECT count(*) FROM snapshot WHERE last_scanned_at IS NULL")
             ).scalar_one()
             == 0
         )

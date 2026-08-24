@@ -94,9 +94,6 @@ def get_summary(db: Session = Depends(get_db)) -> SummaryResponse:
     scanned = [state for state in states if state.active_snapshot is not None]
     return SummaryResponse(
         scanner_version=SCANNER_VERSION,
-        last_scanned_at=max(
-            (state.active_snapshot.created_at for state in scanned), default=None
-        ),
         services_total=len(states),
         failed_services=sum(failed_job(state) is not None for state in states),
         documents_total=sum(
