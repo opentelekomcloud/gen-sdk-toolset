@@ -17,7 +17,9 @@ from tools.scanner.repositories.discovery import (
     DiscoveredRepository,
     discover_repositories,
 )
+from tools.scanner.repositories.eligibility import interruption_from_repository_error
 from tools.shared.exceptions import ProviderError
+from tools.shared.scan import RepositoryInterruption
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +88,10 @@ def _discover_command(org: str | None, branch: str | None) -> int:
     # succeed, and against a rate limit it would only dig the hole deeper.
     heads: dict[str, str] = {}
     unresolved: list[str] = []
+    head_interruption = None
     if result.interruption is None:
-        heads, unresolved = _resolve_heads(
-            provider, [repo.repo for repo in eligible], branch=branch
+        heads, unresolved, head_interruption = _resolve_heads(
+            provider, _branches_to_read(eligible, default=branch)
         )
     created, updated = _persist_discovered(
         result.repositories, branch=branch, heads=heads
@@ -117,40 +120,84 @@ def _discover_command(org: str | None, branch: str | None) -> int:
             f"{result.interruption.message}",
             file=sys.stderr,
         )
+    if head_interruption is not None:
+        print(
+            f"branch HEAD resolution stopped early "
+            f"({head_interruption.kind.value}): {head_interruption.message}",
+            file=sys.stderr,
+        )
+    if result.interruption is not None or head_interruption is not None:
         return EXIT_INTERRUPTED
     return 0
 
 
+def _branches_to_read(
+    repositories: list[DiscoveredRepository], *, default: str
+) -> dict[str, str]:
+    """Map each repository to the branch its HEAD has to be read from.
+
+    A registered Service is scanned at its own stored ``branch`` - the runner
+    reads ``job.service.branch`` - which is not necessarily the branch this
+    discovery run was pointed at. Reading HEAD from the other one would compare
+    a commit from one branch against a snapshot taken on another, and the drift
+    flag would then be stuck on permanently: no scan could ever make the two
+    agree. A repository nobody has registered yet is created at ``default`` by
+    `_persist_discovered`, so that is the branch it will be scanned at.
+
+    Its own short session, closed before any network call is made.
+    """
+    repos = [repository.repo for repository in repositories]
+    if not repos:
+        return {}
+    get_engine()
+    with SessionLocal() as session:
+        stored = dict(
+            session.execute(
+                select(Service.repo, Service.branch).where(Service.repo.in_(repos))
+            ).all()
+        )
+    return {repo: stored.get(repo, default) for repo in repos}
+
+
 def _resolve_heads(
-    provider: DocProvider, repos: list[str], *, branch: str
-) -> tuple[dict[str, str], list[str]]:
-    """Resolve the branch HEAD of each repository, before any session is open.
+    provider: DocProvider, branches: dict[str, str]
+) -> tuple[dict[str, str], list[str], RepositoryInterruption | None]:
+    """Resolve each repository's branch HEAD, before any session is open.
 
     Every call here is a network round trip, so this runs with no transaction
     held - the persistence loop below is one transaction over local work only.
 
-    A repository whose HEAD cannot be read is returned in the second list
-    rather than mapped to ``None``. The caller must leave such a service's
-    stored ``head_commit`` alone: clearing it would silently retract a drift
-    flag, and writing a guess would invent one. A lookup failure is also not
-    fatal - discovery has already learned what it came for, and one
-    unreadable ref should not throw that away.
+    A ref that simply does not resolve is collected into the second list rather
+    than mapped to ``None``: the caller leaves such a service's stored
+    ``head_commit`` alone, because clearing it would silently retract a drift
+    flag and writing a guess would invent one. That is a fact about one
+    repository, and the run continues.
+
+    An operational ``ProviderError`` is not. It means the provider itself is
+    refusing - a rate limit, a bad token - so every remaining lookup would fail
+    the same way, and continuing would spend a burst of requests to learn that
+    N times over. The walk stops where it is and hands the reason back, which is
+    what `discover_repositories` does with the same class of failure; whatever
+    resolved before it is kept and stored.
     """
     heads: dict[str, str] = {}
     unresolved: list[str] = []
-    for repo in repos:
+    for repo, branch in branches.items():
         try:
             head = provider.get_commit_hash(repo, branch)
         except ProviderError as error:
-            logger.warning("Could not resolve %s@%s: %s", repo, branch, error)
-            unresolved.append(repo)
-            continue
+            logger.error("Branch HEAD resolution stopped at %s: %s", repo, error)
+            return (
+                heads,
+                unresolved,
+                interruption_from_repository_error(error, repo=repo),
+            )
         if head is None:
             logger.warning("No commit resolved for %s@%s", repo, branch)
             unresolved.append(repo)
             continue
         heads[repo] = head
-    return heads, unresolved
+    return heads, unresolved, None
 
 
 def _persist_discovered(

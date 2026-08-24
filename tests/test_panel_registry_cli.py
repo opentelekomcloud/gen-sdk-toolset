@@ -410,14 +410,12 @@ def test_discovery_refreshes_the_head_on_a_later_run(session_factory, monkeypatc
     assert _head_of(session_factory, f"{ORG}/ecs") == HEAD_B
 
 
-@pytest.mark.parametrize("failure", ["missing-ref", "provider-error"])
-def test_an_unresolved_head_keeps_the_one_already_stored(
-    session_factory, monkeypatch, capsys, failure
+def test_an_unresolvable_ref_keeps_the_head_already_stored(
+    session_factory, monkeypatch, capsys
 ):
-    """Neither way a lookup can fail is evidence about the documentation, so
-    neither may clear the stored HEAD: dropping it would retract a drift flag
-    the panel is still entitled to raise, and both must leave the run standing
-    rather than raising."""
+    """A ref that does not resolve is a fact about one repository, not about the
+    provider: the run carries on, and the stored HEAD stays. Dropping it would
+    retract a drift flag the panel is still entitled to raise."""
     _run(
         monkeypatch,
         FakeProvider(
@@ -430,19 +428,68 @@ def test_an_unresolved_head_keeps_the_one_already_stored(
 
     exit_code = _run(
         monkeypatch,
-        FakeProvider(
-            repos=[f"{ORG}/ecs"],
-            with_api_ref={f"{ORG}/ecs"},
-            heads={} if failure == "missing-ref" else {f"{ORG}/ecs": HEAD_B},
-            head_errors=set() if failure == "missing-ref" else {f"{ORG}/ecs"},
-        ),
+        FakeProvider(repos=[f"{ORG}/ecs"], with_api_ref={f"{ORG}/ecs"}, heads={}),
     )
 
-    assert exit_code == 0  # a failed HEAD lookup is not a failed discovery
+    assert exit_code == 0
     assert _head_of(session_factory, f"{ORG}/ecs") == HEAD_A  # untouched
     # The skip is visible, not just logged: the drift flag now answers from an
     # older reading and the operator has to be able to tell.
     assert "branch HEAD unresolved for 1" in capsys.readouterr().out
+
+
+def test_a_rate_limit_stops_head_resolution_instead_of_hammering_on(
+    session_factory, monkeypatch, capsys
+):
+    """An operational failure means the provider is refusing, so every later
+    lookup fails the same way. Continuing would spend a request per remaining
+    repository to learn that N times, and on a rate limit would deepen it - so
+    the walk stops where it is, keeps what it resolved, and exits non-zero
+    rather than reporting a refresh that only half happened."""
+    provider = FakeProvider(
+        repos=[f"{ORG}/aaa", f"{ORG}/bbb", f"{ORG}/ccc"],
+        with_api_ref={f"{ORG}/aaa", f"{ORG}/bbb", f"{ORG}/ccc"},
+        heads={f"{ORG}/aaa": HEAD_A},
+        head_errors={f"{ORG}/bbb"},
+    )
+
+    exit_code = _run(monkeypatch, provider)
+
+    assert exit_code == cli.EXIT_INTERRUPTED
+    # aaa resolved, bbb refused, ccc never asked.
+    assert [repo for repo, _branch in provider.head_calls] == [
+        f"{ORG}/aaa",
+        f"{ORG}/bbb",
+    ]
+    assert _head_of(session_factory, f"{ORG}/aaa") == HEAD_A  # progress kept
+    assert _head_of(session_factory, f"{ORG}/ccc") is None
+    captured = capsys.readouterr()
+    assert "branch HEAD resolution stopped early (rate_limit)" in captured.err
+
+
+def test_the_head_is_read_from_the_branch_the_service_is_scanned_at(
+    session_factory, monkeypatch
+):
+    """The runner scans `job.service.branch`, which a discovery run pointed at
+    a different branch must not override. Reading HEAD from the other branch
+    would compare a commit taken on one against a snapshot taken on the other,
+    and drift would be stuck on forever - no scan could make them agree."""
+    with session_factory() as session:
+        session.add(Service(repo=f"{ORG}/pinned", name="pinned", branch="stable"))
+        session.commit()
+
+    provider = FakeProvider(
+        repos=[f"{ORG}/pinned"],
+        with_api_ref={f"{ORG}/pinned"},
+        heads={f"{ORG}/pinned": HEAD_B},
+    )
+    _run(monkeypatch, provider)  # _run passes branch "main"
+
+    assert provider.head_calls == [(f"{ORG}/pinned", "stable")]
+    assert _head_of(session_factory, f"{ORG}/pinned") == HEAD_B
+    with session_factory() as session:
+        # Discovery reads the stored branch; it does not rewrite it.
+        assert session.scalars(select(Service)).one().branch == "stable"
 
 
 def test_an_ineligible_repository_gets_no_head_lookup(session_factory, monkeypatch):
