@@ -75,6 +75,17 @@ class ExcludeRequest(BaseModel):
         return stripped
 
 
+class ActivateSnapshotRequest(BaseModel):
+    """Body for activating a stored Snapshot: who asked for the switch.
+
+    Its own model rather than a reuse of ``ScanRequest``, because the field
+    means something different here: a scan's initiator is persisted on the Job,
+    this one is only logged - there is no activation audit table.
+    """
+
+    initiated_by: str = Field(min_length=1)
+
+
 class StartScanResponse(BaseModel):
     """Returned immediately when a scan Job is queued."""
 

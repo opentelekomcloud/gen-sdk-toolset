@@ -213,17 +213,7 @@ def list_services(
 @router.get("/scan/services/{repo:path}/snapshots", response_model=SnapshotsResponse)
 def list_snapshots(repo: str, db: Session = Depends(get_db)) -> SnapshotsResponse:
     """A service's scan history, newest first."""
-    service = _service_or_404(db, repo)
-    snapshots = db.scalars(
-        select(Snapshot)
-        .where(Snapshot.service_id == service.id)
-        .order_by(Snapshot.created_at.desc(), Snapshot.id.desc())
-    ).all()
-    return SnapshotsResponse(
-        items=[SnapshotResponse.from_snapshot(row) for row in snapshots],
-        active_id=service.active_snapshot_id,
-        latest_id=service.latest_snapshot_id,
-    )
+    return snapshot_history(db, _service_or_404(db, repo))
 
 
 @router.get("/scan/services/{repo:path}/documents/{document_id}")
@@ -400,6 +390,24 @@ def get_service(repo: str, db: Session = Depends(get_db)) -> ServiceDetailRespon
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def snapshot_history(db: Session, service: Service) -> SnapshotsResponse:
+    """One service's stored Snapshots, newest first, with both pointers.
+
+    Shared with the activation endpoint in ``scans.py``, so the two routes
+    cannot disagree about the list the operator is choosing from.
+    """
+    snapshots = db.scalars(
+        select(Snapshot)
+        .where(Snapshot.service_id == service.id)
+        .order_by(Snapshot.created_at.desc(), Snapshot.id.desc())
+    ).all()
+    return SnapshotsResponse(
+        items=[SnapshotResponse.from_snapshot(row) for row in snapshots],
+        active_id=service.active_snapshot_id,
+        latest_id=service.latest_snapshot_id,
+    )
 
 
 def _service_query():

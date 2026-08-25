@@ -110,7 +110,7 @@ export const en = {
   "snap.neverScanned": "never scanned",
   "snap.popoverTitle": "Scan snapshots",
   "snap.popoverHint":
-    "A snapshot is stored each time the scan result changes; a scan that finds nothing changed updates the existing one instead. Switching only changes which snapshot is active — it never starts a new scan or alters data.",
+    "A snapshot is stored each time the scan result changes. A rescan that finds nothing changed stores none: it reuses the latest snapshot and only refreshes its date, so an older active snapshot stays exactly as it is. Switching only changes which snapshot is active — it never starts a scan or alters data.",
   "snap.loading": "Loading snapshots…",
   "snap.latestBadge": "latest",
   "snap.activeBadge": "active",

@@ -1,6 +1,8 @@
-"""Scan launch and job status endpoints."""
+"""Scan launch, job status and snapshot activation endpoints."""
 
 from __future__ import annotations
+
+import logging
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import select
@@ -8,20 +10,27 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from tools.panel.api.deps import get_db
+from tools.panel.api.routes.scan_read import snapshot_history
 from tools.panel.api.schemas import (
+    ActivateSnapshotRequest,
     ExcludeRequest,
     JobResponse,
     ScanRequest,
+    SnapshotsResponse,
     StartScanResponse,
 )
 from tools.panel.core.db.models import (
+    TERMINAL_JOB_STATUSES,
     ExcludedService,
     JobKind,
     JobStatus,
     RepositoryScanJob,
     Service,
+    Snapshot,
 )
 from tools.panel.core.jobs import run_scan_job, terminate_job
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -85,6 +94,59 @@ def start_scan(
 
     background_tasks.add_task(run_scan_job, job.id)
     return StartScanResponse(job_id=job.id)
+
+
+@router.post(
+    "/scan/services/{repo:path}/snapshots/{snapshot_id}/activate",
+    response_model=SnapshotsResponse,
+)
+def activate_snapshot(
+    repo: str,
+    snapshot_id: int,
+    body: ActivateSnapshotRequest,
+    db: Session = Depends(get_db),
+) -> SnapshotsResponse:
+    """Serve this Service's scan-result views from another of its Snapshots.
+
+    Moves ``active_snapshot_id`` only: ``latest_snapshot_id`` and the stored
+    Snapshots stay as they are, and every view downstream already follows this
+    pointer. Re-activating the active Snapshot changes nothing and answers 200.
+    An excluded Service is allowed; ``initiated_by`` is logged, not stored.
+
+    Refused with ``409`` while a scan Job is queued or running, whatever the
+    request would change: ingest moves the same pointer, so one would silently
+    overwrite the other. Terminal Jobs never block. The Service row is locked
+    for the check-then-write, as in ``start_scan``.
+    """
+    service = _locked_service_or_404(db, repo)
+    snapshot = db.scalar(
+        select(Snapshot).where(
+            Snapshot.id == snapshot_id,
+            Snapshot.service_id == service.id,
+        )
+    )
+    if snapshot is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Snapshot {snapshot_id} not found for service {repo}",
+        )
+
+    in_flight = _scan_in_flight(db, service)
+    if in_flight is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Scan job #{in_flight.id} is {in_flight.status.value} for this "
+                "service; the active snapshot cannot be switched until it finishes"
+            ),
+        )
+
+    service.active_snapshot_id = snapshot.id
+    db.commit()
+    logger.info(
+        "service %s: snapshot %s activated by %s", repo, snapshot_id, body.initiated_by
+    )
+    return snapshot_history(db, service)
 
 
 @router.post("/scan/services/{repo:path}/exclude", status_code=204)
@@ -225,6 +287,23 @@ def _reject_ineligible(service: Service) -> None:
             status_code=409,
             detail=f"Service {service.repo} has no API reference to scan",
         )
+
+
+def _scan_in_flight(db: Session, service: Service) -> RepositoryScanJob | None:
+    """The Service's scan Job that has not reached a terminal state, if any.
+
+    Asked as "not terminal" rather than "queued or running", so a status added
+    later is covered until something declares it terminal.
+    """
+    return db.scalar(
+        select(RepositoryScanJob)
+        .where(
+            RepositoryScanJob.service_id == service.id,
+            RepositoryScanJob.kind == JobKind.scan,
+            RepositoryScanJob.status.not_in(TERMINAL_JOB_STATUSES),
+        )
+        .order_by(RepositoryScanJob.id.desc())
+    )
 
 
 def _exclusion_of(db: Session, service: Service) -> ExcludedService | None:

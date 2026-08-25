@@ -112,7 +112,7 @@ export const de: Record<keyof typeof en, string> = {
   "snap.neverScanned": "nie gescannt",
   "snap.popoverTitle": "Scan-Snapshots",
   "snap.popoverHint":
-    "Ein Snapshot wird gespeichert, sobald sich das Scan-Ergebnis ändert; ein Scan ohne Änderung aktualisiert den vorhandenen. Das Umschalten ändert nur den aktiven Snapshot — es startet keinen neuen Scan und verändert keine Daten.",
+    "Ein Snapshot wird gespeichert, sobald sich das Scan-Ergebnis ändert. Ein Rescan ohne Änderung speichert keinen: Er verwendet den neuesten Snapshot weiter und aktualisiert nur dessen Datum — ein älterer aktiver Snapshot bleibt unverändert. Das Umschalten ändert nur den aktiven Snapshot — es startet keinen Scan und verändert keine Daten.",
   "snap.loading": "Snapshots werden geladen…",
   "snap.latestBadge": "neueste",
   "snap.activeBadge": "aktiv",
