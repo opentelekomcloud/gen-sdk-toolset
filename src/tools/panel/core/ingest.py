@@ -185,8 +185,10 @@ def _persist(
     _record_eligibility(service, finished_at)
     service.latest_snapshot_id = snapshot.id
     service.active_snapshot_id = snapshot.id
-    # TODO(#25): head_commit is refreshed by drift detection, not by ingest -
-    # the scanned commit is not necessarily the current branch HEAD.
+    # head_commit is deliberately not touched here: it is the branch HEAD, which
+    # discovery resolves, and the commit this scan read is not necessarily it.
+    # Writing the scanned commit would make drift compare a value against
+    # itself, so the flag could never fire again.
 
     job.status = JobStatus.done
     job.finished_at = finished_at
