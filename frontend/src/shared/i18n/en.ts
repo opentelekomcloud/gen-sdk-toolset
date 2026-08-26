@@ -126,6 +126,10 @@ export const en = {
     "This page and everything downstream will use the scan from {at} (scanner v{ver}, commit {commit}) instead of the latest Snapshot {latest}. No rescan runs, nothing is deleted — you can switch back anytime.",
   "snap.cancel": "Cancel",
   "snap.setActive": "Set active",
+  "snap.activateFailed": "Could not switch snapshot",
+  "snap.activateConflict": "A scan is running — the active snapshot cannot be switched until it finishes",
+  "snap.activateGone": "That snapshot is no longer stored for this service",
+  "snap.dismiss": "Dismiss",
   "snapBanner.text":
     "An older snapshot is active — showing Snapshot {activeId} ({at}, scanner v{ver}). Latest is Snapshot {latestId} · {latestAt}.",
   "snapBanner.activateLatest": "Activate latest",

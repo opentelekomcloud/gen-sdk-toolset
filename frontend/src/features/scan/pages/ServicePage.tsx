@@ -15,6 +15,7 @@ import { OverallBar } from "../components/OverallBar";
 import { SECTIONS } from "../constants";
 import { DocumentsBlock } from "../documents/DocumentsBlock";
 import { ExcludeModal } from "../excluded/ExcludeModal";
+import { activationErrorKey } from "../lib/errors";
 import { fmtSnapshotAt } from "../lib/snapshot";
 import { DOC_STATUS_CLS, structOkCls } from "../styles";
 import type { DocStatus } from "../api/types.local";
@@ -122,6 +123,26 @@ export function ServicePage() {
           )}
         </div>
       </div>
+
+      {/* A refused activation changes nothing on screen, so say why it did not
+          take. onSettled has already refetched, so the page around it is in
+          step with the server by the time this renders. */}
+      {activate.isError && (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          <AlertTriangle size={14} className="mt-px shrink-0 text-amber-500" />
+          <div className="min-w-0">
+            <span className="font-semibold">{t(activationErrorKey(activate.error))}</span>
+            {" — "}
+            <span className="font-mono">{activate.error.message}</span>
+          </div>
+          <button type="button"
+            onClick={() => activate.reset()}
+            className="ml-auto shrink-0 rounded border border-amber-300 px-2 py-1 font-medium text-amber-800 transition hover:border-amber-500 hover:bg-white"
+          >
+            {t("snap.dismiss")}
+          </button>
+        </div>
+      )}
 
       {scanning && service.job_id != null && (
         <ScanJobWatcher key={service.job_id} serviceName={service.name} jobId={service.job_id} />
