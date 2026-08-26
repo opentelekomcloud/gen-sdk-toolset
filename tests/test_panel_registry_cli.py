@@ -503,3 +503,92 @@ def test_an_ineligible_repository_gets_no_head_lookup(session_factory, monkeypat
 
     assert provider.head_calls == []
     assert _head_of(session_factory, f"{ORG}/website") is None
+
+
+# --------------------------------------------------------------------------- #
+# Scheduled re-runs
+# --------------------------------------------------------------------------- #
+
+
+def test_repeated_discovery_runs_change_nothing_but_the_marks(
+    session_factory, monkeypatch, capsys
+):
+    """What a cron entry does to this registry, three passes in: the rows are
+    the same rows, and only the two marks a pass exists to refresh move. A run
+    that added a second Service for a repository it had already seen would grow
+    the registry by one row every interval, and each copy would look plausible.
+    """
+    heads = [HEAD_A, HEAD_B, "c" * 40]
+    for head in heads:
+        _run(
+            monkeypatch,
+            FakeProvider(
+                repos=[f"{ORG}/ecs", f"{ORG}/website"],
+                with_api_ref={f"{ORG}/ecs"},
+                heads={f"{ORG}/ecs": head},
+            ),
+        )
+
+    assert _registered(session_factory) == [f"{ORG}/ecs", f"{ORG}/website"]
+    with session_factory() as session:
+        ecs = session.scalar(select(Service).where(Service.repo == f"{ORG}/ecs"))
+        assert ecs.head_commit == heads[-1]  # compared against the newest read
+        # Seen once, checked three times: a pass that re-stamped first_seen
+        # would report every repository as new on every interval.
+        assert ecs.first_seen < ecs.eligibility_checked_at
+    assert _eligibility(session_factory) == {
+        f"{ORG}/ecs": True,
+        f"{ORG}/website": False,
+    }
+    assert "0 new, 2 already registered" in capsys.readouterr().out
+
+
+def test_discovery_starts_no_scan_job(session_factory, monkeypatch):
+    """The product decision the schedule rests on: a pass refreshes marks, and
+    nothing else. A scan enqueued here would run unattended on every interval,
+    spending the token's quota with no operator behind it."""
+    _run(
+        monkeypatch,
+        FakeProvider(
+            repos=[f"{ORG}/ecs", f"{ORG}/website"],
+            with_api_ref={f"{ORG}/ecs"},
+            heads={f"{ORG}/ecs": HEAD_A},
+        ),
+    )
+
+    # Asserted first, so an empty job table cannot pass this test by way of a
+    # pass that did nothing at all.
+    assert _registered(session_factory) == [f"{ORG}/ecs", f"{ORG}/website"]
+    with session_factory() as session:
+        assert session.scalars(select(RepositoryScanJob)).all() == []
+        assert session.scalars(select(Snapshot)).all() == []
+
+
+def test_the_summary_reports_how_many_heads_were_refreshed(
+    session_factory, monkeypatch, capsys
+):
+    """The counter a scheduled run is read for. Reported on every pass, zero
+    included: a log line that only appears when something worked cannot show a
+    registry going stale."""
+    _run(
+        monkeypatch,
+        FakeProvider(
+            repos=[f"{ORG}/ecs", f"{ORG}/vpc", f"{ORG}/website"],
+            with_api_ref={f"{ORG}/ecs", f"{ORG}/vpc"},
+            heads={f"{ORG}/ecs": HEAD_A, f"{ORG}/vpc": HEAD_B},
+        ),
+    )
+
+    assert "branch HEAD refreshed for 2 of 2 eligible" in capsys.readouterr().out
+
+
+def test_the_refreshed_count_is_printed_even_when_nothing_resolved(
+    session_factory, monkeypatch, capsys
+):
+    exit_code = _run(
+        monkeypatch,
+        FakeProvider(repos=[f"{ORG}/ecs"], with_api_ref={f"{ORG}/ecs"}, heads={}),
+    )
+
+    assert exit_code == 0  # an unresolved ref is not an interruption
+    assert "branch HEAD refreshed for 0 of 1 eligible" in capsys.readouterr().out
