@@ -2,3 +2,5 @@
 seed/*.sql.gz
 .env
 auth.caddy
+# What the scheduled discovery pass appends to on the host.
+discovery.log

@@ -35,10 +35,11 @@ def _openapi_command() -> None:
 def _register_command(repo: str, name: str | None, branch: str) -> None:
     """Register a repository so the panel can scan it.
 
-    Repository discovery (issue #64) will fill the registry automatically; until
-    then a service is put there by hand. Registering a repository that is
-    already known prints its id instead of failing, so the command is safe to
-    re-run.
+    `panel discover` fills the registry on its own, on a schedule in a
+    deployment, so this is for the repository that discovery will not reach - a
+    different organization - or one that has to be there before the next pass.
+    Registering a repository that is already known prints its id instead of
+    failing, so the command is safe to re-run.
     """
     get_engine()
     with SessionLocal() as session:
@@ -65,7 +66,12 @@ def _discover_command(org: str | None, branch: str | None) -> int:
 
     An operational interruption (rate limit, auth) keeps everything checked so
     far and reports the reason with a non-zero exit code: a partial registry is
-    fine, a partial registry that looks complete is not.
+    fine, a partial registry that looks complete is not. The next run completes
+    the pass - there is no retry here, because the command is expected to be
+    run again on a schedule.
+
+    No scan Job is ever created: this refreshes marks, and starting a scan is
+    an operator's decision.
     """
     settings = load_settings()
     org = org or settings.github.org
@@ -102,6 +108,13 @@ def _discover_command(org: str | None, branch: str | None) -> int:
         f"{len(eligible)} with {settings.scanner.api_ref_path}, "
         f"{len(result.repositories) - len(eligible)} without "
         f"({created} new, {updated} already registered)"
+    )
+    # Printed on every run, zero included: a scheduled pass is read for this
+    # number, and one that quietly drops to zero is what a registry going stale
+    # looks like in a log.
+    print(
+        f"branch HEAD refreshed for {len(heads)} of {len(eligible)} "
+        f"eligible repositories"
     )
     if unresolved:
         # Printed, not only logged: each of these keeps whatever head_commit it

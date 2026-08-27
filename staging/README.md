@@ -48,10 +48,12 @@ Generate the hash yourself - it never has to leave your machine:
 docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'
 ```
 
-`GITHUB_TOKEN` is deliberately not set. Reading the panel does not need it; a
-scan launched on this host would spend the quota of whatever token lives here,
+The backend gets no `GITHUB_TOKEN`. Reading the panel does not need one, and a
+scan launched on this host would spend the quota of whatever token lived there,
 so scanning stays a laptop activity unless you decide otherwise (uncomment the
-line in `docker-compose.staging.yml`).
+line in `docker-compose.staging.yml`). Set `GITHUB_TOKEN` anyway if you want the
+scheduled registry refresh below: only the discovery container reads it, and
+that pass starts no scan.
 
 ## 3. Start
 
@@ -82,6 +84,62 @@ and guarded by the same password as the panel. "Try it out" issues real
 requests: a rescan started from there creates a real job, which fails on this
 host because no GitHub token is configured - the failure is recorded on the
 job, as any other failure would be.
+
+## Keeping the registry current
+
+Discovery is the only thing that runs on a schedule. One pass registers
+repositories that appeared in the organization, refreshes `eligibility_checked_at`,
+and re-reads each eligible repository's branch HEAD - which is what every drift
+mark on the panel is compared against. **It never starts a scan.** Which snapshot
+the panel serves changes only when someone asks for it.
+
+One pass, on the terminal:
+
+```bash
+docker compose -f docker-compose.staging.yml --profile sync run --rm discovery
+```
+
+The `sync` profile keeps it out of `up`, and the service runs the image the
+backend is already running - so the stack has to be up (step 3), there is
+nothing extra to build, and `up -d --build` refreshes what the sync executes
+along with the panel. `GITHUB_TOKEN` in `.env` reaches this container and no
+other: the sync can read GitHub while a rescan started from the UI on this host
+still cannot.
+
+To run it every four hours, `crontab -e` on the host:
+
+```cron
+17 */4 * * * cd ~/gen_sdk_tooling/deploy && { date -u -Is; docker compose -f docker-compose.staging.yml --profile sync run --rm -T discovery; } >> discovery.log 2>&1
+```
+
+That line is the whole mechanism, and the interval lives in it - change it here
+and nowhere else. `-T` because cron has no terminal, `date` because the summary
+carries no timestamp of its own, and off the hour because nothing here needs to
+be the first job on the machine to wake up. Every few hours is enough:
+documentation does not move faster than that, and each pass spends a request per
+repository.
+
+### Reading the log
+
+Each pass appends to `discovery.log` next to the stack:
+
+```
+2026-08-26T04:17:03+00:00
+checked 84 repositories in opentelekomcloud-docs: 71 with api-ref/source, 13 without (0 new, 84 already registered)
+branch HEAD refreshed for 71 of 71 eligible repositories
+```
+
+Those counters are the point of the log. `0 new` every time is normal; `refreshed
+for 0 of 71` is not - it means the marks the panel is showing are as old as the
+last pass that did resolve them.
+
+A rate limit or a bad token stops the pass where it is, keeps everything already
+written, and exits non-zero with the reason. Nothing retries: the next scheduled
+run finishes the work. A pass that fails every time is a configuration problem,
+and the log says which.
+
+The file grows by a handful of lines per pass and nothing rotates it - hand it to
+`logrotate` if this host outlives the demo.
 
 ## Updating the data later
 
