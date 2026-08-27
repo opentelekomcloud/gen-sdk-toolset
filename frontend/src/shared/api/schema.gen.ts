@@ -350,6 +350,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/scan/services/{repo}/snapshots/{snapshot_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate Snapshot
+         * @description Serve this Service's scan-result views from another of its Snapshots.
+         *
+         *     Moves ``active_snapshot_id`` only: ``latest_snapshot_id`` and the stored
+         *     Snapshots stay as they are, and every view downstream already follows this
+         *     pointer. Re-activating the active Snapshot changes nothing and answers 200.
+         *     An excluded Service is allowed; ``initiated_by`` is logged, not stored.
+         *
+         *     Refused with ``409`` while a scan Job is queued or running, whatever the
+         *     request would change: ingest moves the same pointer, so one would silently
+         *     overwrite the other. Terminal Jobs never block. The Service row is locked
+         *     for the check-then-write, as in ``start_scan``.
+         */
+        post: operations["activate_snapshot_api_scan_services__repo__snapshots__snapshot_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scan/summary": {
         parameters: {
             query?: never;
@@ -394,6 +424,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivateSnapshotRequest
+         * @description Body for activating a stored Snapshot: who asked for the switch.
+         *
+         *     Its own model rather than a reuse of ``ScanRequest``, because the field
+         *     means something different here: a scan's initiator is persisted on the Job,
+         *     this one is only logged - there is no activation audit table.
+         */
+        ActivateSnapshotRequest: {
+            /** Initiated By */
+            initiated_by: string;
+        };
         /**
          * AttentionRule
          * @description One reason the panel is asking for attention, with how many services hit it.
@@ -1323,6 +1365,42 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SnapshotsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_snapshot_api_scan_services__repo__snapshots__snapshot_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+                snapshot_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateSnapshotRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

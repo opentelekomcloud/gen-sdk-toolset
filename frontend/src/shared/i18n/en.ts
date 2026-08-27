@@ -110,7 +110,7 @@ export const en = {
   "snap.neverScanned": "never scanned",
   "snap.popoverTitle": "Scan snapshots",
   "snap.popoverHint":
-    "A snapshot is stored each time the scan result changes; a scan that finds nothing changed updates the existing one instead. Switching only changes which snapshot is active — it never starts a new scan or alters data.",
+    "A snapshot is stored each time the scan result changes. A rescan that finds nothing changed stores none: it reuses the latest snapshot and only refreshes its date, so an older active snapshot stays exactly as it is. Switching only changes which snapshot is active — it never starts a scan or alters data.",
   "snap.loading": "Loading snapshots…",
   "snap.latestBadge": "latest",
   "snap.activeBadge": "active",
@@ -126,6 +126,10 @@ export const en = {
     "This page and everything downstream will use the scan from {at} (scanner v{ver}, commit {commit}) instead of the latest Snapshot {latest}. No rescan runs, nothing is deleted — you can switch back anytime.",
   "snap.cancel": "Cancel",
   "snap.setActive": "Set active",
+  "snap.activateFailed": "Could not switch snapshot",
+  "snap.activateConflict": "A scan is running — the active snapshot cannot be switched until it finishes",
+  "snap.activateGone": "That snapshot is no longer stored for this service",
+  "snap.dismiss": "Dismiss",
   "snapBanner.text":
     "An older snapshot is active — showing Snapshot {activeId} ({at}, scanner v{ver}). Latest is Snapshot {latestId} · {latestAt}.",
   "snapBanner.activateLatest": "Activate latest",

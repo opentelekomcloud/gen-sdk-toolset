@@ -112,7 +112,7 @@ export const de: Record<keyof typeof en, string> = {
   "snap.neverScanned": "nie gescannt",
   "snap.popoverTitle": "Scan-Snapshots",
   "snap.popoverHint":
-    "Ein Snapshot wird gespeichert, sobald sich das Scan-Ergebnis ändert; ein Scan ohne Änderung aktualisiert den vorhandenen. Das Umschalten ändert nur den aktiven Snapshot — es startet keinen neuen Scan und verändert keine Daten.",
+    "Ein Snapshot wird gespeichert, sobald sich das Scan-Ergebnis ändert. Ein Rescan ohne Änderung speichert keinen: Er verwendet den neuesten Snapshot weiter und aktualisiert nur dessen Datum — ein älterer aktiver Snapshot bleibt unverändert. Das Umschalten ändert nur den aktiven Snapshot — es startet keinen Scan und verändert keine Daten.",
   "snap.loading": "Snapshots werden geladen…",
   "snap.latestBadge": "neueste",
   "snap.activeBadge": "aktiv",
@@ -128,6 +128,10 @@ export const de: Record<keyof typeof en, string> = {
     "Diese Seite und alles Nachgelagerte verwendet dann den Scan vom {at} (Scanner v{ver}, Commit {commit}) statt des neuesten Snapshots {latest}. Kein Rescan läuft, nichts wird gelöscht — Zurückschalten ist jederzeit möglich.",
   "snap.cancel": "Abbrechen",
   "snap.setActive": "Aktiv setzen",
+  "snap.activateFailed": "Snapshot konnte nicht gewechselt werden",
+  "snap.activateConflict": "Ein Scan läuft — der aktive Snapshot kann erst danach gewechselt werden",
+  "snap.activateGone": "Diesen Snapshot gibt es für diesen Service nicht mehr",
+  "snap.dismiss": "Schließen",
   "snapBanner.text":
     "Ein älterer Snapshot ist aktiv — angezeigt wird Snapshot {activeId} ({at}, Scanner v{ver}). Neueste ist Snapshot {latestId} · {latestAt}.",
   "snapBanner.activateLatest": "Neueste aktivieren",

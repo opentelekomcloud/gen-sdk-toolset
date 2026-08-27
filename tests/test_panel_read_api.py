@@ -36,6 +36,8 @@ from tools.panel.api import deps  # noqa: E402
 from tools.panel.api.app import create_app  # noqa: E402
 from tools.panel.core import ingest as ingest_module  # noqa: E402
 from tools.panel.core.db.models import (  # noqa: E402
+    TERMINAL_JOB_STATUSES,
+    DocumentRecord,
     ExcludedService,
     JobKind,
     JobStatus,
@@ -852,3 +854,269 @@ def test_export_of_an_unscanned_service_is_a_404(client, session_factory):
     _register(session_factory)
 
     assert client.get(f"/api/scan/services/{REPO}/export").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Snapshot activation - the endpoint is in api/routes/scans.py, but what it
+# promises is what the read endpoints answer afterwards.
+# ---------------------------------------------------------------------------
+
+#: The commit of the second scan, and the repository HEAD after it.
+NEXT_COMMIT = "b" * 40
+
+
+def _activate(client, snapshot_id: int, repo: str = REPO):
+    return client.post(
+        f"/api/scan/services/{repo}/snapshots/{snapshot_id}/activate",
+        json={"initiated_by": "operator"},
+    )
+
+
+def _queue_job(session_factory, status: JobStatus) -> None:
+    """Add one scan Job in ``status``, with the timestamps its CHECK demands."""
+    now = datetime.now(tz=UTC)
+    with session_factory() as session:
+        service_id = session.scalar(select(Service.id).where(Service.repo == REPO))
+        session.add(
+            RepositoryScanJob(
+                service_id=service_id,
+                kind=JobKind.scan,
+                status=status,
+                initiated_by="tester",
+                started_at=None if status is JobStatus.queued else now,
+                finished_at=now if status in TERMINAL_JOB_STATUSES else None,
+                error="boom" if status is JobStatus.failed else None,
+            )
+        )
+        session.commit()
+
+
+@pytest.fixture
+def two_snapshots(scanned, session_factory):
+    """One service with two stored Snapshots, and the ids ``(older, latest)``.
+
+    They differ in commit, document count and status breakdown, so an endpoint
+    answering from the wrong one fails instead of passing on a lookalike. The
+    HEAD stands where discovery would leave it, which is what lets the `drift`
+    rule show which Snapshot was served.
+    """
+    _run_scan(session_factory, documents=[make_endpoint()], commit_hash=NEXT_COMMIT)
+    _set_head(session_factory, NEXT_COMMIT)
+
+    body = scanned.get(f"/api/scan/services/{REPO}/snapshots").json()
+    latest, older = (item["id"] for item in body["items"])  # newest first
+    assert body["active_id"] == latest  # ingest left the newest one active
+    return older, latest
+
+
+def test_activating_an_older_snapshot_moves_active_and_leaves_latest(
+    scanned, two_snapshots
+):
+    older, latest = two_snapshots
+
+    body = _activate(scanned, older).json()
+
+    assert body["active_id"] == older
+    assert body["latest_id"] == latest  # the newest result is still the latest
+    assert [item["id"] for item in body["items"]] == [latest, older]
+    listed = scanned.get(f"/api/scan/services/{REPO}/snapshots").json()
+    assert (listed["active_id"], listed["latest_id"]) == (older, latest)
+
+
+def test_any_stored_snapshot_can_be_activated_including_the_latest_again(
+    scanned, two_snapshots
+):
+    older, latest = two_snapshots
+    assert _activate(scanned, older).json()["active_id"] == older
+
+    body = _activate(scanned, latest).json()
+
+    assert body["active_id"] == latest == body["latest_id"]
+
+
+def test_activating_the_active_snapshot_again_answers_the_same_body(
+    scanned, two_snapshots
+):
+    """Repeating the request is not a conflict: a UI that fires it twice must
+    not be told the second one clashed with the first."""
+    older, _latest = two_snapshots
+    first = _activate(scanned, older)
+
+    second = _activate(scanned, older)
+
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+
+def test_activation_moves_no_snapshot_and_no_document(
+    scanned, two_snapshots, session_factory
+):
+    """Rewriting a stored Snapshot would make the history a record of what the
+    operator looked at rather than of what the scans found."""
+    older, _latest = two_snapshots
+    with session_factory() as session:
+        before = {
+            row.id: (row.created_at, row.last_scanned_at, row.commit_hash)
+            for row in session.scalars(select(Snapshot))
+        }
+        documents_before = session.scalars(
+            select(DocumentRecord.id).order_by(DocumentRecord.id)
+        ).all()
+
+    _activate(scanned, older)
+
+    with session_factory() as session:
+        assert {
+            row.id: (row.created_at, row.last_scanned_at, row.commit_hash)
+            for row in session.scalars(select(Snapshot))
+        } == before
+        assert (
+            session.scalars(select(DocumentRecord.id).order_by(DocumentRecord.id)).all()
+            == documents_before
+        )
+
+
+def test_every_read_endpoint_serves_the_newly_active_snapshot(scanned, two_snapshots):
+    """An endpoint left reading `latest_snapshot` would report numbers from a
+    scan nobody is looking at, and they would look plausible."""
+    older, latest = two_snapshots
+    assert scanned.get(f"/api/scan/services/{REPO}/documents").json()["total"] == 1
+
+    _activate(scanned, older)
+
+    detail = scanned.get(f"/api/scan/services/{REPO}").json()
+    assert detail["active_snapshot"]["id"] == older
+    assert detail["active_snapshot"]["commit_hash"] == COMMIT
+    assert detail["latest_snapshot"]["id"] == latest
+    assert detail["documents"] == 2
+    # HEAD is the commit of the latest snapshot, so the pinned one reads as drift.
+    assert detail["docs_changed"] is True
+
+    documents = scanned.get(f"/api/scan/services/{REPO}/documents").json()
+    assert documents["total"] == 2
+    assert documents["doc_counts"] == {"all": 2, "partial": 1, "unsupported": 1}
+
+    assert scanned.get("/api/scan/summary").json()["documents_total"] == 2
+    rules = {
+        rule["code"]: rule["count"]
+        for rule in scanned.get("/api/scan/attention").json()
+    }
+    assert rules == {"drift": 1}
+
+    export = scanned.get(f"/api/scan/services/{REPO}/export")
+    assert COMMIT[:7] in export.headers["content-disposition"]
+    assert export.json()["commit_hash"] == COMMIT
+    assert len(export.json()["repository"]["documents"]) == 2
+
+
+def test_a_document_of_the_deactivated_snapshot_is_no_longer_served(
+    scanned, two_snapshots
+):
+    older, _latest = two_snapshots
+    listing = scanned.get(f"/api/scan/services/{REPO}/documents").json()
+    document_id = listing["items"][0]["id"]  # a document of the latest snapshot
+
+    _activate(scanned, older)
+
+    resp = scanned.get(f"/api/scan/services/{REPO}/documents/{document_id}")
+    assert resp.status_code == 404
+
+
+def test_activating_a_snapshot_of_an_unknown_service_is_404(scanned, two_snapshots):
+    older, _latest = two_snapshots
+
+    resp = _activate(scanned, older, repo="opentelekomcloud-docs/nope")
+
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "not_found"
+
+
+def test_activating_an_unknown_snapshot_is_404(scanned, two_snapshots):
+    _older, latest = two_snapshots
+
+    resp = _activate(scanned, latest + 1000)
+
+    assert resp.status_code == 404
+
+
+def test_activating_a_snapshot_of_another_service_is_404(scanned, session_factory):
+    """Serving it would let one service display another's scan result."""
+    _register(session_factory, "opentelekomcloud-docs/vpc")
+    _run_scan(session_factory, "opentelekomcloud-docs/vpc")
+    foreign = scanned.get(f"/api/scan/services/{REPO}/snapshots").json()["items"][0]
+
+    resp = _activate(scanned, foreign["id"], repo="opentelekomcloud-docs/vpc")
+
+    assert resp.status_code == 404
+    vpc = scanned.get("/api/scan/services/opentelekomcloud-docs/vpc").json()
+    assert vpc["active_snapshot"]["id"] != foreign["id"]
+
+
+@pytest.mark.parametrize("status", [JobStatus.queued, JobStatus.running])
+def test_activation_is_refused_while_a_scan_is_in_flight(
+    scanned, two_snapshots, session_factory, status
+):
+    """Ingest moves the same pointer, so a switch made now would overwrite the
+    scan's result or be overwritten by it, with nothing to show either."""
+    older, latest = two_snapshots
+    _queue_job(session_factory, status)
+
+    resp = _activate(scanned, older)
+
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "conflict"
+    # The already active Snapshot is refused too: the guard is about the
+    # service's state, not about what the request would change.
+    assert _activate(scanned, latest).status_code == 409
+    assert scanned.get(f"/api/scan/services/{REPO}/snapshots").json()["active_id"] == (
+        latest
+    )
+
+
+@pytest.mark.parametrize("status", sorted(TERMINAL_JOB_STATUSES))
+def test_a_finished_scan_never_blocks_activation(
+    scanned, two_snapshots, session_factory, status
+):
+    """A service whose last scan failed is the one most in need of this."""
+    older, _latest = two_snapshots
+    _queue_job(session_factory, status)
+
+    assert _activate(scanned, older).json()["active_id"] == older
+
+
+def test_an_excluded_service_can_still_switch_snapshots(scanned, two_snapshots):
+    """Exclusion hides a service from the registry; it does not freeze the
+    history it owns, and its detail page stays reachable."""
+    older, _latest = two_snapshots
+    assert _exclude(scanned).status_code == 204
+
+    resp = _activate(scanned, older)
+
+    assert resp.status_code == 200
+    assert resp.json()["active_id"] == older
+
+
+def test_an_unchanged_rescan_leaves_a_pinned_older_snapshot_active(
+    scanned, two_snapshots, session_factory
+):
+    """A rescan matching the latest Snapshot stores nothing and re-points
+    nothing: the pinned Snapshot stays active, and only the latest one's
+    `last_scanned_at` records that the repository was read."""
+    older, latest = two_snapshots
+    _activate(scanned, older)
+    before = {
+        item["id"]: item
+        for item in scanned.get(f"/api/scan/services/{REPO}/snapshots").json()["items"]
+    }
+
+    _run_scan(session_factory, documents=[make_endpoint()], commit_hash=NEXT_COMMIT)
+
+    body = scanned.get(f"/api/scan/services/{REPO}/snapshots").json()
+    assert [item["id"] for item in body["items"]] == [latest, older]  # no duplicate
+    assert body["latest_id"] == latest
+    assert body["active_id"] == older
+    after = {item["id"]: item for item in body["items"]}
+    assert after[latest]["last_scanned_at"] > before[latest]["last_scanned_at"]
+    assert after[older] == before[older]  # the pinned result was not touched
+    with session_factory() as session:
+        assert len(session.scalars(select(Snapshot)).all()) == 2

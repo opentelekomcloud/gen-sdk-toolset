@@ -1,6 +1,21 @@
 {
   "components": {
     "schemas": {
+      "ActivateSnapshotRequest": {
+        "description": "Body for activating a stored Snapshot: who asked for the switch.\n\nIts own model rather than a reuse of ``ScanRequest``, because the field\nmeans something different here: a scan's initiator is persisted on the Job,\nthis one is only logged - there is no activation audit table.",
+        "properties": {
+          "initiated_by": {
+            "minLength": 1,
+            "title": "Initiated By",
+            "type": "string"
+          }
+        },
+        "required": [
+          "initiated_by"
+        ],
+        "title": "ActivateSnapshotRequest",
+        "type": "object"
+      },
       "AttentionRule": {
         "description": "One reason the panel is asking for attention, with how many services hit it.",
         "properties": {
@@ -2105,6 +2120,65 @@
           }
         },
         "summary": "List Snapshots"
+      }
+    },
+    "/api/scan/services/{repo}/snapshots/{snapshot_id}/activate": {
+      "post": {
+        "description": "Serve this Service's scan-result views from another of its Snapshots.\n\nMoves ``active_snapshot_id`` only: ``latest_snapshot_id`` and the stored\nSnapshots stay as they are, and every view downstream already follows this\npointer. Re-activating the active Snapshot changes nothing and answers 200.\nAn excluded Service is allowed; ``initiated_by`` is logged, not stored.\n\nRefused with ``409`` while a scan Job is queued or running, whatever the\nrequest would change: ingest moves the same pointer, so one would silently\noverwrite the other. Terminal Jobs never block. The Service row is locked\nfor the check-then-write, as in ``start_scan``.",
+        "operationId": "activate_snapshot_api_scan_services__repo__snapshots__snapshot_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "snapshot_id",
+            "required": true,
+            "schema": {
+              "title": "Snapshot Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivateSnapshotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Snapshot"
       }
     },
     "/api/scan/summary": {
