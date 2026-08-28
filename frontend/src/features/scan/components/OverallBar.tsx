@@ -1,4 +1,4 @@
-import type { DocStatus } from "../api/types.local";
+import type { DocStatus } from "../types";
 
 const PARTS: [DocStatus, string][] = [
   ["ok", "bg-emerald-500"],

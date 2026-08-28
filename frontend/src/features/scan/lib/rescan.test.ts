@@ -4,13 +4,12 @@ import { en } from "../../../shared/i18n/en";
 import { de } from "../../../shared/i18n/de";
 
 describe("RESCAN_META", () => {
-  it("covers all four server-side reasons", () => {
-    expect(Object.keys(RESCAN_META).sort()).toEqual(["drift", "partial", "retry", "version"]);
+  it("covers every server-side reason and invents none", () => {
+    expect(Object.keys(RESCAN_META).sort()).toEqual(["drift", "retry", "version"]);
   });
 
   it("only retry carries the destructive tone", () => {
     expect(RESCAN_META.retry.destructiveTone).toBe(true);
-    expect(RESCAN_META.partial.destructiveTone).toBe(false);
     expect(RESCAN_META.version.destructiveTone).toBe(false);
     expect(RESCAN_META.drift.destructiveTone).toBe(false);
   });

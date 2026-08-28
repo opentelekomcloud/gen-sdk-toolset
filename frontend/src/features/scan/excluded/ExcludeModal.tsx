@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Ban } from "lucide-react";
-import type { RescanReason, ServiceDetail } from "../api/types.local";
+import type { RescanReason, ServiceDetail } from "../../../shared/api/types";
 import { CONFIG } from "../constants";
 import { RESCAN_META } from "../lib/rescan";
 import { useI18n } from "../../../shared/i18n";

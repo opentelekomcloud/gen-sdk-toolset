@@ -1,5 +1,5 @@
 /** G1 display helpers over the Snapshot DTO (mirrors the `snapshot` table). */
-import type { Snapshot } from "../api/types.local";
+import type { Snapshot } from "../../../shared/api/types";
 
 /** DB stores the full commit_hash (64); UI shows the git-style short form. */
 export const shortCommit = (hash: string): string => hash.slice(0, 7);

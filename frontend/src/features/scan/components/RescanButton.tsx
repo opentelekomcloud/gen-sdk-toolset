@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import type { RescanReason } from "../api/types.local";
+import type { RescanReason } from "../../../shared/api/types";
 import { RESCAN_META } from "../lib/rescan";
 import { useI18n } from "../../../shared/i18n";
 

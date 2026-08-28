@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { chipCls, DOC_STATUS_CLS, methodCls, SCAN_PILL_CLS, scanPillKey, SECTION_STATUS_CLS, structOkCls, TONE_BG } from "./styles";
 import { en } from "../../shared/i18n/en";
 import { de } from "../../shared/i18n/de";
-import type { ScanStatus } from "./api/types.local";
+import type { ScanStatus } from "../../shared/api/types";
 
 describe("typed class maps", () => {
   it("covers every scan status with a class and a label in both dictionaries", () => {

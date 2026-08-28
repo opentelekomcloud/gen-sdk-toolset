@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Job, JobStatus } from "./types.local";
+import type { Job, JobStatus } from "../../../shared/api/types";
 import { JOB_TERMINAL, jobRefetchInterval } from "./queries";
 
 function makeJob(status: JobStatus): Job {

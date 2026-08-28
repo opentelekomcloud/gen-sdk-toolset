@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, FileText, Search, X } from "lucide-react";
 import { useDocuments } from "../api/queries";
-import type { DocFilter, DocStatus } from "../api/types.local";
+import type { DocFilter, DocStatus } from "../types";
 import { sectionLabelKey, UNVERSIONED } from "../constants";
 import { chipCls } from "../styles";
 import { DocRow } from "./DocRow";

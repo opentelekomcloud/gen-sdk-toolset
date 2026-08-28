@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { SectionDetail } from "../api/types.local";
+import type { SectionDetail } from "../../../shared/api/types";
 import { sectionLabelKey } from "../constants";
 import { SECTION_STATUS_CLS } from "../styles";
 import { IrTable } from "./IrTable";

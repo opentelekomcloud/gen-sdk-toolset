@@ -57,7 +57,6 @@ export const en = {
   "legend.noSection": "no section",
 
   "rescan.retry": "Retry",
-  "rescan.partial": "Rescan · incomplete",
   "rescan.version": "Rescan · v{v}",
   "rescan.drift": "Rescan · docs changed",
   "rescan.queueing": "queueing…",

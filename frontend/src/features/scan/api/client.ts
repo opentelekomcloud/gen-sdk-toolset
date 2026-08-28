@@ -1,4 +1,4 @@
-import type { ApiErrorEnvelope } from "./types.local";
+import type { ApiErrorEnvelope } from "../types";
 
 const BASE = "/api";
 

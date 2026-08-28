@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, GitCommit, History, Loader2 } from "lucide-react";
 import { useSnapshots } from "../api/queries";
-import type { Snapshot, ServiceDetail } from "../api/types.local";
+import type { Snapshot, ServiceDetail } from "../../../shared/api/types";
 import { fmtSnapshotAt, shortCommit, structPct } from "../lib/snapshot";
 import { structOkCls } from "../styles";
 import { useI18n } from "../../../shared/i18n";
