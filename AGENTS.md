@@ -107,7 +107,8 @@ complete:
 - [ ] New and changed lines covered at least 80% (`diff-cover`); total stays at least 75%
 - [ ] Frontend touched? `npm run lint && npm run build && npm run test:coverage`
 - [ ] Panel routes or schemas touched? `src/tools/panel/openapi.json` and
-      `frontend/src/shared/api/schema.gen.ts` regenerated and committed
+      `frontend/src/shared/api/schema.gen.ts` regenerated and committed - CI
+      regenerates both and fails on a diff, so forgetting is a red build
 - [ ] New vocabulary recorded in `docs/GLOSSARY.md`
 
 If a check fails and you cannot fix it, say which one and why. Do not report a
