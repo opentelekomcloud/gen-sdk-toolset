@@ -1,4 +1,4 @@
-import type { Section, SectionCounts, SectionStatus } from "../api/types.local";
+import type { Section, SectionCounts, SectionStatus } from "../types";
 import { sectionLabelKey } from "../constants";
 import { sectionTone } from "../lib/sectionTone";
 import { SECTION_STATUS_CLS, TONE_BG } from "../styles";

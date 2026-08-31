@@ -6,8 +6,12 @@ paths:
 
 - **Types come from the backend.** `src/shared/api/schema.gen.ts` is generated
   by `npm run gen:types` from `src/tools/panel/openapi.json` - never hand-edit
-  it. Hand-written DTOs alongside it are a temporary bridge and should shrink
-  over time, not grow.
+  it. Components import from `src/shared/api/types.ts`, which only aliases those
+  schemas under the UI's own names; adding a declaration there instead of an
+  alias re-creates the drift the generator exists to remove. A shape the schema
+  genuinely cannot carry - a view model, or a narrowing of a field the backend
+  types as `str` - goes in `src/features/scan/types.ts` and says which field it
+  narrows, so it can be deleted when that field gains its enum.
 - **One mechanism per behaviour.** When two things can detect the same event -
   a service poll and a job poll both noticing a scan finished - keep one and
   delete the other. Two detectors for one edge is the frontend's version of two

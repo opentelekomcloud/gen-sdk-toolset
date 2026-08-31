@@ -1,4 +1,5 @@
-import type { DocStatus, ScanStatus, SectionStatus } from "./api/types.local";
+import type { ScanStatus } from "../../shared/api/types";
+import type { DocStatus, SectionStatus } from "./types";
 import type { Tone } from "./lib/sectionTone";
 import type { MessageKey } from "../../shared/i18n";
 

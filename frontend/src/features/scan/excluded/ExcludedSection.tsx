@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Ban, ChevronDown, ChevronRight, Undo2 } from "lucide-react";
 import { useExcluded } from "../api/queries";
 import { useInclude } from "../api/mutations";
-import type { ExcludedService } from "../api/types.local";
+import type { ExcludedService } from "../../../shared/api/types";
 import { useI18n } from "../../../shared/i18n";
 
 function ExcludedRow({ item }: { item: ExcludedService }) {

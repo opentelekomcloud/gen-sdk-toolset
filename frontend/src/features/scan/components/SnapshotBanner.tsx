@@ -1,5 +1,5 @@
 import { History } from "lucide-react";
-import type { ServiceDetail } from "../api/types.local";
+import type { ServiceDetail } from "../../../shared/api/types";
 import { fmtSnapshotAt } from "../lib/snapshot";
 import { useI18n } from "../../../shared/i18n";
 

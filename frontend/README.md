@@ -25,3 +25,9 @@ npm run gen:types
 ```
 
 Re-run after the backend API changes. The generated file is not edited by hand.
+
+Components do not import it directly: `src/shared/api/types.ts` aliases the
+schemas under the names the UI uses (`Snapshot`, `ServiceDetail`, `Job`), so a
+field that changes shape breaks the build at the component that reads it. The
+few shapes the schema cannot express - view models, and narrowings of fields the
+backend types as `str` - live in `src/features/scan/types.ts` and say why.

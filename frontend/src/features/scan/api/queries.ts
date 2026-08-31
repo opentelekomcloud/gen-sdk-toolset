@@ -2,10 +2,6 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { apiFetch, qs } from "./client";
 import type {
   AttentionRule,
-  AttentionRuleCode,
-  DocStatus,
-  Section,
-  SectionStatus,
   DocumentDetail,
   DocumentsResponse,
   ExcludedService,
@@ -14,11 +10,17 @@ import type {
   Job,
   JobStatus,
   ServiceDetail,
-  ServiceFilter,
-  ServiceSort,
   ServicesResponse,
   Summary,
-} from "./types.local";
+} from "../../../shared/api/types";
+import type {
+  AttentionRuleCode,
+  DocStatus,
+  Section,
+  SectionStatus,
+  ServiceFilter,
+  ServiceSort,
+} from "../types";
 
 /** Central query-key registry — the invalidation sets in mutations.ts depend on it. */
 export const keys = {

@@ -1,7 +1,7 @@
 import { AlertTriangle, ArrowUpCircle, CheckCircle2, ChevronRight, GitCommit, PlusCircle, type LucideIcon } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useAttention } from "../api/queries";
-import type { AttentionRuleCode } from "../api/types.local";
+import type { AttentionRuleCode } from "../types";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
 
 /** Presentation for rule codes; unknown codes fall back gracefully — rules are data. */

@@ -1,12 +1,14 @@
-import type { Section, SectionCounts } from "../api/types.local";
+import type { ServiceListItem } from "../../../shared/api/types";
 import { SECTIONS, sectionLabelKey } from "../constants";
 import { sectionCountsSummary } from "../lib/sectionTone";
 import { sectionTone } from "../lib/sectionTone";
 import { TONE_BG } from "../styles";
 import { useI18n } from "../../../shared/i18n";
 
-/** 7 squares in fixed order; a missing section renders muted without breaking the strip. */
-export function SectionStrip({ sections }: { sections: Record<Section, SectionCounts> | null }) {
+/** 7 squares in fixed order; a missing section renders muted without breaking
+ *  the strip. Takes `section_rollup` as the schema types it - an open map - and
+ *  reads the seven it knows. */
+export function SectionStrip({ sections }: { sections: ServiceListItem["section_rollup"] | null }) {
   const { t } = useI18n();
   if (!sections) return <span className="text-xs text-gray-300">·······</span>;
   return (

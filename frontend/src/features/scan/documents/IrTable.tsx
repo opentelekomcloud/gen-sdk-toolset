@@ -1,4 +1,4 @@
-import type { Parameter, SectionDetail } from "../api/types.local";
+import type { Parameter, SectionDetail } from "../../../shared/api/types";
 import { Fragment } from "react";
 import { useI18n } from "../../../shared/i18n";
 

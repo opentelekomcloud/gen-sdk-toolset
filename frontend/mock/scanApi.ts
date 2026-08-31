@@ -3,10 +3,11 @@
  * (scan_router is still commented out in src/tools/panel/api/app.py).
  * Enable with MOCK_API=1. DELETE this file once the real routes land.
  *
- * Shapes mirror src/features/scan/api/types.local.ts, which in turn mirrors
- * the persistence models (service / job / snapshot / document): full
- * commit_hash, created_at as scan timestamp, completeness as 0..1 float,
- * ok/partial/failed/unsupported counts, nullable active/latest ids.
+ * Shapes mirror the generated contract (src/shared/api/schema.gen.ts, aliased in
+ * src/shared/api/types.ts), which in turn mirrors the persistence models
+ * (service / job / snapshot / document): full commit_hash, created_at as scan
+ * timestamp, completeness as 0..1 float, ok/partial/failed/unsupported counts,
+ * nullable active/latest ids.
  */
 import type { Connect, Plugin } from "vite";
 

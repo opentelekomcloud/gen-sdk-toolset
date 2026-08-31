@@ -59,7 +59,6 @@ export const de: Record<keyof typeof en, string> = {
   "legend.noSection": "keine Sektion",
 
   "rescan.retry": "Wiederholen",
-  "rescan.partial": "Rescan · unvollständig",
   "rescan.version": "Rescan · v{v}",
   "rescan.drift": "Rescan · Doku geändert",
   "rescan.queueing": "in Warteschlange…",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fmtSnapshotAt, snapshotBreakdown, isLatest, shortCommit, structPct } from "./snapshot";
-import type { Snapshot } from "../api/types.local";
+import type { Snapshot } from "../../../shared/api/types";
 
 describe("shortCommit", () => {
   it("shows the git-style 7-char short form of the full stored hash", () => {

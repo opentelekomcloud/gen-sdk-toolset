@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { useDocumentDetail } from "../api/queries";
-import type { DocumentListItem } from "../api/types.local";
+import type { DocumentListItem } from "../../../shared/api/types";
 import { DOC_STATUS_CLS, methodCls } from "../styles";
 import { DocSectionRow } from "./DocSectionRow";
 import { useI18n } from "../../../shared/i18n";

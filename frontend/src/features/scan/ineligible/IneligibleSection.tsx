@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, FileQuestion } from "lucide-react";
 import { useIneligible } from "../api/queries";
-import type { Ineligible } from "../api/types.local";
+import type { Ineligible } from "../../../shared/api/types";
 import { fmtSnapshotAt } from "../lib/snapshot";
 import { useI18n } from "../../../shared/i18n";
 

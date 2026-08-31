@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import type { ScanStatus } from "../api/types.local";
+import type { ScanStatus } from "../../../shared/api/types";
 import { SCAN_PILL_CLS, scanPillKey } from "../styles";
 import { useI18n } from "../../../shared/i18n";
 

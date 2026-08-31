@@ -9,7 +9,7 @@ import type {
   ScanRequest,
   ScanResponse,
   ServiceDetail,
-} from "./types.local";
+} from "../../../shared/api/types";
 
 export function useRescan(name: string) {
   const qc = useQueryClient();

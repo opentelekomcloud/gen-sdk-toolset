@@ -1,4 +1,4 @@
-import type { Section } from "./api/types.local";
+import type { Section } from "./types";
 import type { MessageKey } from "../../shared/i18n";
 
 /** The 7 sections in fixed order (PS1). */
@@ -12,8 +12,10 @@ export const SECTIONS: readonly Section[] = [
   "example_response",
 ] as const;
 
-/** i18n key for a section label (dictionaries hold section.* entries). */
-export const sectionLabelKey = (s: Section): MessageKey => `section.${s}` as MessageKey;
+/** i18n key for a section label (dictionaries hold section.* entries).
+ *  Takes the wire value: `SectionDetail.name` is `str` in the schema, and the
+ *  seven names above are what the scanner can actually put there. */
+export const sectionLabelKey = (s: string): MessageKey => `section.${s}` as MessageKey;
 
 /** Identity is self-reported, from environment config — never a literal in components. */
 export const CONFIG = {

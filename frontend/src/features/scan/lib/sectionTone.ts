@@ -1,4 +1,4 @@
-import type { SectionCounts } from "../api/types.local";
+import type { SectionCounts } from "../types";
 
 export type Tone = "ok" | "warn" | "bad" | "failed" | "empty";
 

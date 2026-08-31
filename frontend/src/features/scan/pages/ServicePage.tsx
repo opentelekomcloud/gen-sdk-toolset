@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { DocFilter } from "../api/types.local";
+import type { DocFilter, DocStatus, RepositoryInterruption } from "../types";
 import { AlertTriangle, ArrowLeft, Ban, CheckCircle2, Download, FolderOpen, Loader2, RefreshCw } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ApiError } from "../api/client";
@@ -18,7 +18,6 @@ import { ExcludeModal } from "../excluded/ExcludeModal";
 import { activationErrorKey } from "../lib/errors";
 import { fmtSnapshotAt } from "../lib/snapshot";
 import { DOC_STATUS_CLS, structOkCls } from "../styles";
-import type { DocStatus } from "../api/types.local";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
 
 const OVERALL_ORDER: DocStatus[] = ["ok", "partial", "failed", "unsupported"];
@@ -74,8 +73,12 @@ export function ServicePage() {
   const scanning = service.scan_status === "scanning";
   const switching = activate.isPending;
   const scannerVersion = summary?.scanner_version ?? "";
+  /* A JSONB column, so the schema promises only an object of unknown values -
+     it overlaps nothing, hence the two-step cast. Ingest writes a
+     RepositoryInterruption; this is the one place that says so. */
+  const interruption = service.interruption as unknown as RepositoryInterruption | null;
   /* a failed job persists nothing — with an active snapshot the failure is a warning, without one a terminal state */
-  const jobFailed = service.error != null || service.interruption != null;
+  const jobFailed = service.error != null || interruption != null;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
@@ -171,15 +174,15 @@ export function ServicePage() {
           <AlertTriangle size={14} className="mt-px shrink-0 text-red-500" />
           <div className="min-w-0">
             <span className="font-semibold">
-              {service.interruption ? t(`interruption.${service.interruption.kind}` as MessageKey) : t("service.failedBannerTitle")}
+              {interruption ? t(`interruption.${interruption.kind}` as MessageKey) : t("service.failedBannerTitle")}
             </span>
             {" — "}
-            <span className="font-mono">{service.interruption?.message ?? service.error}</span>
+            <span className="font-mono">{interruption?.message ?? service.error}</span>
             {service.error_at != null && <span className="font-mono text-red-500"> · {fmtSnapshotAt(service.error_at)}</span>}
-            {service.interruption?.kind === "rate_limit" && service.interruption.reset_time != null && (
+            {interruption?.kind === "rate_limit" && interruption.reset_time != null && (
               <span className="font-mono text-red-500">
                 {" · "}
-                {t("service.rateLimitReset", { time: new Date(service.interruption.reset_time * 1000).toLocaleTimeString() })}
+                {t("service.rateLimitReset", { time: new Date(interruption.reset_time * 1000).toLocaleTimeString() })}
               </span>
             )}
             <div className="mt-0.5 text-red-600/80">
@@ -199,12 +202,12 @@ export function ServicePage() {
         <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center">
           <AlertTriangle size={22} className="mx-auto mb-2 text-red-500" />
           <div className="mb-1 text-sm font-semibold text-red-800">
-            {service.interruption ? t(`interruption.${service.interruption.kind}` as MessageKey) : t("service.failedTitle")}
+            {interruption ? t(`interruption.${interruption.kind}` as MessageKey) : t("service.failedTitle")}
           </div>
-          <div className="font-mono text-xs text-red-600">{service.interruption?.message ?? service.error}</div>
-          {service.interruption?.kind === "rate_limit" && service.interruption.reset_time != null && (
+          <div className="font-mono text-xs text-red-600">{interruption?.message ?? service.error}</div>
+          {interruption?.kind === "rate_limit" && interruption.reset_time != null && (
             <div className="mt-1 font-mono text-xs text-red-500">
-              {t("service.rateLimitReset", { time: new Date(service.interruption.reset_time * 1000).toLocaleTimeString() })}
+              {t("service.rateLimitReset", { time: new Date(interruption.reset_time * 1000).toLocaleTimeString() })}
             </div>
           )}
           <div className="mt-2 text-xs text-gray-500">{t("service.failedHint")}</div>
