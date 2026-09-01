@@ -66,12 +66,14 @@ Open the PR against `main` and fill in the template. It asks for the same things
 every time on purpose: what changed, why, what was deliberately left out, and
 which checks were run.
 
-CI must be green before merge. The pipeline runs, in three parallel jobs:
+CI must be green before merge. The pipeline runs, in four parallel jobs:
 
 - **lint** — `ruff check .`, `ruff format --check .`, `lint-imports`
 - **tests** — `pytest` with coverage against a real PostgreSQL service, then
   `diff-cover` against the base branch
 - **frontend** — ESLint, typecheck + build, Vitest with a coverage gate
+- **artifacts** — regenerates `openapi.json` and `schema.gen.ts` and fails on any
+  diff, so a contract change cannot merge without them
 
 Coverage gates: the project total must stay at or above **75%**, and new or
 changed lines must reach **80%**. Raising the total is welcome; lowering either

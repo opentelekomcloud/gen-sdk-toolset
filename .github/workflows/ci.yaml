@@ -127,11 +127,59 @@ jobs:
           name: frontend-coverage
           path: frontend/coverage/lcov.info
 
+  artifacts:
+    name: Generated API artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # The install the setup docs prescribe, from both lockfiles: the artifacts
+      # are only reproducible against the dependency set that produced them, and
+      # a resolver free to pick a newer FastAPI or openapi-typescript would
+      # report a diff nobody introduced.
+      - name: Install dependencies
+        run: |
+          uv sync --extra dev --extra panel --frozen
+          npm --prefix frontend ci
+
+      # The schema is built from the app object, not from a running server, so
+      # this job needs neither the database nor a GitHub token.
+      - name: Regenerate the OpenAPI schema
+        run: uv run panel openapi > src/tools/panel/openapi.json
+
+      - name: Regenerate the frontend types
+        run: npm --prefix frontend run gen:types
+
+      - name: Fail if either artifact is out of date
+        run: |
+          if ! git diff --exit-code -- src/tools/panel/openapi.json frontend/src/shared/api/schema.gen.ts; then
+            echo "::error::The committed artifacts do not match the code. Run both, in this order, and commit the result:"
+            echo "::error::  uv run panel openapi > src/tools/panel/openapi.json"
+            echo "::error::  cd frontend && npm run gen:types"
+            exit 1
+          fi
+
   check:
     name: check
     if: >
       always()
-    needs: [lint, tests, frontend]
+    needs: [lint, tests, frontend, artifacts]
     runs-on: ubuntu-latest
     steps:
       - name: Decide whether the needed jobs succeeded or failed
