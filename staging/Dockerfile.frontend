@@ -9,7 +9,15 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 # The bundle talks to /api on its own origin; Caddy proxies that to the backend,
-# so no build-time backend URL is needed.
+# so no build-time backend URL is needed. Zitadel is different: Vite inlines
+# VITE_* at build time, so the issuer and client id have to be here rather than
+# in the runtime environment - hence the build args.
+ARG VITE_ZITADEL_ISSUER=""
+ARG VITE_ZITADEL_CLIENT_ID=""
+ARG VITE_ZITADEL_SCOPE=""
+ENV VITE_ZITADEL_ISSUER=$VITE_ZITADEL_ISSUER \
+    VITE_ZITADEL_CLIENT_ID=$VITE_ZITADEL_CLIENT_ID \
+    VITE_ZITADEL_SCOPE=$VITE_ZITADEL_SCOPE
 RUN npm run build
 
 FROM caddy:2-alpine

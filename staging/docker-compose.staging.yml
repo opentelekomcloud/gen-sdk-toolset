@@ -97,6 +97,11 @@ services:
     build:
       context: ../frontend
       dockerfile: ../staging/Dockerfile.frontend
+      # Baked into the bundle at build time; changing them means rebuilding.
+      args:
+        VITE_ZITADEL_ISSUER: ${VITE_ZITADEL_ISSUER:-}
+        VITE_ZITADEL_CLIENT_ID: ${VITE_ZITADEL_CLIENT_ID:-}
+        VITE_ZITADEL_SCOPE: ${VITE_ZITADEL_SCOPE:-}
     ports:
       # Published ports are configurable so the same stack can run on a laptop
       # (behind an ngrok tunnel, on 8080) and on the host that owns 80/443.

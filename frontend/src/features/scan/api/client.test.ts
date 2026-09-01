@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiFetch, qs } from "./client";
+import { bindSession, resetSession } from "../../../shared/auth/session";
 
 const mockFetch = (impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) => {
   const spy = vi.fn(impl);
@@ -7,7 +8,10 @@ const mockFetch = (impl: (input: RequestInfo | URL, init?: RequestInit) => Promi
   return spy;
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  resetSession();
+});
 
 describe("apiFetch", () => {
   it("prefixes /api and parses JSON", async () => {
@@ -68,5 +72,71 @@ describe("qs", () => {
 
   it("URL-encodes values", () => {
     expect(qs({ q: "a b&c" })).toBe("?q=a+b%26c");
+  });
+});
+
+describe("apiFetch and the session", () => {
+  it("sends the access token as a bearer credential", async () => {
+    const spy = mockFetch(async () => new Response("{}", { status: 200 }));
+    bindSession({ accessToken: () => "token-abc", unauthenticated: () => {} });
+
+    await apiFetch("/scan/summary");
+
+    expect(new Headers(spy.mock.calls[0][1]!.headers).get("Authorization")).toBe(
+      "Bearer token-abc",
+    );
+  });
+
+  it("sends no Authorization header while nobody is signed in", async () => {
+    const spy = mockFetch(async () => new Response("{}", { status: 200 }));
+
+    await apiFetch("/scan/summary");
+
+    expect(new Headers(spy.mock.calls[0][1]!.headers).has("Authorization")).toBe(false);
+  });
+
+  it("sends the session back to sign in when the panel answers 401", async () => {
+    mockFetch(
+      async () =>
+        new Response(JSON.stringify({ error: { code: "unauthenticated", message: "expired" } }), {
+          status: 401,
+        }),
+    );
+    const signin = vi.fn();
+    bindSession({ accessToken: () => "stale-token", unauthenticated: signin });
+
+    // The error still propagates: nothing may render as if this had succeeded.
+    await expect(apiFetch("/scan/summary")).rejects.toBeInstanceOf(ApiError);
+    expect(signin).toHaveBeenCalledOnce();
+  });
+
+  it("does not send a 403 back to sign in - that session is valid, just not allowed", async () => {
+    mockFetch(
+      async () =>
+        new Response(JSON.stringify({ error: { code: "forbidden", message: "needs worker" } }), {
+          status: 403,
+        }),
+    );
+    const signin = vi.fn();
+    bindSession({ accessToken: () => "good-token", unauthenticated: signin });
+
+    await expect(apiFetch("/scan/summary")).rejects.toMatchObject({ status: 403 });
+    expect(signin).not.toHaveBeenCalled();
+  });
+
+  it("redirects once however many queries are refused together", async () => {
+    // A page holds several queries and they fail as a group; each one calling
+    // signinRedirect would stack navigations on top of each other.
+    mockFetch(async () => new Response("{}", { status: 401 }));
+    const signin = vi.fn();
+    bindSession({ accessToken: () => "stale-token", unauthenticated: signin });
+
+    await Promise.allSettled([
+      apiFetch("/scan/summary"),
+      apiFetch("/scan/services"),
+      apiFetch("/scan/attention"),
+    ]);
+
+    expect(signin).toHaveBeenCalledOnce();
   });
 });

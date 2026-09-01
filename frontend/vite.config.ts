@@ -16,16 +16,24 @@ export default defineConfig({
     },
   },
   test: {
-    environment: 'node',
+    /* jsdom, not node: the role-aware controls are only testable by rendering
+       them, and a DOM for the handful of logic suites costs nothing. */
+    environment: 'jsdom',
+    setupFiles: ['src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
-      /* Coverage gate currently scoped to framework-free logic modules.
-         Widen as component tests (jsdom + testing-library) land. */
+      /* The gate stays scoped to framework-free logic modules even though
+         component tests exist now: widening it would pull in every component
+         that has none, and the only way to keep the threshold green would be to
+         lower it. Rendering tests earn their keep by asserting behaviour, not
+         by moving this number. */
       include: [
         'src/features/scan/lib/**',
         'src/features/scan/api/client.ts',
+        'src/shared/auth/roles.ts',
+        'src/shared/auth/session.ts',
         'src/features/scan/styles.ts',
         'src/features/scan/constants.ts',
       ],

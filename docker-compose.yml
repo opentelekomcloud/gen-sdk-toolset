@@ -55,6 +55,11 @@ services:
       - /app/node_modules
     environment:
       - BACKEND_URL=http://backend:8000
+      # The Vite dev server reads these at start; the panel shows a
+      # "sign-in is not configured" notice while they are empty.
+      - VITE_ZITADEL_ISSUER=${VITE_ZITADEL_ISSUER:-}
+      - VITE_ZITADEL_CLIENT_ID=${VITE_ZITADEL_CLIENT_ID:-}
+      - VITE_ZITADEL_SCOPE=${VITE_ZITADEL_SCOPE:-}
       # The backend serves /api/scan/* itself now; set MOCK_API=1 to go back to
       # the frontend/mock/scanApi.ts fixtures (UI work without a database).
       - MOCK_API=${MOCK_API:-}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api/client";
-import { activationErrorKey, shortError } from "./errors";
+import { activationErrorKey, mutationErrorKey, shortError } from "./errors";
 
 describe("shortError: the leading clause is what fits in a registry row", () => {
   it("drops the repository and the provider detail", () => {
@@ -38,8 +38,30 @@ describe("activationErrorKey: a refused switch has to say why", () => {
     expect(activationErrorKey(new ApiError(404, "not_found", "Snapshot 3 not found"))).toBe("snap.activateGone");
   });
 
+  it("names the role for a 403 - the case the hidden control was meant to prevent", () => {
+    expect(activationErrorKey(new ApiError(403, "forbidden", "needs worker"))).toBe(
+      "auth.forbidden",
+    );
+  });
+
   it("falls back for any other failure, including one that never reached the API", () => {
     expect(activationErrorKey(new ApiError(500, "internal_error", "boom"))).toBe("snap.activateFailed");
     expect(activationErrorKey(new TypeError("network down"))).toBe("snap.activateFailed");
+  });
+});
+
+describe("mutationErrorKey: why a state change was refused", () => {
+  it("tells a viewer their role is the reason, not a passing failure", () => {
+    expect(mutationErrorKey(new ApiError(403, "forbidden", "requires worker"))).toBe(
+      "auth.forbidden",
+    );
+  });
+
+  it("separates a conflict from an outright failure", () => {
+    expect(mutationErrorKey(new ApiError(409, "conflict", "already scanning"))).toBe(
+      "mutation.conflict",
+    );
+    expect(mutationErrorKey(new ApiError(500, "internal_error", "boom"))).toBe("mutation.failed");
+    expect(mutationErrorKey(new TypeError("offline"))).toBe("mutation.failed");
   });
 });

@@ -1,5 +1,6 @@
-import { Activity } from "lucide-react";
+import { Activity, Eye, LogOut } from "lucide-react";
 import { useSummary } from "../features/scan/api/queries";
+import { useSession } from "../shared/auth/useSession";
 import { useI18n, type Lang } from "../shared/i18n";
 
 const LANGS: Lang[] = ["en", "de"];
@@ -20,6 +21,36 @@ function LangToggle() {
           {l}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Who is signed in, and the one control that ends it. The viewer badge is
+ *  here rather than on each disabled control: it answers "why can I not do
+ *  anything" once, instead of at every button. */
+function Session() {
+  const { name, canWrite, signOut } = useSession();
+  const { t } = useI18n();
+  return (
+    <div className="flex items-center gap-2 text-xs text-white">
+      {!canWrite && (
+        <span
+          title={t("auth.viewerHint")}
+          className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1"
+        >
+          <Eye size={12} /> {t("auth.viewer")}
+        </span>
+      )}
+      <span className="font-mono opacity-80">{name}</span>
+      <button
+        type="button"
+        onClick={signOut}
+        title={t("auth.signOut")}
+        aria-label={t("auth.signOut")}
+        className="rounded-full bg-white/15 p-1.5 transition hover:bg-white/25"
+      >
+        <LogOut size={13} />
+      </button>
     </div>
   );
 }
@@ -50,6 +81,7 @@ export function Header() {
           </span>
         )}
         <LangToggle />
+        <Session />
       </div>
     </header>
   );

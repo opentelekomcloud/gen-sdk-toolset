@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Ban } from "lucide-react";
 import type { RescanReason, ServiceDetail } from "../../../shared/api/types";
-import { CONFIG } from "../constants";
+import { useSession } from "../../../shared/auth/useSession";
 import { RESCAN_META } from "../lib/rescan";
 import { useI18n } from "../../../shared/i18n";
 
@@ -11,9 +11,11 @@ interface Props {
   onClose: () => void;
 }
 
-/** Confirmation with a mandatory reason (PS19). Identity is self-reported config. */
+/** Confirmation with a mandatory reason (PS19). The name shown is the one the
+ *  backend will record - it comes from the session, not from this page. */
 export function ExcludeModal({ service, onConfirm, onClose }: Props) {
   const [reason, setReason] = useState("");
+  const { name: identity } = useSession();
   const { t } = useI18n();
   const attention: RescanReason | null = service.rescan_reason;
 
@@ -53,7 +55,7 @@ export function ExcludeModal({ service, onConfirm, onClose }: Props) {
         />
         <div className="mt-3 flex items-center justify-between">
           <span className="font-mono text-[10px] text-gray-400">
-            {t("exclude.recordedAs", { id: CONFIG.identity, date: today })}
+            {t("exclude.recordedAs", { id: identity, date: today })}
           </span>
           <div className="flex gap-2">
             <button type="button"

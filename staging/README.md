@@ -85,6 +85,23 @@ requests: a rescan started from there creates a real job, which fails on this
 host because no GitHub token is configured - the failure is recorded on the
 job, as any other failure would be.
 
+## Signing in
+
+The panel authenticates against Zitadel, and both halves need configuring: the
+backend validates tokens (`AUTH__ISSUER`, `AUTH__AUDIENCE`) and the UI runs the
+login flow (`VITE_ZITADEL_ISSUER`, `VITE_ZITADEL_CLIENT_ID`, `VITE_ZITADEL_SCOPE`).
+Set all five in `.env`, then rebuild - the UI values are inlined into the bundle
+at build time, so `up -d --build` is what applies a change to them.
+
+In Zitadel: one project with the roles `worker` and `viewer`, an API application
+whose client id is the backend's `AUTH__AUDIENCE`, and a user-agent (SPA)
+application with PKCE whose client id is `VITE_ZITADEL_CLIENT_ID` and whose
+redirect URI is this panel's `SITE_URL`.
+
+Caddy's shared password is now a second door rather than the only one. It still
+guards `/docs` and anything else outside `/api`, which the panel does not
+authenticate itself.
+
 ## Keeping the registry current
 
 Discovery is the only thing that runs on a schedule. One pass registers

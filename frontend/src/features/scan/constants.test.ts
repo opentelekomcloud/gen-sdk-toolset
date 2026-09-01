@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONFIG, SECTIONS, sectionLabelKey } from "./constants";
+import { SECTIONS, sectionLabelKey } from "./constants";
 import { en } from "../../shared/i18n/en";
 import { de } from "../../shared/i18n/de";
 
@@ -16,12 +16,5 @@ describe("sections contract (PS1)", () => {
       expect(en[sectionLabelKey(s)]).toBeTruthy();
       expect(de[sectionLabelKey(s)]).toBeTruthy();
     }
-  });
-});
-
-describe("CONFIG.identity", () => {
-  it("falls back to anonymous without env config", () => {
-    expect(typeof CONFIG.identity).toBe("string");
-    expect(CONFIG.identity.length).toBeGreaterThan(0);
   });
 });

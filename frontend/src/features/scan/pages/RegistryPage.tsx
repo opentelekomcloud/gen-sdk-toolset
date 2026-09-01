@@ -6,6 +6,7 @@ import { useServices, useSummary, type ServicesParams } from "../api/queries";
 import type { ServiceListItem } from "../../../shared/api/types";
 import type { AttentionRuleCode, ServiceFilter, ServiceSort } from "../types";
 import { RescanButton } from "../components/RescanButton";
+import { useSession } from "../../../shared/auth/useSession";
 import { SectionStrip } from "../components/SectionStrip";
 import { StatusPill } from "../components/StatusPill";
 import { OverallBar } from "../components/OverallBar";
@@ -26,6 +27,7 @@ const CHIPS: [ServiceFilter, MessageKey][] = [
 ];
 
 function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVersion: string }) {
+  const { canWrite } = useSession();
   const navigate = useNavigate();
   const rescan = useRescan(item.name);
   const { t } = useI18n();
@@ -74,7 +76,9 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
       </div>
       <div className="col-span-2 text-right" onClick={(e) => e.stopPropagation()}>
         <RescanButton
-          reason={item.rescan_reason}
+          /* A viewer gets no reason, so no button - but the scanning indicator
+             below still renders: who is scanning is information, not an action. */
+          reason={canWrite ? item.rescan_reason : null}
           scanning={item.scan_status === "scanning" ? { jobId: item.job_id, startedBy: item.initiated_by ?? undefined } : undefined}
           scannerVersion={scannerVersion}
           /* guard double-fire: the optimistic flip lives in the detail cache,

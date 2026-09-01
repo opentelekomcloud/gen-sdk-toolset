@@ -1,7 +1,7 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 import { invalidateSnapshot, keys } from "./queries";
-import { CONFIG } from "../constants";
+import { useSession } from "../../../shared/auth/useSession";
 import type {
   ActivateSnapshotRequest,
   ExcludeRequest,
@@ -11,13 +11,20 @@ import type {
   ServiceDetail,
 } from "../../../shared/api/types";
 
-export function useRescan(name: string) {
-  const qc = useQueryClient();
-  return useMutation({
+/**
+ * The rescan mutation as a plain options object.
+ *
+ * Split out of the hook so the optimistic flip and its rollback can be driven
+ * without React: a refusal - `403` for a viewer, `409` for a service already
+ * scanning - has to leave the cache exactly as it found it, and that is worth a
+ * test that runs the real lifecycle rather than a copy of it.
+ */
+export function rescanMutation(qc: QueryClient, name: string, initiatedBy: string) {
+  return {
     mutationFn: () =>
       apiFetch<ScanResponse>(`/scan/services/${encodeURIComponent(name)}/rescan`, {
         method: "POST",
-        body: JSON.stringify({ initiated_by: CONFIG.identity } satisfies ScanRequest),
+        body: JSON.stringify({ initiated_by: initiatedBy } satisfies ScanRequest),
       }),
     /* optimistic: the service flips to scanning immediately (PS14) */
     onMutate: async () => {
@@ -27,14 +34,16 @@ export function useRescan(name: string) {
         qc.setQueryData<ServiceDetail>(keys.service(name), {
           ...prev,
           scan_status: "scanning",
-          initiated_by: CONFIG.identity,
+          initiated_by: initiatedBy,
           started_at: new Date().toISOString(),
         });
       }
       return { prev };
     },
-    onError: (_err, _vars, ctx) => {
-      /* incl. 409 already-scanning: roll the optimistic state back, re-sync */
+    onError: (_err: Error, _vars: void, ctx: { prev?: ServiceDetail } | undefined) => {
+      /* incl. 403 not-a-worker and 409 already-scanning: roll the optimistic
+         state back, then re-sync in case the refusal was about something the
+         cache does not know yet. */
       if (ctx?.prev) qc.setQueryData(keys.service(name), ctx.prev);
       void qc.invalidateQueries({ queryKey: keys.service(name) });
       void qc.invalidateQueries({ queryKey: keys.services() });
@@ -50,7 +59,13 @@ export function useRescan(name: string) {
       void qc.invalidateQueries({ queryKey: keys.services() });
       void qc.invalidateQueries({ queryKey: keys.summary });
     },
-  });
+  };
+}
+
+export function useRescan(name: string) {
+  const qc = useQueryClient();
+  const { name: initiatedBy } = useSession();
+  return useMutation(rescanMutation(qc, name, initiatedBy));
 }
 
 /**
@@ -61,13 +76,14 @@ export function useRescan(name: string) {
  */
 export function useActivateSnapshot(name: string) {
   const qc = useQueryClient();
+  const { name: initiatedBy } = useSession();
   return useMutation({
     mutationFn: (snapshotId: number) =>
       apiFetch<SnapshotsResponse>(
         `/scan/services/${encodeURIComponent(name)}/snapshots/${snapshotId}/activate`,
         {
           method: "POST",
-          body: JSON.stringify({ initiated_by: CONFIG.identity } satisfies ActivateSnapshotRequest),
+          body: JSON.stringify({ initiated_by: initiatedBy } satisfies ActivateSnapshotRequest),
         },
       ),
     onSettled: () => invalidateSnapshot(qc, name),
@@ -76,11 +92,12 @@ export function useActivateSnapshot(name: string) {
 
 export function useExclude(name: string) {
   const qc = useQueryClient();
+  const { name: initiatedBy } = useSession();
   return useMutation({
     mutationFn: (reason: string) =>
       apiFetch<void>(`/scan/services/${encodeURIComponent(name)}/exclude`, {
         method: "POST",
-        body: JSON.stringify({ reason, initiated_by: CONFIG.identity } satisfies ExcludeRequest),
+        body: JSON.stringify({ reason, initiated_by: initiatedBy } satisfies ExcludeRequest),
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: keys.excluded });
