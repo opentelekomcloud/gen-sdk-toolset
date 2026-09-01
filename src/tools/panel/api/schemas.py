@@ -49,18 +49,28 @@ def source_url(*, repo: str, commit_hash: str, path: str) -> str:
 
 
 class ScanRequest(BaseModel):
-    """Body for launching a scan: who initiated it."""
+    """Body for launching a scan.
+
+    ``initiated_by`` is still accepted, and still ignored: the Job records the
+    authenticated caller instead, because a self-reported name is not an
+    attribution. The field stays required so a client written against the older
+    contract keeps working - dropping it would be the breaking change.
+    """
 
     initiated_by: str = Field(min_length=1)
 
 
 class ExcludeRequest(BaseModel):
-    """Body for excluding a service: why, and who decided.
+    """Body for excluding a service: why.
 
     The reason is the entire audit record. Restoring a service deletes its
     exclusion row rather than archiving it, so this text is the only thing
     that ever explains why the service was hidden - a blank one is refused
     rather than stored as whitespace that reads as filled in.
+
+    Who decided is no longer read from here: ``excluded_by`` is the
+    authenticated caller. The field is kept for contract compatibility, as on
+    ``ScanRequest``.
     """
 
     reason: str = Field(min_length=1)
@@ -76,11 +86,12 @@ class ExcludeRequest(BaseModel):
 
 
 class ActivateSnapshotRequest(BaseModel):
-    """Body for activating a stored Snapshot: who asked for the switch.
+    """Body for activating a stored Snapshot.
 
-    Its own model rather than a reuse of ``ScanRequest``, because the field
-    means something different here: a scan's initiator is persisted on the Job,
-    this one is only logged - there is no activation audit table.
+    Its own model rather than a reuse of ``ScanRequest``, because the two are
+    persisted differently: a scan's initiator lands on the Job, while an
+    activation is only logged - there is no activation audit table. Either way
+    the name comes from the token now, not from here.
     """
 
     initiated_by: str = Field(min_length=1)

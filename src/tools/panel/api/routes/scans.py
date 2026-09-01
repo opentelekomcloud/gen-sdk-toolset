@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from tools.panel.api.auth import Identity, require_worker
 from tools.panel.api.deps import get_db
 from tools.panel.api.routes.scan_read import snapshot_history
 from tools.panel.api.schemas import (
@@ -44,6 +45,7 @@ def start_scan(
     repo: str,
     body: ScanRequest,
     background_tasks: BackgroundTasks,
+    identity: Identity = Depends(require_worker),
     db: Session = Depends(get_db),
 ) -> StartScanResponse:
     """Queue a scan Job for an existing Service and schedule it in the background.
@@ -68,7 +70,7 @@ def start_scan(
         service_id=service.id,
         kind=JobKind.scan,
         status=JobStatus.queued,
-        initiated_by=body.initiated_by,
+        initiated_by=identity.name,
     )
     db.add(job)
     try:
@@ -104,6 +106,7 @@ def activate_snapshot(
     repo: str,
     snapshot_id: int,
     body: ActivateSnapshotRequest,
+    identity: Identity = Depends(require_worker),
     db: Session = Depends(get_db),
 ) -> SnapshotsResponse:
     """Serve this Service's scan-result views from another of its Snapshots.
@@ -111,7 +114,7 @@ def activate_snapshot(
     Moves ``active_snapshot_id`` only: ``latest_snapshot_id`` and the stored
     Snapshots stay as they are, and every view downstream already follows this
     pointer. Re-activating the active Snapshot changes nothing and answers 200.
-    An excluded Service is allowed; ``initiated_by`` is logged, not stored.
+    An excluded Service is allowed; the caller's identity is logged, not stored.
 
     Refused with ``409`` while a scan Job is queued or running, whatever the
     request would change: ingest moves the same pointer, so one would silently
@@ -144,7 +147,7 @@ def activate_snapshot(
     service.active_snapshot_id = snapshot.id
     db.commit()
     logger.info(
-        "service %s: snapshot %s activated by %s", repo, snapshot_id, body.initiated_by
+        "service %s: snapshot %s activated by %s", repo, snapshot_id, identity.name
     )
     return snapshot_history(db, service)
 
@@ -153,6 +156,7 @@ def activate_snapshot(
 def exclude_service(
     repo: str,
     body: ExcludeRequest,
+    identity: Identity = Depends(require_worker),
     db: Session = Depends(get_db),
 ) -> None:
     """Hide a Service from the registry without deleting anything it owns.
@@ -183,13 +187,17 @@ def exclude_service(
         ExcludedService(
             service_id=service.id,
             reason=body.reason,
-            excluded_by=body.initiated_by,
+            excluded_by=identity.name,
         )
     )
     db.commit()
 
 
-@router.post("/scan/services/{repo:path}/include", status_code=204)
+@router.post(
+    "/scan/services/{repo:path}/include",
+    status_code=204,
+    dependencies=[Depends(require_worker)],
+)
 def include_service(repo: str, db: Session = Depends(get_db)) -> None:
     """Restore an excluded Service to the registry.
 
@@ -219,7 +227,11 @@ def get_job(job_id: int, db: Session = Depends(get_db)) -> JobResponse:
     return JobResponse.from_job(job)
 
 
-@router.post("/jobs/{job_id}/cancel", response_model=JobResponse)
+@router.post(
+    "/jobs/{job_id}/cancel",
+    response_model=JobResponse,
+    dependencies=[Depends(require_worker)],
+)
 def cancel_job(job_id: int, db: Session = Depends(get_db)) -> JobResponse:
     """Cancel a queued or running Job, returning its terminal state.
 

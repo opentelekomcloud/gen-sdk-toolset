@@ -2,7 +2,7 @@
   "components": {
     "schemas": {
       "ActivateSnapshotRequest": {
-        "description": "Body for activating a stored Snapshot: who asked for the switch.\n\nIts own model rather than a reuse of ``ScanRequest``, because the field\nmeans something different here: a scan's initiator is persisted on the Job,\nthis one is only logged - there is no activation audit table.",
+        "description": "Body for activating a stored Snapshot.\n\nIts own model rather than a reuse of ``ScanRequest``, because the two are\npersisted differently: a scan's initiator lands on the Job, while an\nactivation is only logged - there is no activation audit table. Either way\nthe name comes from the token now, not from here.",
         "properties": {
           "initiated_by": {
             "minLength": 1,
@@ -299,7 +299,7 @@
         "type": "object"
       },
       "ExcludeRequest": {
-        "description": "Body for excluding a service: why, and who decided.\n\nThe reason is the entire audit record. Restoring a service deletes its\nexclusion row rather than archiving it, so this text is the only thing\nthat ever explains why the service was hidden - a blank one is refused\nrather than stored as whitespace that reads as filled in.",
+        "description": "Body for excluding a service: why.\n\nThe reason is the entire audit record. Restoring a service deletes its\nexclusion row rather than archiving it, so this text is the only thing\nthat ever explains why the service was hidden - a blank one is refused\nrather than stored as whitespace that reads as filled in.\n\nWho decided is no longer read from here: ``excluded_by`` is the\nauthenticated caller. The field is kept for contract compatibility, as on\n``ScanRequest``.",
         "properties": {
           "initiated_by": {
             "minLength": 1,
@@ -620,7 +620,7 @@
         "type": "string"
       },
       "ScanRequest": {
-        "description": "Body for launching a scan: who initiated it.",
+        "description": "Body for launching a scan.\n\n``initiated_by`` is still accepted, and still ignored: the Job records the\nauthenticated caller instead, because a self-reported name is not an\nattribution. The field stays required so a client written against the older\ncontract keeps working - dropping it would be the breaking change.",
         "properties": {
           "initiated_by": {
             "minLength": 1,
@@ -1454,6 +1454,13 @@
         "title": "ValidationError",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "description": "Zitadel OIDC access token.",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -1499,6 +1506,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Job"
       }
     },
@@ -1539,6 +1551,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Cancel Job"
       }
     },
@@ -1562,6 +1579,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Attention"
       }
     },
@@ -1585,6 +1607,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Excluded"
       }
     },
@@ -1608,6 +1635,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Ineligible"
       }
     },
@@ -1685,6 +1717,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Services"
       }
     },
@@ -1725,6 +1762,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Service"
       }
     },
@@ -1866,6 +1908,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Documents"
       }
     },
@@ -1915,6 +1962,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Document"
       }
     },
@@ -1958,6 +2010,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Exclude Service"
       }
     },
@@ -1996,6 +2053,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Export Snapshot"
       }
     },
@@ -2029,6 +2091,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Include Service"
       }
     },
@@ -2079,6 +2146,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Start Scan"
       }
     },
@@ -2119,12 +2191,17 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "List Snapshots"
       }
     },
     "/api/scan/services/{repo}/snapshots/{snapshot_id}/activate": {
       "post": {
-        "description": "Serve this Service's scan-result views from another of its Snapshots.\n\nMoves ``active_snapshot_id`` only: ``latest_snapshot_id`` and the stored\nSnapshots stay as they are, and every view downstream already follows this\npointer. Re-activating the active Snapshot changes nothing and answers 200.\nAn excluded Service is allowed; ``initiated_by`` is logged, not stored.\n\nRefused with ``409`` while a scan Job is queued or running, whatever the\nrequest would change: ingest moves the same pointer, so one would silently\noverwrite the other. Terminal Jobs never block. The Service row is locked\nfor the check-then-write, as in ``start_scan``.",
+        "description": "Serve this Service's scan-result views from another of its Snapshots.\n\nMoves ``active_snapshot_id`` only: ``latest_snapshot_id`` and the stored\nSnapshots stay as they are, and every view downstream already follows this\npointer. Re-activating the active Snapshot changes nothing and answers 200.\nAn excluded Service is allowed; the caller's identity is logged, not stored.\n\nRefused with ``409`` while a scan Job is queued or running, whatever the\nrequest would change: ingest moves the same pointer, so one would silently\noverwrite the other. Terminal Jobs never block. The Service row is locked\nfor the check-then-write, as in ``start_scan``.",
         "operationId": "activate_snapshot_api_scan_services__repo__snapshots__snapshot_id__activate_post",
         "parameters": [
           {
@@ -2178,6 +2255,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Activate Snapshot"
       }
     },
@@ -2197,6 +2279,11 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Summary"
       }
     },

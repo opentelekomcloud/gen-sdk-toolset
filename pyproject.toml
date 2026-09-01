@@ -32,6 +32,9 @@ panel = [
     "alembic",
     "uvicorn",
     "psycopg[binary]>=3.1,<4",
+    # Bearer-token validation against Zitadel: the crypto extra brings the RSA
+    # backend PyJWKClient needs to verify RS256 signatures.
+    "pyjwt[crypto]>=2.10,<3",
 ]
 
 [tool.hatch.build.targets.wheel]

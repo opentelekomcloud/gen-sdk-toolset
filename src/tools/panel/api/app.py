@@ -2,11 +2,12 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from sqlalchemy.exc import InterfaceError, OperationalError
 from starlette.middleware.cors import CORSMiddleware
 
 from tools.config import load_settings
+from tools.panel.api.auth import require_viewer
 from tools.panel.api.errors import register_error_handlers
 from tools.panel.api.routes.health import router as health_router
 from tools.panel.api.routes.scan_read import router as scan_read_router
@@ -58,6 +59,9 @@ def create_app() -> FastAPI:
     settings = load_settings()
 
     app = FastAPI(title="Panel API", lifespan=_lifespan)
+    # Read once and kept here: the auth dependency runs on every request and
+    # would otherwise re-parse `.env` for each one.
+    app.state.settings = settings
     # Set before the lifespan runs: `/health` is reachable in tests and tooling
     # that never enter the lifespan, and it must not have to guess.
     app.state.startup_cleanup_failed = False
@@ -67,11 +71,18 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # `/health` is the one route without a token: the container healthcheck and
+    # the load balancer poll it, and neither can hold one.
     app.include_router(health_router)
     # Order matters: the read router ends with a `{repo:path}` catch-all, so it
     # is registered after the routes that carry a suffix.
-    app.include_router(scan_router, prefix="/api")
-    app.include_router(scan_read_router, prefix="/api")
+    #
+    # Authentication is applied to the whole prefix rather than route by route,
+    # so a route added later is closed by default and only its *role* is a
+    # decision - the mutations name `require_worker` themselves.
+    authenticated = [Depends(require_viewer)]
+    app.include_router(scan_router, prefix="/api", dependencies=authenticated)
+    app.include_router(scan_read_router, prefix="/api", dependencies=authenticated)
 
     register_error_handlers(app)
     return app

@@ -30,6 +30,10 @@ services:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - DATABASE__URL=postgresql+psycopg://${POSTGRES_USER:-panel}:${POSTGRES_PASSWORD:-panel}@db:5432/${POSTGRES_DB:-panel}
       - PANEL__FRONTEND_ORIGIN=http://localhost:5173
+      # Without these the API answers 500: it cannot validate a token it has no
+      # issuer for. Set them in .env - see .env.example.
+      - AUTH__ISSUER=${AUTH__ISSUER:-}
+      - AUTH__AUDIENCE=${AUTH__AUDIENCE:-}
     depends_on:
       db:
         condition: service_healthy

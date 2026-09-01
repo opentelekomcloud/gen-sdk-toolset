@@ -33,6 +33,7 @@ from tools import __version__ as SCANNER_VERSION  # noqa: E402
 from tools.panel.api import app as app_module  # noqa: E402
 from tools.panel.api import deps  # noqa: E402
 from tools.panel.api.app import create_app  # noqa: E402
+from tools.panel.api.auth import Identity, PanelRole, current_identity  # noqa: E402
 from tools.panel.api.routes import scans as scans_module  # noqa: E402
 from tools.panel.core import ingest as ingest_module  # noqa: E402
 from tools.panel.core import jobs as jobs_module  # noqa: E402
@@ -50,6 +51,14 @@ from tools.shared.scan import (  # noqa: E402
     RepositoryInterruption,
     RepositoryInterruptionKind,
     RepositoryScanResult,
+)
+
+#: The caller the API tests act as. Deliberately not the name any request body
+#: sends, so an assertion on `initiated_by` fails if the body ever wins again.
+TEST_WORKER = Identity(
+    subject="tester-subject",
+    name="test-worker",
+    roles=frozenset({PanelRole.worker}),
 )
 
 
@@ -80,6 +89,10 @@ def client(session_factory, monkeypatch):
             db.close()
 
     app.dependency_overrides[deps.get_db] = override_get_db
+    # These suites are about scan behaviour, not about tokens: they run as a
+    # worker without minting one. Real token validation, and what a viewer is
+    # refused, live in tests/test_panel_auth.py.
+    app.dependency_overrides[current_identity] = lambda: TEST_WORKER
     # The runner opens its own SessionLocal and would bind the real engine via
     # get_engine(); point both at the test database instead.
     monkeypatch.setattr(jobs_module, "SessionLocal", session_factory)
@@ -147,7 +160,8 @@ def test_launch_returns_job_id_and_runs_to_running(
         assert job.status is JobStatus.running
         assert job.started_at is not None
         assert job.finished_at is None
-        assert job.initiated_by == "tester"
+        # From the token, not from the body, which said "tester".
+        assert job.initiated_by == TEST_WORKER.name
 
 
 def test_get_job_returns_full_polling_shape(client, session_factory):
@@ -870,9 +884,10 @@ def test_exclude_records_who_asked_and_why(client, session_factory):
     assert resp.content == b""
     row = _exclusion_row(session_factory, service_id)
     assert row.reason == "retired by the service team"
-    # The body calls it initiated_by, like every other mutation; the column is
-    # excluded_by. The mapping is the endpoint's job, so assert it here.
-    assert row.excluded_by == "operator"
+    # Who asked comes from the token; the body's "operator" is ignored. The
+    # column is excluded_by, and mapping the identity onto it is the endpoint's
+    # job, so assert it here.
+    assert row.excluded_by == TEST_WORKER.name
     assert row.excluded_at is not None
 
 

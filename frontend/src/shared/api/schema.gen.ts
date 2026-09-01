@@ -366,7 +366,7 @@ export interface paths {
          *     Moves ``active_snapshot_id`` only: ``latest_snapshot_id`` and the stored
          *     Snapshots stay as they are, and every view downstream already follows this
          *     pointer. Re-activating the active Snapshot changes nothing and answers 200.
-         *     An excluded Service is allowed; ``initiated_by`` is logged, not stored.
+         *     An excluded Service is allowed; the caller's identity is logged, not stored.
          *
          *     Refused with ``409`` while a scan Job is queued or running, whatever the
          *     request would change: ingest moves the same pointer, so one would silently
@@ -426,11 +426,12 @@ export interface components {
     schemas: {
         /**
          * ActivateSnapshotRequest
-         * @description Body for activating a stored Snapshot: who asked for the switch.
+         * @description Body for activating a stored Snapshot.
          *
-         *     Its own model rather than a reuse of ``ScanRequest``, because the field
-         *     means something different here: a scan's initiator is persisted on the Job,
-         *     this one is only logged - there is no activation audit table.
+         *     Its own model rather than a reuse of ``ScanRequest``, because the two are
+         *     persisted differently: a scan's initiator lands on the Job, while an
+         *     activation is only logged - there is no activation audit table. Either way
+         *     the name comes from the token now, not from here.
          */
         ActivateSnapshotRequest: {
             /** Initiated By */
@@ -536,12 +537,16 @@ export interface components {
         };
         /**
          * ExcludeRequest
-         * @description Body for excluding a service: why, and who decided.
+         * @description Body for excluding a service: why.
          *
          *     The reason is the entire audit record. Restoring a service deletes its
          *     exclusion row rather than archiving it, so this text is the only thing
          *     that ever explains why the service was hidden - a blank one is refused
          *     rather than stored as whitespace that reads as filled in.
+         *
+         *     Who decided is no longer read from here: ``excluded_by`` is the
+         *     authenticated caller. The field is kept for contract compatibility, as on
+         *     ``ScanRequest``.
          */
         ExcludeRequest: {
             /** Initiated By */
@@ -686,7 +691,12 @@ export interface components {
         RescanReason: "retry" | "version" | "drift";
         /**
          * ScanRequest
-         * @description Body for launching a scan: who initiated it.
+         * @description Body for launching a scan.
+         *
+         *     ``initiated_by`` is still accepted, and still ignored: the Job records the
+         *     authenticated caller instead, because a self-reported name is not an
+         *     attribution. The field stays required so a client written against the older
+         *     contract keeps working - dropping it would be the breaking change.
          */
         ScanRequest: {
             /** Initiated By */

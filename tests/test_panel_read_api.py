@@ -34,6 +34,7 @@ from tests.test_panel_db import (  # noqa: E402,F401  (reused DB fixtures)
 from tools import __version__ as SCANNER_VERSION  # noqa: E402
 from tools.panel.api import deps  # noqa: E402
 from tools.panel.api.app import create_app  # noqa: E402
+from tools.panel.api.auth import Identity, PanelRole, current_identity  # noqa: E402
 from tools.panel.core import ingest as ingest_module  # noqa: E402
 from tools.panel.core.db.models import (  # noqa: E402
     TERMINAL_JOB_STATUSES,
@@ -51,6 +52,15 @@ from tools.shared.scan import RepositoryScanResult  # noqa: E402
 
 REPO = "opentelekomcloud-docs/ecs"
 COMMIT = "a" * 40
+
+
+#: The caller the API tests act as. Deliberately not the name any request body
+#: sends, so an assertion on `initiated_by` fails if the body ever wins again.
+TEST_WORKER = Identity(
+    subject="tester-subject",
+    name="test-worker",
+    roles=frozenset({PanelRole.worker}),
+)
 
 
 @pytest.fixture
@@ -79,6 +89,10 @@ def client(session_factory, monkeypatch):
             db.close()
 
     app.dependency_overrides[deps.get_db] = override_get_db
+    # These suites are about scan behaviour, not about tokens: they run as a
+    # worker without minting one. Real token validation, and what a viewer is
+    # refused, live in tests/test_panel_auth.py.
+    app.dependency_overrides[current_identity] = lambda: TEST_WORKER
     monkeypatch.setattr(ingest_module, "SessionLocal", session_factory)
     monkeypatch.setattr(ingest_module, "get_engine", lambda: None)
     return TestClient(app)
@@ -458,7 +472,7 @@ def test_an_excluded_service_stays_on_the_excluded_list(scanned):
 
     assert row["name"] == REPO
     assert row["reason"] == "retired upstream"
-    assert row["excluded_by"] == "operator"
+    assert row["excluded_by"] == TEST_WORKER.name  # the token, not the body
 
 
 # ---------------------------------------------------------------------------
