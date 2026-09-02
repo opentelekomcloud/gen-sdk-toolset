@@ -212,7 +212,8 @@ def test_every_api_operation_requires_a_token(client):
     """Closed by default, checked against the published contract rather than
     FastAPI's route table: a route added to either scan router without
     authentication has no security requirement here, and this fails."""
-    schema = client.get("/openapi.json").json()
+    # From the app, not from a route: the schema is no longer served over HTTP.
+    schema = client.app.openapi()
     api = [
         (f"{method.upper()} {path}", operation)
         for path, operations in schema["paths"].items()
@@ -228,6 +229,17 @@ def test_every_api_operation_requires_a_token(client):
 
     assert unguarded == []
     assert api  # the filter matched something; an empty list would prove nothing
+
+
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+def test_the_interactive_docs_are_not_served(client, signing_key, path):
+    """They sat outside `/api`, so the token requirement never reached them,
+    and Caddy's password that used to stand in front is gone. A deployed panel
+    should not hand its API surface to an unauthenticated caller - and 404 is
+    the truth: with the routes off, there is nothing there."""
+    assert client.get(path).status_code == 404
+    # Not a matter of authentication: a worker gets the same answer.
+    assert client.get(path, headers=_auth(_token(signing_key))).status_code == 404
 
 
 def test_health_needs_no_token(client):

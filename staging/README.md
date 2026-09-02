@@ -79,11 +79,9 @@ The second is what the container healthcheck polls, and it is deliberately open.
 
 ## The API contract
 
-`/docs` (Swagger UI), `/redoc` and `/openapi.json` are proxied to the backend
-and guarded by the same password as the panel. "Try it out" issues real
-requests: a rescan started from there creates a real job, which fails on this
-host because no GitHub token is configured - the failure is recorded on the
-job, as any other failure would be.
+`/docs`, `/redoc` and `/openapi.json` are not served - see the note at the end.
+The contract is the committed `src/tools/panel/openapi.json`, which CI keeps in
+step with the code, and the frontend's types are generated from it.
 
 ## Signing in
 
@@ -172,10 +170,10 @@ docker compose -f docker-compose.staging.yml up -d --build
 - **No authorization beyond two roles.** Zitadel says who you are and whether
   you are a `worker` or a `viewer`; there is nothing finer, such as per-service
   permissions.
-- **`/docs`, `/redoc` and `/openapi.json` are open.** They sit outside `/api`,
-  so the panel does not authenticate them. They expose the shape of the API -
-  the same file this repository commits - and no data; "Try it out" answers
-  `401` without a token.
+- **No interactive API docs.** `/docs`, `/redoc` and `/openapi.json` answer
+  `404`: they sit outside `/api`, so the token requirement never covered them,
+  and the shared password that used to stand in front is gone. The contract is
+  the committed `src/tools/panel/openapi.json`.
 - **No backups.** The data is a copy of a laptop run; the source of truth is
   whatever machine did the scanning.
 - **No migrations on a live database.** The backend applies Alembic migrations

@@ -18,10 +18,10 @@
 	handle /health {
 		reverse_proxy backend:8000
 	}
-	# The API contract, readable: FastAPI serves Swagger UI at /docs and the
-	# schema at /openapi.json. These sit outside /api, so the panel does not
-	# authenticate them - they expose the shape of the API and no data, and
-	# "Try it out" now answers 401 without a token.
+	# Still proxied although the backend no longer serves them: these are API
+	# paths, so a 404 from the API is the honest answer. Dropping the handlers
+	# would send them to the SPA fallback below, which answers 200 with the
+	# panel's own not-found page.
 	handle /docs* {
 		reverse_proxy backend:8000
 	}
