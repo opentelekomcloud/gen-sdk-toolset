@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useLayoutEffect, type ReactNode } from "react";
 import { AuthProvider, useAuth } from "react-oidc-context";
 import { Loader2, LogIn, ShieldAlert } from "lucide-react";
 import { OIDC, isConfigured } from "./config";
@@ -27,6 +27,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
       redirect_uri={window.location.origin}
       post_logout_redirect_uri={window.location.origin}
       scope={OIDC.scope}
+      /* Zitadel puts no profile claims in an access token, and none in the ID
+         token either once an access token is issued (its endpoint docs say so
+         explicitly). Without this the panel would greet everyone by their
+         numeric subject: it fetches the userinfo endpoint after sign-in and
+         merges `preferred_username` and friends into the profile. */
+      loadUserInfo
       /* Renew before the token expires rather than after a request fails: a
          401 mid-session costs the user their place on the page. Which path it
          takes depends on the Zitadel application: with `offline_access` in the
@@ -50,7 +56,11 @@ function SessionBoundary({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const { t } = useI18n();
 
-  useEffect(() => {
+  /* A layout effect, not a passive one. React runs every layout effect before
+     any passive effect, and a child's query fires from a passive effect - so
+     with `useEffect` here the first request would leave before the token was
+     bound, come back 401 and start a sign-in redirect. */
+  useLayoutEffect(() => {
     bindSession({
       accessToken: () => auth.user?.access_token ?? null,
       /* A 401 from the API means this session is finished, whatever the

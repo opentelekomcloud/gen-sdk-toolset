@@ -3,11 +3,13 @@ import { Ban, ChevronDown, ChevronRight, Undo2 } from "lucide-react";
 import { useExcluded } from "../api/queries";
 import { useInclude } from "../api/mutations";
 import type { ExcludedService } from "../../../shared/api/types";
+import { useSession } from "../../../shared/auth/useSession";
 import { useI18n } from "../../../shared/i18n";
 
 function ExcludedRow({ item }: { item: ExcludedService }) {
   const include = useInclude(item.name);
   const [confirming, setConfirming] = useState(false);
+  const { canWrite } = useSession();
   const { t } = useI18n();
   return (
     <div className="border-b border-gray-100 last:border-0">
@@ -23,16 +25,18 @@ function ExcludedRow({ item }: { item: ExcludedService }) {
             {t("excluded.by", { by: item.excluded_by, at: item.excluded_at })}
           </div>
         </div>
-        <button type="button"
-          onClick={() => setConfirming(true)}
-          disabled={include.isPending || confirming}
-          className="flex items-center gap-1.5 whitespace-nowrap rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Undo2 size={12} /> {t("excluded.restore")}
-        </button>
+        {canWrite && (
+          <button type="button"
+            onClick={() => setConfirming(true)}
+            disabled={include.isPending || confirming}
+            className="flex items-center gap-1.5 whitespace-nowrap rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Undo2 size={12} /> {t("excluded.restore")}
+          </button>
+        )}
       </div>
       {/* inline confirmation — same pattern as the snapshot selector, instead of window.confirm */}
-      {confirming && (
+      {confirming && canWrite && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-100 bg-amber-50 px-4 py-2">
           <span className="whitespace-pre-line text-xs leading-relaxed text-amber-800">
             {t("excluded.restoreConfirm", { name: item.name })}

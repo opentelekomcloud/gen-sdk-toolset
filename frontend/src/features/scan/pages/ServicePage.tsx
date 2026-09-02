@@ -188,6 +188,7 @@ export function ServicePage() {
 
       {!scanning && (
         <SnapshotBanner
+          canActivate={canWrite}
           service={service}
           onActivateLatest={() => service.latest_snapshot && activate.mutate(service.latest_snapshot.id)}
         />

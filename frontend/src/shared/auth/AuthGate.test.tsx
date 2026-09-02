@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { useEffect, type ReactNode } from "react";
 import { I18nProvider } from "../i18n";
 import { tokenWithRoles } from "../../test/token";
+import { apiFetch } from "../../features/scan/api/client";
+import { resetSession } from "./session";
 
 /** What the mocked provider hands back; each test sets the token. */
 const session = vi.hoisted(() => ({ token: "", signOut: vi.fn() }));
@@ -57,6 +59,11 @@ beforeEach(() => {
   session.signOut.mockClear();
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+  resetSession();
+});
+
 describe("AuthGate", () => {
   it("shows the panel to a session that holds a role", () => {
     session.token = tokenWithRoles("viewer");
@@ -96,5 +103,39 @@ describe("AuthGate", () => {
 
     expect(screen.getByText(/not configured/i)).toBeInTheDocument();
     expect(screen.queryByText("the panel")).toBeNull();
+  });
+});
+
+describe("the session is bound before the app can use it", () => {
+  /** A child that requests on mount - which is what every page's query does. */
+  function RequestsOnMount() {
+    useEffect(() => {
+      void apiFetch("/scan/summary").catch(() => undefined);
+    }, []);
+    return <div>the panel</div>;
+  }
+
+  it("carries the token on the very first request", async () => {
+    /* The binding has to happen in a layout effect: React runs those before any
+       passive effect, and this child fetches from a passive one. Bound too late
+       and the first request goes out bare, is refused, and starts a redirect
+       loop on a session that was perfectly good. */
+    const spy = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", spy);
+    session.token = tokenWithRoles("worker");
+
+    render(
+      <I18nProvider>
+        <AuthGate>
+          <RequestsOnMount />
+        </AuthGate>
+      </I18nProvider>,
+    );
+
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const [, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new Headers(init.headers).get("Authorization")).toBe(
+      `Bearer ${session.token}`,
+    );
   });
 });

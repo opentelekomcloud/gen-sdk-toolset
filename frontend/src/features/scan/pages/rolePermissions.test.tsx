@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { renderPage, stubEmptyApi } from "../../../test/render";
 import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../api/queries";
 import type { ServiceDetail } from "../../../shared/api/types";
 import { ServicePage } from "./ServicePage";
 import { Header } from "../../../components/Header";
+import { ExcludedSection } from "../excluded/ExcludedSection";
 
 /** The session the mocked provider hands back; each test sets the roles. */
 const session = vi.hoisted(() => ({ token: "" }));
@@ -55,6 +56,8 @@ const SERVICE = {
     created_at: "2026-08-01T10:00:00Z",
   },
   latest_snapshot: { id: 3, commit_hash: "a".repeat(40) },
+  // (a second fixture below pins the banner, which only appears when active
+  //  and latest differ)
   head_commit: "b".repeat(40),
   interruption: null,
   top_issues: [],
@@ -169,5 +172,83 @@ describe("the header says which session this is", () => {
     renderPage(<Header />);
 
     expect(screen.getByRole("button", { name: /sign out/i })).toBeInTheDocument();
+  });
+});
+
+describe("the excluded list at the bottom of the registry", () => {
+  const EXCLUDED = [
+    {
+      name: NAME,
+      reason: "retired upstream",
+      excluded_by: "ada@otc.test",
+      excluded_at: "2026-08-01T10:00:00Z",
+    },
+  ];
+
+  /** The section is collapsed until asked for. */
+  function openExcluded(roles: Parameters<typeof tokenWithRoles>) {
+    session.token = tokenWithRoles(...roles);
+    renderPage(<ExcludedSection />, { seed: [[keys.excluded, EXCLUDED]] });
+    // fireEvent, not a raw .click(): testing-library wraps it in act() so the
+    // state update that opens the section is flushed before the assertions.
+    fireEvent.click(screen.getByRole("button", { name: /excluded/i }));
+  }
+
+  it("offers a viewer no way to restore a service", () => {
+    // Restore is `include`, a worker mutation: a viewer clicking it would get a
+    // 403 from a page that has no banner to show it in.
+    openExcluded(["viewer"]);
+
+    expect(screen.queryByRole("button", { name: /restore/i })).toBeNull();
+  });
+
+  it("still shows a viewer what was excluded and why", () => {
+    openExcluded(["viewer"]);
+
+    expect(screen.getByText("retired upstream")).toBeInTheDocument();
+  });
+
+  it("offers a worker the restore the viewer was not", () => {
+    openExcluded(["worker"]);
+
+    expect(screen.getByRole("button", { name: /restore/i })).toBeInTheDocument();
+  });
+});
+
+describe("the banner shown when an older snapshot is active", () => {
+  /** The banner renders only while active and latest differ. */
+  const LAGGING = {
+    ...SERVICE,
+    latest_snapshot: {
+      id: 9,
+      commit_hash: "b".repeat(40),
+      last_scanned_at: "2026-08-02T10:00:00Z",
+      scanner_version: "0.1.0",
+    },
+  } as unknown as ServiceDetail;
+
+  function laggingPage() {
+    return renderPage(<ServicePage />, {
+      path: `/scan/services/${encodeURIComponent(NAME)}`,
+      route: "/scan/services/:name",
+      seed: [[keys.service(NAME), LAGGING]],
+    });
+  }
+
+  it("tells a viewer an older snapshot is active without offering the switch", () => {
+    session.token = tokenWithRoles("viewer");
+
+    laggingPage();
+
+    expect(screen.getByText(/older snapshot is active/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /activate latest/i })).toBeNull();
+  });
+
+  it("offers a worker the one-click return to latest", () => {
+    session.token = tokenWithRoles("worker");
+
+    laggingPage();
+
+    expect(screen.getByRole("button", { name: /activate latest/i })).toBeInTheDocument();
   });
 });
