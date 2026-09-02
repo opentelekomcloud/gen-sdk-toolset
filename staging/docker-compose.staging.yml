@@ -1,7 +1,7 @@
 # Staging stack for the scan panel: Caddy (auth + TLS + static bundle), the
 # FastAPI backend, and PostgreSQL seeded from a dump of a local run.
 #
-# Staging, not production: one host, one shared password, no backups, no
+# Staging, not production: one host, no backups, no
 # migration story for a live database, and the data is a copy of somebody's
 # laptop. Production is expected to be a Kubernetes deployment, where the
 # ingress takes over what Caddy does here.
@@ -48,8 +48,7 @@ services:
       - DATABASE__URL=postgresql+psycopg://${POSTGRES_USER:-panel}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-panel}
       # Same origin behind Caddy, so no cross-origin request is ever made.
       - PANEL__FRONTEND_ORIGIN=${SITE_URL:-http://localhost}
-      # The API authenticates every request itself now; Caddy's shared password
-      # is a second door in front of it, not the only one.
+      # The API authenticates every request itself; there is no other door.
       - AUTH__ISSUER=${AUTH__ISSUER:-}
       - AUTH__AUDIENCE=${AUTH__AUDIENCE:-}
       # Uncomment only if scans should run on this host:
@@ -112,8 +111,6 @@ services:
 
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Login and bcrypt hash, mounted verbatim - see deploy/auth.caddy.example.
-      - ./auth.caddy:/etc/caddy/auth.caddy:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
