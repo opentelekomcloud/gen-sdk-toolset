@@ -15,16 +15,24 @@ Two shapes matter here:
   ours, not the token's, and ``exp`` and ``sub`` are required rather than
   optional: a token that never expires, or that names no user, cannot be
   attributed to anybody.
+* **The login comes from userinfo, not from the token.** Zitadel's claims
+  matrix asserts ``preferred_username``, ``name`` and ``email`` in the ID token
+  and at the userinfo endpoint, and never in an access token - so reading them
+  off the bearer token would record a numeric subject for everybody. The name is
+  fetched once per user and cached; the subject is the fallback when Zitadel
+  cannot be reached, and it says so in the log.
 """
 
 from __future__ import annotations
 
 import enum
 import logging
+import time
 from dataclasses import dataclass
 from typing import Annotated, Any
 
 import jwt
+import requests
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient, PyJWKClientError
@@ -42,9 +50,23 @@ PROJECT_ROLES_CLAIM = "urn:zitadel:iam:org:project:roles"
 #: its own algorithm - `alg: none` is an attack, not a configuration.
 _ALGORITHMS = ["RS256"]
 
-#: Claims to read the operator's name from, best first. All three are optional
-#: in OIDC, which is why `_name_of` ends at `sub`.
+#: Claims to read the operator's name from, best first. Checked on the token as
+#: well as on the userinfo response: a Zitadel action can put one of them in the
+#: access token, and then no lookup is needed at all.
 _NAME_CLAIMS = ("preferred_username", "name", "email")
+
+#: How long one resolved login is reused. Usernames change rarely, and the worst
+#: a stale one costs is an out-of-date name against a job that already ran.
+_NAME_TTL_SECONDS = 900
+
+#: How long a failed lookup is remembered. Short, because it is a real outage
+#: rather than a fact - but not zero, or an unreachable Zitadel would add a
+#: timeout to every request the panel serves.
+_NAME_FAILURE_TTL_SECONDS = 60
+
+#: Long enough for a healthy round trip, short enough that an unresponsive
+#: userinfo endpoint does not hold a panel request open.
+_USERINFO_TIMEOUT_SECONDS = 3
 
 _bearer = HTTPBearer(
     auto_error=False,
@@ -99,7 +121,9 @@ def current_identity(
     if not roles:
         raise _unauthenticated("token carries no panel role")
     return Identity(
-        subject=str(claims["sub"]), name=_name_of(claims), roles=frozenset(roles)
+        subject=str(claims["sub"]),
+        name=_resolve_name(request, claims=claims, token=credentials.credentials),
+        roles=frozenset(roles),
     )
 
 
@@ -200,14 +224,78 @@ def _panel_roles(claims: dict[str, Any]) -> set[PanelRole]:
     return {role for role in PanelRole if role.value in granted}
 
 
-def _name_of(claims: dict[str, Any]) -> str:
-    """The login to record for this caller."""
+def _resolve_name(request: Request, *, claims: dict[str, Any], token: str) -> str:
+    """The login to record for this caller.
+
+    Checked on the token first, so a deployment that adds the claim through a
+    Zitadel action pays for no lookup. Otherwise it is fetched from userinfo
+    once per user and cached: a stock Zitadel access token carries no profile
+    claim at all, and recording the numeric subject would make every job and
+    exclusion unattributable to a person.
+
+    This is the one network call in a request path, and it runs before any
+    session is open: authentication is a router-level dependency, so it resolves
+    ahead of the route's own ``get_db``. Keep it that way - a transaction held
+    across this call is the shape this codebase avoids everywhere else.
+    """
+    subject = str(claims["sub"])
+    from_token = _name_in(claims)
+    if from_token is not None:
+        return from_token
+
+    cache = _name_cache(request)
+    cached = cache.get(subject)
+    if cached is not None and cached[1] > time.monotonic():
+        return cached[0]
+
+    auth: AuthSection = request.app.state.settings.auth
+    try:
+        info = _fetch_userinfo(auth.userinfo_url, token)
+    except (requests.RequestException, ValueError) as error:
+        # Not fatal: the request proceeds under the subject rather than failing
+        # over a display name, and the log says the attribution degraded.
+        logger.warning(
+            "could not resolve a login for %s from %s (%s); "
+            "recording the subject instead",
+            subject,
+            auth.userinfo_url,
+            error,
+        )
+        cache[subject] = (subject, time.monotonic() + _NAME_FAILURE_TTL_SECONDS)
+        return subject
+
+    name = _name_in(info) or subject
+    cache[subject] = (name, time.monotonic() + _NAME_TTL_SECONDS)
+    return name
+
+
+def _name_in(claims: dict[str, Any]) -> str | None:
+    """The first name-like claim present, or None."""
     for claim in _NAME_CLAIMS:
         value = claims.get(claim)
         if value:
             return str(value)
-    # `_claims` requires `sub`, so there is always something left to record.
-    return str(claims["sub"])
+    return None
+
+
+def _name_cache(request: Request) -> dict[str, tuple[str, float]]:
+    """Resolved logins by subject, kept on the app like the JWKS client."""
+    cache = getattr(request.app.state, "name_cache", None)
+    if cache is None:
+        cache = {}
+        request.app.state.name_cache = cache
+    return cache
+
+
+def _fetch_userinfo(url: str, token: str) -> dict[str, Any]:
+    """Ask Zitadel who this token belongs to."""
+    response = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=_USERINFO_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 def _unauthenticated(reason: str) -> HTTPException:
