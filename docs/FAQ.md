@@ -25,6 +25,12 @@ The parsing code lives in `src/tools/scanner/parsers/docutils/`, split by
 concern — `table.py`, `nesting.py`, `references.py`, `field_type.py`,
 `example.py`, `routing.py`.
 
+If the shape is fine and only the *type name* is unfamiliar - a page writing
+`int64` where another writes `Long` - it is one entry in
+`field_type.py::_ALIASES` and a test, not a parser change. Only add a spelling
+somebody chose on purpose: a misspelling belongs in `UNKNOWN_TYPE_FORMAT`, where
+it is counted.
+
 1. Capture the real document as a fixture: put the `.rst` in `tests/fixtures/`,
    named `style_<a|b>_<service>_<what_is_special>.rst`, and add a loader fixture
    to `tests/conftest.py` alongside the existing ones.
