@@ -14,6 +14,8 @@ def _envelope(code: str, message: str) -> dict:
 
 _STATUS_CODES = {
     400: "bad_request",
+    401: "unauthenticated",
+    403: "forbidden",
     404: "not_found",
     409: "conflict",
     422: "validation_error",
@@ -25,9 +27,12 @@ async def _http_exception_handler(
     request: Request, exc: StarletteHTTPException
 ) -> JSONResponse:
     code = _STATUS_CODES.get(exc.status_code, "error")
+    # Headers travel with the envelope: a 401 without its `WWW-Authenticate`
+    # challenge is a refusal that never says how to authenticate.
     return JSONResponse(
         status_code=exc.status_code,
         content=_envelope(code, str(exc.detail)),
+        headers=exc.headers,
     )
 
 

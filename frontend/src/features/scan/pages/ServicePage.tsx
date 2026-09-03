@@ -15,12 +15,25 @@ import { OverallBar } from "../components/OverallBar";
 import { SECTIONS } from "../constants";
 import { DocumentsBlock } from "../documents/DocumentsBlock";
 import { ExcludeModal } from "../excluded/ExcludeModal";
-import { activationErrorKey } from "../lib/errors";
+import { useSession } from "../../../shared/auth/useSession";
+import { activationErrorKey, mutationErrorKey } from "../lib/errors";
 import { fmtSnapshotAt } from "../lib/snapshot";
 import { DOC_STATUS_CLS, structOkCls } from "../styles";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
 
 const OVERALL_ORDER: DocStatus[] = ["ok", "partial", "failed", "unsupported"];
+
+interface Refusable {
+  isError: boolean;
+  error: Error | null;
+  reset: () => void;
+}
+
+/** What to say about a mutation that was refused, or nothing if it was not. */
+function refusalOf(mutation: Refusable, key: (error: unknown) => MessageKey) {
+  if (!mutation.isError || !mutation.error) return null;
+  return { key: key(mutation.error), error: mutation.error, dismiss: () => mutation.reset() };
+}
 
 /** Service page (PS11 + G1): header with snapshot selector, metrics, terminal states, documents, admin zone. */
 export function ServicePage() {
@@ -29,6 +42,7 @@ export function ServicePage() {
   const [showExclude, setShowExclude] = useState(false);
   /* What the documents below are narrowed to: a section count or an issue code. */
   const [filter, setFilter] = useState<DocFilter | null>(null);
+  const { canWrite } = useSession();
   const { t } = useI18n();
 
   const { data: service, isPending, isError, error, refetch } = useService(name);
@@ -77,6 +91,12 @@ export function ServicePage() {
      it overlaps nothing, hence the two-step cast. Ingest writes a
      RepositoryInterruption; this is the one place that says so. */
   const interruption = service.interruption as unknown as RepositoryInterruption | null;
+  /* One refusal on screen at a time: activation names its own cases, the other
+     two share the generic wording. */
+  const refusal =
+    refusalOf(activate, activationErrorKey) ??
+    refusalOf(rescan, mutationErrorKey) ??
+    refusalOf(exclude, mutationErrorKey);
   /* a failed job persists nothing — with an active snapshot the failure is a warning, without one a terminal state */
   const jobFailed = service.error != null || interruption != null;
 
@@ -94,13 +114,15 @@ export function ServicePage() {
           </div>
           {/* G1: replaces the static "scanned with …" line; RollbackButton is gone — the selector covers it */}
           <SnapshotSelector
+            /* Readable by everyone, switchable by a worker: the popover still
+               opens, so a viewer can see which snapshot is being served. */
             service={service}
-            disabled={scanning || switching}
+            disabled={scanning || switching || !canWrite}
             onActivate={(id) => activate.mutate(id)}
           />
         </div>
         <div className="flex items-center gap-2">
-          {scanning ? (
+          {!canWrite && !scanning ? null : scanning ? (
             <RescanButton reason={null} scanning={{ jobId: service.job_id, startedBy: service.initiated_by ?? undefined }} scannerVersion={scannerVersion} onClick={() => {}} />
           ) : service.rescan_reason ? (
             <RescanButton
@@ -127,19 +149,21 @@ export function ServicePage() {
         </div>
       </div>
 
-      {/* A refused activation changes nothing on screen, so say why it did not
-          take. onSettled has already refetched, so the page around it is in
-          step with the server by the time this renders. */}
-      {activate.isError && (
+      {/* A refused mutation changes nothing on screen, so say why it did not
+          take. Each of these has already rolled its optimistic state back and
+          refetched, so the page around the banner is in step with the server.
+          A 403 lands here when the UI offered something this session may not do
+          - hiding the control is the courtesy, this is the answer. */}
+      {refusal && (
         <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
           <AlertTriangle size={14} className="mt-px shrink-0 text-amber-500" />
           <div className="min-w-0">
-            <span className="font-semibold">{t(activationErrorKey(activate.error))}</span>
+            <span className="font-semibold">{t(refusal.key)}</span>
             {" — "}
-            <span className="font-mono">{activate.error.message}</span>
+            <span className="font-mono">{refusal.error.message}</span>
           </div>
           <button type="button"
-            onClick={() => activate.reset()}
+            onClick={refusal.dismiss}
             className="ml-auto shrink-0 rounded border border-amber-300 px-2 py-1 font-medium text-amber-800 transition hover:border-amber-500 hover:bg-white"
           >
             {t("snap.dismiss")}
@@ -164,6 +188,7 @@ export function ServicePage() {
 
       {!scanning && (
         <SnapshotBanner
+          canActivate={canWrite}
           service={service}
           onActivateLatest={() => service.latest_snapshot && activate.mutate(service.latest_snapshot.id)}
         />
@@ -189,12 +214,14 @@ export function ServicePage() {
               {t("service.failedKeptData", { gen: service.active_snapshot.id, at: fmtSnapshotAt(service.active_snapshot.last_scanned_at) })}
             </div>
           </div>
-          <button type="button"
-            onClick={() => rescan.mutate()}
-            className="ml-auto shrink-0 rounded border border-red-300 px-2 py-1 font-medium text-red-700 transition hover:border-red-500 hover:bg-white"
-          >
-            {t("service.retry")}
-          </button>
+          {canWrite && (
+            <button type="button"
+              onClick={() => rescan.mutate()}
+              className="ml-auto shrink-0 rounded border border-red-300 px-2 py-1 font-medium text-red-700 transition hover:border-red-500 hover:bg-white"
+            >
+              {t("service.retry")}
+            </button>
+          )}
         </div>
       )}
 
@@ -331,7 +358,7 @@ export function ServicePage() {
 
       <div className="mt-10 flex items-center justify-between border-t border-gray-100 pt-3">
         <span className="text-[11px] uppercase tracking-wide text-gray-300">{t("service.admin")}</span>
-        <button type="button"
+        {canWrite && <button type="button"
           onClick={() => setShowExclude(true)}
           disabled={scanning}
           title={scanning ? t("service.notWhileScanning") : undefined}
@@ -340,7 +367,7 @@ export function ServicePage() {
           }`}
         >
           <Ban size={12} /> {t("service.exclude")}
-        </button>
+        </button>}
       </div>
       {showExclude && (
         <ExcludeModal

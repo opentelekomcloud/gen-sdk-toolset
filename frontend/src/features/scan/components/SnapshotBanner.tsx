@@ -6,10 +6,12 @@ import { useI18n } from "../../../shared/i18n";
 interface Props {
   service: ServiceDetail;
   onActivateLatest: () => void;
+  /** A viewer is told which snapshot is being served, but cannot change it. */
+  canActivate: boolean;
 }
 
 /** G1: shown when active_snapshot_id deliberately lags latest_snapshot_id — one-click return to latest. */
-export function SnapshotBanner({ service, onActivateLatest }: Props) {
+export function SnapshotBanner({ service, onActivateLatest, canActivate }: Props) {
   const { t, locale } = useI18n();
   const active = service.active_snapshot;
   const latest = service.latest_snapshot;
@@ -26,13 +28,15 @@ export function SnapshotBanner({ service, onActivateLatest }: Props) {
           latestAt: fmtSnapshotAt(latest.last_scanned_at, locale),
         })}
       </span>
-      <button
-        type="button"
-        onClick={onActivateLatest}
-        className="rounded border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-800 transition hover:border-amber-500"
-      >
-        {t("snapBanner.activateLatest")}
-      </button>
+      {canActivate && (
+        <button
+          type="button"
+          onClick={onActivateLatest}
+          className="rounded border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-800 transition hover:border-amber-500"
+        >
+          {t("snapBanner.activateLatest")}
+        </button>
+      )}
     </div>
   );
 }

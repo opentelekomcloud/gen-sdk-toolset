@@ -70,6 +70,29 @@ class DatabaseSection(BaseModel):
     url: str = "postgresql+psycopg://panel:panel@localhost:5432/panel"
 
 
+class AuthSection(BaseModel):
+    """Zitadel OIDC settings for validating panel bearer tokens.
+
+    Both default to empty rather than to a URL: there is no sensible fallback
+    issuer, and a placeholder would let a deployment start up validating tokens
+    against something nobody meant. Unset is refused at request time, loudly,
+    instead of quietly accepting or rejecting everyone - see
+    ``panel/api/auth.py``.
+
+    Kept out of the TOML on purpose is only the token itself; issuer and
+    audience are deployment configuration and belong in the config file or in
+    ``AUTH__ISSUER`` / ``AUTH__AUDIENCE``.
+    """
+
+    issuer: str = ""
+    audience: str = ""
+
+    @property
+    def jwks_url(self) -> str:
+        """Where Zitadel publishes the signing keys for ``issuer``."""
+        return f"{self.issuer.rstrip('/')}/oauth/v2/keys"
+
+
 class PanelSection(BaseModel):
     frontend_origin: str = "http://localhost:5173"
 
@@ -89,6 +112,7 @@ class Settings(BaseSettings):
     logging: LoggingSection = Field(default_factory=LoggingSection)
     database: DatabaseSection = Field(default_factory=DatabaseSection)
     panel: PanelSection = Field(default_factory=PanelSection)
+    auth: AuthSection = Field(default_factory=AuthSection)
 
     model_config = SettingsConfigDict(
         env_file=".env",

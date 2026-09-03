@@ -25,7 +25,20 @@ paths:
 - **Optimistic updates need their rollback.** Any mutation that flips local
   state before the server confirms must restore it on error, including the
   expected errors like `409 already scanning`.
+- **Roles hide controls; they do not protect anything.** `useSession().canWrite`
+  decides whether a mutation control renders, and the roles behind it come from a
+  token this code decodes but never verifies. The backend answers `403`
+  regardless, and a refusal must still land somewhere the user can see - hiding a
+  button is a courtesy, never the check. Information stays visible either way: a
+  viewer sees who is scanning, just not the button that starts one.
 - **The dictionaries stay parallel.** Every key added to `en.ts` is added to
   `de.ts` in the same change.
+- **Rendering is testable; use it for what only rendering shows.** Vitest runs
+  in `jsdom` with `@testing-library/react`, and `src/test/render.tsx` mounts a
+  page with the providers and a seeded query cache. Mock `react-oidc-context`,
+  not our own `useSession`, or the test proves nothing about the logic that
+  decides what a role sees. Watch for the false pass: a query that never
+  resolves renders nothing, and every `queryBy...` assertion then succeeds - so
+  assert something the page *does* show in the same suite.
 - **Checks:** `npm run lint`, `npm run build` (typecheck included) and
   `npm run test:coverage` all pass before the change is done.

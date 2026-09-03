@@ -18,6 +18,11 @@ paths:
   local variables, commit the status change, let the session close, and only
   then call the provider. Reading an attribute after the commit will silently
   reopen a transaction and hold it across the network call.
+- **Routes are authenticated by default.** `create_app` applies
+  `Depends(require_viewer)` to the whole `/api` prefix, so a new route is closed
+  the moment it is registered and only its *role* is a decision: a mutation adds
+  `identity: Identity = Depends(require_worker)` and takes `initiated_by` from
+  that identity, never from the request body. `/health` is the one open route.
 - **Errors go through the envelope.** Raise `HTTPException`; the handlers in
   `api/errors.py` produce the `{"error": {"code", "message"}}` shape. Never
   assemble an error body by hand.

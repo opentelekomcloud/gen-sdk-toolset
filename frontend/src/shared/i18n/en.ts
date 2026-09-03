@@ -1,5 +1,22 @@
 /** English (source of truth — MessageKey derives from this object). */
 export const en = {
+  "auth.forbidden": "Your role does not allow that",
+  "mutation.conflict": "That could not be done right now",
+  "mutation.failed": "That did not go through",
+  "auth.noRole": "Your account has no access to this panel",
+  "auth.noRoleHint": "Ask an administrator to grant you the viewer or worker role in Zitadel, then sign in again.",
+  "auth.notConfigured": "Sign-in is not configured",
+  "auth.notConfiguredHint": "Set VITE_ZITADEL_ISSUER and VITE_ZITADEL_CLIENT_ID, then rebuild.",
+  "auth.signingIn": "Signing in…",
+  "auth.required": "Sign in to use the panel",
+  "auth.requiredHint": "The panel reads and changes scan data on your behalf, so it needs to know who you are.",
+  "auth.signIn": "Sign in with Zitadel",
+  "auth.retry": "Try again",
+  "auth.failed": "Sign-in failed",
+  "auth.signOut": "Sign out",
+  "auth.viewer": "read-only",
+  "auth.viewerHint": "Your account has the viewer role, which cannot change panel state.",
+
   "app.notFound": "Page not found.",
 
   "header.subtitle": "Service scan registry · T Cloud Public",

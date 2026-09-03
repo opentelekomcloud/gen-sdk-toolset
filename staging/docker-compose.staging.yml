@@ -48,6 +48,10 @@ services:
       - DATABASE__URL=postgresql+psycopg://${POSTGRES_USER:-panel}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-panel}
       # Same origin behind Caddy, so no cross-origin request is ever made.
       - PANEL__FRONTEND_ORIGIN=${SITE_URL:-http://localhost}
+      # The API authenticates every request itself now; Caddy's shared password
+      # is a second door in front of it, not the only one.
+      - AUTH__ISSUER=${AUTH__ISSUER:-}
+      - AUTH__AUDIENCE=${AUTH__AUDIENCE:-}
       # Uncomment only if scans should run on this host:
       # - GITHUB_TOKEN=${GITHUB_TOKEN}
     depends_on:
@@ -93,6 +97,11 @@ services:
     build:
       context: ../frontend
       dockerfile: ../staging/Dockerfile.frontend
+      # Baked into the bundle at build time; changing them means rebuilding.
+      args:
+        VITE_ZITADEL_ISSUER: ${VITE_ZITADEL_ISSUER:-}
+        VITE_ZITADEL_CLIENT_ID: ${VITE_ZITADEL_CLIENT_ID:-}
+        VITE_ZITADEL_SCOPE: ${VITE_ZITADEL_SCOPE:-}
     ports:
       # Published ports are configurable so the same stack can run on a laptop
       # (behind an ngrok tunnel, on 8080) and on the host that owns 80/443.

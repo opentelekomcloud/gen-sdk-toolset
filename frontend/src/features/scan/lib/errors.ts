@@ -26,7 +26,20 @@ export function shortError(message: string): string {
  * anything else keeps the generic one and shows the server's own message.
  */
 export function activationErrorKey(error: unknown): MessageKey {
+  if (error instanceof ApiError && error.status === 403) return "auth.forbidden";
   if (error instanceof ApiError && error.status === 409) return "snap.activateConflict";
   if (error instanceof ApiError && error.status === 404) return "snap.activateGone";
   return "snap.activateFailed";
+}
+
+/**
+ * Why a state-changing request was refused. `403` is the one the UI is supposed
+ * to prevent by hiding the control, which is exactly why it needs a line of its
+ * own: reaching it means the page was showing something the session may not do,
+ * and "could not do that" would leave the user clicking it again.
+ */
+export function mutationErrorKey(error: unknown): MessageKey {
+  if (error instanceof ApiError && error.status === 403) return "auth.forbidden";
+  if (error instanceof ApiError && error.status === 409) return "mutation.conflict";
+  return "mutation.failed";
 }

@@ -2,6 +2,23 @@ import type { en } from "./en";
 
 /** German. Keys mirror en.ts; monospace/technical values (issue codes, table statuses) stay Latin/English by design. */
 export const de: Record<keyof typeof en, string> = {
+  "auth.forbidden": "Ihre Rolle erlaubt das nicht",
+  "mutation.conflict": "Das war gerade nicht möglich",
+  "mutation.failed": "Das hat nicht geklappt",
+  "auth.noRole": "Ihr Konto hat keinen Zugriff auf dieses Panel",
+  "auth.noRoleHint": "Bitten Sie eine Administratorin um die Rolle „viewer“ oder „worker“ in Zitadel und melden Sie sich erneut an.",
+  "auth.notConfigured": "Anmeldung ist nicht konfiguriert",
+  "auth.notConfiguredHint": "VITE_ZITADEL_ISSUER und VITE_ZITADEL_CLIENT_ID setzen und neu bauen.",
+  "auth.signingIn": "Anmeldung läuft…",
+  "auth.required": "Zum Verwenden des Panels anmelden",
+  "auth.requiredHint": "Das Panel liest und ändert Scan-Daten in Ihrem Namen und muss deshalb wissen, wer Sie sind.",
+  "auth.signIn": "Mit Zitadel anmelden",
+  "auth.retry": "Erneut versuchen",
+  "auth.failed": "Anmeldung fehlgeschlagen",
+  "auth.signOut": "Abmelden",
+  "auth.viewer": "nur lesend",
+  "auth.viewerHint": "Ihr Konto hat die Rolle „viewer“ und kann den Panel-Zustand nicht ändern.",
+
   "app.notFound": "Seite nicht gefunden.",
 
   "header.subtitle": "Service-Scan-Registry · T Cloud Public",
