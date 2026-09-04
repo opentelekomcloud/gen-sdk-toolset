@@ -58,7 +58,18 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = load_settings()
 
-    app = FastAPI(title="Panel API", lifespan=_lifespan)
+    # The interactive docs and the schema route are off: they sit outside
+    # `/api`, so the token requirement never covered them, and a deployed panel
+    # should not answer an unauthenticated request with the shape of its API.
+    # `app.openapi()` still builds the schema - that is what `panel openapi`
+    # dumps into the committed artifact, and it needs no route.
+    app = FastAPI(
+        title="Panel API",
+        lifespan=_lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     # Read once and kept here: the auth dependency runs on every request and
     # would otherwise re-parse `.env` for each one.
     app.state.settings = settings

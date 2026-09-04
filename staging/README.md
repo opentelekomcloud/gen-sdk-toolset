@@ -38,15 +38,14 @@ On the host, in `deploy/.env`:
 POSTGRES_PASSWORD=<a fresh password>
 SITE_ADDRESS=panel.example.com     # or ":80" when there is no DNS name
 SITE_URL=https://panel.example.com # or "http://<EIP>"
-PANEL_USER=<login>
-PANEL_PASSWORD_HASH=<bcrypt hash>
+AUTH__ISSUER=https://your-instance.zitadel.cloud
+AUTH__AUDIENCE=<the API application's client id>
 ```
 
-Generate the hash yourself - it never has to leave your machine:
-
-```bash
-docker run --rm caddy:2-alpine caddy hash-password --plaintext '<password>'
-```
+Nothing here is a shared password: the panel authenticates each person against
+Zitadel and records who they are, so there is no second door in front of it.
+Without the two `AUTH__` values every `/api` request answers `500` - the panel
+has nothing to validate a token against.
 
 The backend gets no `GITHUB_TOKEN`. Reading the panel does not need one, and a
 scan launched on this host would spend the quota of whatever token lived there,
@@ -70,20 +69,19 @@ to wait for names the certificate.
 ## 4. Check
 
 ```bash
-curl -u '<login>:<password>' https://panel.example.com/api/scan/summary
 curl -s -o /dev/null -w '%{http_code}\n' https://panel.example.com/api/scan/summary  # expect 401
+curl -s -o /dev/null -w '%{http_code}\n' https://panel.example.com/health           # expect 200
 ```
 
-The second command is the one that matters: without credentials everything,
-including `POST /api/scan/services/{repo}/rescan`, must answer `401`.
+The first is the one that matters: without a bearer token everything under
+`/api`, including `POST /api/scan/services/{repo}/rescan`, must answer `401`.
+The second is what the container healthcheck polls, and it is deliberately open.
 
 ## The API contract
 
-`/docs` (Swagger UI), `/redoc` and `/openapi.json` are proxied to the backend
-and guarded by the same password as the panel. "Try it out" issues real
-requests: a rescan started from there creates a real job, which fails on this
-host because no GitHub token is configured - the failure is recorded on the
-job, as any other failure would be.
+`/docs`, `/redoc` and `/openapi.json` are not served - see the note at the end.
+The contract is the committed `src/tools/panel/openapi.json`, which CI keeps in
+step with the code, and the frontend's types are generated from it.
 
 ## Signing in
 
@@ -169,8 +167,13 @@ docker compose -f docker-compose.staging.yml up -d --build
 
 ## What this deployment is not
 
-- **No user accounts.** One shared password guards the whole panel; the
-  `initiated_by` field on a job is still self-reported by the frontend.
+- **No authorization beyond two roles.** Zitadel says who you are and whether
+  you are a `worker` or a `viewer`; there is nothing finer, such as per-service
+  permissions.
+- **No interactive API docs.** `/docs`, `/redoc` and `/openapi.json` answer
+  `404`: they sit outside `/api`, so the token requirement never covered them,
+  and the shared password that used to stand in front is gone. The contract is
+  the committed `src/tools/panel/openapi.json`.
 - **No backups.** The data is a copy of a laptop run; the source of truth is
   whatever machine did the scanning.
 - **No migrations on a live database.** The backend applies Alembic migrations

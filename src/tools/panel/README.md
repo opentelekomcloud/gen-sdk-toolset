@@ -38,8 +38,12 @@ uv run uvicorn tools.panel.api.app:create_app --factory --reload
 The API starts on `http://127.0.0.1:8000`.
 
 - Health check: `GET http://127.0.0.1:8000/health` → `{"status": "ok"}`
-- Interactive docs (Swagger UI): `http://127.0.0.1:8000/docs`
-- OpenAPI schema: `http://127.0.0.1:8000/openapi.json`
+- Everything else needs a bearer token; `/health` is the only open route.
+
+Swagger UI and `/openapi.json` are not served: they sat outside `/api`, where
+the token requirement does not reach, so a deployed panel would have handed its
+API surface to anyone. Read the committed `openapi.json` instead - it is
+regenerated below and CI fails when it drifts.
 
 ## Regenerating the OpenAPI schema
 

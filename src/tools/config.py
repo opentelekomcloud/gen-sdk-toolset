@@ -92,6 +92,17 @@ class AuthSection(BaseModel):
         """Where Zitadel publishes the signing keys for ``issuer``."""
         return f"{self.issuer.rstrip('/')}/oauth/v2/keys"
 
+    @property
+    def userinfo_url(self) -> str:
+        """Where Zitadel serves the profile claims an access token omits.
+
+        Zitadel's claims matrix puts ``preferred_username``, ``name`` and
+        ``email`` in the ID token and at this endpoint, never in an access
+        token - so a panel that wants to record a login rather than a numeric
+        subject has to ask for it here.
+        """
+        return f"{self.issuer.rstrip('/')}/oidc/v1/userinfo"
+
 
 class PanelSection(BaseModel):
     frontend_origin: str = "http://localhost:5173"

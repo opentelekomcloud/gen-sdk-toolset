@@ -10,6 +10,7 @@ Needs PostgreSQL like the other API suites (see tests/test_panel_db.py).
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -22,6 +23,7 @@ pytest.importorskip("httpx")
 pytest.importorskip("jwt")
 
 import jwt  # noqa: E402
+import requests  # noqa: E402
 from alembic import command  # noqa: E402
 from cryptography.hazmat.primitives.asymmetric import rsa  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -34,6 +36,7 @@ from tests.test_panel_db import (  # noqa: E402,F401  (reused DB fixtures)
     scratch_database,
 )
 from tools.config import Settings  # noqa: E402
+from tools.panel.api import auth as auth_module  # noqa: E402
 from tools.panel.api import deps  # noqa: E402
 from tools.panel.api.app import create_app  # noqa: E402
 from tools.panel.api.auth import PROJECT_ROLES_CLAIM, _jwks_client  # noqa: E402
@@ -46,6 +49,8 @@ from tools.panel.core.db.models import (  # noqa: E402
 )
 
 ISSUER = "https://panel.zitadel.test"
+SUBJECT = "user-1234"
+LOGIN = "ada@otc.test"
 AUDIENCE = "123456789@gen_sdk_panel"
 REPO = "opentelekomcloud-docs/ecs"
 KEY_ID = "local-test-key"
@@ -74,6 +79,46 @@ MUTATIONS = [
     (f"/api/scan/services/{REPO}/include", None),
     ("/api/jobs/1/cancel", None),
 ]
+
+
+class FakeUserinfo:
+    """Zitadel's userinfo endpoint, as `requests` sees it.
+
+    Substituted for the whole `requests` module in `auth.py`, so the header, the
+    timeout and the status handling are all still the real code's doing.
+    """
+
+    def __init__(self, claims: dict | None = None, *, status: int = 200):
+        self.claims = {"preferred_username": LOGIN} if claims is None else claims
+        self.status = status
+        self.calls: list[tuple[str, str]] = []
+        # The exception types auth.py catches come from the real library.
+        self.RequestException = requests.RequestException
+
+    def get(self, url, headers, timeout):
+        self.calls.append((url, headers["Authorization"]))
+        return _FakeResponse(self.claims, self.status)
+
+
+class _FakeResponse:
+    def __init__(self, claims: dict, status: int):
+        self._claims = claims
+        self.status_code = status
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code}")
+
+    def json(self) -> dict:
+        return self._claims
+
+
+@pytest.fixture
+def userinfo(monkeypatch):
+    """The panel's view of Zitadel's userinfo endpoint, and a record of its use."""
+    fake = FakeUserinfo()
+    monkeypatch.setattr(auth_module, "requests", fake)
+    return fake
 
 
 @pytest.fixture(scope="module")
@@ -125,13 +170,19 @@ def client(session_factory, signing_key, monkeypatch):
 
 
 def _token(signing_key, *, roles=("worker",), **overrides) -> str:
-    """Mint a token Zitadel could have issued."""
+    """Mint a token Zitadel could have issued.
+
+    Deliberately carries no profile claim. Zitadel's claims matrix asserts
+    `preferred_username`, `name` and `email` in the ID token and at the userinfo
+    endpoint, never in an access token - a test that put one here would verify
+    a token shape the panel will never actually receive.
+    """
     now = datetime.now(tz=UTC)
     claims = {
         "iss": ISSUER,
         "aud": AUDIENCE,
-        "sub": "user-1234",
-        "preferred_username": "ada@otc.test",
+        "sub": SUBJECT,
+        "jti": "token-1",
         "exp": now + timedelta(minutes=5),
         "iat": now,
         PROJECT_ROLES_CLAIM: {role: {"orgid": "otc.test"} for role in roles},
@@ -161,7 +212,8 @@ def test_every_api_operation_requires_a_token(client):
     """Closed by default, checked against the published contract rather than
     FastAPI's route table: a route added to either scan router without
     authentication has no security requirement here, and this fails."""
-    schema = client.get("/openapi.json").json()
+    # From the app, not from a route: the schema is no longer served over HTTP.
+    schema = client.app.openapi()
     api = [
         (f"{method.upper()} {path}", operation)
         for path, operations in schema["paths"].items()
@@ -177,6 +229,17 @@ def test_every_api_operation_requires_a_token(client):
 
     assert unguarded == []
     assert api  # the filter matched something; an empty list would prove nothing
+
+
+@pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
+def test_the_interactive_docs_are_not_served(client, signing_key, path):
+    """They sat outside `/api`, so the token requirement never reached them,
+    and Caddy's password that used to stand in front is gone. A deployed panel
+    should not hand its API surface to an unauthenticated caller - and 404 is
+    the truth: with the routes off, there is nothing there."""
+    assert client.get(path).status_code == 404
+    # Not a matter of authentication: a worker gets the same answer.
+    assert client.get(path, headers=_auth(_token(signing_key))).status_code == 404
 
 
 def test_health_needs_no_token(client):
@@ -365,9 +428,9 @@ def test_a_worker_holding_the_viewer_role_too_is_still_a_worker(
 
 
 def test_the_job_records_the_token_identity_not_the_body(
-    client, session_factory, signing_key
+    client, session_factory, signing_key, userinfo
 ):
-    """`initiated_by` is an attribution, so it can only come from the token.
+    """`initiated_by` is an attribution, so it can only come from the session.
     The body still carries the field and is still ignored."""
     _register(session_factory)
 
@@ -380,11 +443,11 @@ def test_the_job_records_the_token_identity_not_the_body(
     assert resp.status_code == 202
     with session_factory() as session:
         job = session.scalars(select(RepositoryScanJob)).one()
-        assert job.initiated_by == "ada@otc.test"
+        assert job.initiated_by == LOGIN
 
 
 def test_the_exclusion_records_the_token_identity_not_the_body(
-    client, session_factory, signing_key
+    client, session_factory, signing_key, userinfo
 ):
     _register(session_factory)
 
@@ -395,14 +458,47 @@ def test_the_exclusion_records_the_token_identity_not_the_body(
     )
 
     (row,) = client.get("/api/scan/excluded", headers=_auth(_token(signing_key))).json()
-    assert row["excluded_by"] == "ada@otc.test"
+    assert row["excluded_by"] == LOGIN
 
 
-def test_the_identity_falls_back_to_the_subject(client, session_factory, signing_key):
-    """Zitadel always sends `sub`; the friendlier claims are configurable per
-    application, so the attribution cannot depend on them being there."""
+def test_the_login_is_read_from_userinfo_not_from_the_token(
+    client, session_factory, signing_key, userinfo
+):
+    """The claim is not on the access token - Zitadel does not put it there - so
+    the panel asks the userinfo endpoint, with the caller's own token."""
     _register(session_factory)
-    token = _token(signing_key, preferred_username="", name="", email="")
+
+    client.post(
+        f"/api/scan/services/{REPO}/rescan",
+        json={"initiated_by": "ignored"},
+        headers=_auth(_token(signing_key)),
+    )
+
+    url, authorization = userinfo.calls[0]
+    assert url == f"{ISSUER}/oidc/v1/userinfo"
+    assert authorization.startswith("Bearer ")
+    with session_factory() as session:
+        assert session.scalars(select(RepositoryScanJob)).one().initiated_by == LOGIN
+
+
+def test_one_lookup_serves_many_requests(client, signing_key, userinfo):
+    """Resolved once per user and cached: the panel would otherwise call Zitadel
+    on every request it serves."""
+    token = _token(signing_key)
+
+    for _ in range(4):
+        client.get("/api/scan/summary", headers=_auth(token))
+
+    assert len(userinfo.calls) == 1
+
+
+def test_a_login_already_on_the_token_needs_no_lookup(
+    client, session_factory, signing_key, userinfo
+):
+    """A deployment can put the claim on the access token with a Zitadel action.
+    Where it did, the panel reads it and never leaves the process."""
+    _register(session_factory)
+    token = _token(signing_key, preferred_username="from-an-action@otc.test")
 
     client.post(
         f"/api/scan/services/{REPO}/rescan",
@@ -410,14 +506,49 @@ def test_the_identity_falls_back_to_the_subject(client, session_factory, signing
         headers=_auth(token),
     )
 
+    assert userinfo.calls == []
     with session_factory() as session:
-        assert (
-            session.scalars(select(RepositoryScanJob)).one().initiated_by == "user-1234"
+        job = session.scalars(select(RepositoryScanJob)).one()
+        assert job.initiated_by == "from-an-action@otc.test"
+
+
+def test_an_unreachable_userinfo_records_the_subject_and_says_so(
+    client, session_factory, signing_key, monkeypatch, caplog
+):
+    """Zitadel being down must not refuse the scan: the request goes through
+    under the subject, and the log carries the reason the name is a number."""
+    _register(session_factory)
+    monkeypatch.setattr(auth_module, "requests", FakeUserinfo(status=503))
+
+    with caplog.at_level(logging.WARNING):
+        resp = client.post(
+            f"/api/scan/services/{REPO}/rescan",
+            json={"initiated_by": "ignored"},
+            headers=_auth(_token(signing_key)),
         )
+
+    assert resp.status_code == 202
+    with session_factory() as session:
+        assert session.scalars(select(RepositoryScanJob)).one().initiated_by == SUBJECT
+    assert "could not resolve a login" in caplog.text
+
+
+def test_a_failed_lookup_is_not_retried_on_every_request(client, signing_key):
+    """An unreachable endpoint would otherwise put its timeout in front of every
+    request the panel serves."""
+    fake = FakeUserinfo(status=503)
+    token = _token(signing_key)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(auth_module, "requests", fake)
+        for _ in range(3):
+            client.get("/api/scan/summary", headers=_auth(token))
+
+    assert len(fake.calls) == 1
 
 
 def test_the_scanning_service_reports_the_token_identity(
-    client, session_factory, signing_key
+    client, session_factory, signing_key, userinfo
 ):
     """What the registry shows while a scan runs is the same attribution, so an
     operator can see who started what."""
@@ -432,7 +563,7 @@ def test_the_scanning_service_reports_the_token_identity(
         "/api/scan/services", headers=_auth(_token(signing_key))
     ).json()["items"]
 
-    assert item["initiated_by"] == "ada@otc.test"
+    assert item["initiated_by"] == LOGIN
 
 
 def test_a_queued_job_is_visible_to_a_viewer(client, session_factory, signing_key):
@@ -445,7 +576,7 @@ def test_a_queued_job_is_visible_to_a_viewer(client, session_factory, signing_ke
                 service_id=service_id,
                 kind=JobKind.scan,
                 status=JobStatus.queued,
-                initiated_by="ada@otc.test",
+                initiated_by=LOGIN,
             )
         )
         session.commit()
@@ -455,4 +586,4 @@ def test_a_queued_job_is_visible_to_a_viewer(client, session_factory, signing_ke
         headers=_auth(_token(signing_key, roles=("viewer",))),
     ).json()
 
-    assert body["initiated_by"] == "ada@otc.test"
+    assert body["initiated_by"] == LOGIN
