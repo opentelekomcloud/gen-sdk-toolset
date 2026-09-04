@@ -31,7 +31,12 @@ recorded, with status `missing`.
 
 `HttpMethod`, `ParameterType` (`ir/enums.py`) — HTTP verbs, and the types found
 in OTC parameter tables including the composite ones (`Array of strings`) and
-the `Unknown` fallback.
+the `Unknown` fallback. Documentation writes several names for the same type -
+`int64` and `Long`, `dict` and `Dictionary` - and `field_type.py::_ALIASES` maps
+each spelling onto one of these values, matched whole and case-insensitively.
+That table holds **conventions, never corrections**: `Interger` stays `Unknown`
+and raises `UNKNOWN_TYPE_FORMAT`, because absorbing a typo would turn a defect
+the panel counts into a field that looks read.
 
 ## Scan results — what one scanner session produced
 
