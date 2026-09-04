@@ -85,11 +85,7 @@ def _resolve(
 ) -> None:
     for row in rows:
         param = row.parameter
-        match = _lookup_target(
-            param,
-            row.ref_anchor,
-            state=state,
-        )
+        match = _lookup_target(row, state=state)
         if match is None:
             continue
         table = _target_table(match, param, visiting=visiting, issues=state.issues)
@@ -119,7 +115,7 @@ def _attach_and_recurse(
         param.param_type = ParameterType.ARRAY_OF_OBJECTS
     _resolve(
         [
-            TableRow(child, source.ref_anchor)
+            TableRow(child, source.ref_anchor, source.description_anchors)
             for child, source in zip(children, table.rows)
         ],
         state,
@@ -128,13 +124,60 @@ def _attach_and_recurse(
 
 
 def _lookup_target(
-    param: Parameter,
-    anchor: str | None,
+    row: TableRow,
     state: _ResolutionState,
 ) -> _TargetMatch | None:
-    if anchor is None:
-        return _lookup_label(param, state)
-    return _lookup_anchor(param, anchor, state)
+    """The structure this row refers to, by the first source that names one.
+
+    An authored anchor - type cell, then name cell - settles the row on its own,
+    including when it fails to resolve: it was written as a struct reference, so
+    a broken one is a defect worth reporting rather than a reason to keep
+    looking. Only a row that names nothing falls through to the legacy
+    parent-name label, and then to its description.
+    """
+    if row.ref_anchor is not None:
+        return _lookup_anchor(row.parameter, row.ref_anchor, state)
+    label = _lookup_label(row.parameter, state)
+    if label is not None:
+        return label
+    return _lookup_description(row.parameter, row.description_anchors, state)
+
+
+def _lookup_description(
+    param: Parameter,
+    anchors: tuple[str, ...],
+    state: _ResolutionState,
+) -> _TargetMatch | None:
+    """The one structure table a description points at, or ``None``.
+
+    A description is prose, so a ref inside it is a candidate and not an
+    assertion - api-ref cells link to status codes, error codes and neighbouring
+    pages as a matter of course. Only anchors the registry already knows to be
+    struct tables are considered, and only when exactly one of them survives:
+    two leave nothing to say which structure belongs to this row, and guessing
+    between them would attach somebody else's fields.
+
+    Nothing is reported when no candidate survives. The row keeps the children
+    it had, and a struct table that went unclaimed is still accounted for -
+    `report_unused_tables` raises `NESTED_PARENT_NOT_FOUND` for it.
+
+    Carrying a table is what makes a target a candidate: a `RefKind.NON_TABLE`
+    entry has none by construction, so a link to a status-code page drops out
+    here without a second test for its kind.
+    """
+    if not param.param_type.supports_children:
+        return None
+
+    candidates = [
+        (anchor, target)
+        for anchor, target in ((a, state.registry.get(a)) for a in anchors)
+        if target is not None and target.table is not None
+    ]
+    if len(candidates) != 1:
+        return None
+
+    anchor, target = candidates[0]
+    return _TargetMatch(reference=anchor, target=target)
 
 
 def _lookup_label(

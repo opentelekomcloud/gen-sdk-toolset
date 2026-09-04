@@ -245,3 +245,24 @@ sections at all (`function`, `status_codes`, `other`). Translating one into the
 other is the parser's job. Using one where the other belongs is a bug no type
 checker will catch, because both are `str` enums and both will compare happily
 against a bare string.
+
+**Struct reference lookup order** (`docutils/nesting.py::_lookup_target`) — a
+parameter that can hold children finds its structure through the first of these
+that names one:
+
+1. the **type** cell's `:ref:` anchor, then the **parameter/name** cell's — both
+   kept on `TableRow.ref_anchor` by `docutils/table.py::_struct_anchor`;
+2. the legacy **parent-name label**, a nested table titled after the parameter;
+3. the **description** cell, kept separately on `TableRow.description_anchors`.
+
+The distinction between 1 and 3 is what the two fields are for. An anchor in the
+type or name cell is authored *as* a struct reference — nothing else belongs
+there — so it settles the row even when it resolves to nothing, and a broken one
+is reported (`NESTED_TABLE_NOT_FOUND`, `NESTED_REF_EXTERNAL`) rather than quietly
+replaced by whatever the description happens to link to. A description is prose:
+its refs are candidates, and one is used only when the parameter supports
+children and exactly one candidate resolves to a struct table. Anything else —
+a status-code page, two structures, an unknown anchor — is left alone and
+raises nothing, because it was never a claim about this row. A struct table no
+parameter claimed is still accounted for: `report_unused_tables` reports it as
+`NESTED_PARENT_NOT_FOUND`.
