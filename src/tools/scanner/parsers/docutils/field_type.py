@@ -44,6 +44,89 @@ _ALIASES: dict[str, ParameterType] = {
     "timestamp": ParameterType.STRING,
 }
 
+#: `List<Node>`, `Map<String, Node>` - generic syntax some api-ref pages use in
+#: place of prose. Greedy on purpose, so the inner text of a nested generic
+#: reaches `>` rather than stopping at the first one.
+_GENERIC_RE = re.compile(
+    r"^\s*(?P<container>list|map)\s*<\s*(?P<inner>.+)\s*>\s*$", re.IGNORECASE
+)
+
+#: A structure name is one identifier, the way OTC writes them -
+#: `CreateFirewallOption`, `RequestTag`. Deliberately not `.+?`: a Type cell
+#: reading "Specifies the schedule data structure" is prose, and naming a
+#: structure after it would invent a reference the page never made.
+_IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_]*"
+_IDENTIFIER_RE = re.compile(_IDENTIFIER)
+_STRUCT_NAME = rf"(?P<name>{_IDENTIFIER})"
+
+#: `Schedule data structure` - a struct name carrying its container as a suffix.
+_DATA_STRUCTURE_RE = re.compile(
+    rf"^\s*{_STRUCT_NAME}\s+data\s+structure\s*$", re.IGNORECASE
+)
+
+#: `Node structure array` - the same, for an array of them.
+_STRUCTURE_ARRAY_RE = re.compile(
+    rf"^\s*{_STRUCT_NAME}\s+structure\s+array\s*$", re.IGNORECASE
+)
+
+
+def _normalize_named_syntax(raw: str) -> str:
+    """Rewrite named container syntax into the prose spelling, or return `raw`.
+
+    `List<Node>` and `Node structure array` both say "array of Node objects",
+    and `Schedule data structure` says "Schedule object". Rewriting them into
+    that prose leaves one set of rules deciding what a type is: `List<String>`
+    then lands on `Array of strings` for the same reason the prose spelling
+    does, and the struct name falls out of `STRUCT_KEYWORDS_RE` unchanged.
+
+    Case is preserved, so a caller that needs the struct name gets it spelled as
+    the documentation spelled it.
+    """
+    generic = _GENERIC_RE.match(raw)
+    if generic is not None:
+        if generic.group("container").lower() == "map":
+            # Key and value types are dropped, deliberately: the IR has no map
+            # type and may not grow one, and a JSON map is an object.
+            return "Object"
+        # Nested first, so `List<Map<String, Node>>` becomes an array of objects
+        # rather than an array of a struct named `Map<String, Node>`.
+        element = _normalize_named_syntax(generic.group("inner").strip())
+        if not _IDENTIFIER_RE.fullmatch(element) and _names_a_structure(element):
+            # A container this module does not know, like `List<Set<Node>>`.
+            # It is still an array, but nothing inside it is a name anyone could
+            # look up, and `Set<Node>` is not one.
+            return "Array of objects"
+        return f"Array of {element} objects"
+
+    named = _DATA_STRUCTURE_RE.match(raw)
+    if named is not None and _names_a_structure(named.group("name")):
+        return f"{named.group('name')} object"
+
+    named = _STRUCTURE_ARRAY_RE.match(raw)
+    if named is not None and _names_a_structure(named.group("name")):
+        return f"Array of {named.group('name')} objects"
+
+    return raw
+
+
+def _names_a_structure(name: str) -> bool:
+    """Whether `name` names a structure rather than a type already understood.
+
+    It decides whether a cell is rewritten at all. `Schedule data structure`
+    names a structure and `String data structure` does not, so only the first is
+    rewritten - the second would turn a string into an object. `List data
+    structure` is the same case: it is the legacy spelling of an array, not a
+    structure called "List".
+
+    Asked of `classify_type` rather than listed again here, so there stays one
+    vocabulary.
+
+    This calls back into `classify_type`, which calls the rewrite again. It
+    terminates on nesting depth rather than on length: every step consumes one
+    container, and what the rewrite emits carries no named syntax of its own.
+    """
+    return classify_type(name) is ParameterType.UNKNOWN
+
 
 def classify_type(raw: str) -> ParameterType:
     """Type-text → ParameterType. Loose matching on lower-cased text."""
@@ -54,6 +137,10 @@ def classify_type(raw: str) -> ParameterType:
     alias = _ALIASES.get(lower)
     if alias is not None:
         return alias
+
+    # After the aliases: a bare legacy spelling is settled by then, and the
+    # rewrite never sees it. Re-lowered because it introduces prose of its own.
+    lower = _normalize_named_syntax(lower).lower()
 
     # Composite array types first (more specific).
     if re.search(r"\barray\s+of\s+strings?\b", lower):
@@ -106,7 +193,7 @@ def extract_struct_type_name(raw_type: str) -> str | None:
     """
     if raw_type.strip().lower() in _ALIASES:
         return None
-    name = STRUCT_KEYWORDS_RE.sub(" ", raw_type)
+    name = STRUCT_KEYWORDS_RE.sub(" ", _normalize_named_syntax(raw_type))
     name = re.sub(r"\s+", " ", name).strip()
     return name or None
 

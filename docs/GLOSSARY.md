@@ -38,6 +38,30 @@ That table holds **conventions, never corrections**: `Interger` stays `Unknown`
 and raises `UNKNOWN_TYPE_FORMAT`, because absorbing a typo would turn a defect
 the panel counts into a field that looks read.
 
+The forms that carry a structure name - `List<Node>`, `Map<String, Node>`,
+`Schedule data structure`, `Node structure array` - cannot be a table of
+spellings, so `field_type.py::_normalize_named_syntax` rewrites them into the
+prose the classifier already reads (`Array of Node objects`, `Object`,
+`Schedule object`). One set of rules therefore decides every type, and
+`List<String>` lands on `Array of strings` for the same reason the prose
+spelling does. `List` and `Map` are **not** IR types and must not become any:
+the names they carry survive in `type_name`, and a `Map`'s key and value types
+do not survive at all, because there is nowhere in the IR to put them.
+
+A **structure name** is one identifier that is not already a type
+(`field_type.py::_names_a_structure`, which asks `classify_type` rather than
+listing the type words a second time). Both halves are load-bearing:
+`Specifies the schedule data structure` is prose, and `List data structure`
+names an array, so neither is rewritten and both read exactly as they did
+before. What the rewrite does not recognize stays `Unknown` and is counted,
+which is the answer this project would rather have than a confident `Object`
+pointing at a structure called "List".
+
+A container the rewrite does not know - `List<Set<Node>>` - keeps its array type
+and reports no name, rather than one spelled `Set<Node>`. What `type_name` holds
+for the forms that already existed is unchanged; `Array of booleans` still
+leaves "booleans" behind, which is a separate question from this one.
+
 ## Scan results — what one scanner session produced
 
 Defined in `src/tools/shared/scan/`. These are contracts: the panel and the

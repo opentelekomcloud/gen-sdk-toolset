@@ -31,6 +31,12 @@ If the shape is fine and only the *type name* is unfamiliar - a page writing
 somebody chose on purpose: a misspelling belongs in `UNKNOWN_TYPE_FORMAT`, where
 it is counted.
 
+A form that *carries a structure name* (`List<Node>`, `Node structure array`)
+has no fixed spelling to put in that table. Those go in
+`_normalize_named_syntax`, which rewrites them into the prose the classifier
+already reads - add the rewrite, not a new branch in `classify_type`, or the
+same type ends up decided in two places.
+
 1. Capture the real document as a fixture: put the `.rst` in `tests/fixtures/`,
    named `style_<a|b>_<service>_<what_is_special>.rst`, and add a loader fixture
    to `tests/conftest.py` alongside the existing ones.
