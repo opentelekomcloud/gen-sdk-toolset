@@ -20,11 +20,15 @@ from tools.scanner.parsers.docutils.table import (
 from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import IssueCode
 
+#: A row as these tests write one: a parameter, its authored anchor, and
+#: optionally the ref candidates found in its description.
+_Row = tuple[Parameter, str | None] | tuple[Parameter, str | None, tuple[str, ...]]
 
-def _extraction(rows: list[tuple[Parameter, str | None]]) -> TableExtraction:
-    """Build a TableExtraction from (param, anchor) pairs; counters unused."""
+
+def _extraction(rows: list[_Row]) -> TableExtraction:
+    """TableExtraction from `(param, anchor[, description])`; counters unused."""
     return TableExtraction(
-        rows=[TableRow(parameter, anchor) for parameter, anchor in rows],
+        rows=[TableRow(*row) for row in rows],
         issues=[],
         metrics=ExtractionMetrics(
             fields_total=len(rows),
@@ -178,3 +182,164 @@ def test_repeated_sibling_ref_is_not_a_cycle() -> None:
     a, b = primary["body"].parameters
     assert a.children[0].name == "x"
     assert b.children[0].name == "x"
+
+
+# --------------------------------------------------------------------------- #
+# References found in the description cell
+# --------------------------------------------------------------------------- #
+def _described(parameter: Parameter, *description_anchors: str) -> _Row:
+    """A row whose only refs sit in its description."""
+    return (parameter, None, description_anchors)
+
+
+def test_an_object_resolves_from_its_description() -> None:
+    primary = {"body": _extraction([_described(_obj("firewall"), "opt")])}
+    registry = {"opt": _table((_str("name"), None))}
+
+    issues = resolve_nested(primary, registry)
+
+    assert issues == []
+    assert [c.name for c in primary["body"].parameters[0].children] == ["name"]
+
+
+def test_an_object_array_resolves_from_its_description() -> None:
+    """The `tags | Array of objects | ... see Table 2` shape, which is where
+    this form actually appears."""
+    tags = Parameter(name="tags", param_type=ParameterType.ARRAY_OF_OBJECTS)
+    primary = {"body": _extraction([_described(tags, "tag_table")])}
+    registry = {"tag_table": _table((_str("key"), None), (_str("value"), None))}
+
+    issues = resolve_nested(primary, registry)
+
+    assert issues == []
+    assert [c.name for c in tags.children] == ["key", "value"]
+
+
+def test_a_bare_array_resolves_and_is_promoted() -> None:
+    """An `Array` cell that turns out to hold a struct becomes an object array,
+    the same as it does through an authored anchor."""
+    items = Parameter(name="items", param_type=ParameterType.ARRAY)
+    primary = {"body": _extraction([_described(items, "leaf")])}
+
+    assert resolve_nested(primary, {"leaf": _table((_str("x"), None))}) == []
+    assert items.param_type is ParameterType.ARRAY_OF_OBJECTS
+    assert [c.name for c in items.children] == ["x"]
+
+
+def test_the_type_cell_wins_over_the_description() -> None:
+    """Priority, and the reason for it: the type cell was authored *as* a struct
+    reference, so it decides even when the description offers another."""
+    primary = {"body": _extraction([(_obj("a"), "from_type", ("from_description",))])}
+    registry = {
+        "from_type": _table((_str("chosen"), None)),
+        "from_description": _table((_str("ignored"), None)),
+    }
+
+    issues = resolve_nested(primary, registry)
+
+    assert issues == []
+    assert [c.name for c in primary["body"].parameters[0].children] == ["chosen"]
+
+
+def test_a_broken_type_reference_does_not_fall_through_to_the_description() -> None:
+    """A type-cell anchor that resolves to nothing is a defect and is reported.
+    Quietly using the description instead would hide it, and would attach
+    children the row never asked for."""
+    primary = {"body": _extraction([(_obj("a"), "missing", ("from_description",))])}
+    registry = {"from_description": _table((_str("x"), None))}
+
+    issues = resolve_nested(primary, registry)
+
+    assert [i.code for i in issues] == [IssueCode.NESTED_TABLE_NOT_FOUND]
+    assert primary["body"].parameters[0].children == []
+
+
+def test_a_parent_name_label_wins_over_the_description() -> None:
+    """The legacy label is matched before the description, so a document that
+    resolved by label keeps resolving by label."""
+    primary = {"body": _extraction([_described(_obj("firewall"), "from_description")])}
+    registry = {"from_description": _table((_str("ignored"), None))}
+    labels = {"firewall": _table((_str("chosen"), None)).table}
+
+    issues = resolve_nested(primary, registry, label_tables=labels)
+
+    assert issues == []
+    assert [c.name for c in primary["body"].parameters[0].children] == ["chosen"]
+
+
+def test_a_description_link_to_a_non_table_is_ignored() -> None:
+    """Status codes, error codes and neighbouring pages are what descriptions
+    link to most of the time. None of them is a structure."""
+    primary = {"body": _extraction([_described(_obj("a"), "status_codes")])}
+    registry = {"status_codes": RefTarget(kind=RefKind.NON_TABLE)}
+
+    issues = resolve_nested(primary, registry)
+
+    assert issues == []
+    assert primary["body"].parameters[0].children == []
+
+
+def test_an_unknown_description_link_is_ignored() -> None:
+    primary = {"body": _extraction([_described(_obj("a"), "never_registered")])}
+
+    assert resolve_nested(primary, {}) == []
+    assert primary["body"].parameters[0].children == []
+
+
+def test_two_candidate_tables_in_one_description_resolve_to_neither() -> None:
+    """Nothing in the cell says which structure belongs to this row, and
+    picking one would attach the other row's fields half the time."""
+    primary = {"body": _extraction([_described(_obj("a"), "first", "second")])}
+    registry = {
+        "first": _table((_str("x"), None)),
+        "second": _table((_str("y"), None)),
+    }
+
+    issues = resolve_nested(primary, registry)
+
+    assert issues == []
+    assert primary["body"].parameters[0].children == []
+
+
+def test_one_table_among_several_links_still_resolves() -> None:
+    """Only structure tables are candidates, so the usual mix of one table ref
+    and a page link is not ambiguous."""
+    primary = {"body": _extraction([_described(_obj("a"), "codes", "struct", "page")])}
+    registry = {
+        "codes": RefTarget(kind=RefKind.NON_TABLE),
+        "struct": _table((_str("x"), None)),
+        "page": RefTarget(kind=RefKind.NON_TABLE),
+    }
+
+    issues = resolve_nested(primary, registry)
+
+    assert issues == []
+    assert [c.name for c in primary["body"].parameters[0].children] == ["x"]
+
+
+def test_a_description_reference_on_a_primitive_is_ignored() -> None:
+    """A string does not hold children whatever its description links to."""
+    primary = {"body": _extraction([_described(_str("name"), "struct")])}
+    registry = {"struct": _table((_str("x"), None))}
+
+    issues = resolve_nested(primary, registry)
+
+    assert issues == []
+    assert primary["body"].parameters[0].children == []
+
+
+def test_a_nested_row_resolves_from_its_own_description() -> None:
+    """The candidates travel with the row into recursion, so a struct table's
+    own rows can carry them too."""
+    inner = _table((_str("key"), None))
+    outer = RefTarget(
+        kind=RefKind.TABLE,
+        table=_extraction([_described(_obj("tags"), "inner")]),
+    )
+    primary = {"body": _extraction([(_obj("firewall"), "outer", ())])}
+
+    issues = resolve_nested(primary, {"outer": outer, "inner": inner})
+
+    assert issues == []
+    tags = primary["body"].parameters[0].children[0]
+    assert [c.name for c in tags.children] == ["key"]
