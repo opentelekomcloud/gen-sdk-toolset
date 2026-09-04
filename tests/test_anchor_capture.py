@@ -153,3 +153,76 @@ def test_iam_named_object_anchor_on_name_cell() -> None:
 )
 def test_struct_type_name(raw_type: str, expected: str | None) -> None:
     assert extract_struct_type_name(raw_type) == expected
+
+
+# --------------------------------------------------------------------------- #
+# Description-cell refs are captured as candidates, not as anchors
+# --------------------------------------------------------------------------- #
+HEADERS = ["Parameter", "Mandatory", "Type", "Description"]
+
+
+def _extract(*rows: list[str]) -> dict[str, TableRow]:
+    """Parse a parameter table built from `rows`, indexed by parameter name.
+
+    Built rather than written out, so the column rules always match the widest
+    cell - a description carrying two refs is long enough to break a hand-drawn
+    grid, and docutils answers that with a malformed-table error, not a row.
+    """
+    ensure_roles()
+    widths = [max(len(c) for c in col) for col in zip(*([HEADERS] + list(rows)))]
+    bar = "  ".join("=" * w for w in widths)
+    lines = [
+        bar,
+        *("  ".join(c.ljust(w) for c, w in zip(r, widths)) for r in [HEADERS, *rows]),
+        bar,
+    ]
+    lines.insert(2, bar)
+    doctree = publish_doctree(
+        "\n".join(lines) + "\n", settings_overrides={"report_level": 5}
+    )
+    table = next(iter(doctree.findall(nodes.table)))
+    return {row.parameter.name: row for row in extract_parameter_table(table).rows}
+
+
+def test_a_description_ref_is_kept_apart_from_the_anchor() -> None:
+    """It lands in `description_anchors`, never in `ref_anchor`: the resolver
+    treats the two differently, and collapsing them would make a stray link in
+    prose look like an authored struct reference."""
+    row = _extract(
+        ["tags", "No", "Array of objects", "See :ref:`T2 <tag_struct>` for details."]
+    )["tags"]
+
+    assert row.ref_anchor is None
+    assert row.description_anchors == ("tag_struct",)
+
+
+def test_every_description_ref_is_kept_in_the_order_written() -> None:
+    row = _extract(["thing", "No", "Object", "See :ref:`A <a_s>` and :ref:`B <b_s>`."])[
+        "thing"
+    ]
+
+    assert row.description_anchors == ("a_s", "b_s")
+
+
+def test_the_same_ref_written_twice_is_one_candidate() -> None:
+    """Prose repeats itself. Counting the repeat would make one structure look
+    like two and leave the row unresolved for a reason the page never gave."""
+    row = _extract(
+        [
+            "thing",
+            "No",
+            "Object",
+            "See :ref:`A <a_s>`, described in :ref:`A <a_s>`.",
+        ]
+    )["thing"]
+
+    assert row.description_anchors == ("a_s",)
+
+
+def test_a_primitive_row_collects_no_description_refs() -> None:
+    """Nothing that cannot hold children needs candidates, so its description is
+    not walked at all - the same gate that already decides `ref_anchor`."""
+    row = _extract(["name", "No", "String", "See :ref:`Codes <codes>`."])["name"]
+
+    assert row.ref_anchor is None
+    assert row.description_anchors == ()
