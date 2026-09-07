@@ -728,6 +728,13 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "status_codes": {
+            "items": {
+              "$ref": "#/components/schemas/StatusCodeResponse"
+            },
+            "title": "Status Codes",
+            "type": "array"
           }
         },
         "required": [
@@ -738,7 +745,8 @@
           "fields_unknown_type",
           "parameters",
           "issues",
-          "examples"
+          "examples",
+          "status_codes"
         ],
         "title": "SectionDetail",
         "type": "object"
@@ -1400,6 +1408,25 @@
           "job_id"
         ],
         "title": "StartScanResponse",
+        "type": "object"
+      },
+      "StatusCodeResponse": {
+        "description": "One status-code row, as the scan recorded it.\n\nSeparate from `ParameterResponse` because a status code is not a field: it\nhas no type and no mandatory flag, and inventing them for the wire would\nask the UI to render columns that mean nothing.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "description"
+        ],
+        "title": "StatusCodeResponse",
         "type": "object"
       },
       "SummaryResponse": {

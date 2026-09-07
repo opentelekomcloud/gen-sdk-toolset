@@ -49,7 +49,7 @@ def _endpoint(body_issues: list[Issue] | None = None) -> Endpoint:
 
 def test_doc_all_issues_prefixes_location_with_section_value() -> None:
     """A flattened issue must still say which section it came from, or the
-    location it carries is ambiguous across the seven sections."""
+    location it carries is ambiguous across the endpoint's sections."""
     document = _endpoint([Issue(code=IssueCode.UNEXPECTED_COLUMNS, location="row 1")])
 
     issues = doc_all_issues(document)

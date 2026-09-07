@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from tools.shared.ir import Example, Parameter, Section
+from tools.shared.ir import Example, Parameter, Section, StatusCode
 from tools.shared.scan import (
     Issue,
     IssueCode,
@@ -107,3 +107,43 @@ def test_example_is_section_data() -> None:
 def test_section_rejects_unknown_name() -> None:
     with pytest.raises(ValidationError):
         Section(name="unknown")
+
+
+# --------------------------------------------------------------------------- #
+# Status codes
+# --------------------------------------------------------------------------- #
+def test_a_section_carries_status_codes_apart_from_parameters() -> None:
+    """Two lists, not one. A status code has no type and no mandatory flag, so
+    folding it into `parameters` would put a row into the field counters that
+    answers neither question."""
+    section = Section(
+        name="status_codes",
+        status_codes=[StatusCode(code="200", description="The request succeeded.")],
+        scan_result=SectionScanResult(status=SectionStatus.OK),
+    )
+
+    assert section.parameters == []
+    assert section.examples == []
+    assert section.status_codes[0].code == "200"
+    assert section.scan_result.fields_total == 0
+
+
+def test_a_status_code_defaults_to_no_description() -> None:
+    """Some tables list a code and nothing else. That is a row, not a failure."""
+    assert StatusCode(code="204").description == ""
+
+
+def test_a_status_code_rejects_unknown_fields() -> None:
+    with pytest.raises(ValidationError):
+        StatusCode(code="200", reason="OK")
+
+
+def test_a_missing_section_cannot_carry_status_codes() -> None:
+    """The same rule the other two lists obey: `missing` is a claim that the
+    document had no such section, so it cannot also hold what we read from it."""
+    with pytest.raises(ValidationError, match="missing section cannot contain"):
+        Section(
+            name="status_codes",
+            status_codes=[StatusCode(code="200")],
+            scan_result=SectionScanResult(status=SectionStatus.MISSING),
+        )

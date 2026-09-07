@@ -4,6 +4,7 @@ import type { SectionDetail } from "../../../shared/api/types";
 import { sectionLabelKey } from "../constants";
 import { SECTION_STATUS_CLS } from "../styles";
 import { IrTable } from "./IrTable";
+import { StatusCodeTable } from "./StatusCodeTable";
 import { useI18n } from "../../../shared/i18n";
 
 export function DocSectionRow({ section }: { section: SectionDetail }) {
@@ -56,7 +57,13 @@ export function DocSectionRow({ section }: { section: SectionDetail }) {
               </pre>
             </figure>
           ))}
-          {(section.examples ?? []).length === 0 && <IrTable section={section} />}
+          {/* Status codes are neither parameters nor examples, so they get
+              their own table rather than being folded into either. `?? []`
+              guards a detail cached before they existed: the query keeps
+              document details forever (staleTime: Infinity). */}
+          {(section.status_codes ?? []).length > 0 && <StatusCodeTable section={section} />}
+          {(section.examples ?? []).length === 0 &&
+            (section.status_codes ?? []).length === 0 && <IrTable section={section} />}
         </div>
       )}
     </div>

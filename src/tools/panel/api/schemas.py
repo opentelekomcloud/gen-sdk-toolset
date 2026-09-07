@@ -404,6 +404,18 @@ class ParameterResponse(BaseModel):
     children: list[ParameterResponse] | None = None
 
 
+class StatusCodeResponse(BaseModel):
+    """One status-code row, as the scan recorded it.
+
+    Separate from `ParameterResponse` because a status code is not a field: it
+    has no type and no mandatory flag, and inventing them for the wire would
+    ask the UI to render columns that mean nothing.
+    """
+
+    code: str
+    description: str
+
+
 class ExampleResponse(BaseModel):
     """One request or response example, as written in the documentation.
 
@@ -430,6 +442,7 @@ class SectionDetail(BaseModel):
     parameters: list[ParameterResponse] | None
     issues: list[dict[str, str | None]]
     examples: list[ExampleResponse]
+    status_codes: list[StatusCodeResponse]
 
 
 class DocumentDetailResponse(BaseModel):
@@ -613,6 +626,10 @@ def _section_detail(section: Any) -> SectionDetail:
                 raw=example.raw,
             )
             for example in section.examples
+        ],
+        status_codes=[
+            StatusCodeResponse(code=code.code, description=code.description)
+            for code in section.status_codes
         ],
     )
 

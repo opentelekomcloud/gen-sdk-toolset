@@ -59,6 +59,7 @@ def test_service_restores_endpoint_subclass() -> None:
             {
                 "name": name.value,
                 "parameters": [],
+                "status_codes": [],
                 "examples": [],
                 "scan_result": {
                     "status": "missing",
@@ -128,7 +129,7 @@ def test_section_does_not_repeat_endpoint_path() -> None:
         )
 
 
-def test_endpoint_requires_all_seven_sections() -> None:
+def test_endpoint_requires_every_section() -> None:
     with pytest.raises(ValidationError, match=f"all {len(SectionName)} sections"):
         Endpoint(
             path="api-ref/source/create.rst",

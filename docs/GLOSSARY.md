@@ -22,12 +22,21 @@ Defined in `src/tools/shared/ir/`. Serialized shape is versioned by
 | `Section` | `ir/section.py` | One extracted part of an endpoint document. Carries `parameters`, `examples` and a `SectionScanResult`. |
 | `Parameter` | `ir/parameter.py` | One field from a parameter table. Nests through `children`. |
 | `Example` | `ir/example.py` | One request or response example. `raw` always; `parsed` only when it is valid JSON. |
+| `StatusCode` | `ir/status_code.py` | One row of a status-code table: `code` and `description`. Deliberately **not** a `Parameter` - a status code has no type, cannot be mandatory and holds no children, and `code` stays a string because the documentation writes `2xx` as readily as `200`. |
 | `kind` | all of the above | The polymorphic discriminator: `repository`, `service`, `document`, `endpoint`. It is how subclasses survive a round trip through JSON. |
 
-`SectionName` (`ir/section.py`) — the seven sections every `Endpoint` must have:
+`SectionName` (`ir/section.py`) — the eight sections every `Endpoint` must have:
 `path_params`, `query_params`, `headers`, `body`, `response`, `example_request`,
-`example_response`. A section that was not present in the document is still
-recorded, with status `missing`.
+`example_response`, `status_codes`. A section that was not present in the
+document is still recorded, with status `missing`.
+
+`status_codes` carries its rows in `Section.status_codes`, beside `parameters`
+and `examples` rather than inside either. It contributes no field metrics:
+`fields_total` stays 0, because a status code is not a parameter-table field and
+counting it would move the quality numbers the panel is built to report. A page
+whose status-code heading only cross-references a shared error page keeps
+`missing` - the page really does document no codes of its own, and `failed`
+would blame the scanner for what the document does not contain.
 
 `HttpMethod`, `ParameterType` (`ir/enums.py`) — HTTP verbs, and the **type
 kinds** found in OTC parameter tables, plus the `Unknown` fallback. A kind only:
@@ -268,7 +277,7 @@ racy.
 |---|---|---|
 | `__version__` | `src/tools/__init__.py` | The scanner/parser version, read from package metadata and stamped on every result. Lets consumers tell "docs changed" apart from "parser improved". |
 | `ELEMENT_TYPES` | `shared/ir/enums.py` | The kinds an array may be documented as holding: every `ParameterType` except `ARRAY` (the IR does not nest arrays) and `UNKNOWN` (spelled `element_type=None`). Enforced by a validator on `Parameter`. |
-| `DOCUMENT_SCHEMA_VERSION` | `shared/ir/__init__.py` | The serialized `Document`/`Endpoint` contract. `2` splits an array from its element type; a v1 payload spelling both as one value (`"Array of strings"`) is still read, and `Parameter.split_schema_v1_composites` puts it back together as the pair it stood for. |
+| `DOCUMENT_SCHEMA_VERSION` | `shared/ir/__init__.py` | The serialized `Document`/`Endpoint` contract. Still `1`: the IR has since split an array from its `element_type` and gained the `status_codes` section, and neither bumped it, so the stamp does not distinguish those shapes. What keeps an older payload readable is not the version but `Parameter.split_schema_v1_composites`, which recognises the one-value spelling (`"Array of strings"`) and puts it back together as the pair it stood for. |
 
 ## Scanner vocabulary
 
@@ -289,10 +298,10 @@ because two of them sit uncomfortably close to contract names.
 | Name | Meaning |
 |---|---|
 | `SectionKind` | The role of a top-level heading inside an RST document: `uri`, `request`, `response`, `example_request`, `example_response`, `example_combined`, `status_codes`, `function`, `other`. |
-| `TableTarget` | Where a parsed table is routed when it is not an endpoint section: `nested_struct`, `generic_request`, `intentionally_ignored`, `unmapped`. |
+| `TableTarget` | Where a parsed table is routed when it is not an endpoint section: `nested_struct`, `generic_request`, `unmapped`. A table that matches none of them is reported as `UNMAPPED_TABLE` rather than dropped. |
 | `DocStyle` | Layout classification of a document: `style_a`, `s3_compatible`, `not_endpoint`. |
 
-**`SectionName` is not `SectionKind`.** `SectionName` is the contract: the seven
+**`SectionName` is not `SectionKind`.** `SectionName` is the contract: the eight
 sections every `Endpoint` carries. `SectionKind` is the parser's reading of a
 heading in the source document, and it deliberately has members that are not
 sections at all (`function`, `status_codes`, `other`). Translating one into the

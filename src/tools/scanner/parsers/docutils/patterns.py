@@ -66,7 +66,9 @@ SECTION_VARIANTS: dict[SectionKind, frozenset[str]] = {
 }
 
 TABLE_TITLE_PATTERNS: list[tuple[re.Pattern[str], SectionName | TableTarget]] = [
-    (re.compile(r"\bstatus\s+code", re.IGNORECASE), TableTarget.INTENTIONALLY_IGNORED),
+    # A status-code table is a section of its own now, wherever it is written:
+    # some pages put it under its own heading, others leave it inside Response.
+    (re.compile(r"\bstatus\s+code", re.IGNORECASE), SectionName.STATUS_CODES),
     (re.compile(r"\bquery\s+param", re.IGNORECASE), SectionName.QUERY_PARAMS),
     (
         re.compile(r"\bparameters?\s+in\s+the\s+query", re.IGNORECASE),

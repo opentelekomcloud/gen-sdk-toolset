@@ -584,7 +584,7 @@ def test_parser_section_keys_are_canonical(
         parsed = parser.parse(content, path)
         produced = {section.name for section in parsed.sections}
         assert produced == set(SectionName)
-        assert len(parsed.sections) == len(SectionName) == 7
+        assert len(parsed.sections) == len(SectionName) == 8
 
 
 # --------------------------------------------------------------------------- #

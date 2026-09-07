@@ -28,7 +28,14 @@ from tools.shared.scan import Issue, IssueCode
 from .diagnostics import ISSUE_DETAILS_MAX
 from .field_type import parse_field_type, parse_mandatory
 from .patterns import HEADER_ALIASES
-from .rst_nodes import all_ref_targets, first_ref_target
+from .rst_nodes import (
+    all_ref_targets,
+    body_rows,
+    build_column_map,
+    cell_text,
+    first_ref_target,
+    header_preview,
+)
 
 
 @dataclass
@@ -90,21 +97,19 @@ def extract_parameter_table(table: nodes.table) -> TableExtraction:
         metrics=ExtractionMetrics(),
     )
 
-    column_map = _build_column_map(table)
+    column_map = build_column_map(table, HEADER_ALIASES)
     if column_map is None or "name" not in column_map:
         extraction.issues.append(
             Issue(
                 code=IssueCode.UNEXPECTED_COLUMNS,
                 details=(
-                    f"Could not identify columns in table: {_header_preview(table)}"
+                    f"Could not identify columns in table: {header_preview(table)}"
                 ),
             )
         )
         return extraction
 
-    body_rows = _body_rows(table)
-
-    for row_idx, row in enumerate(body_rows, start=1):
+    for row_idx, row in enumerate(body_rows(table), start=1):
         extraction.metrics.fields_total += 1
         _append_parameter_row(extraction, row, row_idx, column_map)
 
@@ -149,7 +154,7 @@ def _extract_parameter_row(
     column_map: dict[str, int],
 ) -> tuple[TableRow, str]:
     entries = list(row.children)
-    cells = [_cell_text(entry) for entry in entries]
+    cells = [cell_text(entry) for entry in entries]
     name = cells[column_map["name"]].strip()
     if not name:
         raise ValueError("empty parameter name")
@@ -197,37 +202,6 @@ def _extract_parameter_row(
 # --------------------------------------------------------------------------- #
 # Internal helpers
 # --------------------------------------------------------------------------- #
-def _build_column_map(table: nodes.table) -> dict[str, int] | None:
-    """Build {canonical_name → column_index} from the table's header row."""
-    thead = next(iter(table.findall(nodes.thead)), None)
-    if thead is None:
-        return None
-    header_row = next(iter(thead.findall(nodes.row)), None)
-    if header_row is None:
-        return None
-
-    column_map: dict[str, int] = {}
-    for idx, entry in enumerate(header_row.children):
-        text = _cell_text(entry).strip().lower()
-        canonical = HEADER_ALIASES.get(text)
-        if canonical is not None and canonical not in column_map:
-            column_map[canonical] = idx
-    return column_map
-
-
-def _body_rows(table: nodes.table) -> list[nodes.row]:
-    """All rows in the table's body section(s)."""
-    rows: list[nodes.row] = []
-    for tbody in table.findall(nodes.tbody):
-        rows.extend(tbody.findall(nodes.row))
-    return rows
-
-
-def _cell_text(entry: nodes.Element) -> str:
-    """Extract the textual content of a single table cell."""
-    return entry.astext()
-
-
 def _struct_anchor(
     entries: list[nodes.Element], column_map: dict[str, int]
 ) -> str | None:
@@ -255,14 +229,3 @@ def _description_anchors(
     if idx is None:
         return ()
     return all_ref_targets(entries[idx])
-
-
-def _header_preview(table: nodes.table) -> str:
-    """One-line preview of the header row for diagnostic messages."""
-    thead = next(iter(table.findall(nodes.thead)), None)
-    if thead is None:
-        return "(no header row)"
-    row = next(iter(thead.findall(nodes.row)), None)
-    if row is None:
-        return "(empty header)"
-    return " | ".join(_cell_text(e).strip() for e in row.children)

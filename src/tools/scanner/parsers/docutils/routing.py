@@ -29,6 +29,7 @@ from .section import (
     classify_table_title,
     default_table_section,
 )
+from .status_code import StatusCodeExtraction, extract_status_code_table
 from .table import ExtractionMetrics, TableExtraction, extract_parameter_table
 from .types import SectionKind, TableTarget
 
@@ -40,6 +41,13 @@ class _SectionExtraction:
     primary_tables: dict[SectionName, TableExtraction] = field(default_factory=dict)
     references: ReferenceRegistry = field(default_factory=ReferenceRegistry)
     routing_issues: dict[SectionName, list[Issue]] = field(default_factory=dict)
+    #: Status-code rows gathered from wherever the document wrote them.
+    status_codes: StatusCodeExtraction = field(default_factory=StatusCodeExtraction)
+    #: Tables already read as status codes, by identity. A status-code heading
+    #: nested inside Request or Response is reached twice - once by the walk
+    #: over that section, which recurses, and once by the walk over the heading
+    #: itself - and the rows would otherwise be counted both times.
+    read_status_tables: set[int] = field(default_factory=set)
     #: Blocks seen inside a request/response section that nothing consumed.
     #: Kept apart from routing_issues because they must not turn a parameter
     #: section into a failure - they belong to the example that was not read.
@@ -88,6 +96,7 @@ class _SectionRouter:
             extraction,
             doc_id=document_id(doctree),
         )
+        _record_status_codes(extraction)
         _apply_routing_issues(extraction.sections, extraction.routing_issues)
         sections = _complete_sections(extraction.sections)
         _attach_unread_blocks(extraction.sections, extraction.unread_blocks)
@@ -119,6 +128,8 @@ class _SectionRouter:
                         kind,
                         extraction.primary_tables,
                     )
+            elif kind is SectionKind.STATUS_CODES:
+                self._collect_status_code_tables(section_node, extraction)
             elif kind in (
                 SectionKind.EXAMPLE_REQUEST,
                 SectionKind.EXAMPLE_RESPONSE,
@@ -129,6 +140,32 @@ class _SectionRouter:
                     kind,
                     extraction.sections,
                 )
+
+    @staticmethod
+    def _collect_status_code_tables(
+        section_node: nodes.section,
+        extraction: _SectionExtraction,
+    ) -> None:
+        """Read every table under a status-code heading.
+
+        Titles are not consulted here. Under this heading a table is the status
+        codes by construction, and the corpus writes it three ways - a titled
+        grid, a titled simple table, and a bare one with no title at all. Asking
+        `classify_table_title` would route the untitled one to `UNMAPPED` and
+        report a document that is perfectly well written.
+        """
+        for table in section_node.findall(nodes.table):
+            _SectionRouter._collect_status_code_table(table, extraction)
+
+    @staticmethod
+    def _collect_status_code_table(
+        table: nodes.table,
+        extraction: _SectionExtraction,
+    ) -> None:
+        if id(table) in extraction.read_status_tables:
+            return
+        extraction.read_status_tables.add(id(table))
+        extraction.status_codes.extend(extract_status_code_table(table))
 
     @staticmethod
     def _resolve_parameter_sections(
@@ -213,7 +250,8 @@ class _SectionRouter:
         )
         target = _resolve_generic_request_target(target, extraction.http_method)
 
-        if target is TableTarget.INTENTIONALLY_IGNORED:
+        if target is SectionName.STATUS_CODES:
+            _SectionRouter._collect_status_code_table(table, extraction)
             return
         if target is TableTarget.NESTED_STRUCT:
             if extraction.references.register_nested_table(
@@ -277,6 +315,33 @@ def _apply_routing_issues(
             )
             continue
         _append_issues(section, issues)
+
+
+def _record_status_codes(extraction: _SectionExtraction) -> None:
+    """Put the gathered status codes into their section.
+
+    Only rows make a section. A heading with nothing readable under it - the
+    pages that carry a cross-reference to a shared status-code page and no table
+    - leaves no section here, so `_complete_sections` records it as `missing`:
+    the document really does list no status codes of its own, and saying
+    `failed` would blame us for what the page does not contain.
+
+    Issues go through `routing_issues` like every other routing diagnostic, so
+    a table we could not read still turns the section `failed` even when it
+    yielded no rows.
+    """
+    gathered = extraction.status_codes
+    if gathered.issues:
+        extraction.routing_issues.setdefault(SectionName.STATUS_CODES, []).extend(
+            gathered.issues
+        )
+    if not gathered.codes:
+        return
+    extraction.sections[SectionName.STATUS_CODES] = Section(
+        name=SectionName.STATUS_CODES,
+        status_codes=list(gathered.codes),
+        scan_result=SectionScanResult(status=SectionStatus.OK),
+    )
 
 
 def _complete_sections(sections: dict[SectionName, Section]) -> list[Section]:

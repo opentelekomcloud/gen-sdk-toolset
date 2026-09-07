@@ -745,6 +745,8 @@ export interface components {
             parameters: components["schemas"]["ParameterResponse"][] | null;
             /** Status */
             status: string;
+            /** Status Codes */
+            status_codes: components["schemas"]["StatusCodeResponse"][];
         };
         /**
          * ServiceDetailResponse
@@ -948,6 +950,20 @@ export interface components {
         StartScanResponse: {
             /** Job Id */
             job_id: number;
+        };
+        /**
+         * StatusCodeResponse
+         * @description One status-code row, as the scan recorded it.
+         *
+         *     Separate from `ParameterResponse` because a status code is not a field: it
+         *     has no type and no mandatory flag, and inventing them for the wire would
+         *     ask the UI to render columns that mean nothing.
+         */
+        StatusCodeResponse: {
+            /** Code */
+            code: string;
+            /** Description */
+            description: string;
         };
         /**
          * SummaryResponse

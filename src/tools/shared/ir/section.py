@@ -9,6 +9,7 @@ from tools.shared.scan import SectionScanResult, SectionStatus
 
 from .example import Example
 from .parameter import Parameter
+from .status_code import StatusCode
 
 
 class SectionName(StrEnum):
@@ -19,6 +20,7 @@ class SectionName(StrEnum):
     RESPONSE = "response"
     EXAMPLE_REQUEST = "example_request"
     EXAMPLE_RESPONSE = "example_response"
+    STATUS_CODES = "status_codes"
 
 
 class Section(BaseModel):
@@ -29,6 +31,9 @@ class Section(BaseModel):
     name: SectionName
     parameters: list[Parameter] = Field(default_factory=list)
     examples: list[Example] = Field(default_factory=list)
+    #: Rows of a status-code table. Kept apart from `parameters` because a
+    #: status code is not a parameter-table field - see `StatusCode`.
+    status_codes: list[StatusCode] = Field(default_factory=list)
     scan_result: SectionScanResult | None = None
 
     @model_validator(mode="after")
@@ -36,7 +41,7 @@ class Section(BaseModel):
         if (
             self.scan_result is not None
             and self.scan_result.status is SectionStatus.MISSING
-            and (self.parameters or self.examples)
+            and (self.parameters or self.examples or self.status_codes)
         ):
             raise ValueError("a missing section cannot contain extracted data")
         return self
