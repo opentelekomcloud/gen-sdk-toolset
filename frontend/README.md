@@ -31,9 +31,17 @@ VITE_ZITADEL_SCOPE=openid profile email urn:zitadel:iam:org:project:id:<project 
 The project scope is not optional decoration: it is what puts this application's
 roles into the token, and without it every session signs in successfully and then
 looks role-less, which renders as a read-only panel. Vite inlines `VITE_*` at
-build time, so a changed value needs the dev server restarted or the bundle
-rebuilt. With nothing configured the panel says so instead of offering a sign-in
-button that cannot work.
+build time, so a changed value needs the dev server restarted. With nothing
+configured the panel says so instead of offering a sign-in button that cannot
+work.
+
+The deployed image (`../Dockerfile.frontend`) bakes nothing in. It serves the
+bundle from nginx and writes `/config.js` at container start from
+`ZITADEL_ISSUER`, `ZITADEL_CLIENT_ID` and `ZITADEL_SCOPE`; the app reads that
+file before the `VITE_*` fallback (`src/shared/auth/config.ts`). One image, any
+deployment - changing the Zitadel application is a restart, not a rebuild.
+`/api` is not served by that image: the ingress in front routes it to the
+backend.
 
 Two roles are granted in Zitadel and read from the token: `worker` may launch and
 cancel scans, activate snapshots and exclude services; `viewer` may read. The UI
