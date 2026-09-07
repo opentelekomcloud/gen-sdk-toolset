@@ -11,7 +11,9 @@ Authentication has its own document: [AUTHORIZATION.md](AUTHORIZATION.md).
 
 Both are built and pushed by CI on a tag or a release
 (`.github/workflows/docker-push-release.yaml`); a tag `v1.2.3` produces the
-pair below with the same version. Deploy them together - the frontend's API
+pair below with the same version. The registry host comes from the
+organization variable `REGISTRY`, the push credentials from the organization
+secrets `REGISTRY_USER` and `REGISTRY_PASSWORD`. Deploy them together - the frontend's API
 types are generated from the backend's schema at that version.
 
 | Image | Built from | Serves |
