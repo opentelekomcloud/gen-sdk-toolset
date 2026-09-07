@@ -8,7 +8,7 @@ export const de: Record<keyof typeof en, string> = {
   "auth.noRole": "Ihr Konto hat keinen Zugriff auf dieses Panel",
   "auth.noRoleHint": "Bitten Sie eine Administratorin um die Rolle „viewer“ oder „worker“ in Zitadel und melden Sie sich erneut an.",
   "auth.notConfigured": "Anmeldung ist nicht konfiguriert",
-  "auth.notConfiguredHint": "ZITADEL_ISSUER und ZITADEL_CLIENT_ID am Container setzen (VITE_ZITADEL_* für den Dev-Server) und neu starten.",
+  "auth.notConfiguredHint": "VITE_ZITADEL_ISSUER und VITE_ZITADEL_CLIENT_ID setzen und neu bauen.",
   "auth.signingIn": "Anmeldung läuft…",
   "auth.required": "Zum Verwenden des Panels anmelden",
   "auth.requiredHint": "Das Panel liest und ändert Scan-Daten in Ihrem Namen und muss deshalb wissen, wer Sie sind.",

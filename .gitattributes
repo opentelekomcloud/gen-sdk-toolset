@@ -1,3 +1,0 @@
-# Shell scripts run inside Linux images; a CRLF checkout on Windows would break
-# their shebang line at container start.
-*.sh text eol=lf

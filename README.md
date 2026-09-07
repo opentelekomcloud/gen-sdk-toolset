@@ -55,13 +55,6 @@ docker compose down
 - Backend details: `src/tools/panel/README.md`
 - Frontend dev (run without Docker): `frontend/README.md`
 
-### Deploying
-
-The panel ships as two images, built by CI on a tag or a release. What they
-need from their environment and what they reach out to is in
-[DEPLOYMENT.md](DEPLOYMENT.md); the Zitadel setup is in
-[AUTHORIZATION.md](AUTHORIZATION.md).
-
 ## Scanner Usage
 
 ### Setup
