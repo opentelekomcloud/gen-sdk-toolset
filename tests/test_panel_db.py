@@ -193,7 +193,14 @@ def make_endpoint() -> Endpoint:
                                     name="flavor",
                                     param_type=ParameterType.STRING,
                                     type_name="String",
-                                )
+                                ),
+                                # An array of a primitive that the old composite
+                                # types could not express at all.
+                                Parameter(
+                                    name="flags",
+                                    param_type=ParameterType.ARRAY,
+                                    element_type=ParameterType.BOOLEAN,
+                                ),
                             ],
                         )
                     ],

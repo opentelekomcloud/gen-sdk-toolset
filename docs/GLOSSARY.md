@@ -29,38 +29,59 @@ Defined in `src/tools/shared/ir/`. Serialized shape is versioned by
 `example_response`. A section that was not present in the document is still
 recorded, with status `missing`.
 
-`HttpMethod`, `ParameterType` (`ir/enums.py`) — HTTP verbs, and the types found
-in OTC parameter tables including the composite ones (`Array of strings`) and
-the `Unknown` fallback. Documentation writes several names for the same type -
-`int64` and `Long`, `dict` and `Dictionary` - and `field_type.py::_ALIASES` maps
-each spelling onto one of these values, matched whole and case-insensitively.
-That table holds **conventions, never corrections**: `Interger` stays `Unknown`
-and raises `UNKNOWN_TYPE_FORMAT`, because absorbing a typo would turn a defect
-the panel counts into a field that looks read.
+`HttpMethod`, `ParameterType` (`ir/enums.py`) — HTTP verbs, and the **type
+kinds** found in OTC parameter tables, plus the `Unknown` fallback. A kind only:
+what an array holds is `Parameter.element_type`, not a member here.
+Documentation writes several names for the same type - `int64` and `Long`,
+`dict` and `Dictionary` - and `field_type.py::_ALIASES` maps each spelling onto
+one of these values, matched whole and case-insensitively. That table holds
+**conventions, never corrections**: `Interger` stays `Unknown` and raises
+`UNKNOWN_TYPE_FORMAT`, because absorbing a typo would turn a defect the panel
+counts into a field that looks read.
 
-The forms that carry a structure name - `List<Node>`, `Map<String, Node>`,
-`Schedule data structure`, `Node structure array` - cannot be a table of
-spellings, so `field_type.py::_normalize_named_syntax` rewrites them into the
-prose the classifier already reads (`Array of Node objects`, `Object`,
-`Schedule object`). One set of rules therefore decides every type, and
-`List<String>` lands on `Array of strings` for the same reason the prose
-spelling does. `List` and `Map` are **not** IR types and must not become any:
-the names they carry survive in `type_name`, and a `Map`'s key and value types
-do not survive at all, because there is nowhere in the IR to put them.
+**An array and its elements are two facts.** `param_type` is `Array` and
+`element_type` says what it holds, or is `None` when the page never said:
+
+| Written | `param_type` | `element_type` | `type_name` |
+|---|---|---|---|
+| `Array` | `Array` | — | — |
+| `Array of strings` | `Array` | `String` | — |
+| `Array of booleans` | `Array` | `Boolean` | — |
+| `Array of Node objects` | `Array` | `Object` | `Node` |
+| `Node structure array` | `Array` | `Object` | `Node` |
+| `Schedule data structure` | `Object` | — | `Schedule` |
+
+This replaces the composite `ARRAY_OF_STRINGS` / `ARRAY_OF_INTEGERS` /
+`ARRAY_OF_OBJECTS` members, which could name three element types and no others:
+`Array of booleans` had to be filed under `Array of objects`, and the leftover
+word "booleans" then landed in `type_name` as though a structure by that name
+existed. **`type_name` is reserved for a documented structure** - an array of
+primitives leaves it `None`.
+
+**Whether a parameter can hold a nested table is `Parameter.supports_children`,
+not a property of the type.** `ARRAY` alone no longer answers it: an array of
+strings holds no structure, an array of objects does, and an array whose
+element type was never stated might - so the unknown case is included, because
+a nested table naming that parameter is the evidence that settles it.
+
+`field_type.py::parse_field_type` reads one Type cell into all three fields at
+once. One function, because deriving them apart is how they come to disagree.
+It also reads the named legacy syntax - `List<Node>`, `Map<String, Node>`,
+`Schedule data structure`, `Node structure array`. `List` and `Map` are **not**
+IR types and must not become any; a `Map`'s key and value types do not survive
+at all, because there is nowhere in the IR to put them.
 
 A **structure name** is one identifier that is not already a type
 (`field_type.py::_names_a_structure`, which asks `classify_type` rather than
 listing the type words a second time). Both halves are load-bearing:
 `Specifies the schedule data structure` is prose, and `List data structure`
-names an array, so neither is rewritten and both read exactly as they did
-before. What the rewrite does not recognize stays `Unknown` and is counted,
-which is the answer this project would rather have than a confident `Object`
-pointing at a structure called "List".
+names an array, so neither is read as a structure.
 
-A container the rewrite does not know - `List<Set<Node>>` - keeps its array type
-and reports no name, rather than one spelled `Set<Node>`. What `type_name` holds
-for the forms that already existed is unchanged; `Array of booleans` still
-leaves "booleans" behind, which is a separate question from this one.
+**Generic syntax is read strictly or not at all.** One identifier per type
+argument, so `List<>`, `List<   >`, `Map<Node>`, `List<Node>>` and any nested
+generic stay `Unknown` and are counted. Angle brackets that do not parse never
+fall through to prose matching, which would find `String` inside
+`List<Map<String, Node>>` and call the row a string.
 
 ## Scan results — what one scanner session produced
 
@@ -238,7 +259,7 @@ racy.
 | Name | Where | Covers |
 |---|---|---|
 | `__version__` | `src/tools/__init__.py` | The scanner/parser version, read from package metadata and stamped on every result. Lets consumers tell "docs changed" apart from "parser improved". |
-| `DOCUMENT_SCHEMA_VERSION` | `shared/ir/__init__.py` | The serialized `Document`/`Endpoint` contract. |
+| `DOCUMENT_SCHEMA_VERSION` | `shared/ir/__init__.py` | The serialized `Document`/`Endpoint` contract. `2` splits an array from its element type; a v1 payload spelling both as one value (`"Array of strings"`) is still read, and `Parameter.split_schema_v1_composites` puts it back together as the pair it stood for. |
 
 ## Scanner vocabulary
 

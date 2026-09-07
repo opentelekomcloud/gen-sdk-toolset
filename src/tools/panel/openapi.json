@@ -567,7 +567,7 @@
         "type": "string"
       },
       "ParameterResponse": {
-        "description": "One parameter row, nested exactly as the scan recorded it.",
+        "description": "One parameter row, nested exactly as the scan recorded it.\n\n`param_type` is the kind and `element_type` what an array holds; the UI\njoins them back into `Array<String>`. Sending only the kind would show\nevery array as `Array` and lose what the documentation actually said.",
         "properties": {
           "children": {
             "anyOf": [
@@ -587,6 +587,17 @@
             "title": "Description",
             "type": "string"
           },
+          "element_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Element Type"
+          },
           "mandatory": {
             "title": "Mandatory",
             "type": "boolean"
@@ -598,6 +609,17 @@
           "param_type": {
             "title": "Param Type",
             "type": "string"
+          },
+          "type_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Name"
           }
         },
         "required": [

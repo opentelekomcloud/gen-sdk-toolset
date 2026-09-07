@@ -115,8 +115,10 @@ def _attach_and_recurse(
     state.used_tables.add(id(table))
     children = [child.model_copy(deep=True) for child in table.parameters]
     param.children = children
-    if param.param_type is ParameterType.ARRAY:
-        param.param_type = ParameterType.ARRAY_OF_OBJECTS
+    if param.param_type is ParameterType.ARRAY and param.element_type is None:
+        # The nested table is the page telling us what the array holds. It is
+        # still an array; only the element type was unknown until now.
+        param.element_type = ParameterType.OBJECT
     _resolve(
         [
             TableRow(child, source.ref_anchor)
@@ -141,7 +143,7 @@ def _lookup_label(
     param: Parameter,
     state: _ResolutionState,
 ) -> _TargetMatch | None:
-    if not param.param_type.supports_children:
+    if not param.supports_children:
         return None
     table = state.label_tables.get(param.name)
     if table is None:

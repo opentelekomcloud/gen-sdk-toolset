@@ -1,8 +1,17 @@
-"""Field type parsing and classification from OTC docs."""
+"""Field type parsing and classification from OTC docs.
+
+One cell of a Type column yields three facts at once - the type, what an array
+holds, and the structure it refers to - so one function produces all three.
+Deriving them separately is how they come to disagree: an earlier version
+classified `Array of booleans` as an object array in one place and pulled
+"booleans" out as a structure name in another, and neither half could see that
+the other was wrong.
+"""
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from tools.shared.ir import ParameterType
 
@@ -44,11 +53,29 @@ _ALIASES: dict[str, ParameterType] = {
     "timestamp": ParameterType.STRING,
 }
 
-#: `List<Node>`, `Map<String, Node>` - generic syntax some api-ref pages use in
-#: place of prose. Greedy on purpose, so the inner text of a nested generic
-#: reaches `>` rather than stopping at the first one.
-_GENERIC_RE = re.compile(
-    r"^\s*(?P<container>list|map)\s*<\s*(?P<inner>.+)\s*>\s*$", re.IGNORECASE
+#: Primitive words, longest-first so `bool` cannot win inside `boolean`.
+_PRIMITIVES: tuple[tuple[str, ParameterType], ...] = (
+    ("string", ParameterType.STRING),
+    ("long", ParameterType.LONG),
+    ("integer", ParameterType.INTEGER),
+    ("float", ParameterType.FLOAT),
+    ("double", ParameterType.DOUBLE),
+    ("boolean", ParameterType.BOOLEAN),
+    ("bool", ParameterType.BOOLEAN),
+    ("object", ParameterType.OBJECT),
+)
+
+#: `Array of strings`, `Array of booleans`, ... - the element the prose names.
+#: Plural or singular, because both spellings occur.
+_ELEMENT_WORDS: tuple[tuple[str, ParameterType], ...] = (
+    ("strings", ParameterType.STRING),
+    ("integers", ParameterType.INTEGER),
+    ("longs", ParameterType.LONG),
+    ("floats", ParameterType.FLOAT),
+    ("doubles", ParameterType.DOUBLE),
+    ("booleans", ParameterType.BOOLEAN),
+    ("bools", ParameterType.BOOLEAN),
+    ("objects", ParameterType.OBJECT),
 )
 
 #: A structure name is one identifier, the way OTC writes them -
@@ -56,8 +83,17 @@ _GENERIC_RE = re.compile(
 #: reading "Specifies the schedule data structure" is prose, and naming a
 #: structure after it would invent a reference the page never made.
 _IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_]*"
-_IDENTIFIER_RE = re.compile(_IDENTIFIER)
 _STRUCT_NAME = rf"(?P<name>{_IDENTIFIER})"
+
+#: `List<Node>` and `Map<String, Node>`, and nothing looser. One identifier per
+#: type argument means `List<>`, `List<   >`, `Map<Node>` and `List<Node>>` do
+#: not match, and stay `Unknown` where they are counted - which is the honest
+#: answer for syntax nobody can read. Nested generics land there too: an array
+#: of maps is representable only by guessing which of them the row meant.
+_LIST_RE = re.compile(rf"^\s*list\s*<\s*({_IDENTIFIER})\s*>\s*$", re.IGNORECASE)
+_MAP_RE = re.compile(
+    rf"^\s*map\s*<\s*{_IDENTIFIER}\s*,\s*{_IDENTIFIER}\s*>\s*$", re.IGNORECASE
+)
 
 #: `Schedule data structure` - a struct name carrying its container as a suffix.
 _DATA_STRUCTURE_RE = re.compile(
@@ -69,136 +105,165 @@ _STRUCTURE_ARRAY_RE = re.compile(
     rf"^\s*{_STRUCT_NAME}\s+structure\s+array\s*$", re.IGNORECASE
 )
 
+#: `Array of <something>` - the prose form, whatever follows.
+_ARRAY_OF_RE = re.compile(r"^\s*array\s+of\s+(?P<element>.+?)\s*$", re.IGNORECASE)
 
-def _normalize_named_syntax(raw: str) -> str:
-    """Rewrite named container syntax into the prose spelling, or return `raw`.
 
-    `List<Node>` and `Node structure array` both say "array of Node objects",
-    and `Schedule data structure` says "Schedule object". Rewriting them into
-    that prose leaves one set of rules deciding what a type is: `List<String>`
-    then lands on `Array of strings` for the same reason the prose spelling
-    does, and the struct name falls out of `STRUCT_KEYWORDS_RE` unchanged.
+@dataclass(frozen=True)
+class FieldType:
+    """Everything one Type cell says about a parameter."""
 
-    Case is preserved, so a caller that needs the struct name gets it spelled as
-    the documentation spelled it.
+    param_type: ParameterType = ParameterType.UNKNOWN
+    #: What an array holds. `None` on an array means the cell did not say.
+    element_type: ParameterType | None = None
+    #: The documented structure the cell refers to, if it names one.
+    type_name: str | None = None
+
+
+def parse_field_type(raw: str) -> FieldType:
+    """Read one Type cell.
+
+    The order is the whole design. Whole-cell aliases settle the bare legacy
+    spellings first, so `List data structure` stays an array rather than being
+    read as a structure called "List". The named syntax comes next, because
+    `Node structure array` is a shape no prose rule matches. Prose is last, and
+    is where the great majority of cells are answered.
     """
-    generic = _GENERIC_RE.match(raw)
-    if generic is not None:
-        if generic.group("container").lower() == "map":
-            # Key and value types are dropped, deliberately: the IR has no map
-            # type and may not grow one, and a JSON map is an object.
-            return "Object"
-        # Nested first, so `List<Map<String, Node>>` becomes an array of objects
-        # rather than an array of a struct named `Map<String, Node>`.
-        element = _normalize_named_syntax(generic.group("inner").strip())
-        if not _IDENTIFIER_RE.fullmatch(element) and _names_a_structure(element):
-            # A container this module does not know, like `List<Set<Node>>`.
-            # It is still an array, but nothing inside it is a name anyone could
-            # look up, and `Set<Node>` is not one.
-            return "Array of objects"
-        return f"Array of {element} objects"
-
-    named = _DATA_STRUCTURE_RE.match(raw)
-    if named is not None and _names_a_structure(named.group("name")):
-        return f"{named.group('name')} object"
-
-    named = _STRUCTURE_ARRAY_RE.match(raw)
-    if named is not None and _names_a_structure(named.group("name")):
-        return f"Array of {named.group('name')} objects"
-
-    return raw
-
-
-def _names_a_structure(name: str) -> bool:
-    """Whether `name` names a structure rather than a type already understood.
-
-    It decides whether a cell is rewritten at all. `Schedule data structure`
-    names a structure and `String data structure` does not, so only the first is
-    rewritten - the second would turn a string into an object. `List data
-    structure` is the same case: it is the legacy spelling of an array, not a
-    structure called "List".
-
-    Asked of `classify_type` rather than listed again here, so there stays one
-    vocabulary.
-
-    This calls back into `classify_type`, which calls the rewrite again. It
-    terminates on nesting depth rather than on length: every step consumes one
-    container, and what the rewrite emits carries no named syntax of its own.
-    """
-    return classify_type(name) is ParameterType.UNKNOWN
-
-
-def classify_type(raw: str) -> ParameterType:
-    """Type-text → ParameterType. Loose matching on lower-cased text."""
-    if not raw:
-        return ParameterType.UNKNOWN
-    lower = raw.strip().lower()
+    if not raw or not raw.strip():
+        return FieldType()
+    text = raw.strip()
+    lower = text.lower()
 
     alias = _ALIASES.get(lower)
     if alias is not None:
-        return alias
+        return FieldType(param_type=alias)
 
-    # After the aliases: a bare legacy spelling is settled by then, and the
-    # rewrite never sees it. Re-lowered because it introduces prose of its own.
-    lower = _normalize_named_syntax(lower).lower()
+    named = _named_syntax(text)
+    if named is not None:
+        return named
 
-    # Composite array types first (more specific).
-    if re.search(r"\barray\s+of\s+strings?\b", lower):
-        return ParameterType.ARRAY_OF_STRINGS
-    if re.search(r"\barray\s+of\s+integers?\b", lower):
-        return ParameterType.ARRAY_OF_INTEGERS
-    if re.search(r"\barray\s+of\s+", lower) and "object" in lower:
-        return ParameterType.ARRAY_OF_OBJECTS
-    if lower.startswith("array of "):
-        return ParameterType.ARRAY_OF_OBJECTS  # named struct → object array
+    if "<" in text or ">" in text:
+        # Generic syntax the strict forms above could not read. Prose matching
+        # would find `String` inside `List<Map<String, Node>>` and call the row
+        # a string; `Unknown` says what is true and gets the row counted.
+        return FieldType()
 
-    # Bare composites
-    if lower == "array" or lower.startswith("array "):
-        return ParameterType.ARRAY
-
-    # Primitives — match the longest prefix word.
-    for word, kind in (
-        ("string", ParameterType.STRING),
-        ("long", ParameterType.LONG),
-        ("integer", ParameterType.INTEGER),
-        ("float", ParameterType.FLOAT),
-        ("double", ParameterType.DOUBLE),
-        ("boolean", ParameterType.BOOLEAN),
-        ("bool", ParameterType.BOOLEAN),
-        ("object", ParameterType.OBJECT),
-    ):
-        if re.search(rf"\b{word}\b", lower):
-            return ParameterType.OBJECT if "object" in lower else kind
-
-    return ParameterType.UNKNOWN
+    return _prose(text, lower)
 
 
-# Parameter types that carry a referenced struct name worth preserving.
-STRUCT_TYPES = frozenset(
-    {
-        ParameterType.OBJECT,
-        ParameterType.ARRAY,
-        ParameterType.ARRAY_OF_OBJECTS,
-    }
-)
+def classify_type(raw: str) -> ParameterType:
+    """The type kind of one cell, ignoring what an array holds."""
+    return parse_field_type(raw).param_type
 
 
 def extract_struct_type_name(raw_type: str) -> str | None:
-    """Bare struct name from an object/array type cell, or ``None``.
-
-    An alias names the type itself, so it references no struct: a cell reading
-    `dict` would otherwise come back as a reference to a structure called
-    "dict", which is a name the documentation never wrote. The legacy spellings
-    reach the same answer through `STRUCT_KEYWORDS_RE`, which strips them.
-    """
-    if raw_type.strip().lower() in _ALIASES:
-        return None
-    name = STRUCT_KEYWORDS_RE.sub(" ", _normalize_named_syntax(raw_type))
-    name = re.sub(r"\s+", " ", name).strip()
-    return name or None
+    """The documented structure a cell refers to, or ``None``."""
+    return parse_field_type(raw_type).type_name
 
 
 def parse_mandatory(text: str) -> bool:
     """Parse mandatory indicator into boolean."""
     cleaned = text.strip().lower()
     return cleaned in {"yes", "true", "required"}
+
+
+# --------------------------------------------------------------------------- #
+# Internals
+# --------------------------------------------------------------------------- #
+def _named_syntax(text: str) -> FieldType | None:
+    """`List<X>`, `Map<K, V>`, `X data structure`, `X structure array`."""
+    listed = _LIST_RE.match(text)
+    if listed is not None:
+        return _array_of(listed.group(1))
+
+    if _MAP_RE.match(text) is not None:
+        # Key and value types are dropped, deliberately: the IR has no map type
+        # and is not growing one here, and a JSON map is an object.
+        return FieldType(param_type=ParameterType.OBJECT)
+
+    named = _DATA_STRUCTURE_RE.match(text)
+    if named is not None and _names_a_structure(named.group("name")):
+        return FieldType(param_type=ParameterType.OBJECT, type_name=named.group("name"))
+
+    named = _STRUCTURE_ARRAY_RE.match(text)
+    if named is not None and _names_a_structure(named.group("name")):
+        return _array_of(named.group("name"))
+
+    return None
+
+
+def _prose(text: str, lower: str) -> FieldType:
+    """`Array of X`, `X object`, `Array`, and the bare primitives."""
+    array_of = _ARRAY_OF_RE.match(text)
+    if array_of is not None:
+        return _array_of(array_of.group("element"))
+
+    if lower == "array" or lower.startswith("array "):
+        return FieldType(param_type=ParameterType.ARRAY)
+
+    for word, kind in _PRIMITIVES:
+        if re.search(rf"\b{word}\b", lower):
+            if "object" in lower:
+                return FieldType(
+                    param_type=ParameterType.OBJECT, type_name=_struct_name(text)
+                )
+            return FieldType(param_type=kind)
+
+    return FieldType()
+
+
+def _array_of(element: str) -> FieldType:
+    """An array, typed by whatever its element text names.
+
+    A primitive element is recorded as one and names no structure - `Array of
+    booleans` holds booleans, and there is no structure called "booleans" for a
+    generator to look up. Anything the parser does not recognise is taken to be
+    a documented structure, which is what `Array of RequestTag objects` and
+    `List<Node>` both are.
+    """
+    cleaned = element.strip()
+    lower = cleaned.lower()
+
+    for word, kind in _ELEMENT_WORDS:
+        if re.search(rf"\b{word[:-1]}s?\b", lower):
+            if kind is ParameterType.OBJECT:
+                return FieldType(
+                    param_type=ParameterType.ARRAY,
+                    element_type=ParameterType.OBJECT,
+                    type_name=_struct_name(cleaned),
+                )
+            return FieldType(param_type=ParameterType.ARRAY, element_type=kind)
+
+    if not _names_a_structure(cleaned):
+        # A type word the element rule above does not spell, such as the
+        # singular `Array of string`. It is that type, not a structure.
+        return FieldType(
+            param_type=ParameterType.ARRAY, element_type=classify_type(cleaned)
+        )
+
+    return FieldType(
+        param_type=ParameterType.ARRAY,
+        element_type=ParameterType.OBJECT,
+        type_name=_struct_name(cleaned),
+    )
+
+
+def _struct_name(text: str) -> str | None:
+    """The bare structure name in `text`, once the container words come out."""
+    name = re.sub(r"\s+", " ", STRUCT_KEYWORDS_RE.sub(" ", text)).strip()
+    return name if name and _names_a_structure(name) else None
+
+
+def _names_a_structure(name: str) -> bool:
+    """Whether `name` names a structure rather than a type already understood.
+
+    `Schedule data structure` names a structure and `String data structure` does
+    not, so only the first is read as one - the second would turn a string into
+    an object. `List data structure` is the same case: the legacy spelling of an
+    array, not a structure called "List".
+
+    Asked of `classify_type` rather than listed again here, so there stays one
+    vocabulary. It terminates because a name is a single identifier, which
+    carries no named syntax for the parse to descend into.
+    """
+    return classify_type(name) is ParameterType.UNKNOWN

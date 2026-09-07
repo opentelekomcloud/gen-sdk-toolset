@@ -26,12 +26,7 @@ from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import Issue, IssueCode
 
 from .diagnostics import ISSUE_DETAILS_MAX
-from .field_type import (
-    STRUCT_TYPES,
-    classify_type,
-    extract_struct_type_name,
-    parse_mandatory,
-)
+from .field_type import parse_field_type, parse_mandatory
 from .patterns import HEADER_ALIASES
 from .rst_nodes import first_ref_target
 
@@ -161,18 +156,25 @@ def _extract_parameter_row(
     description = (
         cells[column_map["description"]].strip() if "description" in column_map else ""
     )
-    param_type = classify_type(type_raw)
-    is_struct = param_type in STRUCT_TYPES
+    field = parse_field_type(type_raw)
+    parameter = Parameter(
+        name=name,
+        param_type=field.param_type,
+        element_type=field.element_type,
+        mandatory=mandatory,
+        description=description,
+        type_name=field.type_name,
+    )
     return (
         TableRow(
-            parameter=Parameter(
-                name=name,
-                param_type=param_type,
-                mandatory=mandatory,
-                description=description,
-                type_name=extract_struct_type_name(type_raw) if is_struct else None,
+            parameter=parameter,
+            # Only a cell that could hold a structure is searched for a
+            # reference to one: an array of strings names nothing to resolve.
+            ref_anchor=(
+                _struct_anchor(entries, column_map)
+                if parameter.supports_children
+                else None
             ),
-            ref_anchor=_struct_anchor(entries, column_map) if is_struct else None,
         ),
         type_raw,
     )

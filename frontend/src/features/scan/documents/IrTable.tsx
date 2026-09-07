@@ -1,6 +1,7 @@
 import type { Parameter, SectionDetail } from "../../../shared/api/types";
 import { Fragment } from "react";
 import { useI18n } from "../../../shared/i18n";
+import { parameterTypeLabel } from "../lib/parameterType";
 
 function ParamRows({ params, depth = 0 }: { params: Parameter[]; depth?: number }) {
   const { t } = useI18n();
@@ -8,6 +9,7 @@ function ParamRows({ params, depth = 0 }: { params: Parameter[]; depth?: number 
     <>
       {params.map((p, i) => {
         const unknown = p.param_type === "Unknown";
+        const label = parameterTypeLabel(p);
         return (
           <Fragment key={`${depth}-${i}-${p.name}`}>
             <div
@@ -21,9 +23,9 @@ function ParamRows({ params, depth = 0 }: { params: Parameter[]; depth?: number 
               </div>
               <div
                 className={`col-span-3 truncate ${unknown ? "font-semibold text-amber-700" : "text-gray-600"}`}
-                title={p.param_type}
+                title={label}
               >
-                {unknown ? t("ir.unknown") : p.param_type}
+                {unknown ? t("ir.unknown") : label}
               </div>
               <div className="col-span-1 text-gray-500">{p.mandatory ? t("ir.yes") : "—"}</div>
               <div className="col-span-5 truncate text-gray-400" title={p.description}>

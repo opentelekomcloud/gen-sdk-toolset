@@ -5,9 +5,10 @@ from docutils.core import publish_doctree
 from tools.scanner.parsers.docutils.field_type import (
     classify_type,
     extract_struct_type_name,
+    parse_field_type,
 )
 from tools.scanner.parsers.docutils.table import extract_parameter_table
-from tools.shared.ir import ParameterType
+from tools.shared.ir import Parameter, ParameterType
 from tools.shared.scan import IssueCode
 
 
@@ -96,9 +97,9 @@ def test_aliases_are_matched_regardless_of_case_or_padding(written, expected) ->
         ("Boolean", ParameterType.BOOLEAN),
         ("Object", ParameterType.OBJECT),
         ("Array", ParameterType.ARRAY),
-        ("Array of strings", ParameterType.ARRAY_OF_STRINGS),
-        ("Array of objects", ParameterType.ARRAY_OF_OBJECTS),
-        ("Array of ExternalIp", ParameterType.ARRAY_OF_OBJECTS),
+        ("Array of strings", ParameterType.ARRAY),
+        ("Array of objects", ParameterType.ARRAY),
+        ("Array of ExternalIp", ParameterType.ARRAY),
         ("Dictionary", ParameterType.OBJECT),
         ("Data structure", ParameterType.OBJECT),
         ("List", ParameterType.ARRAY),
@@ -209,19 +210,22 @@ def test_a_real_struct_reference_is_still_extracted(written, expected) -> None:
 
 
 @pytest.mark.parametrize(
-    "written,expected",
+    "written,param_type,element_type",
     [
-        ("List<Node>", ParameterType.ARRAY_OF_OBJECTS),
-        ("Map<String, Node>", ParameterType.OBJECT),
-        ("Schedule data structure", ParameterType.OBJECT),
-        ("Node structure array", ParameterType.ARRAY_OF_OBJECTS),
+        ("List<Node>", ParameterType.ARRAY, ParameterType.OBJECT),
+        ("Map<String, Node>", ParameterType.OBJECT, None),
+        ("Schedule data structure", ParameterType.OBJECT, None),
+        ("Node structure array", ParameterType.ARRAY, ParameterType.OBJECT),
     ],
 )
-def test_named_syntax_normalizes_to_a_canonical_type(written, expected) -> None:
+def test_named_syntax_normalizes_to_a_canonical_type(
+    written, param_type, element_type
+) -> None:
     """The four named forms carry a structure name where the prose forms carry
     the word `object`. They mean the same thing and land on the same values -
     the IR grows no `List` and no `Map`."""
-    assert classify_type(written) == expected
+    field = parse_field_type(written)
+    assert (field.param_type, field.element_type) == (param_type, element_type)
 
 
 @pytest.mark.parametrize(
@@ -249,11 +253,11 @@ def test_a_map_references_no_structure() -> None:
 @pytest.mark.parametrize(
     "written,expected",
     [
-        ("list<node>", ParameterType.ARRAY_OF_OBJECTS),
+        ("list<node>", ParameterType.ARRAY),
         ("MAP<String,Node>", ParameterType.OBJECT),
-        ("LIST < Node >", ParameterType.ARRAY_OF_OBJECTS),
+        ("LIST < Node >", ParameterType.ARRAY),
         ("Schedule   data structure", ParameterType.OBJECT),
-        ("  Node structure array  ", ParameterType.ARRAY_OF_OBJECTS),
+        ("  Node structure array  ", ParameterType.ARRAY),
     ],
 )
 def test_named_syntax_survives_case_and_spacing(written, expected) -> None:
@@ -269,38 +273,67 @@ def test_the_structure_name_keeps_the_spelling_the_page_used() -> None:
 
 
 @pytest.mark.parametrize(
-    "written,expected",
+    "written,element_type",
     [
-        ("List<String>", ParameterType.ARRAY_OF_STRINGS),
-        ("List<Integer>", ParameterType.ARRAY_OF_INTEGERS),
+        ("List<String>", ParameterType.STRING),
+        ("List<Integer>", ParameterType.INTEGER),
+        ("List<Boolean>", ParameterType.BOOLEAN),
+        ("List<Long>", ParameterType.LONG),
+        ("List<Float>", ParameterType.FLOAT),
+        ("List<Double>", ParameterType.DOUBLE),
     ],
 )
-def test_a_list_of_primitives_reads_as_the_composite_it_is(written, expected) -> None:
-    """`List<String>` is `Array of strings` written another way, and reads as
-    one. Calling it an object array would leave a `type_name` of "String"
-    behind - a reference to a structure that does not exist and never will."""
-    assert classify_type(written) == expected
+def test_a_list_of_primitives_records_what_it_holds(written, element_type) -> None:
+    """`List<String>` is `Array of strings` written another way. Every one of
+    these is expressible now: under the old composite types only strings,
+    integers and objects had a member, so booleans and longs were filed as
+    object arrays and left a `type_name` naming a structure nobody wrote."""
+    field = parse_field_type(written)
+    assert field.param_type is ParameterType.ARRAY
+    assert field.element_type is element_type
+    assert field.type_name is None
 
 
 @pytest.mark.parametrize(
-    "written,expected_name",
+    "written",
     [
-        # The inner form is normalized before the outer one, so the element is
-        # an object - not a structure named `Map<String, Node>`.
-        ("List<Map<String, Node>>", None),
-        # Nested lists flatten, and the structure at the bottom is still named.
-        ("List<List<Node>>", "Node"),
-        # `Set` is a container this module does not know. The cell is still an
-        # array, but `Set<Node>` is not a name anything could resolve, so none
-        # is reported rather than one being invented.
-        ("List<Set<Node>>", None),
-        # An element of nothing at all: still an array, still no name.
-        ("List<   >", None),
+        # No type argument at all.
+        "List<>",
+        "List<   >",
+        "List< >",
+        # A map needs a key and a value; one argument is not a map.
+        "Map<Node>",
+        "Map<String>",
+        "Map<>",
+        # Unbalanced, or no brackets to speak of.
+        "List<Node>>",
+        "List>",
+        "List<",
+        "Map<String, Node>>",
+        "<Node>",
+        # Punctuation where a type argument belongs.
+        "List<,>",
+        "Map<,>",
+        # More arguments than the form has places for.
+        "List<Node,Node>",
+        "Map<String, Node, Extra>",
+        # Nested generics: an array of maps has no representation here that
+        # would not be a guess about which of the two the row meant.
+        "List<Map<String, Node>>",
+        "List<List<Node>>",
+        # A container this module does not know.
+        "List<Set<Node>>",
     ],
 )
-def test_a_nested_generic_invents_no_structure_name(written, expected_name) -> None:
-    assert classify_type(written) == ParameterType.ARRAY_OF_OBJECTS
-    assert extract_struct_type_name(written) == expected_name
+def test_generic_syntax_that_cannot_be_read_stays_unknown(written) -> None:
+    """Angle brackets say the author wrote generic syntax. If it is not one of
+    the two forms we read, falling back to prose matching would find `String`
+    inside `List<Map<String, Node>>` and call the row a string. `Unknown` is
+    the true answer, and it is the one that gets counted."""
+    field = parse_field_type(written)
+    assert field.param_type is ParameterType.UNKNOWN
+    assert field.element_type is None
+    assert field.type_name is None
 
 
 @pytest.mark.parametrize(
@@ -323,8 +356,8 @@ def test_the_bare_legacy_forms_still_mean_what_they_meant(written, expected) -> 
 @pytest.mark.parametrize(
     "written,expected",
     [
-        ("Node\nstructure array", ParameterType.ARRAY_OF_OBJECTS),
-        ("List<\nNode>", ParameterType.ARRAY_OF_OBJECTS),
+        ("Node\nstructure array", ParameterType.ARRAY),
+        ("List<\nNode>", ParameterType.ARRAY),
     ],
 )
 def test_a_wrapped_cell_reads_the_same_as_a_single_line(written, expected) -> None:
@@ -405,10 +438,16 @@ addresses           Node structure array     Bound addresses
     extraction = extract_parameter_table(table)
 
     assert [parameter.param_type for parameter in extraction.parameters] == [
-        ParameterType.ARRAY_OF_OBJECTS,
+        ParameterType.ARRAY,
         ParameterType.OBJECT,
         ParameterType.OBJECT,
-        ParameterType.ARRAY_OF_OBJECTS,
+        ParameterType.ARRAY,
+    ]
+    assert [parameter.element_type for parameter in extraction.parameters] == [
+        ParameterType.OBJECT,
+        None,
+        None,
+        ParameterType.OBJECT,
     ]
     assert [parameter.type_name for parameter in extraction.parameters] == [
         "Node",
@@ -441,3 +480,118 @@ addresses           Node structure array     Bound addresses
 )
 def test_a_real_structure_name_survives(written, expected) -> None:
     assert extract_struct_type_name(written) == expected
+
+
+# --------------------------------------------------------------------------- #
+# What an array holds
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "written,element_type",
+    [
+        ("Array of strings", ParameterType.STRING),
+        ("Array of integers", ParameterType.INTEGER),
+        ("Array of objects", ParameterType.OBJECT),
+        # None of these three had a composite type to land on before, so each
+        # was filed as an object array - and left its element word behind in
+        # `type_name`, naming a structure no page ever wrote.
+        ("Array of booleans", ParameterType.BOOLEAN),
+        ("Array of longs", ParameterType.LONG),
+        ("Array of floats", ParameterType.FLOAT),
+        ("Array of doubles", ParameterType.DOUBLE),
+        # Singular, which the documentation also writes.
+        ("Array of string", ParameterType.STRING),
+        ("Array of boolean", ParameterType.BOOLEAN),
+    ],
+)
+def test_an_array_records_the_primitive_it_holds(written, element_type) -> None:
+    field = parse_field_type(written)
+
+    assert field.param_type is ParameterType.ARRAY
+    assert field.element_type is element_type
+    assert field.type_name is None, "a primitive array references no structure"
+
+
+def test_a_bare_array_says_nothing_about_its_elements() -> None:
+    """`None` is not `Object`. The page did not say what the array holds, and
+    recording `Object` would be us saying it instead."""
+    field = parse_field_type("Array")
+
+    assert field.param_type is ParameterType.ARRAY
+    assert field.element_type is None
+    assert field.type_name is None
+
+
+@pytest.mark.parametrize(
+    "written,type_name",
+    [
+        ("Array of Node objects", "Node"),
+        ("Array of RequestTag objects", "RequestTag"),
+        ("Array of ExternalIp", "ExternalIp"),
+        ("Node structure array", "Node"),
+        ("List<Node>", "Node"),
+    ],
+)
+def test_an_array_of_structures_keeps_the_element_and_the_name(
+    written, type_name
+) -> None:
+    """Both facts, not one: `Object` says a generator must build a type, and
+    the name says which documented table defines it."""
+    field = parse_field_type(written)
+
+    assert field.param_type is ParameterType.ARRAY
+    assert field.element_type is ParameterType.OBJECT
+    assert field.type_name == type_name
+
+
+@pytest.mark.parametrize(
+    "written,supports",
+    [
+        # An object always can.
+        ("Object", True),
+        ("Schedule data structure", True),
+        # An array of structures can; an array of primitives cannot.
+        ("Array of Node objects", True),
+        ("List<Node>", True),
+        ("Array of strings", False),
+        ("Array of booleans", False),
+        ("List<Boolean>", False),
+        # An array whose elements the page never named might, and a nested
+        # table naming it is the evidence that decides.
+        ("Array", True),
+        ("List", True),
+        # Primitives never do.
+        ("String", False),
+        ("Interger", False),
+    ],
+)
+def test_whether_a_cell_could_hold_a_nested_table(written, supports) -> None:
+    """`ParameterType.ARRAY` alone cannot answer this any more, which is why
+    the question moved to `Parameter`."""
+    field = parse_field_type(written)
+    parameter = Parameter(
+        name="x",
+        param_type=field.param_type,
+        element_type=field.element_type,
+        type_name=field.type_name,
+    )
+
+    assert parameter.supports_children is supports
+
+
+@pytest.mark.parametrize(
+    "written,element_type",
+    [
+        ("Array of int64", ParameterType.LONG),
+        ("Array of dict", ParameterType.OBJECT),
+        ("Array of date", ParameterType.STRING),
+    ],
+)
+def test_an_alias_can_name_what_an_array_holds(written, element_type) -> None:
+    """The element is read with the same vocabulary as a whole cell, so a page
+    writing `int64` inside an array gets the same answer as one writing it
+    alone. Only a word the vocabulary does not know is taken for a structure."""
+    field = parse_field_type(written)
+
+    assert field.param_type is ParameterType.ARRAY
+    assert field.element_type is element_type
+    assert field.type_name is None

@@ -665,18 +665,26 @@ export interface components {
         /**
          * ParameterResponse
          * @description One parameter row, nested exactly as the scan recorded it.
+         *
+         *     `param_type` is the kind and `element_type` what an array holds; the UI
+         *     joins them back into `Array<String>`. Sending only the kind would show
+         *     every array as `Array` and lose what the documentation actually said.
          */
         ParameterResponse: {
             /** Children */
             children?: components["schemas"]["ParameterResponse"][] | null;
             /** Description */
             description: string;
+            /** Element Type */
+            element_type?: string | null;
             /** Mandatory */
             mandatory: boolean;
             /** Name */
             name: string;
             /** Param Type */
             param_type: string;
+            /** Type Name */
+            type_name?: string | null;
         };
         /**
          * RescanReason
