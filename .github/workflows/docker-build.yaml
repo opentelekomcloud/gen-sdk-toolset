@@ -1,0 +1,53 @@
+# Builds both images on every pull request without pushing them: a Dockerfile
+# that no longer builds is a red check here rather than a failed release.
+name: Docker Image Build
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+env:
+  ORG: opentelekomcloud
+
+jobs:
+  build:
+    if: github.event.pull_request.merged == false
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: sdk-panel
+            context: .
+            dockerfile: Dockerfile.backend
+          - image: sdk-panel-frontend
+            context: ./frontend
+            dockerfile: Dockerfile.frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            "${{ secrets.REGISTRY }}/${{ env.ORG }}/${{ matrix.image }}"
+          tags: |
+            type=ref,event=pr
+            type=sha
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: false
