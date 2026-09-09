@@ -385,10 +385,20 @@ class DocumentsResponse(BaseModel):
 
 
 class ParameterResponse(BaseModel):
-    """One parameter row, nested exactly as the scan recorded it."""
+    """One parameter row, nested exactly as the scan recorded it.
+
+    `param_type` is the kind and `element_type` what an array holds; the UI
+    joins them back into `Array<String>`. Sending only the kind would show
+    every array as `Array` and lose what the documentation actually said.
+    """
 
     name: str
     param_type: str
+    element_type: str | None = None
+    #: The documented structure an object or object array refers to. Sent so the
+    #: table can say `Array<Node>` rather than `Array<Object>` - the name is
+    #: what a reader can go and look up.
+    type_name: str | None = None
     mandatory: bool
     description: str
     children: list[ParameterResponse] | None = None
@@ -611,6 +621,8 @@ def _parameter(parameter: Any) -> ParameterResponse:
     return ParameterResponse(
         name=parameter.name,
         param_type=parameter.param_type.value,
+        element_type=(parameter.element_type.value if parameter.element_type else None),
+        type_name=parameter.type_name,
         mandatory=parameter.mandatory,
         description=parameter.description,
         children=(

@@ -178,3 +178,60 @@ def test_repeated_sibling_ref_is_not_a_cycle() -> None:
     a, b = primary["body"].parameters
     assert a.children[0].name == "x"
     assert b.children[0].name == "x"
+
+
+# --------------------------------------------------------------------------- #
+# What an array holds
+# --------------------------------------------------------------------------- #
+def _array(name: str, element: ParameterType | None = None) -> Parameter:
+    return Parameter(name=name, param_type=ParameterType.ARRAY, element_type=element)
+
+
+def test_a_resolved_bare_array_learns_what_it_holds() -> None:
+    """The nested table is the page saying the array holds structures. It was
+    an array all along; only the element type was unknown."""
+    items = _array("items")
+    primary = {"body": _extraction([(items, "leaf")])}
+
+    assert resolve_nested(primary, {"leaf": _table((_str("x"), None))}) == []
+    assert items.param_type is ParameterType.ARRAY
+    assert items.element_type is ParameterType.OBJECT
+    assert [c.name for c in items.children] == ["x"]
+
+
+def test_a_documented_element_type_is_not_overwritten() -> None:
+    """An array the page documented as holding strings keeps that, even when a
+    reference resolves against it. Replacing it would swap a stated fact for an
+    inferred one, and the type would then disagree with the table it came
+    from."""
+    tags = _array("tags", ParameterType.STRING)
+    primary = {"body": _extraction([(tags, "leaf")])}
+
+    resolve_nested(primary, {"leaf": _table((_str("x"), None))})
+
+    assert tags.element_type is ParameterType.STRING
+
+
+def test_a_primitive_never_takes_a_parent_name_label() -> None:
+    """The label lookup asks the parameter, not its type name: a string holds
+    no children whatever a nested table happens to be called."""
+    name = _str("firewall")
+    primary = {"body": _extraction([(name, None)])}
+    labels = {"firewall": _table((_str("x"), None)).table}
+
+    issues = resolve_nested(primary, {}, label_tables=labels)
+
+    assert name.children == []
+    # The table went unclaimed, and says so rather than vanishing.
+    assert [i.code for i in issues] == [IssueCode.NESTED_PARENT_NOT_FOUND]
+
+
+def test_an_array_of_strings_never_takes_a_parent_name_label() -> None:
+    tags = _array("tags", ParameterType.STRING)
+    primary = {"body": _extraction([(tags, None)])}
+    labels = {"tags": _table((_str("x"), None)).table}
+
+    resolve_nested(primary, {}, label_tables=labels)
+
+    assert tags.children == []
+    assert tags.element_type is ParameterType.STRING

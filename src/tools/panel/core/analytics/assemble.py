@@ -147,8 +147,11 @@ def _group_siblings_under_wrapper(section: Section, root_name: str) -> None:
     if not siblings:
         return
 
-    if root_param.param_type == ParameterType.ARRAY:
-        root_param.param_type = ParameterType.ARRAY_OF_OBJECTS
+    if root_param.param_type is ParameterType.ARRAY and root_param.element_type is None:
+        # The example proves what the array holds; it was an array either way.
+        # Only filled in when the page never said - an array documented as
+        # holding strings is not overruled by what an example looks like.
+        root_param.element_type = ParameterType.OBJECT
     root_param.children = siblings
     sibling_ids = {id(s) for s in siblings}
     section.parameters = [p for p in section.parameters if id(p) not in sibling_ids]
@@ -172,8 +175,10 @@ def _infer_arrays(
     documented_names = {parameter.name for parameter in parameters}
     for parameter in list(parameters):
         if (
-            parameter.param_type
-            not in {ParameterType.ARRAY, ParameterType.ARRAY_OF_OBJECTS}
+            parameter.param_type is not ParameterType.ARRAY
+            # An array the page documented as holding primitives takes no
+            # children, however the example is shaped.
+            or not parameter.supports_children
             or parameter.children
         ):
             continue
@@ -192,7 +197,7 @@ def _infer_arrays(
         child_ids = {id(p) for p in children}
         parameters[:] = [p for p in parameters if id(p) not in child_ids]
 
-        parameter.param_type = ParameterType.ARRAY_OF_OBJECTS
+        parameter.element_type = ParameterType.OBJECT
         parameter.children = children
 
 

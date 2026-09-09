@@ -610,6 +610,25 @@ def test_document_detail_returns_sections_and_parameters(scanned):
     assert body_section["fields_recognized"] == 1
     assert body_section["parameters"][0]["name"] == "server"
     assert body_section["parameters"][0]["children"][0]["name"] == "flavor"
+    # The array and what it holds travel as two fields, so the table can show
+    # `Array<Boolean>` - a type the old composite members could not express.
+    server = body_section["parameters"][0]
+    assert server["element_type"] is None
+    # The structure name travels too, or the table could only ever say
+    # `Object` and `Array<Object>` where the page named something.
+    assert server["type_name"] == "ServerSpec"
+    tags = server["children"][1]
+    assert (tags["param_type"], tags["element_type"], tags["type_name"]) == (
+        "Array",
+        "Object",
+        "ServerTag",
+    )
+    flags = server["children"][2]
+    assert (flags["param_type"], flags["element_type"], flags["type_name"]) == (
+        "Array",
+        "Boolean",
+        None,
+    )
     assert body_section["issues"][0]["code"] == "unknown_type_format"
     # Examples travel with their section, verbatim, so they can be compared
     # against what the parser made of them.

@@ -95,7 +95,7 @@ def test_vpc_array_of_objects_anchor() -> None:
     by_name = _rows_by_name(ex)
 
     tags, tags_anchor = by_name["tags"]
-    assert tags.param_type is ParameterType.ARRAY_OF_OBJECTS
+    assert tags.param_type is ParameterType.ARRAY
     assert tags.type_name == "RequestTag"
     assert tags_anchor == "createfirewall__request_requesttag"
 

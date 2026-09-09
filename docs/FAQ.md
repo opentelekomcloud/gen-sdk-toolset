@@ -31,6 +31,12 @@ If the shape is fine and only the *type name* is unfamiliar - a page writing
 somebody chose on purpose: a misspelling belongs in `UNKNOWN_TYPE_FORMAT`, where
 it is counted.
 
+A form that *carries a structure name* (`List<Node>`, `Node structure array`)
+has no fixed spelling to put in that table. Those are read by
+`field_type.py::parse_field_type`, which returns the type, what an array holds
+and the structure it names as one result. Add to that one function: deriving
+any of the three separately is how they come to disagree.
+
 1. Capture the real document as a fixture: put the `.rst` in `tests/fixtures/`,
    named `style_<a|b>_<service>_<what_is_special>.rst`, and add a loader fixture
    to `tests/conftest.py` alongside the existing ones.

@@ -186,14 +186,30 @@ def make_endpoint() -> Endpoint:
                         Parameter(
                             name="server",
                             param_type=ParameterType.OBJECT,
+                            # The structure this object refers to, which the UI
+                            # needs to render a name rather than "Object".
+                            type_name="ServerSpec",
                             mandatory=True,
                             description="Server spec.",
                             children=[
                                 Parameter(
                                     name="flavor",
                                     param_type=ParameterType.STRING,
-                                    type_name="String",
-                                )
+                                ),
+                                # An array of structures: the `Array<Node>` case.
+                                Parameter(
+                                    name="tags",
+                                    param_type=ParameterType.ARRAY,
+                                    element_type=ParameterType.OBJECT,
+                                    type_name="ServerTag",
+                                ),
+                                # An array of a primitive that the old composite
+                                # types could not express at all.
+                                Parameter(
+                                    name="flags",
+                                    param_type=ParameterType.ARRAY,
+                                    element_type=ParameterType.BOOLEAN,
+                                ),
                             ],
                         )
                     ],

@@ -1,6 +1,6 @@
 from .document import Document
 from .endpoint import Endpoint
-from .enums import HttpMethod, ParameterType
+from .enums import ELEMENT_TYPES, HttpMethod, ParameterType
 from .example import Example
 from .parameter import Parameter
 from .repository import Repository
@@ -13,6 +13,7 @@ DOCUMENT_SCHEMA_VERSION = "1"
 
 __all__ = [
     "DOCUMENT_SCHEMA_VERSION",
+    "ELEMENT_TYPES",
     "HttpMethod",
     "ParameterType",
     "Document",
