@@ -28,15 +28,22 @@ from tools.shared.scan import Issue, IssueCode
 from .diagnostics import ISSUE_DETAILS_MAX
 from .field_type import parse_field_type, parse_mandatory
 from .patterns import HEADER_ALIASES
-from .rst_nodes import first_ref_target
+from .rst_nodes import all_ref_targets, first_ref_target
 
 
 @dataclass
 class TableRow:
-    """A parsed parameter kept together with its authored struct anchor."""
+    """A parsed parameter kept together with the refs its row was written with.
+
+    ``ref_anchor`` is authored *as* a struct reference - it sits in the type or
+    name cell, where nothing else belongs. ``description_anchors`` are only
+    candidates: a description is prose, and its links point at status codes and
+    other pages as often as at a structure.
+    """
 
     parameter: Parameter
     ref_anchor: str | None = None
+    description_anchors: tuple[str, ...] = ()
 
 
 @dataclass
@@ -175,6 +182,13 @@ def _extract_parameter_row(
                 if parameter.supports_children
                 else None
             ),
+            # Same gate: a cell that cannot hold a structure has no candidates
+            # worth collecting, so an array of strings walks no descriptions.
+            description_anchors=(
+                _description_anchors(entries, column_map)
+                if parameter.supports_children
+                else ()
+            ),
         ),
         type_raw,
     )
@@ -226,6 +240,21 @@ def _struct_anchor(
         if anchor:
             return anchor
     return None
+
+
+def _description_anchors(
+    entries: list[nodes.Element], column_map: dict[str, int]
+) -> tuple[str, ...]:
+    """Every ref anchor in a row's description cell, in the order written.
+
+    Kept whole rather than reduced to the first: which of a description's links
+    names this row's structure - if any does - is a question only the reference
+    registry can answer, and it is not built yet.
+    """
+    idx = column_map.get("description")
+    if idx is None:
+        return ()
+    return all_ref_targets(entries[idx])
 
 
 def _header_preview(table: nodes.table) -> str:

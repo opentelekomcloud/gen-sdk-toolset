@@ -264,3 +264,234 @@ def test_explicit_cross_document_field_table(parser: DocutilsParser) -> None:
     connection = response.parameters[0]
     assert [child.name for child in connection.children] == ["id", "name"]
     assert response.scan_result.status is SectionStatus.OK
+
+
+# --------------------------------------------------------------------------- #
+# References written into the description cell
+# --------------------------------------------------------------------------- #
+def test_object_array_resolves_from_its_description(parser: DocutilsParser) -> None:
+    """The common api-ref shape: the type cell says only `Array of objects`, and
+    the structure is named by a `see Table 2` link in the description."""
+    content = _doc(
+        _simple_table(
+            "**Table 1** Request body parameters",
+            ["Parameter", "Mandatory", "Type", "Description"],
+            [
+                [
+                    "tags",
+                    "No",
+                    "Array of objects",
+                    "Bound tags. For details, see :ref:`Table 2 <tag_struct>`.",
+                ]
+            ],
+        ),
+        ".. _tag_struct:\n",
+        _simple_table(
+            "**Table 2** tags",
+            ["Parameter", "Type", "Description"],
+            [["key", "String", "tag key"], ["value", "String", "tag value"]],
+        ),
+    )
+
+    body = _sections(parser.parse(content, "x.rst"))["body"]
+
+    assert body.scan_result.status is SectionStatus.OK
+    tags = body.parameters[0]
+    assert [c.name for c in tags.children] == ["key", "value"]
+    # The struct table is now claimed, so it is no longer an orphan.
+    assert IssueCode.NESTED_PARENT_NOT_FOUND not in _body_issue_codes(parser, content)
+
+
+def test_object_resolves_from_its_description(parser: DocutilsParser) -> None:
+    content = _doc(
+        _simple_table(
+            "**Table 1** Request body parameters",
+            ["Parameter", "Type", "Description"],
+            [["firewall", "Object", "See :ref:`Table 2 <fw_struct>` for details."]],
+        ),
+        ".. _fw_struct:\n",
+        _simple_table(
+            "**Table 2** firewall",
+            ["Parameter", "Type", "Description"],
+            [["name", "String", "a name"]],
+        ),
+    )
+
+    body = _sections(parser.parse(content, "x.rst"))["body"]
+
+    assert body.scan_result.status is SectionStatus.OK
+    assert [c.name for c in body.parameters[0].children] == ["name"]
+
+
+def test_a_status_code_link_in_a_description_is_not_a_structure(
+    parser: DocutilsParser,
+) -> None:
+    """Descriptions link to status codes and neighbouring pages constantly. The
+    parameter keeps no children, and the link raises nothing."""
+    content = _doc(
+        _simple_table(
+            "**Table 1** Request body parameters",
+            ["Parameter", "Type", "Description"],
+            [["config", "Object", "See :ref:`Status Codes <codes_para>`."]],
+        ),
+        ".. _codes_para:\n\nThis paragraph is not a table.\n",
+    )
+
+    body = _sections(parser.parse(content, "x.rst"))["body"]
+
+    assert body.parameters[0].children == []
+    assert IssueCode.NESTED_REF_NOT_A_TABLE not in _body_issue_codes(parser, content)
+
+
+def test_the_type_cell_still_wins_over_the_description(
+    parser: DocutilsParser,
+) -> None:
+    content = _doc(
+        _simple_table(
+            "**Table 1** Request body parameters",
+            ["Parameter", "Type", "Description"],
+            [
+                [
+                    "firewall",
+                    ":ref:`Chosen <chosen_struct>` object",
+                    "See also :ref:`Table 3 <other_struct>`.",
+                ]
+            ],
+        ),
+        ".. _chosen_struct:\n",
+        _simple_table(
+            "**Table 2** Chosen",
+            ["Parameter", "Type", "Description"],
+            [["chosen", "String", "from the type cell"]],
+        ),
+        ".. _other_struct:\n",
+        _simple_table(
+            "**Table 3** Other",
+            ["Parameter", "Type", "Description"],
+            [["ignored", "String", "from the description"]],
+        ),
+    )
+
+    body = _sections(parser.parse(content, "x.rst"))["body"]
+
+    assert [c.name for c in body.parameters[0].children] == ["chosen"]
+
+
+def test_the_name_cell_still_wins_over_the_description(
+    parser: DocutilsParser,
+) -> None:
+    """The middle step of the priority: no ref in the type cell, one in the
+    name cell, one in the description. The name cell decides."""
+    content = _doc(
+        _simple_table(
+            "**Table 1** Request body parameters",
+            ["Parameter", "Type", "Description"],
+            [
+                [
+                    ":ref:`firewall <named_struct>`",
+                    "Object",
+                    "See also :ref:`Table 3 <desc_struct>`.",
+                ]
+            ],
+        ),
+        ".. _named_struct:\n",
+        _simple_table(
+            "**Table 2** Named",
+            ["Parameter", "Type", "Description"],
+            [["chosen", "String", "from the name cell"]],
+        ),
+        ".. _desc_struct:\n",
+        _simple_table(
+            "**Table 3** Described",
+            ["Parameter", "Type", "Description"],
+            [["ignored", "String", "from the description"]],
+        ),
+    )
+
+    body = _sections(parser.parse(content, "x.rst"))["body"]
+
+    assert [c.name for c in body.parameters[0].children] == ["chosen"]
+
+
+def test_two_structure_links_in_one_description_resolve_to_neither(
+    parser: DocutilsParser,
+) -> None:
+    """Both tables stay unclaimed and are reported as such, which is the same
+    account of them the scanner gave before descriptions were read at all."""
+    content = _doc(
+        _simple_table(
+            "**Table 1** Request body parameters",
+            ["Parameter", "Type", "Description"],
+            [
+                [
+                    "thing",
+                    "Object",
+                    "See :ref:`Table 2 <a_struct>` and :ref:`Table 3 <b_struct>`.",
+                ]
+            ],
+        ),
+        ".. _a_struct:\n",
+        _simple_table(
+            "**Table 2** A",
+            ["Parameter", "Type", "Description"],
+            [["a", "String", "a"]],
+        ),
+        ".. _b_struct:\n",
+        _simple_table(
+            "**Table 3** B",
+            ["Parameter", "Type", "Description"],
+            [["b", "String", "b"]],
+        ),
+    )
+
+    body = _sections(parser.parse(content, "x.rst"))["body"]
+
+    assert body.parameters[0].children == []
+    assert IssueCode.NESTED_PARENT_NOT_FOUND in _body_issue_codes(parser, content)
+
+
+def test_a_link_to_the_primary_table_is_not_a_structure(
+    parser: DocutilsParser,
+) -> None:
+    """Only tables routed as nested structs are registered, so a description
+    pointing back at the request table itself resolves to nothing rather than
+    attaching the whole table to one of its own rows."""
+    content = _doc(
+        ".. _own_table:\n",
+        _simple_table(
+            "**Table 1** Request body parameters",
+            ["Parameter", "Type", "Description"],
+            [["cfg", "Object", "See :ref:`Table 1 <own_table>`."]],
+        ),
+    )
+
+    body = _sections(parser.parse(content, "x.rst"))["body"]
+
+    assert body.parameters[0].children == []
+    assert body.scan_result.status is SectionStatus.OK
+
+
+def test_a_cycle_through_descriptions_terminates(parser: DocutilsParser) -> None:
+    """Description candidates go through the same `visiting` check as authored
+    anchors, so a structure whose own description points back at itself stops
+    and is reported instead of recursing."""
+    content = _doc(
+        _simple_table(
+            "**Table 1** Request body parameters",
+            ["Parameter", "Type", "Description"],
+            [["a", "Object", "See :ref:`Table 2 <a_struct>`."]],
+        ),
+        ".. _a_struct:\n",
+        _simple_table(
+            "**Table 2** A",
+            ["Parameter", "Type", "Description"],
+            [["back", "Object", "See :ref:`Table 2 <a_struct>`."]],
+        ),
+    )
+    parsed = parser.parse(content, "x.rst")
+    body = _sections(parsed)["body"]
+
+    assert IssueCode.NESTED_CIRCULAR_REF in _body_issue_codes(parser, content)
+    # First level resolved; recursion stopped at the repeat.
+    assert [c.name for c in body.parameters[0].children] == ["back"]
+    assert body.parameters[0].children[0].children == []
