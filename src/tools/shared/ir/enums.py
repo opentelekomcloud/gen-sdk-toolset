@@ -31,3 +31,19 @@ class ParameterType(StrEnum):
     ARRAY = "Array"
     # Fallback for anything the parser can't classify
     UNKNOWN = "Unknown"
+
+
+#: What an array may be documented as holding. Every kind except `ARRAY` - the
+#: IR does not nest arrays - and `UNKNOWN`, which is the absence of an answer
+#: and is spelled `element_type=None` instead.
+ELEMENT_TYPES: frozenset[ParameterType] = frozenset(
+    {
+        ParameterType.STRING,
+        ParameterType.INTEGER,
+        ParameterType.LONG,
+        ParameterType.FLOAT,
+        ParameterType.DOUBLE,
+        ParameterType.BOOLEAN,
+        ParameterType.OBJECT,
+    }
+)

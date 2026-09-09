@@ -10,8 +10,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
-from tools.shared.ir import Parameter, ParameterType
+from tools.shared.ir import ELEMENT_TYPES, Parameter, ParameterType
 from tools.shared.scan import IssueCode
 
 
@@ -129,3 +130,62 @@ def test_a_non_mapping_input_passes_through_the_v1_split() -> None:
 
     assert parameter.param_type is ParameterType.ARRAY
     assert parameter.element_type is ParameterType.BOOLEAN
+
+
+# --------------------------------------------------------------------------- #
+# element_type invariants
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "param_type",
+    [
+        ParameterType.STRING,
+        ParameterType.INTEGER,
+        ParameterType.BOOLEAN,
+        ParameterType.OBJECT,
+        ParameterType.UNKNOWN,
+    ],
+)
+def test_only_an_array_may_carry_an_element_type(param_type) -> None:
+    """`param_type=String, element_type=Boolean` means nothing. Rejecting it
+    here rather than trusting callers matters because this is the serialized
+    contract: a payload stored in that state would read back forever without
+    complaint."""
+    with pytest.raises(ValidationError, match="belongs to an array"):
+        Parameter(name="x", param_type=param_type, element_type=ParameterType.STRING)
+
+
+@pytest.mark.parametrize("element_type", [ParameterType.ARRAY, ParameterType.UNKNOWN])
+def test_an_element_type_must_be_a_kind_an_array_can_hold(element_type) -> None:
+    """`Array` because the IR does not nest arrays, and `Unknown` because the
+    absence of an answer is spelled `None`, not as a type."""
+    with pytest.raises(ValidationError, match="not an array element type"):
+        Parameter(name="x", param_type=ParameterType.ARRAY, element_type=element_type)
+
+
+@pytest.mark.parametrize("element_type", sorted(ELEMENT_TYPES, key=str))
+def test_every_declared_element_kind_is_accepted(element_type) -> None:
+    parameter = Parameter(
+        name="x", param_type=ParameterType.ARRAY, element_type=element_type
+    )
+
+    assert parameter.element_type is element_type
+
+
+def test_an_array_may_say_nothing_about_its_elements() -> None:
+    """`None` is a real answer, not a missing one: the page did not say."""
+    assert Parameter(name="x", param_type=ParameterType.ARRAY).element_type is None
+
+
+def test_the_invariant_holds_for_children_too() -> None:
+    """Validation runs wherever a Parameter is built, so a nested row cannot
+    smuggle in a state the top level would have refused."""
+    with pytest.raises(ValidationError, match="belongs to an array"):
+        Parameter.model_validate(
+            {
+                "name": "server",
+                "param_type": "Object",
+                "children": [
+                    {"name": "id", "param_type": "String", "element_type": "Boolean"}
+                ],
+            }
+        )

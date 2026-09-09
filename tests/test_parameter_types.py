@@ -595,3 +595,76 @@ def test_an_alias_can_name_what_an_array_holds(written, element_type) -> None:
     assert field.param_type is ParameterType.ARRAY
     assert field.element_type is element_type
     assert field.type_name is None
+
+
+@pytest.mark.parametrize(
+    "written", ["Array of arrays", "Array of array", "Array of list", "Array of Array"]
+)
+def test_an_array_of_arrays_leaves_its_element_unspecified(written) -> None:
+    """The IR does not nest arrays. It is still an array - that much the page
+    said - but the element stays `None` rather than becoming a structure called
+    "arrays", and rather than an `element_type` the contract forbids."""
+    field = parse_field_type(written)
+
+    assert field.param_type is ParameterType.ARRAY
+    assert field.element_type is None
+    assert field.type_name is None
+
+
+def test_every_cell_the_parser_reads_builds_a_valid_parameter() -> None:
+    """The parser and the contract have to agree. A cell that produced a state
+    `Parameter` refuses would raise at table-extraction time, on a document we
+    could otherwise have read."""
+    cells = [
+        "String",
+        "Integer",
+        "Long",
+        "Float",
+        "Double",
+        "Boolean",
+        "Object",
+        "Array",
+        "Unknown",
+        "Interger",
+        "List",
+        "Dictionary",
+        "Data structure",
+        "List data structure",
+        "dict",
+        "int64",
+        "jsonarray",
+        "timestamp",
+        "Array of strings",
+        "Array of integers",
+        "Array of booleans",
+        "Array of longs",
+        "Array of floats",
+        "Array of doubles",
+        "Array of objects",
+        "Array of Node objects",
+        "Array of ExternalIp",
+        "Array of int64",
+        "Array of arrays",
+        "Array of list",
+        "Array of string",
+        "Node object",
+        "Schedule data structure",
+        "Node structure array",
+        "List<Node>",
+        "List<String>",
+        "List<Boolean>",
+        "Map<String, Node>",
+        "List<>",
+        "Map<Node>",
+        "List<Node>>",
+        "Long integer",
+    ]
+
+    for cell in cells:
+        field = parse_field_type(cell)
+        Parameter(
+            name="x",
+            param_type=field.param_type,
+            element_type=field.element_type,
+            type_name=field.type_name,
+        )

@@ -622,6 +622,7 @@ def _parameter(parameter: Any) -> ParameterResponse:
         name=parameter.name,
         param_type=parameter.param_type.value,
         element_type=(parameter.element_type.value if parameter.element_type else None),
+        type_name=parameter.type_name,
         mandatory=parameter.mandatory,
         description=parameter.description,
         children=(

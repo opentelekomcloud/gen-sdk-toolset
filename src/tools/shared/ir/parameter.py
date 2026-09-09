@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .enums import ParameterType
+from .enums import ELEMENT_TYPES, ParameterType
 
 #: Schema-v1 spelled an array and its element type as one value. Reading such a
 #: payload splits it back apart, so a snapshot stored before this change loads
@@ -32,6 +32,31 @@ class Parameter(BaseModel):
     #: The documented structure this parameter refers to. Reserved for exactly
     #: that: an array of primitives names no structure and leaves it `None`.
     type_name: str | None = None
+
+    @model_validator(mode="after")
+    def validate_element_type(self) -> Parameter:
+        """`element_type` describes an array, and only an array.
+
+        Enforced here rather than trusted to callers because this is the
+        serialized contract: `param_type=String, element_type=Boolean` and
+        `element_type=Array` are states nothing can mean, and a stored payload
+        carrying one would be read back without complaint forever.
+
+        `None` on an array is a real value - the page did not say what it holds
+        - so it is the absence of the field that is allowed, not a wrong one.
+        """
+        if self.element_type is None:
+            return self
+        if self.param_type is not ParameterType.ARRAY:
+            raise ValueError(
+                f"element_type belongs to an array, not to {self.param_type.value}"
+            )
+        if self.element_type not in ELEMENT_TYPES:
+            raise ValueError(
+                f"{self.element_type.value} is not an array element type; "
+                f"expected one of {sorted(t.value for t in ELEMENT_TYPES)}"
+            )
+        return self
 
     @property
     def supports_children(self) -> bool:

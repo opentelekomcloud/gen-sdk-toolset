@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from tools.shared.ir import ParameterType
+from tools.shared.ir import ELEMENT_TYPES, ParameterType
 
 from .patterns import STRUCT_KEYWORDS_RE
 
@@ -76,6 +76,9 @@ _ELEMENT_WORDS: tuple[tuple[str, ParameterType], ...] = (
     ("booleans", ParameterType.BOOLEAN),
     ("bools", ParameterType.BOOLEAN),
     ("objects", ParameterType.OBJECT),
+    # Last: `arrays` has no element type of its own to record, and the entries
+    # above must win when a cell names both (`Array of Node objects`).
+    ("arrays", ParameterType.ARRAY),
 )
 
 #: A structure name is one identifier, the way OTC writes them -
@@ -222,30 +225,37 @@ def _array_of(element: str) -> FieldType:
     `List<Node>` both are.
     """
     cleaned = element.strip()
-    lower = cleaned.lower()
+    kind = _element_kind(cleaned)
 
-    for word, kind in _ELEMENT_WORDS:
-        if re.search(rf"\b{word[:-1]}s?\b", lower):
-            if kind is ParameterType.OBJECT:
-                return FieldType(
-                    param_type=ParameterType.ARRAY,
-                    element_type=ParameterType.OBJECT,
-                    type_name=_struct_name(cleaned),
-                )
-            return FieldType(param_type=ParameterType.ARRAY, element_type=kind)
-
-    if not _names_a_structure(cleaned):
-        # A type word the element rule above does not spell, such as the
-        # singular `Array of string`. It is that type, not a structure.
+    if kind is None or kind is ParameterType.OBJECT:
+        # Either a name the vocabulary does not know - so a documented
+        # structure - or the word `objects` itself, which may carry one.
         return FieldType(
-            param_type=ParameterType.ARRAY, element_type=classify_type(cleaned)
+            param_type=ParameterType.ARRAY,
+            element_type=ParameterType.OBJECT,
+            type_name=_struct_name(cleaned),
         )
 
-    return FieldType(
-        param_type=ParameterType.ARRAY,
-        element_type=ParameterType.OBJECT,
-        type_name=_struct_name(cleaned),
-    )
+    if kind not in ELEMENT_TYPES:
+        # `Array of arrays`, and the aliases that mean it. The IR does not nest
+        # arrays, so the element stays unspecified: it is still an array, and
+        # naming anything else would invent a type the page did not write.
+        return FieldType(param_type=ParameterType.ARRAY)
+
+    return FieldType(param_type=ParameterType.ARRAY, element_type=kind)
+
+
+def _element_kind(element: str) -> ParameterType | None:
+    """The type an element text names, or ``None`` when it names a structure."""
+    lower = element.lower()
+    for word, kind in _ELEMENT_WORDS:
+        if re.search(rf"\b{word[:-1]}s?\b", lower):
+            return kind
+    if _names_a_structure(element):
+        return None
+    # A type word the element words do not spell: the singular in `Array of
+    # string`, or the alias in `Array of int64`.
+    return classify_type(element)
 
 
 def _struct_name(text: str) -> str | None:

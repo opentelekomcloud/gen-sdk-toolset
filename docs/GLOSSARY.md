@@ -58,6 +58,14 @@ word "booleans" then landed in `type_name` as though a structure by that name
 existed. **`type_name` is reserved for a documented structure** - an array of
 primitives leaves it `None`.
 
+The pairing is an **invariant, enforced on `Parameter`**, not a convention:
+`element_type` is set only when `param_type` is `ARRAY`, and only to a member of
+`ELEMENT_TYPES` (`ir/enums.py`) - every kind except `ARRAY`, because the IR does
+not nest arrays, and except `UNKNOWN`, because the absence of an answer is
+spelled `None`. `Array of arrays` therefore reads as an array whose element is
+unspecified: what the page said that the IR can hold, and nothing invented for
+the part it cannot.
+
 **Whether a parameter can hold a nested table is `Parameter.supports_children`,
 not a property of the type.** `ARRAY` alone no longer answers it: an array of
 strings holds no structure, an array of objects does, and an array whose
@@ -259,6 +267,7 @@ racy.
 | Name | Where | Covers |
 |---|---|---|
 | `__version__` | `src/tools/__init__.py` | The scanner/parser version, read from package metadata and stamped on every result. Lets consumers tell "docs changed" apart from "parser improved". |
+| `ELEMENT_TYPES` | `shared/ir/enums.py` | The kinds an array may be documented as holding: every `ParameterType` except `ARRAY` (the IR does not nest arrays) and `UNKNOWN` (spelled `element_type=None`). Enforced by a validator on `Parameter`. |
 | `DOCUMENT_SCHEMA_VERSION` | `shared/ir/__init__.py` | The serialized `Document`/`Endpoint` contract. `2` splits an array from its element type; a v1 payload spelling both as one value (`"Array of strings"`) is still read, and `Parameter.split_schema_v1_composites` puts it back together as the pair it stood for. |
 
 ## Scanner vocabulary
