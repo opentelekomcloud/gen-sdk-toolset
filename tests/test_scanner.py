@@ -314,7 +314,7 @@ def test_style_a_populates_sections() -> None:
     assert [issue.code for issue in response_example.issues] == [
         IssueCode.EXAMPLE_INVALID_JSON
     ]
-    assert len(sections) == 7
+    assert len(sections) == 8
     assert "path_params" in sections
     assert "body" in sections
     assert "nested_objects" not in sections

@@ -53,6 +53,7 @@ from tools.shared.ir import (  # noqa: E402
     ParameterType,
     Section,
     SectionName,
+    StatusCode,
 )
 from tools.shared.scan import (  # noqa: E402
     DocumentScanResult,
@@ -175,7 +176,8 @@ def db_session(migrated_engine):
 
 
 def make_endpoint() -> Endpoint:
-    """A canonical endpoint exercising parameters, examples, and issues."""
+    """A canonical endpoint exercising parameters, examples, status codes
+    and issues."""
     sections = []
     for name in SectionName:
         if name is SectionName.BODY:
@@ -226,6 +228,17 @@ def make_endpoint() -> Endpoint:
                         fields_recognized=1,
                         fields_unknown_type=1,
                     ),
+                )
+            )
+        elif name is SectionName.STATUS_CODES:
+            sections.append(
+                Section(
+                    name=name,
+                    status_codes=[
+                        StatusCode(code="200", description="Server created."),
+                        StatusCode(code="400", description="Bad request."),
+                    ],
+                    scan_result=SectionScanResult(status=SectionStatus.OK),
                 )
             )
         elif name is SectionName.EXAMPLE_REQUEST:

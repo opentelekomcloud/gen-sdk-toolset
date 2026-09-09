@@ -43,10 +43,10 @@ def classify_table_title(
 ) -> SectionName | TableTarget:
     """Resolve a table title to a canonical section key.
 
-    Returns a canonical ``SectionName`` for primary parameter tables and
-    ``TableTarget.NESTED_STRUCT`` for referenced object definitions.
-    Returns ``TableTarget.INTENTIONALLY_IGNORED`` for known non-parameter
-    tables and ``TableTarget.UNMAPPED`` when no safe route can be inferred.
+    Returns a canonical ``SectionName`` for primary parameter tables - and for
+    a status-code table, which is a section of its own wherever it is written -
+    ``TableTarget.NESTED_STRUCT`` for referenced object definitions, and
+    ``TableTarget.UNMAPPED`` when no safe route can be inferred.
 
     `in_section` provides context: a table in the URI section with a
     generic title defaults to path_params; a table in Response with a

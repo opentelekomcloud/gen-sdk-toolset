@@ -1,7 +1,7 @@
 import type { Section } from "./types";
 import type { MessageKey } from "../../shared/i18n";
 
-/** The 7 sections in fixed order (PS1). */
+/** The 8 sections in fixed order. */
 export const SECTIONS: readonly Section[] = [
   "path_params",
   "query_params",
@@ -10,11 +10,12 @@ export const SECTIONS: readonly Section[] = [
   "response",
   "example_request",
   "example_response",
+  "status_codes",
 ] as const;
 
 /** i18n key for a section label (dictionaries hold section.* entries).
  *  Takes the wire value: `SectionDetail.name` is `str` in the schema, and the
- *  seven names above are what the scanner can actually put there. */
+ *  eight names above are what the scanner can actually put there. */
 export const sectionLabelKey = (s: string): MessageKey => `section.${s}` as MessageKey;
 
 /**

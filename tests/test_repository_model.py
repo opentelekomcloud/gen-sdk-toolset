@@ -59,6 +59,7 @@ def test_repository_scan_result_restores_nested_service() -> None:
             "name": name.value,
             "parameters": [],
             "examples": [],
+            "status_codes": [],
             "scan_result": {
                 "status": "missing",
                 "issues": [],
@@ -277,6 +278,7 @@ def test_report_json_writes_enum_values_not_member_names() -> None:
         "response",
         "example_request",
         "example_response",
+        "status_codes",
     }
     assert sections["body"]["scan_result"]["status"] == "partial"
     assert sections["body"]["scan_result"]["issues"][0]["code"] == "unknown_type_format"

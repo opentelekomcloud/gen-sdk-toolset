@@ -16,15 +16,7 @@ from tools.shared.scan import SectionScanResult, SectionStatus
 
 
 def _endpoint(*sections: Section) -> Endpoint:
-    all_sections = {
-        SectionName.PATH_PARAMS: Section(name=SectionName.PATH_PARAMS),
-        SectionName.QUERY_PARAMS: Section(name=SectionName.QUERY_PARAMS),
-        SectionName.HEADERS: Section(name=SectionName.HEADERS),
-        SectionName.BODY: Section(name=SectionName.BODY),
-        SectionName.RESPONSE: Section(name=SectionName.RESPONSE),
-        SectionName.EXAMPLE_REQUEST: Section(name=SectionName.EXAMPLE_REQUEST),
-        SectionName.EXAMPLE_RESPONSE: Section(name=SectionName.EXAMPLE_RESPONSE),
-    }
+    all_sections = {name: Section(name=name) for name in SectionName}
     for section in sections:
         all_sections[section.name] = section
 

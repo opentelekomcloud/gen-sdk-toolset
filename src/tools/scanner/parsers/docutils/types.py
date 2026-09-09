@@ -20,7 +20,6 @@ class TableTarget(StrEnum):
 
     NESTED_STRUCT = "nested_struct"
     GENERIC_REQUEST = "generic_request"
-    INTENTIONALLY_IGNORED = "intentionally_ignored"
     UNMAPPED = "unmapped"
 
 

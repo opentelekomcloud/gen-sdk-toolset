@@ -19,7 +19,7 @@ export type DocStatus = "ok" | "partial" | "failed" | "unsupported";
  *  tone rule and a place in the tooltip, and no backend path produces it. */
 export type SectionStatus = "ok" | "partial" | "failed" | "skipped" | "missing";
 
-/** `SectionDetail.name`, and the keys of `section_rollup` - the seven members
+/** `SectionDetail.name`, and the keys of `section_rollup` - the eight members
  *  of `SectionName` (`shared/ir/section.py`). */
 export type Section =
   | "path_params"
@@ -28,7 +28,8 @@ export type Section =
   | "body"
   | "response"
   | "example_request"
-  | "example_response";
+  | "example_response"
+  | "status_codes";
 
 /** One `section_rollup` entry: how that section came out across the snapshot. */
 export type SectionCounts = Partial<Record<SectionStatus, number>>;

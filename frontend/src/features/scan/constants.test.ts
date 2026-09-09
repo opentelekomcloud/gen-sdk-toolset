@@ -3,11 +3,15 @@ import { SECTIONS, sectionLabelKey } from "./constants";
 import { en } from "../../shared/i18n/en";
 import { de } from "../../shared/i18n/de";
 
-describe("sections contract (PS1)", () => {
-  it("has exactly 7 sections in fixed order", () => {
-    expect(SECTIONS).toHaveLength(7);
+describe("sections contract", () => {
+  it("has exactly 8 sections in fixed order", () => {
+    expect(SECTIONS).toHaveLength(8);
     expect(SECTIONS[0]).toBe("path_params");
-    expect(SECTIONS[6]).toBe("example_response");
+    expect(SECTIONS[7]).toBe("status_codes");
+  });
+
+  it("holds no duplicates, so the strip renders one square per section", () => {
+    expect(new Set(SECTIONS).size).toBe(SECTIONS.length);
   });
 
   it("labels every section in both dictionaries", () => {

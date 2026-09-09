@@ -6,6 +6,7 @@ from .parameter import Parameter
 from .repository import Repository
 from .section import Section, SectionName
 from .service import Service
+from .status_code import StatusCode
 
 #: Version of the serialized Document/Endpoint contract. Bump on any breaking
 #: change to the IR models so persisted payloads can be told apart.
@@ -24,4 +25,5 @@ __all__ = [
     "Section",
     "SectionName",
     "Service",
+    "StatusCode",
 ]

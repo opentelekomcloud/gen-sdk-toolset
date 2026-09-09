@@ -192,6 +192,7 @@ def test_services_list_serves_the_active_snapshot(scanned):
         "response",
         "example_request",
         "example_response",
+        "status_codes",
     }
 
 
@@ -603,7 +604,7 @@ def test_document_detail_returns_sections_and_parameters(scanned):
         f"https://github.com/{REPO}/blob/{COMMIT}/api-ref/source/create_server.rst"
     )
     sections = {section["name"]: section for section in body["sections"]}
-    assert len(sections) == 7
+    assert len(sections) == 8
     body_section = sections["body"]
     assert body_section["status"] == "partial"
     assert body_section["fields_total"] == 2
@@ -637,6 +638,16 @@ def test_document_detail_returns_sections_and_parameters(scanned):
     assert example["language"] == "json"
     assert example["label"] == "Creating a server"
     assert sections["body"]["examples"] == []
+    # Status codes ride in their own list, not among the parameters: they have
+    # no type and no mandatory flag to put there.
+    status = sections["status_codes"]
+    assert status["status"] == "ok"
+    assert status["parameters"] is None
+    assert status["status_codes"] == [
+        {"code": "200", "description": "Server created."},
+        {"code": "400", "description": "Bad request."},
+    ]
+    assert sections["body"]["status_codes"] == []
 
 
 def test_document_of_another_service_is_not_served(scanned, session_factory):

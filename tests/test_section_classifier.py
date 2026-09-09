@@ -9,6 +9,7 @@ from tools.scanner.parsers.docutils.section import (
     classify_table_title,
     nested_parent_name,
 )
+from tools.shared.ir import SectionName
 
 
 # --------------------------------------------------------------------------- #
@@ -144,12 +145,15 @@ def test_legacy_nested_label_exposes_parent_name() -> None:
     assert nested_parent_name("Parameter description") is None
 
 
-def test_status_code_is_intentionally_ignored() -> None:
-    """Status-code tables aren't parameter tables — caller should skip them."""
-    assert (
-        classify_table_title("Status code", in_section=SectionKind.STATUS_CODES)
-        is TableTarget.INTENTIONALLY_IGNORED
-    )
+def test_status_code_table_routes_to_its_own_section() -> None:
+    """Status-code tables are not parameter tables, but they are no longer
+    thrown away either: they route to the section that holds them, wherever the
+    document happens to write them."""
+    for in_section in (SectionKind.STATUS_CODES, SectionKind.RESPONSE):
+        assert (
+            classify_table_title("Status code", in_section=in_section)
+            is SectionName.STATUS_CODES
+        )
 
 
 def test_untitled_table_is_unmapped() -> None:
