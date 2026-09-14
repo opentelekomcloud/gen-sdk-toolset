@@ -12,6 +12,10 @@ interface Props {
  * job reaches a terminal status. Renders nothing — it only drives cache
  * invalidation: a done job refreshes the full snapshot set, a failed one
  * only the service state and the aggregates that surface the error.
+ *
+ * Mounted by whichever page shows the scan - the service page and every
+ * scanning row of the registry - and keyed by job_id, so the same job is
+ * polled by one query however many rows or pages are watching it.
  */
 export function ScanJobWatcher({ serviceName, jobId }: Props) {
   const qc = useQueryClient();

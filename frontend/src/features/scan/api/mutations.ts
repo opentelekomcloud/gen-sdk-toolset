@@ -49,15 +49,19 @@ export function rescanMutation(qc: QueryClient, name: string, initiatedBy: strin
       void qc.invalidateQueries({ queryKey: keys.services() });
     },
     onSuccess: (res) => {
-      /* ScanJobWatcher (mounted by ServicePage, keyed by job_id) polls this
-         job via useJob and refreshes the panel on the terminal edge; here we
-         only record the job_id and refresh the list/summary views. */
+      /* ScanJobWatcher (mounted by whichever page shows the scan, keyed by
+         job_id) polls this job via useJob and refreshes the panel on the
+         terminal edge; here we only record the job_id and refresh the views
+         that change the moment a scan starts: the list, the summary, and the
+         attention band - a failed service stops counting as failed as soon as
+         its new job is the last one. */
       const cur = qc.getQueryData<ServiceDetail>(keys.service(name));
       if (cur?.scan_status === "scanning" && !cur.job_id) {
         qc.setQueryData<ServiceDetail>(keys.service(name), { ...cur, job_id: res.job_id });
       }
       void qc.invalidateQueries({ queryKey: keys.services() });
       void qc.invalidateQueries({ queryKey: keys.summary });
+      void qc.invalidateQueries({ queryKey: keys.attention });
     },
   };
 }

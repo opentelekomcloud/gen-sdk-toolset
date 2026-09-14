@@ -46,6 +46,19 @@ describe("rescanMutation: the optimistic flip and what undoes it", () => {
     expect(after?.initiated_by).toBe("ada@otc.test");
   });
 
+  it("marks the attention band stale the moment the scan is accepted", async () => {
+    // A failed service stops counting as failed as soon as its new job is the
+    // last one, so the band changes at scan start - not only at scan end.
+    const qc = new QueryClient();
+    qc.setQueryData(keys.service(NAME), SERVICE);
+    qc.setQueryData(keys.attention, [{ code: "failed", panel: "scan", label: "Failed", count: 1 }]);
+    respond(202, { job_id: 7 });
+
+    await rescan(qc);
+
+    expect(qc.getQueryState(keys.attention)?.isInvalidated).toBe(true);
+  });
+
   it("rolls the flip back when the panel refuses the caller", async () => {
     // 403 is what a viewer gets: the request never reached a scan, so the row
     // must not be left claiming one is running.
