@@ -6,6 +6,7 @@ import { useServices, useSummary, type ServicesParams } from "../api/queries";
 import type { ServiceListItem } from "../../../shared/api/types";
 import type { AttentionRuleCode, ServiceFilter, ServiceSort } from "../types";
 import { RescanButton } from "../components/RescanButton";
+import { ScanJobWatcher } from "../components/ScanJobWatcher";
 import { useSession } from "../../../shared/auth/useSession";
 import { SectionStrip } from "../components/SectionStrip";
 import { StatusPill } from "../components/StatusPill";
@@ -32,14 +33,21 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
   const rescan = useRescan(item.name);
   const { t } = useI18n();
   const outdated = item.scanner_version != null && item.scanner_version !== scannerVersion;
+  const scanning = item.scan_status === "scanning";
 
   return (
     <div
       className={`grid cursor-pointer grid-cols-12 items-center gap-3 border-b border-gray-100 px-4 py-2.5 transition last:border-0 hover:bg-gray-50 ${
-        item.scan_status === "scanning" ? "bg-blue-50/40" : ""
+        scanning ? "bg-blue-50/40" : ""
       }`}
       onClick={() => navigate(`/scan/services/${encodeURIComponent(item.name)}`)}
     >
+      {/* The row is the only thing on this page that knows a scan is running,
+          so it is what watches the job: without this, a scan started here (or
+          by someone else) would stay "scanning" until the next page load. */}
+      {scanning && item.job_id != null && (
+        <ScanJobWatcher key={item.job_id} serviceName={item.name} jobId={item.job_id} />
+      )}
       <div className="col-span-3 flex items-center gap-1.5 overflow-hidden">
         <ChevronRight size={14} className="shrink-0 text-gray-400" />
         <span className="truncate font-mono text-sm text-gray-800">{item.label}</span>
@@ -79,7 +87,7 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
           /* A viewer gets no reason, so no button - but the scanning indicator
              below still renders: who is scanning is information, not an action. */
           reason={canWrite ? item.rescan_reason : null}
-          scanning={item.scan_status === "scanning" ? { jobId: item.job_id, startedBy: item.initiated_by ?? undefined } : undefined}
+          scanning={scanning ? { jobId: item.job_id, startedBy: item.initiated_by ?? undefined } : undefined}
           scannerVersion={scannerVersion}
           /* guard double-fire: the optimistic flip lives in the detail cache,
              so the row keeps rendering the button until the list refetches */
