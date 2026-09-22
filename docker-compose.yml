@@ -22,6 +22,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
+      # Base images come from Artifactory: set ARTIFACTORY_URL in .env and
+      # `docker login` to it once - see DEPLOYMENT.md, "Building the images".
+      args:
+        ARTIFACTORY_URL: ${ARTIFACTORY_URL:?set ARTIFACTORY_URL in .env}
     ports:
       - "8000:8000"
     volumes:

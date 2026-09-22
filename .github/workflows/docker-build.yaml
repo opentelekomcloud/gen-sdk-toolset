@@ -1,9 +1,8 @@
 # Builds both images on every pull request without pushing them: a Dockerfile
 # that no longer builds is a red check here rather than a failed release.
 #
-# No registry and no secrets: the images are named locally, so the check runs
-# the same for a branch of this repository and for a fork, and a missing
-# organization secret cannot fail it. The registry is the release workflow's.
+# The base images come from the organization's Artifactory, so the build
+# needs the organization secrets - a pull request from a fork cannot run it.
 name: Docker Image Build
 
 on:
@@ -34,6 +33,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Login to Artifactory DHI
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ARTIFACTORY_URL }}
+          username: ${{ secrets.ARTIFACTORY_AUTH_USERNAME }}
+          password: ${{ secrets.ARTIFACTORY_AUTH_PASSWORD }}
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
@@ -55,3 +61,5 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           push: false
+          build-args: |
+            ARTIFACTORY_URL=${{ secrets.ARTIFACTORY_URL }}
