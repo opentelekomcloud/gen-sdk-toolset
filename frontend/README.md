@@ -36,7 +36,7 @@ configured the panel says so instead of offering a sign-in button that cannot
 work.
 
 The deployed image (`../Dockerfile.frontend`) bakes nothing in. It serves the
-bundle from nginx and writes `/config.js` at container start from
+bundle from nginx on port 8080 and writes `/config.js` at container start from
 `ZITADEL_ISSUER`, `ZITADEL_CLIENT_ID` and `ZITADEL_SCOPE`; the app reads that
 file before the `VITE_*` fallback (`src/shared/auth/config.ts`). One image, any
 deployment - changing the Zitadel application is a restart, not a rebuild.

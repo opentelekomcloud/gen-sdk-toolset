@@ -10,28 +10,40 @@ Authentication has its own document: [AUTHORIZATION.md](AUTHORIZATION.md).
 ## Images
 
 Both are built and pushed by CI on a tag or a release
-(`.github/workflows/docker-push-release.yaml`); a tag `v1.2.3` produces the
-pair below with the same version. The registry host comes from the
-organization variable `REGISTRY`, the push credentials from the organization
-secrets `REGISTRY_USER` and `REGISTRY_PASSWORD`. Deploy them together - the frontend's API
-types are generated from the backend's schema at that version.
+(`.github/workflows/docker-push-release.yaml`, after
+`opentelekomcloud-infra/circle-partner-navigator-frontend`); a tag `v1.2.3`
+produces the pair below with the same version. They go to SWR under
+`t-cloud-public`; the host and the credentials are the organization secrets
+`SWR_URL`, `SWR_USERNAME`, `SWR_PASSWORD`. Deploy them together - the
+frontend's API types are generated from the backend's schema at that version.
 
 | Image | Built from | Serves |
 |---|---|---|
-| `<registry>/opentelekomcloud/sdk-panel` | `Dockerfile.backend` | the API on port `8000`, and the scanner inside it |
-| `<registry>/opentelekomcloud/sdk-panel-frontend` | `Dockerfile.frontend` | the UI as static files on port `80` |
+| `<SWR>/t-cloud-public/sdk-panel` | `Dockerfile.backend` | the API on port `8000`, and the scanner inside it |
+| `<SWR>/t-cloud-public/sdk-panel-frontend` | `Dockerfile.frontend` | the UI as static files on port `8080`, as the nginx user (uid 101) |
+
+### Building the images
+
+The base images are Docker Hardened Images from the organization's
+Artifactory (`${ARTIFACTORY_URL}/dhi.io/python:3.13-dev`,
+`.../node:24-alpine-dev`, `.../nginx:1-alpine-dev`). Any build - CI, a laptop,
+`docker compose up --build` - needs the host as the build argument
+`ARTIFACTORY_URL` and a `docker login` to it. In CI both come from the
+organization secrets `ARTIFACTORY_URL`, `ARTIFACTORY_AUTH_USERNAME`,
+`ARTIFACTORY_AUTH_PASSWORD`; locally, `ARTIFACTORY_URL` goes into `.env` and
+the login is done once by hand.
 
 ## Components
 
 | Component | Image | Command | Replicas |
 |---|---|---|---|
 | backend | `sdk-panel` | the image default: `alembic upgrade head`, then `uvicorn` on `:8000` | **exactly 1** - see [Limits](#limits) |
-| frontend | `sdk-panel-frontend` | the image default: nginx on `:80` | any |
+| frontend | `sdk-panel-frontend` | the image default: nginx on `:8080` | any |
 | discovery | `sdk-panel` | `uv run panel discover` | one at a time, on a schedule |
 | PostgreSQL 16 | not shipped | - | provided by the platform |
 
-**Routing.** One host. `/api/*` goes to the backend, everything else to the
-frontend. The frontend image serves no `/api` itself (nginx answers `404`
+**Routing.** One host. `/api/*` goes to the backend (`:8000`), everything else to the
+frontend (`:8080`). The frontend image serves no `/api` itself (nginx answers `404`
 there), and the backend serves no UI. Same origin for both is what the
 `PANEL__FRONTEND_ORIGIN` setting below assumes.
 
@@ -149,10 +161,9 @@ Written down so that they are not surprises:
 
 The database is created empty by the migrations at the backend's first start.
 To populate it, run one discovery pass (registers every repository of the
-organization), then launch scans from the panel as a `worker` - or restore a
-dump of an existing panel database into the empty database **before** the
-backend's first start, so that its migrations run on top of the restored
-schema rather than creating a new one beside it.
+organization), then launch scans from the panel as a `worker`. Start from an
+empty database rather than a dump of an older panel: snapshots written before
+the eight-section document layout cannot be read back by this version.
 
 ## Smoke check
 
@@ -174,6 +185,6 @@ a local PostgreSQL and the Vite dev server instead of the nginx image; see the
 root README. The images themselves build locally with:
 
 ```bash
-docker build -f Dockerfile.backend  -t sdk-panel .
-docker build -f Dockerfile.frontend -t sdk-panel-frontend ./frontend
+docker build -f Dockerfile.backend  --build-arg ARTIFACTORY_URL=$ARTIFACTORY_URL -t sdk-panel .
+docker build -f Dockerfile.frontend --build-arg ARTIFACTORY_URL=$ARTIFACTORY_URL -t sdk-panel-frontend ./frontend
 ```

@@ -1,6 +1,15 @@
-FROM python:3.13-slim
+# The API, with the scanner inside it. Also the discovery CronJob's image.
+#
+# The base image comes from the organization's Artifactory mirror of Docker
+# Hardened Images, so a build needs ARTIFACTORY_URL and a `docker login` to
+# it - see DEPLOYMENT.md, "Building the images". The `-dev` variant is used
+# at runtime on purpose: the hardened runtime image has no shell, and this
+# container starts through one (migrations, then the server).
+ARG ARTIFACTORY_URL
+FROM ${ARTIFACTORY_URL}/dhi.io/python:3.13-dev
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# uv from PyPI rather than copied out of a third-party image.
+RUN pip install --no-cache-dir uv==0.8.17
 
 WORKDIR /app
 
