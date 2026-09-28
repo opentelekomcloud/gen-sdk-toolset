@@ -373,22 +373,86 @@ describe("a viewer", () => {
   });
 });
 
-describe("other resources on the mock", () => {
-  it("makes a custom action of an operation that is not base CRUD, and names a class after a resource with none prepared", async () => {
+describe("the spec of invoices v2 on the in-memory mock", () => {
+  it("makes a custom action of an operation that is not base CRUD, names a class after a resource with none prepared, and asks for the layout first", async () => {
     specPage("/generation/billing-api/spec/v2/v2_invoices");
 
-    expect(
-      await screen.findByText("Generation spec · Python SDK · v2 · 2 operations · 1 base · 1 custom · 1 class"),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+    // from the new docs and not confirmed yet
     expect(screen.getByText("new")).toBeInTheDocument();
+    expect(
+      screen.getByText("Generation spec · Python SDK · v2 · 2 operations · 1 base · 1 custom · 1 class"),
+    ).toBeInTheDocument();
+
+    const list = operation("List invoices (v2)");
+    expect(within(list).getByText("base")).toBeInTheDocument();
+    expect(within(list).getByText("GET")).toBeInTheDocument();
+    expect(within(list).getByText("/v2/billing/invoices")).toBeInTheDocument();
+    expect(within(list).getByText("invoices.list()")).toBeInTheDocument();
     const exportOp = operation("Export invoices as CSV");
     expect(within(exportOp).getByText("custom")).toBeInTheDocument();
+    expect(within(exportOp).getByText("POST")).toBeInTheDocument();
+    expect(within(exportOp).getByText("/v2/billing/invoices/export")).toBeInTheDocument();
     expect(within(exportOp).getByText("invoices.export()")).toBeInTheDocument();
-    expect(within(operation("List invoices (v2)")).getByText("invoices.list()")).toBeInTheDocument();
+    expect(within(exportOp).getByTitle("Open this document in the repository at the scanned commit")).toHaveAttribute(
+      "href",
+      "https://github.com/opentelekomcloud-docs/billing-api/blob/mockcommit/api-ref/source/v2/invoices/export-invoices.rst",
+    );
+
+    // no classes prepared for it, so the one the prototype falls back on: named after the resource, nothing to decide
     expect(within(cls("Invoice")).getByText("3 fields")).toBeInTheDocument();
+    expect(within(cls("Invoice")).queryByText(/to decide/)).toBeNull();
+    const id = field("Invoice", "id");
+    expect(within(id).getByTitle("String")).toBeInTheDocument();
+    expect(within(id).getByText("yes")).toBeInTheDocument();
+    expect(within(id).getByText("Resource ID")).toBeInTheDocument();
+    const name = field("Invoice", "name");
+    expect(within(name).getByTitle("String")).toBeInTheDocument();
+    expect(within(name).getByText("—")).toBeInTheDocument();
+    expect(within(name).getByText("Human-readable name")).toBeInTheDocument();
+    const createdAt = field("Invoice", "created_at");
+    expect(within(createdAt).getByTitle("DateTime")).toBeInTheDocument();
+    expect(within(createdAt).getByText("Creation timestamp")).toBeInTheDocument();
+    for (const f of [id, name, createdAt]) {
+      expect(f.firstElementChild).toHaveClass("bg-white");
+      expect(within(f).queryByRole("button")).toBeNull();
+    }
+
+    // never generated: only the layout holds it
+    expect(screen.queryByRole("link", { name: /in review|generating|merged|failed/ })).toBeNull();
     expect(generateButton()).toBeDisabled();
+    expect(screen.getByText("confirm the layout first")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute("href", "/generation/billing-api/layout");
+    expect(screen.queryByText(/^decide the/)).toBeNull();
   });
 
+  it("is offered for generation as soon as its layout is confirmed, and on Ansible modules waits on Python SDK", async () => {
+    confirmResource("billing-api", "v2_invoices", "valeriia");
+    const { unmount } = specPage("/generation/billing-api/spec/v2/v2_invoices?target=ansible");
+
+    expect(await screen.findByText("waits on Python SDK")).toBeInTheDocument();
+    expect(generateButton()).toHaveTextContent("Generate for Ansible modules");
+    expect(generateButton()).toBeDisabled();
+    unmount();
+
+    specPage("/generation/billing-api/spec/v2/v2_invoices");
+
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+    expect(screen.getByText("confirmed")).toBeInTheDocument();
+    expect(screen.queryByText(/first$/)).toBeNull();
+    expect(generateButton()).toBeEnabled();
+
+    fireEvent.click(generateButton());
+
+    await waitFor(() =>
+      expect(generationResources("billing-api").find((r) => r.id === "v2_invoices")?.jobs).toEqual({
+        python: { status: "running", pr: null },
+      }),
+    );
+  });
+});
+
+describe("other resources on the mock", () => {
   it("holds Generate for a resource whose layout is not confirmed, before its open fields, and leads to the layout", async () => {
     specPage("/generation/billing-api/spec/v1/v1_payments");
 
@@ -509,6 +573,29 @@ describe("the way in and out", () => {
 
     await waitFor(() => expect(location()).toBe("/generation/billing-api/result/v1/v1_payments"));
     expect(generationResources("billing-api").find((r) => r.id === "v1_payments")?.jobs.python).toEqual({
+      status: "running",
+      pr: null,
+    });
+  });
+
+  it("confirms invoices v2, opens its spec from the card and starts the generation with nothing to decide", async () => {
+    panel("/generation/billing-api/layout");
+
+    const v2 = await screen.findByRole("region", { name: "v2" });
+    fireEvent.click(within(within(v2).getByRole("group", { name: "invoices" })).getByRole("button", { name: "Confirm layout" }));
+    await within(within(v2).getByRole("group", { name: "invoices" })).findByText("confirmed");
+    fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
+    fireEvent.click(await screen.findByRole("link", { name: "Generate" }));
+
+    expect(location()).toBe("/generation/billing-api/spec/v2/v2_invoices");
+    expect(
+      await screen.findByText("Generation spec · Python SDK · v2 · 2 operations · 1 base · 1 custom · 1 class"),
+    ).toBeInTheDocument();
+    expect(generateButton()).toBeEnabled();
+    fireEvent.click(generateButton());
+
+    await waitFor(() => expect(location()).toBe("/generation/billing-api/result/v2/v2_invoices"));
+    expect(generationResources("billing-api").find((r) => r.id === "v2_invoices")?.jobs.python).toEqual({
       status: "running",
       pr: null,
     });
