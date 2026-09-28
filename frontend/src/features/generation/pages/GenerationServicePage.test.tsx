@@ -106,6 +106,33 @@ describe("the billing-api card on the in-memory mock", () => {
     expect(screen.getAllByText("waits on Python SDK")).toHaveLength(2);
   });
 
+  it("holds every resource on Ansible modules until Python SDK merges it, and shows none of Python's jobs", async () => {
+    cardPage("/generation/billing-api?target=ansible");
+
+    const ansible = await screen.findByRole("button", { name: /^Ansible modules/ });
+    expect(ansible).toHaveAttribute("aria-pressed", "true");
+    expect(ansible.querySelector("[style]")).toHaveStyle({ width: "0%" });
+    expect(targetButton("Python SDK")).toHaveAttribute("aria-pressed", "false");
+    expect(targetButton("Python SDK")).toHaveTextContent("0 / 4 merged");
+    expect(
+      screen.getByText("Ansible modules is built on Python SDK — a resource opens up here once it is merged there."),
+    ).toBeInTheDocument();
+    // the coverage card and the table's column
+    expect(screen.getAllByText("Ansible modules")).toHaveLength(2);
+
+    // invoices is in review on Python SDK: that job is not Ansible's, and it is not merged anywhere
+    expect(screen.getByText("4 endpoints · layout confirmed by valeriia")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /in review/ })).toBeNull();
+    // the unconfirmed layout is named before the base target, with the way into the layout on this target
+    expect(screen.getAllByText("confirm the layout first")).toHaveLength(3);
+    const fixes = screen.getAllByRole("link", { name: "edit layout" });
+    expect(fixes).toHaveLength(3);
+    for (const link of fixes) expect(link).toHaveAttribute("href", "/generation/billing-api/layout?target=ansible");
+    // waiting on Python SDK comes before Ansible not being connected
+    expect(screen.queryByText("Ansible modules not connected yet")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+  });
+
   it("names misc's endpoint not recognized in full once its layout is confirmed", async () => {
     const confirmed = generationResources("billing-api").map((r) =>
       r.name === "misc" ? { ...r, confirmedBy: "valeriia" } : r,
