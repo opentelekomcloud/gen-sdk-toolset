@@ -561,6 +561,123 @@ describe("the spec of addresses in customer-core on the in-memory mock", () => {
   });
 });
 
+describe("the spec of subscriptions in notifications-hub on the in-memory mock", () => {
+  it("makes base operations of a list and a create, names its class Subscription, and asks for the layout first", async () => {
+    specPage("/generation/notifications-hub/spec/v1/n_subscriptions");
+
+    expect(await screen.findByRole("heading", { name: "notifications_hub.subscriptions" })).toBeInTheDocument();
+    // laid out by the scanner and not confirmed yet
+    expect(screen.getByText("auto")).toBeInTheDocument();
+    expect(
+      screen.getByText("Generation spec · Python SDK · v1 · 2 operations · 2 base · 0 custom · 1 class"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "notifications-hub layout" })).toHaveAttribute(
+      "href",
+      "/generation/notifications-hub",
+    );
+
+    const list = operation("List subscriptions");
+    expect(within(list).getByText("base")).toBeInTheDocument();
+    expect(within(list).getByText("GET")).toBeInTheDocument();
+    expect(within(list).getByText("/v1/notifications/subscriptions")).toBeInTheDocument();
+    expect(within(list).getByText("subscriptions.list()")).toBeInTheDocument();
+    expect(within(list).getByTitle("Open this document in the repository at the scanned commit")).toHaveAttribute(
+      "href",
+      "https://github.com/opentelekomcloud-docs/notifications-hub/blob/mockcommit/api-ref/source/subscriptions/list-subscriptions.rst",
+    );
+    // a POST on the collection is a create, though its title says subscribe
+    const create = operation("Subscribe to a topic");
+    expect(within(create).getByText("base")).toBeInTheDocument();
+    expect(within(create).getByText("POST")).toBeInTheDocument();
+    expect(within(create).getByText("/v1/notifications/subscriptions")).toBeInTheDocument();
+    expect(within(create).getByText("subscriptions.create()")).toBeInTheDocument();
+    expect(within(create).getByTitle("Open this document in the repository at the scanned commit")).toHaveAttribute(
+      "href",
+      "https://github.com/opentelekomcloud-docs/notifications-hub/blob/mockcommit/api-ref/source/subscriptions/create-subscription.rst",
+    );
+
+    // no classes prepared for it: the one named after the resource, "subscriptions" losing its "s"
+    expect(screen.getAllByRole("region")).toHaveLength(1);
+    expect(within(cls("Subscription")).getByText("3 fields")).toBeInTheDocument();
+    expect(within(cls("Subscription")).queryByText(/to decide/)).toBeNull();
+    for (const [name, type, req, description] of [
+      ["id", "String", "yes", "Resource ID"],
+      ["name", "String", "—", "Human-readable name"],
+      ["created_at", "DateTime", "—", "Creation timestamp"],
+    ] as const) {
+      const f = field("Subscription", name);
+      expect(within(f).getByTitle(type)).toBeInTheDocument();
+      expect(within(f).getByText(req)).toBeInTheDocument();
+      expect(within(f).getByText(description)).toBeInTheDocument();
+      expect(f.firstElementChild).toHaveClass("bg-white");
+      expect(within(f).queryByRole("button")).toBeNull();
+    }
+
+    // never generated: only the layout holds it, and topics' merged job is not its own
+    expect(screen.queryByRole("link", { name: /in review|generating|merged|failed/ })).toBeNull();
+    expect(generateButton()).toBeDisabled();
+    expect(screen.getByText("confirm the layout first")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute(
+      "href",
+      "/generation/notifications-hub/layout",
+    );
+    expect(screen.queryByText(/^decide the/)).toBeNull();
+    expect(screen.queryByText(/Dependencies/)).toBeNull();
+  });
+
+  it("asks for the layout first on Ansible modules too, and waits on Python SDK once it is confirmed", async () => {
+    const { unmount } = specPage("/generation/notifications-hub/spec/v1/n_subscriptions?target=ansible");
+
+    expect(
+      await screen.findByText("Generation spec · Ansible modules · v1 · 2 operations · 2 base · 0 custom · 1 class"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("confirm the layout first")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute(
+      "href",
+      "/generation/notifications-hub/layout?target=ansible",
+    );
+    expect(generateButton()).toHaveTextContent("Generate for Ansible modules");
+    expect(generateButton()).toBeDisabled();
+    unmount();
+
+    confirmResource("notifications-hub", "n_subscriptions", "valeriia");
+    specPage("/generation/notifications-hub/spec/v1/n_subscriptions?target=ansible");
+
+    expect(await screen.findByText("waits on Python SDK")).toBeInTheDocument();
+    expect(screen.getByText("confirmed")).toBeInTheDocument();
+    expect(generateButton()).toBeDisabled();
+    expect(screen.getByRole("link", { name: "notifications-hub layout" })).toHaveAttribute(
+      "href",
+      "/generation/notifications-hub?target=ansible",
+    );
+  });
+
+  it("is offered for generation once its layout is confirmed, and its job puts notifications-hub in progress", async () => {
+    confirmResource("notifications-hub", "n_subscriptions", "valeriia");
+    specPage("/generation/notifications-hub/spec/v1/n_subscriptions");
+
+    expect(await screen.findByRole("heading", { name: "notifications_hub.subscriptions" })).toBeInTheDocument();
+    expect(screen.getByText("confirmed")).toBeInTheDocument();
+    expect(screen.queryByText(/first$/)).toBeNull();
+
+    fireEvent.click(generateButton());
+
+    await waitFor(() =>
+      expect(generationResources("notifications-hub").find((r) => r.id === "n_subscriptions")?.jobs).toEqual({
+        python: startedJob,
+      }),
+    );
+    expectJustNow("notifications-hub", "n_subscriptions");
+    // topics stays merged; the running job takes the service out of Partial, the merged count stays
+    expect(generationResources("notifications-hub").find((r) => r.id === "n_topics")?.jobs.python?.status).toBe("merged");
+    expect(generationServices().find((s) => s.name === "notifications-hub")?.targets.python).toEqual({
+      state: "in_progress",
+      merged: 1,
+      total: 2,
+    });
+  });
+});
+
 describe("other resources on the mock", () => {
   it("holds Generate for a resource whose layout is not confirmed, before its open fields, and leads to the layout", async () => {
     specPage("/generation/billing-api/spec/v1/v1_payments");
@@ -737,6 +854,33 @@ describe("the way in and out", () => {
 
     await waitFor(() => expect(location()).toBe("/generation/customer-core/result/v1/c_addresses"));
     expect(generationResources("customer-core").find((r) => r.id === "c_addresses")?.jobs.python).toEqual(startedJob);
+  });
+
+  it("confirms subscriptions in notifications-hub, opens its spec from the card and starts the generation", async () => {
+    panel("/generation/notifications-hub/layout");
+
+    // topics is merged and left out of the editor: subscriptions is the only resource there
+    const v1 = await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(
+      within(within(v1).getByRole("group", { name: "subscriptions" })).getByRole("button", { name: "Confirm layout" }),
+    );
+    await within(within(v1).getByRole("group", { name: "subscriptions" })).findByText("confirmed");
+    fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
+    // the only Generate on the card: topics shows its merged job
+    fireEvent.click(await screen.findByRole("link", { name: "Generate" }));
+
+    expect(location()).toBe("/generation/notifications-hub/spec/v1/n_subscriptions");
+    expect(await screen.findByRole("heading", { name: "notifications_hub.subscriptions" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Generation spec · Python SDK · v1 · 2 operations · 2 base · 0 custom · 1 class"),
+    ).toBeInTheDocument();
+    expect(generateButton()).toBeEnabled();
+    fireEvent.click(generateButton());
+
+    await waitFor(() => expect(location()).toBe("/generation/notifications-hub/result/v1/n_subscriptions"));
+    expect(generationResources("notifications-hub").find((r) => r.id === "n_subscriptions")?.jobs.python).toEqual(
+      startedJob,
+    );
   });
 
   it("leads back to the card", async () => {
