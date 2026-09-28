@@ -335,6 +335,186 @@ describe("the billing-api layout on the in-memory mock", () => {
   });
 });
 
+describe("the customer-core layout on the in-memory mock", () => {
+  const customerCore = "/generation/customer-core/layout";
+
+  it("shows what is left to lay out in v1, and says the merged resource moved on", async () => {
+    layoutPage(customerCore);
+
+    expect(await screen.findByRole("heading", { name: "customer-core" })).toBeInTheDocument();
+    // the merged resource still counts at the top, not in its version
+    expect(screen.getByText("needs confirmation")).toBeInTheDocument();
+    expect(
+      screen.getByText("Shared layout · 1 version · 3 resources · 8 endpoints · 1 of 3 resources confirmed"),
+    ).toBeInTheDocument();
+    expect(within(version("v1")).getByText("2 resources · 4 endpoints")).toBeInTheDocument();
+    expect(within(version("v1")).getByText("1 resource fully merged — moved to Maintenance")).toBeInTheDocument();
+    // the prototype's way into Maintenance is gone with the tab (owner decision)
+    expect(screen.queryByRole("button", { name: /moved to Maintenance/ })).toBeNull();
+    expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
+    expect(screen.queryByText("List customers")).toBeNull();
+    expect(within(version("v1")).getAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual([
+      "contacts",
+      "addresses",
+    ]);
+
+    const contacts = resource("v1", "contacts");
+    expect(within(contacts).getByText("2 endpoints")).toBeInTheDocument();
+    expect(within(contacts).getByText("auto")).toBeInTheDocument();
+    expect(within(contacts).queryByText(/^confirmed by/)).toBeNull();
+    expect(within(contacts).getByText("List contacts of a customer")).toBeInTheDocument();
+    expect(within(contacts).getByText("Add a contact")).toBeInTheDocument();
+
+    const addresses = resource("v1", "addresses");
+    expect(within(addresses).getByText("2 endpoints")).toBeInTheDocument();
+    expect(within(addresses).getByText("new")).toBeInTheDocument();
+    expect(within(addresses).queryByText(/^confirmed by/)).toBeNull();
+    const patch = endpointRow("Update an address");
+    expect(within(patch).getByText("PATCH")).toBeInTheDocument();
+    expect(within(patch).getByText("/v1/customers/{customer_id}/addresses/{address_id}")).toBeInTheDocument();
+    expect(within(patch).getByTitle("Open this document in the repository at the scanned commit")).toHaveAttribute(
+      "href",
+      "https://github.com/opentelekomcloud-docs/customer-core/blob/mockcommit/api-ref/source/addresses/update-address.rst",
+    );
+    for (const scope of [contacts, addresses]) {
+      for (const name of ["Confirm layout", "Rename resource", "Reset to auto"]) {
+        expect(button(scope, name)).toBeInTheDocument();
+      }
+    }
+    // every document of customer-core is recognized in full
+    expect(screen.queryByTitle(/^Not recognized in full/)).toBeNull();
+
+    for (const link of screen.getAllByRole("link", { name: "Back to generation" })) {
+      expect(link).toHaveAttribute("href", "/generation/customer-core");
+    }
+  });
+
+  it("shows a failed job without freezing the resource", async () => {
+    layoutPage(customerCore);
+
+    const contacts = await within(await screen.findByRole("region", { name: "v1" })).findByRole("group", {
+      name: "contacts",
+    });
+    expect(within(contacts).getByText("failed · Python SDK")).toHaveAttribute(
+      "title",
+      "The last Python SDK job failed and wrote nothing — the layout stays editable, retry from the error screen.",
+    );
+    expect(button(contacts, "Confirm layout")).toBeInTheDocument();
+    expect(within(resource("v1", "addresses")).getByText("new")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
+  });
+
+  it("hides the merged resource whatever target the card was on: hiding goes by the connected targets", async () => {
+    layoutPage(`${customerCore}?target=ansible`);
+
+    expect(
+      await within(await screen.findByRole("region", { name: "v1" })).findByText("2 resources · 4 endpoints"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
+    expect(within(resource("v1", "contacts")).getByText("failed · Python SDK")).toBeInTheDocument();
+    for (const link of screen.getAllByRole("link", { name: "Back to generation" })) {
+      expect(link).toHaveAttribute("href", "/generation/customer-core?target=ansible");
+    }
+  });
+
+  it("moves an endpoint between the resources left, the failed one too", async () => {
+    layoutPage(customerCore);
+
+    await screen.findByRole("heading", { name: "customer-core" });
+    expect(endpointRow("Add a contact")).toHaveAttribute("draggable", "true");
+    dragTo("List addresses", resource("v1", "contacts"));
+
+    const contacts = resource("v1", "contacts");
+    expect(await within(contacts).findByText("List addresses")).toBeInTheDocument();
+    expect(within(contacts).getByText("3 endpoints")).toBeInTheDocument();
+    expect(within(resource("v1", "addresses")).getByText("1 endpoint")).toBeInTheDocument();
+    expect(within(version("v1")).getByText("2 resources · 4 endpoints")).toBeInTheDocument();
+    expect(within(contacts).getByText("failed · Python SDK")).toBeInTheDocument();
+    expect(generationResources("customer-core").find((r) => r.id === "c_contacts")?.endpoints.map((e) => e.id)).toEqual(
+      ["c5", "c6", "c7"],
+    );
+  });
+
+  it("takes the merged resource's name as taken in its version, though it is not shown", async () => {
+    layoutPage(customerCore);
+
+    await screen.findByRole("heading", { name: "customer-core" });
+    fireEvent.click(button(resource("v1", "contacts"), "Rename resource"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Rename resource" }), { target: { value: "customers" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(screen.getByText("A resource with this name already exists in v1.")).toBeInTheDocument();
+    expect(generationResources("customer-core").find((r) => r.id === "c_contacts")?.name).toBe("contacts");
+    expect(screen.queryByText("Layout edited · saved on the service")).toBeNull();
+  });
+
+  it("confirms the failed resource and the new one; the failed job stays shown and the layout is confirmed", async () => {
+    layoutPage(customerCore);
+
+    await screen.findByRole("heading", { name: "customer-core" });
+    fireEvent.click(button(resource("v1", "contacts"), "Confirm layout"));
+
+    const contacts = resource("v1", "contacts");
+    expect(await within(contacts).findByText("confirmed")).toBeInTheDocument();
+    expect(within(contacts).getByText(/^confirmed by ada@otc\.test · \d\d\/\d\d\/\d{4}, \d\d:\d\d$/)).toBeInTheDocument();
+    expect(within(contacts).getByText("failed · Python SDK")).toBeInTheDocument();
+    expect(within(contacts).queryByRole("button", { name: "Confirm layout" })).toBeNull();
+    expect(screen.getByText(/· 2 of 3 resources confirmed$/)).toBeInTheDocument();
+    expect(screen.getByText("needs confirmation")).toBeInTheDocument();
+
+    fireEvent.click(button(resource("v1", "addresses"), "Confirm layout"));
+
+    expect(await within(resource("v1", "addresses")).findByText("confirmed")).toBeInTheDocument();
+    expect(screen.getByText("layout confirmed")).toBeInTheDocument();
+    expect(
+      screen.getByText("Shared layout · 1 version · 3 resources · 8 endpoints · 3 of 3 resources confirmed"),
+    ).toBeInTheDocument();
+    const recorded = generationResources("customer-core");
+    expect(recorded.map((r) => r.confirmedBy)).toEqual(["ivan", "ada@otc.test", "ada@otc.test"]);
+    expect(recorded.find((r) => r.id === "c_contacts")?.jobs.python?.status).toBe("failed");
+  });
+
+  it("resets v1 around the merged resource: the one from new docs stays, the one made by hand goes", async () => {
+    layoutPage(customerCore);
+
+    await screen.findByRole("heading", { name: "customer-core" });
+    fireEvent.click(button(resource("v1", "contacts"), "Confirm layout"));
+    await within(resource("v1", "contacts")).findByText("confirmed");
+    fireEvent.click(button(resource("v1", "addresses"), "Rename resource"));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "postal" } });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    await within(version("v1")).findByRole("group", { name: "postal" });
+    dragTo("Add a contact", resource("v1", "postal"));
+    await within(resource("v1", "postal")).findByText("Add a contact");
+    fireEvent.click(button(version("v1"), "New resource"));
+    await within(version("v1")).findByRole("group", { name: "new_resource_1" });
+
+    // the version's own button, ahead of its resources' ones
+    fireEvent.click(within(version("v1")).getAllByRole("button", { name: "Reset to auto" })[0]);
+
+    expect(await within(version("v1")).findByRole("group", { name: "addresses" })).toBeInTheDocument();
+    expect(within(version("v1")).queryByRole("group", { name: "new_resource_1" })).toBeNull();
+    expect(within(version("v1")).queryByRole("group", { name: "postal" })).toBeNull();
+    const addresses = resource("v1", "addresses");
+    expect(within(addresses).getByText("new")).toBeInTheDocument();
+    expect(within(addresses).getByText("2 endpoints")).toBeInTheDocument();
+    const contacts = resource("v1", "contacts");
+    expect(within(contacts).getByText("auto")).toBeInTheDocument();
+    expect(within(contacts).getByText("Add a contact")).toBeInTheDocument();
+    expect(within(contacts).getByText("failed · Python SDK")).toBeInTheDocument();
+    expect(button(contacts, "Confirm layout")).toBeInTheDocument();
+    // the merged resource is left as it was, and still out of sight
+    expect(within(version("v1")).getByText("1 resource fully merged — moved to Maintenance")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
+    const customers = generationResources("customer-core").find((r) => r.id === "c_customers");
+    expect(customers?.endpoints).toHaveLength(4);
+    expect(customers?.confirmedBy).toBe("ivan");
+    expect(
+      screen.getByText("Shared layout · 1 version · 3 resources · 8 endpoints · 1 of 3 resources confirmed"),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("a viewer", () => {
   it("reads the layout, but is offered no way to change it", async () => {
     session.token = tokenWithRoles("viewer");
@@ -429,21 +609,6 @@ describe("other services on the mock", () => {
     expect(within(version("v1")).getByText("1 resource fully merged — moved to Maintenance")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "topics" })).toBeNull();
     expect(resource("v1", "subscriptions")).toBeInTheDocument();
-  });
-
-  it("shows a failed job without freezing the resource", async () => {
-    layoutPage("/generation/customer-core/layout");
-
-    const contacts = await within(await screen.findByRole("region", { name: "v1" })).findByRole("group", {
-      name: "contacts",
-    });
-    expect(within(contacts).getByText("failed · Python SDK")).toHaveAttribute(
-      "title",
-      "The last Python SDK job failed and wrote nothing — the layout stays editable, retry from the error screen.",
-    );
-    expect(button(contacts, "Confirm layout")).toBeInTheDocument();
-    expect(within(resource("v1", "addresses")).getByText("new")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
   });
 
   it("lays out device-mgmt, scanned in part, from its documents, and marks the ones not recognized in full", async () => {
