@@ -13,7 +13,7 @@ import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
 import { LayoutBadge } from "../components/LayoutBadge";
 import { PageNotFound } from "../components/PageNotFound";
-import { holdOf } from "../lib/layout";
+import { holdOf, undecided } from "../lib/layout";
 import { listPath, servicePath, type FromSpec } from "../lib/paths";
 import {
   RefusalBanner,
@@ -31,9 +31,6 @@ const KIND_CLS: Record<GenOperationKind, string> = {
   base: "border-blue-200 bg-blue-50 text-blue-700",
   custom: "border-purple-200 bg-purple-50 text-purple-700",
 };
-
-/** A field whose problem nobody has decided yet. */
-const undecided = (f: GenField) => f.issue != null && f.issue.choice == null;
 
 /**
  * A field of a class, and under it - when opened - its problem: what is wrong,
@@ -263,11 +260,7 @@ export function GenerationSpecPage() {
           <JobTag job={job} to={resultTo} state={toResult} />
         ) : (
           <div className="flex flex-wrap items-center gap-3">
-            {hold ? (
-              <HoldReason hold={hold} target={target} layoutTo={pathTo(["layout"])} state={fromList} />
-            ) : (
-              open > 0 && <span className="text-[11px] text-gray-400">{t("gen.spec.decideFirst", { n: open })}</span>
-            )}
+            <HoldReason hold={hold} open={open} target={target} layoutTo={pathTo(["layout"])} state={fromList} />
             {canWrite && (
               <button
                 type="button"

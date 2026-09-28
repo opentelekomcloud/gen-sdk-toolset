@@ -8,9 +8,11 @@ import {
   confirmResource,
   generationAttention,
   generationResources,
+  generationSpec,
   liveCall,
   refreshPullRequest,
   resetGenerationMock,
+  startGeneration,
 } from "../data/mock";
 import { GenerationResultPage } from "./GenerationResultPage";
 import { GenerationServicePage } from "./GenerationServicePage";
@@ -52,7 +54,7 @@ function resultPage(path = "/generation/billing-api/result/v1/v1_invoices", seed
 }
 
 /** The card, the spec and the result under their own routes, so each can be left for the next. */
-function panel(path: string) {
+function panel(path: string, seed: [readonly unknown[], unknown][] = []) {
   return renderPage(
     <>
       <Routes>
@@ -62,7 +64,7 @@ function panel(path: string) {
       </Routes>
       <Location />
     </>,
-    { path, route: "*" },
+    { path, route: "*", seed },
   );
 }
 
@@ -272,6 +274,7 @@ describe("the result of invoices v1: its pull request in review", () => {
       startedAt: "2026-08-11T14:20:00Z",
       mergedBy: "valeriia",
       mergedAt: "2026-08-12T09:24:00Z",
+      error: null,
     });
     expect(generationAttention().find((r) => r.code === "gen_review")).toBeUndefined();
   });
@@ -291,6 +294,7 @@ describe("the result of invoices v1: its pull request in review", () => {
                 startedAt: "2026-08-12T08:00:00Z",
                 mergedBy: null,
                 mergedAt: null,
+                error: null,
               },
             },
           }
@@ -317,9 +321,146 @@ describe("the result of invoices v1: its pull request in review", () => {
   });
 });
 
+const CONTACTS = "/generation/customer-core/result/v1/c_contacts";
+const LLM_ERROR = "LLM backend unavailable — ollama refused the connection after 3 retries";
+const FAILED_HINT =
+  "Nothing was written and no pull request was opened. The layout and its confirmations are untouched — retry once the LLM backend answers again.";
+const contactsJob = () => generationResources("customer-core").find((r) => r.id === "c_contacts")?.jobs.python;
+
+describe("the result of contacts: its generation failed", () => {
+  it("says the generation failed, what went wrong and that nothing was written, and offers to retry", async () => {
+    resultPage(CONTACTS);
+
+    expect(await screen.findByRole("heading", { name: "customer_core.contacts" })).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("Python SDK")).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`^job #2094 · started by ivan · ${DATE}$`))).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "customer-core layout" })).toHaveAttribute(
+      "href",
+      "/generation/customer-core",
+    );
+
+    expect(screen.getByText("Generation failed — LLM backend unavailable")).toBeInTheDocument();
+    expect(screen.getByText(LLM_ERROR)).toBeInTheDocument();
+    expect(screen.getByText(FAILED_HINT)).toBeInTheDocument();
+    // ivan confirmed the layout before the generation he started (owner decision), so nothing holds a retry
+    expect(screen.getByRole("button", { name: "Retry generation" })).toBeEnabled();
+    expect(screen.queryByText("confirm the layout first")).toBeNull();
+    expect(screen.queryByText(/highlighted field/)).toBeNull();
+
+    // nothing was opened, so there is nothing to review or call
+    expect(screen.queryByRole("link", { name: /^PR #/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Refresh PR state" })).toBeNull();
+    expect(screen.queryByText("Live check")).toBeNull();
+    expect(screen.queryByText(/^Generating —/)).toBeNull();
+  });
+
+  it("retries: a new job runs in place of the failed one, started by the signed-in user", async () => {
+    resultPage(CONTACTS);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Retry generation" }));
+
+    expect(await screen.findByText("In progress")).toBeInTheDocument();
+    expect(screen.getByText("Generating — job #2101")).toBeInTheDocument();
+    expect(screen.getByText("generation job started just now")).toBeInTheDocument();
+    expect(screen.queryByText("Generation failed — LLM backend unavailable")).toBeNull();
+    expect(screen.queryByText(LLM_ERROR)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry generation" })).toBeNull();
+    expect(location()).toBe(CONTACTS);
+
+    expect(contactsJob()).toEqual({
+      id: 2101,
+      status: "running",
+      pr: null,
+      startedBy: "ada@otc.test",
+      startedAt: expect.any(String),
+      mergedBy: null,
+      mergedAt: null,
+      error: null,
+    });
+    // the band no longer counts it as failed
+    expect(generationAttention().find((r) => r.code === "gen_failed")).toBeUndefined();
+  });
+
+  it("holds a retry for what holds Generate on the spec, and names the first reason beside it", async () => {
+    const unconfirmed = generationResources("customer-core").map((r) =>
+      r.id === "c_contacts" ? { ...r, confirmedBy: null, confirmedAt: null } : r,
+    );
+    const { unmount } = panel(CONTACTS, [[keys.genResources("customer-core"), unconfirmed]]);
+
+    expect(await screen.findByText(LLM_ERROR)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry generation" })).toBeDisabled();
+    expect(screen.getByText("confirm the layout first")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "edit layout" }));
+    expect(location()).toBe("/generation/customer-core/layout");
+    unmount();
+
+    // confirmed, but a field of its class is left to decide
+    const spec = generationSpec("customer-core", "c_contacts");
+    const [contact] = spec.classes;
+    const issue = {
+      problem: "unknown_type" as const,
+      text: "Type not recognized",
+      options: [{ type: "String", note: "keep the raw value" }],
+      docs: [],
+      choice: null,
+    };
+    const open = {
+      ...spec,
+      classes: [{ ...contact, fields: contact.fields.map((f) => (f.name === "name" ? { ...f, issue } : f)) }],
+    };
+    resultPage(CONTACTS, [[keys.genSpec("customer-core", "c_contacts"), open]]);
+
+    expect(await screen.findByText("decide the highlighted field first")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry generation" })).toBeDisabled();
+    expect(screen.queryByText("confirm the layout first")).toBeNull();
+    expect(contactsJob()).toMatchObject({ id: 2094, status: "failed", error: LLM_ERROR });
+  });
+
+  it("says why a retry was refused, and picks the job up as it is now", async () => {
+    // the page still shows the failed job; meanwhile ivan has retried it
+    const failed = generationResources("customer-core");
+    startGeneration("customer-core", "c_contacts", "python", "ivan");
+    resultPage(CONTACTS, [[keys.genResources("customer-core"), failed]]);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Retry generation" }));
+
+    expect(await screen.findByText("That did not go through")).toBeInTheDocument();
+    expect(screen.getByText("contacts is generating on Python SDK")).toBeInTheDocument();
+    // the refusal fetches the jobs again: ivan's is the one shown now, and nobody's replaced it
+    expect(await screen.findByText("Generating — job #2101")).toBeInTheDocument();
+    expect(screen.queryByText(LLM_ERROR)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry generation" })).toBeNull();
+    expect(contactsJob()).toMatchObject({ id: 2101, status: "running", startedBy: "ivan" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => expect(screen.queryByText("That did not go through")).toBeNull());
+  });
+
+  it("opens from the failed job on the card and leads back to it", async () => {
+    panel("/generation/customer-core");
+
+    fireEvent.click(await screen.findByRole("link", { name: "failed" }));
+
+    expect(location()).toBe(CONTACTS);
+    expect(await screen.findByText(LLM_ERROR)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "customer-core layout" }));
+    expect(location()).toBe("/generation/customer-core");
+  });
+});
+
 describe("a viewer", () => {
   beforeEach(() => {
     session.token = tokenWithRoles("viewer");
+  });
+
+  it("reads why a generation failed, but is not offered to retry it", async () => {
+    resultPage(CONTACTS);
+
+    expect(await screen.findByText("Generation failed — LLM backend unavailable")).toBeInTheDocument();
+    expect(screen.getByText(LLM_ERROR)).toBeInTheDocument();
+    expect(screen.getByText(FAILED_HINT)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry generation" })).toBeNull();
   });
 
   it("reads the pull request and may call the GET operations, but is not offered to pick up its state", async () => {
@@ -358,16 +499,6 @@ describe("other results on the mock", () => {
       "href",
       "/generation/billing-api/spec/v2/v2_invoices",
     );
-  });
-
-  it("shows the job of a failed generation", async () => {
-    resultPage("/generation/customer-core/result/v1/c_contacts");
-
-    expect(await screen.findByRole("heading", { name: "customer_core.contacts" })).toBeInTheDocument();
-    expect(screen.getByText("Failed")).toBeInTheDocument();
-    expect(screen.getByText(new RegExp(`^job #2094 · started by ivan · ${DATE}$`))).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /^PR #/ })).toBeNull();
-    expect(screen.queryByText("Live check")).toBeNull();
   });
 
   it("shows a resource merged before, with who merged it", async () => {

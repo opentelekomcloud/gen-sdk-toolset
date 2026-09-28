@@ -349,6 +349,10 @@ export const de: Record<keyof typeof en, string> = {
   "gen.result.refreshHint": "Den Status des Pull Requests von GitHub abholen",
   "gen.result.running": "Wird generiert — Job #{id}",
   "gen.result.runningHint": "Templates werden gerendert, FIXME-Platzhalter aufgelöst, ein Pull Request wird geöffnet…",
+  "gen.result.failed": "Generierung fehlgeschlagen — LLM-Backend nicht erreichbar",
+  "gen.result.failedHint":
+    "Es wurde nichts geschrieben und kein Pull Request geöffnet. Das Layout und seine Bestätigungen bleiben unverändert — erneut versuchen, sobald das LLM-Backend wieder antwortet.",
+  "gen.result.retry": "Generierung wiederholen",
   "gen.result.mergedNote":
     "Gemergt — diese Ressource hat die Generierung verlassen und wird jetzt im Maintenance-Panel gepflegt.",
   "gen.live.title": "Live-Prüfung",

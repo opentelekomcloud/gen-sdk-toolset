@@ -161,7 +161,9 @@ describe("the customer-core card on the in-memory mock", () => {
     expect(screen.getByText("contacts")).toBeInTheDocument();
     expect(screen.getByText("addresses")).toBeInTheDocument();
     expect(screen.getByText("4 endpoints · layout confirmed by ivan")).toBeInTheDocument();
-    expect(screen.getAllByText("2 endpoints · layout not confirmed yet")).toHaveLength(2);
+    // ivan confirmed contacts before generating it (owner decision)
+    expect(screen.getByText("2 endpoints · layout confirmed by ivan")).toBeInTheDocument();
+    expect(screen.getByText("2 endpoints · layout not confirmed yet")).toBeInTheDocument();
 
     expect(screen.getByRole("link", { name: "merged · PR 122" })).toHaveAttribute(
       "href",
@@ -172,7 +174,7 @@ describe("the customer-core card on the in-memory mock", () => {
       "href",
       "/generation/customer-core/result/v1/c_contacts",
     );
-    // contacts is not confirmed either, but its job stands in place of the reason: only addresses gives one
+    // only addresses is held
     expect(screen.getAllByText("confirm the layout first")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute("href", "/generation/customer-core/layout");
     expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
@@ -188,13 +190,13 @@ describe("the customer-core card on the in-memory mock", () => {
     // the coverage card waits on the base target whatever is merged there
     expect(targetButton("Ansible modules")).toHaveTextContent("waits on Python SDK");
     expect(targetButton("Python SDK")).toHaveTextContent("1 / 3 merged");
-    // Python's jobs are not Ansible's
+    // Python's jobs are not Ansible's: contacts, confirmed, waits on its merge there like the coverage card
     expect(screen.queryByRole("link", { name: /merged|failed/ })).toBeNull();
-    const fixes = screen.getAllByRole("link", { name: "edit layout" });
-    expect(fixes).toHaveLength(2);
-    for (const link of fixes) {
-      expect(link).toHaveAttribute("href", "/generation/customer-core/layout?target=ansible");
-    }
+    expect(screen.getAllByText("waits on Python SDK")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute(
+      "href",
+      "/generation/customer-core/layout?target=ansible",
+    );
     expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
   });
 });
@@ -314,6 +316,7 @@ describe("states the mock does not hold today", () => {
     startedAt: "2026-08-02T10:00:00Z",
     mergedBy: status === "merged" ? "ivan" : null,
     mergedAt: status === "merged" ? "2026-08-03T10:00:00Z" : null,
+    error: null,
   });
   const RESOURCES: GenResource[] = [
     res("ready", {}),

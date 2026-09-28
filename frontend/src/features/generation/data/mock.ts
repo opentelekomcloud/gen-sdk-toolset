@@ -152,7 +152,9 @@ const AUTO: Record<string, LaidOut[]> = {
       version: "v1",
       name: "contacts",
       origin: "auto",
-      confirmed: null,
+      /* Not in `CONFIRM_SEED`, yet the prototype's `JOB_SEED` has ivan generate it: a
+       * generation cannot start unconfirmed, so ivan confirmed it before (owner decision). */
+      confirmed: { by: "ivan", at: "2026-08-12T07:58:00Z" },
       endpoints: [
         ep("c5", "GET", "/v1/customers/{customer_id}/contacts", "List contacts of a customer", "contacts/list-contacts.rst"),
         ep("c6", "POST", "/v1/customers/{customer_id}/contacts", "Add a contact", "contacts/create-contact.rst"),
@@ -431,6 +433,7 @@ const job = (
   pr: number | null,
   started: [by: string, at: string],
   merged: [by: string, at: string] | null = null,
+  error: string | null = null,
 ): GenJob => ({
   id,
   status,
@@ -439,13 +442,21 @@ const job = (
   startedAt: started[1],
   mergedBy: merged?.[0] ?? null,
   mergedAt: merged?.[1] ?? null,
+  error,
 });
 
 /** Jobs by target id, then resource id - the prototype's `JOB_SEED`. A resource without one was never generated there. */
 const seedJobs = (): Record<string, Record<string, GenJob>> => ({
   python: {
     v1_invoices: job(2088, "done", 131, ["valeriia", "2026-08-11T14:20:00Z"]),
-    c_contacts: job(2094, "failed", null, ["ivan", "2026-08-12T08:05:00Z"]),
+    c_contacts: job(
+      2094,
+      "failed",
+      null,
+      ["ivan", "2026-08-12T08:05:00Z"],
+      null,
+      "LLM backend unavailable — ollama refused the connection after 3 retries",
+    ),
     n_topics: job(2071, "merged", 118, ["valeriia", "2026-07-29T11:02:00Z"], ["anna", "2026-08-01T09:40:00Z"]),
     c_customers: job(2079, "merged", 122, ["ivan", "2026-08-04T10:12:00Z"], ["valeriia", "2026-08-06T15:05:00Z"]),
   },

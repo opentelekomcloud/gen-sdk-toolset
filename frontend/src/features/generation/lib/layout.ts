@@ -1,4 +1,4 @@
-import type { GenJob, GenResource, GenTarget } from "../data/types";
+import type { GenField, GenJob, GenResource, GenTarget } from "../data/types";
 
 type Jobs = Partial<Record<string, GenJob>>;
 
@@ -28,6 +28,9 @@ export function holdOf(resource: GenResource, target: GenTarget, targets: GenTar
   if (!target.live) return { reason: "notConnected" };
   return null;
 }
+
+/** A field whose problem nobody has decided yet: its resource is not generated until someone does (owner decision). */
+export const undecided = (f: GenField) => f.issue != null && f.issue.choice == null;
 
 /**
  * The job that freezes a resource's layout, or null. The layout is shared by

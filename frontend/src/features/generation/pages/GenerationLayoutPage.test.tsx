@@ -345,7 +345,7 @@ describe("the customer-core layout on the in-memory mock", () => {
     // the merged resource still counts at the top, not in its version
     expect(screen.getByText("needs confirmation")).toBeInTheDocument();
     expect(
-      screen.getByText("Shared layout · 1 version · 3 resources · 8 endpoints · 1 of 3 resources confirmed"),
+      screen.getByText("Shared layout · 1 version · 3 resources · 8 endpoints · 2 of 3 resources confirmed"),
     ).toBeInTheDocument();
     expect(within(version("v1")).getByText("2 resources · 4 endpoints")).toBeInTheDocument();
     expect(within(version("v1")).getByText("1 resource fully merged — moved to Maintenance")).toBeInTheDocument();
@@ -358,10 +358,11 @@ describe("the customer-core layout on the in-memory mock", () => {
       "addresses",
     ]);
 
+    // ivan confirmed contacts before generating it (owner decision)
     const contacts = resource("v1", "contacts");
     expect(within(contacts).getByText("2 endpoints")).toBeInTheDocument();
-    expect(within(contacts).getByText("auto")).toBeInTheDocument();
-    expect(within(contacts).queryByText(/^confirmed by/)).toBeNull();
+    expect(within(contacts).getByText("confirmed")).toBeInTheDocument();
+    expect(within(contacts).getByText(/^confirmed by ivan · \d\d\/\d\d\/2026, \d\d:\d\d$/)).toBeInTheDocument();
     expect(within(contacts).getByText("List contacts of a customer")).toBeInTheDocument();
     expect(within(contacts).getByText("Add a contact")).toBeInTheDocument();
 
@@ -377,10 +378,12 @@ describe("the customer-core layout on the in-memory mock", () => {
       "https://github.com/opentelekomcloud-docs/customer-core/blob/mockcommit/api-ref/source/addresses/update-address.rst",
     );
     for (const scope of [contacts, addresses]) {
-      for (const name of ["Confirm layout", "Rename resource", "Reset to auto"]) {
+      for (const name of ["Rename resource", "Reset to auto"]) {
         expect(button(scope, name)).toBeInTheDocument();
       }
     }
+    expect(within(contacts).queryByRole("button", { name: "Confirm layout" })).toBeNull();
+    expect(button(addresses, "Confirm layout")).toBeInTheDocument();
     // every document of customer-core is recognized in full
     expect(screen.queryByTitle(/^Not recognized in full/)).toBeNull();
 
@@ -399,7 +402,9 @@ describe("the customer-core layout on the in-memory mock", () => {
       "title",
       "The last Python SDK job failed and wrote nothing — the layout stays editable, retry from the error screen.",
     );
-    expect(button(contacts, "Confirm layout")).toBeInTheDocument();
+    expect(button(contacts, "Rename resource")).toBeInTheDocument();
+    expect(button(contacts, "Reset to auto")).toBeInTheDocument();
+    expect(endpointRow("Add a contact")).toHaveAttribute("draggable", "true");
     expect(within(resource("v1", "addresses")).getByText("new")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
   });
@@ -448,29 +453,24 @@ describe("the customer-core layout on the in-memory mock", () => {
     expect(screen.queryByText("Layout edited · saved on the service")).toBeNull();
   });
 
-  it("confirms the failed resource and the new one; the failed job stays shown and the layout is confirmed", async () => {
+  it("confirms the new resource next to the failed one; the failed job stays shown and the layout is confirmed", async () => {
     layoutPage(customerCore);
 
     await screen.findByRole("heading", { name: "customer-core" });
-    fireEvent.click(button(resource("v1", "contacts"), "Confirm layout"));
-
-    const contacts = resource("v1", "contacts");
-    expect(await within(contacts).findByText("confirmed")).toBeInTheDocument();
-    expect(within(contacts).getByText(/^confirmed by ada@otc\.test · \d\d\/\d\d\/\d{4}, \d\d:\d\d$/)).toBeInTheDocument();
-    expect(within(contacts).getByText("failed · Python SDK")).toBeInTheDocument();
-    expect(within(contacts).queryByRole("button", { name: "Confirm layout" })).toBeNull();
-    expect(screen.getByText(/· 2 of 3 resources confirmed$/)).toBeInTheDocument();
     expect(screen.getByText("needs confirmation")).toBeInTheDocument();
-
     fireEvent.click(button(resource("v1", "addresses"), "Confirm layout"));
 
-    expect(await within(resource("v1", "addresses")).findByText("confirmed")).toBeInTheDocument();
+    const addresses = resource("v1", "addresses");
+    expect(await within(addresses).findByText("confirmed")).toBeInTheDocument();
+    expect(within(addresses).getByText(/^confirmed by ada@otc\.test · \d\d\/\d\d\/\d{4}, \d\d:\d\d$/)).toBeInTheDocument();
+    expect(within(addresses).queryByRole("button", { name: "Confirm layout" })).toBeNull();
     expect(screen.getByText("layout confirmed")).toBeInTheDocument();
     expect(
       screen.getByText("Shared layout · 1 version · 3 resources · 8 endpoints · 3 of 3 resources confirmed"),
     ).toBeInTheDocument();
+    expect(within(resource("v1", "contacts")).getByText("failed · Python SDK")).toBeInTheDocument();
     const recorded = generationResources("customer-core");
-    expect(recorded.map((r) => r.confirmedBy)).toEqual(["ivan", "ada@otc.test", "ada@otc.test"]);
+    expect(recorded.map((r) => r.confirmedBy)).toEqual(["ivan", "ivan", "ada@otc.test"]);
     expect(recorded.find((r) => r.id === "c_contacts")?.jobs.python?.status).toBe("failed");
   });
 
@@ -478,8 +478,8 @@ describe("the customer-core layout on the in-memory mock", () => {
     layoutPage(customerCore);
 
     await screen.findByRole("heading", { name: "customer-core" });
-    fireEvent.click(button(resource("v1", "contacts"), "Confirm layout"));
-    await within(resource("v1", "contacts")).findByText("confirmed");
+    fireEvent.click(button(resource("v1", "addresses"), "Confirm layout"));
+    await within(resource("v1", "addresses")).findByText("confirmed");
     fireEvent.click(button(resource("v1", "addresses"), "Rename resource"));
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "postal" } });
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
@@ -495,14 +495,16 @@ describe("the customer-core layout on the in-memory mock", () => {
     expect(await within(version("v1")).findByRole("group", { name: "addresses" })).toBeInTheDocument();
     expect(within(version("v1")).queryByRole("group", { name: "new_resource_1" })).toBeNull();
     expect(within(version("v1")).queryByRole("group", { name: "postal" })).toBeNull();
+    // the confirmation given here goes with the rest; the one recorded before stays
     const addresses = resource("v1", "addresses");
     expect(within(addresses).getByText("new")).toBeInTheDocument();
+    expect(within(addresses).queryByText(/^confirmed by/)).toBeNull();
+    expect(button(addresses, "Confirm layout")).toBeInTheDocument();
     expect(within(addresses).getByText("2 endpoints")).toBeInTheDocument();
     const contacts = resource("v1", "contacts");
-    expect(within(contacts).getByText("auto")).toBeInTheDocument();
+    expect(within(contacts).getByText(/^confirmed by ivan · /)).toBeInTheDocument();
     expect(within(contacts).getByText("Add a contact")).toBeInTheDocument();
     expect(within(contacts).getByText("failed · Python SDK")).toBeInTheDocument();
-    expect(button(contacts, "Confirm layout")).toBeInTheDocument();
     // the merged resource is left as it was, and still out of sight
     expect(within(version("v1")).getByText("1 resource fully merged — moved to Maintenance")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
@@ -510,7 +512,7 @@ describe("the customer-core layout on the in-memory mock", () => {
     expect(customers?.endpoints).toHaveLength(4);
     expect(customers?.confirmedBy).toBe("ivan");
     expect(
-      screen.getByText("Shared layout · 1 version · 3 resources · 8 endpoints · 1 of 3 resources confirmed"),
+      screen.getByText("Shared layout · 1 version · 3 resources · 8 endpoints · 2 of 3 resources confirmed"),
     ).toBeInTheDocument();
   });
 });

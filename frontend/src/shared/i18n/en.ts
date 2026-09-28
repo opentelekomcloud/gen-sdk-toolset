@@ -345,6 +345,10 @@ export const en = {
   "gen.result.refreshHint": "Pick up the pull request state from GitHub",
   "gen.result.running": "Generating — job #{id}",
   "gen.result.runningHint": "Rendering templates, resolving FIXME placeholders, opening a pull request…",
+  "gen.result.failed": "Generation failed — LLM backend unavailable",
+  "gen.result.failedHint":
+    "Nothing was written and no pull request was opened. The layout and its confirmations are untouched — retry once the LLM backend answers again.",
+  "gen.result.retry": "Retry generation",
   "gen.result.mergedNote": "Merged — this resource left Generation and is maintained from the Maintenance panel now.",
   "gen.live.title": "Live check",
   "gen.live.hint": "real OTC calls — nothing here is mocked",

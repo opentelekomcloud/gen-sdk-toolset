@@ -54,6 +54,8 @@ export interface GenJob {
   /** Who merged its pull request on GitHub, and when (ISO 8601); null until the panel learns of a merge. */
   mergedBy: string | null;
   mergedAt: string | null;
+  /** What went wrong, in the generator's words; null unless the job failed. */
+  error: string | null;
 }
 
 /** An endpoint of the service: one endpoint document of the scan. */

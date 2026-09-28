@@ -61,6 +61,7 @@ const startedJob = {
   startedAt: expect.any(String),
   mergedBy: null,
   mergedAt: null,
+  error: null,
 };
 /** The mock records when a job started; the page does not send it. */
 const expectJustNow = (service: string, resource: string) => {
@@ -522,6 +523,7 @@ describe("other resources on the mock", () => {
       startedAt: "2026-08-11T14:20:00Z",
       mergedBy: null,
       mergedAt: null,
+      error: null,
     });
     expect(() => startGeneration("billing-api", "v2_invoices", "python", "ada")).toThrow(
       "invoices cannot be generated for Python SDK: its layout is not confirmed",

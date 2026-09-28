@@ -19,9 +19,11 @@ import {
   useGenerationTargets,
   useOtcSettings,
 } from "../data/queries";
-import { useLiveCall, useRefreshPullRequest } from "../data/mutations";
+import { useLiveCall, useRefreshPullRequest, useStartGeneration } from "../data/mutations";
 import type { GenJobStatus, GenLiveResponse, GenOperation, GenState } from "../data/types";
+import { HoldReason } from "../components/HoldReason";
 import { PageNotFound } from "../components/PageNotFound";
+import { holdOf, undecided } from "../lib/layout";
 import { listPath, servicePath, type FromSpec } from "../lib/paths";
 import { pathParams } from "../lib/uri";
 import { GEN_STATE_CLS, genStateKey } from "../styles";
@@ -316,9 +318,12 @@ function LiveOperation({
  * live check calls GET operations only, so it creates nothing in the tenant and
  * has nothing to clean up (owner decisions). It changes nothing in the panel
  * either, so it is offered to every role; picking up the pull request's state
- * changes the job, and only a role that may write is offered it. The target
- * rides along in the address; the way back leads to the spec when the result was
- * opened from it, and to the card otherwise, as in the prototype.
+ * changes the job, and only a role that may write is offered it. A failed job
+ * says what went wrong and offers that role to generate again, which starts a
+ * new job on the same terms as Generate on the spec: held by the same reasons,
+ * with the first one beside it (owner decision). The target rides along in the
+ * address; the way back leads to the spec when the result was opened from it,
+ * and to the card otherwise, as in the prototype.
  */
 export function GenerationResultPage() {
   const { name = "", version = "", resource: id = "" } = useParams();
@@ -334,6 +339,7 @@ export function GenerationResultPage() {
   const spec = useGenerationSpec(name, id);
   const settings = useOtcSettings();
   const refresh = useRefreshPullRequest(name, id);
+  const retry = useStartGeneration(name, id);
   const call = useLiveCall(name, id);
   /* One operation open at a time, none at first - as in the prototype. */
   const [openOp, setOpenOp] = useState<string | null>(null);
@@ -405,7 +411,9 @@ export function GenerationResultPage() {
             .filter(Boolean)
             .join(" · ");
   const live = operations.filter((o) => o.endpoint.method === "GET");
-  const refusal = refresh.error ?? refused;
+  const hold = holdOf(resource, target, targets.data);
+  const open = classes.reduce((n, c) => n + c.fields.filter(undecided).length, 0);
+  const refusal = refresh.error ?? retry.error ?? refused;
 
   const type = (key: string, group: keyof Inputs, param: string, value: string) =>
     setInputs((all) => {
@@ -496,6 +504,7 @@ export function GenerationResultPage() {
           message={refusal.message}
           onDismiss={() => {
             refresh.reset();
+            retry.reset();
             setRefused(null);
           }}
         />
@@ -507,6 +516,31 @@ export function GenerationResultPage() {
             <Loader2 size={15} className="animate-spin" /> {t("gen.result.running", { id: job.id })}
           </div>
           <div className="mt-1.5 text-xs text-blue-500">{t("gen.result.runningHint")}</div>
+        </div>
+      )}
+
+      {job.status === "failed" && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
+            <AlertTriangle size={14} /> {t("gen.result.failed")}
+          </div>
+          {job.error && <div className="mt-1.5 font-mono text-[11px] text-red-900">{job.error}</div>}
+          <div className="mt-2 max-w-[640px] text-pretty text-xs leading-normal text-red-900">
+            {t("gen.result.failedHint")}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3 empty:hidden">
+            {canWrite && (
+              <button
+                type="button"
+                disabled={hold != null || open > 0 || retry.isPending}
+                onClick={() => retry.mutate(target.id)}
+                className="inline-flex items-center gap-1.5 rounded border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:border-red-500 disabled:cursor-not-allowed disabled:text-red-300 disabled:hover:border-red-300"
+              >
+                <RefreshCw size={12} /> {t("gen.result.retry")}
+              </button>
+            )}
+            <HoldReason hold={hold} open={open} target={target} layoutTo={pathTo(["layout"])} state={fromList} />
+          </div>
         </div>
       )}
 
