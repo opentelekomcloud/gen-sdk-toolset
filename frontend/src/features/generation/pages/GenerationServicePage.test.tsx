@@ -145,6 +145,60 @@ describe("the billing-api card on the in-memory mock", () => {
   });
 });
 
+describe("the customer-core card on the in-memory mock", () => {
+  it("shows the merged resource, the failed one and the new one on Python SDK", async () => {
+    cardPage("/generation/customer-core");
+
+    expect(await screen.findByRole("heading", { name: "customer-core" })).toBeInTheDocument();
+    const python = targetButton("Python SDK");
+    expect(python).toHaveAttribute("aria-pressed", "true");
+    expect(python).toHaveTextContent("1 / 3 merged");
+    expect(python.querySelector("[style]")).toHaveStyle({ width: "33%" });
+    expect(targetButton("Ansible modules")).toHaveTextContent("waits on Python SDK");
+    expect(screen.getByText("Pull requests for this edition go to opentelekomcloud/python-t-cloud.")).toBeInTheDocument();
+
+    expect(screen.getByText("customers")).toBeInTheDocument();
+    expect(screen.getByText("contacts")).toBeInTheDocument();
+    expect(screen.getByText("addresses")).toBeInTheDocument();
+    expect(screen.getByText("4 endpoints · layout confirmed by ivan")).toBeInTheDocument();
+    expect(screen.getAllByText("2 endpoints · layout not confirmed yet")).toHaveLength(2);
+
+    expect(screen.getByRole("link", { name: "merged · PR 122" })).toHaveAttribute(
+      "href",
+      "/generation/customer-core/result/v1/c_customers",
+    );
+    // the failed job opened no pull request; it leads to its result, where it can be looked into
+    expect(screen.getByRole("link", { name: "failed" })).toHaveAttribute(
+      "href",
+      "/generation/customer-core/result/v1/c_contacts",
+    );
+    // contacts is not confirmed either, but its job stands in place of the reason: only addresses gives one
+    expect(screen.getAllByText("confirm the layout first")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute("href", "/generation/customer-core/layout");
+    expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+  });
+
+  it("opens the merged resource up on Ansible modules, which is not connected yet", async () => {
+    cardPage("/generation/customer-core?target=ansible");
+
+    expect(
+      await screen.findByText("4 endpoints · layout confirmed by ivan · already merged in Python SDK"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Ansible modules not connected yet")).toBeInTheDocument();
+    // the coverage card waits on the base target whatever is merged there
+    expect(targetButton("Ansible modules")).toHaveTextContent("waits on Python SDK");
+    expect(targetButton("Python SDK")).toHaveTextContent("1 / 3 merged");
+    // Python's jobs are not Ansible's
+    expect(screen.queryByRole("link", { name: /merged|failed/ })).toBeNull();
+    const fixes = screen.getAllByRole("link", { name: "edit layout" });
+    expect(fixes).toHaveLength(2);
+    for (const link of fixes) {
+      expect(link).toHaveAttribute("href", "/generation/customer-core/layout?target=ansible");
+    }
+    expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+  });
+});
+
 describe("the way back to the list", () => {
   /** The list and the card under their own routes, so one can be left for the other. */
   function panel(path: string) {
