@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { AlertTriangle, Check, ExternalLink, Play } from "lucide-react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import {
@@ -12,6 +12,7 @@ import type { GenField, GenOperationKind } from "../data/types";
 import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
 import { LayoutBadge } from "../components/LayoutBadge";
+import { PageNotFound } from "../components/PageNotFound";
 import { holdOf } from "../lib/layout";
 import { listPath, servicePath } from "../lib/paths";
 import {
@@ -210,16 +211,12 @@ export function GenerationSpecPage() {
       }}
     />
   );
-  const notFound = (back: ReactNode) => (
-    <div className="mx-auto max-w-6xl px-6 py-5">
-      {back}
-      <div className="py-16 text-center text-sm text-gray-400">{t("app.notFound")}</div>
-    </div>
-  );
 
   if (targets.isPending || services.isPending) return loading;
   if (targets.isError || services.isError) return failed;
-  if (!services.data.some((s) => s.name === name)) return notFound(<ServiceBackLink to={listTo} state={fromList} />);
+  if (!services.data.some((s) => s.name === name)) {
+    return <PageNotFound back={<ServiceBackLink to={listTo} state={fromList} />} />;
+  }
   if (resources.isPending) return loading;
   if (resources.isError) return failed;
 
@@ -228,7 +225,7 @@ export function GenerationSpecPage() {
   const pathTo = (rest: string[] = []) => servicePath(name, target, defaultTarget, rest);
   const back = <ServiceBackLink to={pathTo()} state={fromList} label={t("gen.spec.back", { name })} />;
   const resource = resources.data.find((r) => r.id === id && r.version === version);
-  if (!resource) return notFound(back);
+  if (!resource) return <PageNotFound back={back} />;
   if (spec.isPending) return loading;
   if (spec.isError) return failed;
 

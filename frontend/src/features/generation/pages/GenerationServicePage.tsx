@@ -4,6 +4,7 @@ import { useGenerationResources, useGenerationServices, useGenerationTargets } f
 import type { GenResource, GenTarget } from "../data/types";
 import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
+import { PageNotFound } from "../components/PageNotFound";
 import { holdOf } from "../lib/layout";
 import { listPath, servicePath } from "../lib/paths";
 import { ServiceBackLink, ServiceLoadFailed, ServiceLoading } from "../../scan/components/ServicePageStates";
@@ -95,14 +96,7 @@ export function GenerationServicePage() {
   if (targets.isPending || services.isPending) return loading;
   if (targets.isError || services.isError) return failed;
   const service = services.data.find((s) => s.name === name);
-  if (!service) {
-    return (
-      <div className="mx-auto max-w-6xl px-6 py-5">
-        {back}
-        <div className="py-16 text-center text-sm text-gray-400">{t("app.notFound")}</div>
-      </div>
-    );
-  }
+  if (!service) return <PageNotFound back={back} />;
   if (resources.isPending) return loading;
   if (resources.isError) return failed;
 

@@ -22,6 +22,7 @@ import { useGenerationResources, useGenerationServices, useGenerationTargets } f
 import { useEditLayout, useLayoutEdited, type LayoutEdit } from "../data/mutations";
 import type { GenJobStatus, GenResource, GenTarget } from "../data/types";
 import { LayoutBadge } from "../components/LayoutBadge";
+import { PageNotFound } from "../components/PageNotFound";
 import { lockingJob, mergedEverywhere } from "../lib/layout";
 import { listPath, servicePath } from "../lib/paths";
 import {
@@ -331,12 +332,7 @@ export function GenerationLayoutPage() {
   if (targets.isPending || services.isPending) return loading;
   if (targets.isError || services.isError) return failed;
   if (!services.data.some((s) => s.name === name)) {
-    return (
-      <div className="mx-auto max-w-6xl px-6 py-5">
-        <ServiceBackLink to={listTo} state={fromList} />
-        <div className="py-16 text-center text-sm text-gray-400">{t("app.notFound")}</div>
-      </div>
-    );
+    return <PageNotFound back={<ServiceBackLink to={listTo} state={fromList} />} />;
   }
   if (resources.isPending) return loading;
   if (resources.isError) return failed;
