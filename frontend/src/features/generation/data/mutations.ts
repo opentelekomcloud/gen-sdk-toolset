@@ -1,7 +1,16 @@
 import { useMutation, useMutationState, useQueryClient } from "@tanstack/react-query";
-import { invalidateGenLayout, keys } from "../../scan/api/queries";
+import { invalidateGenJobs, invalidateGenLayout, keys } from "../../scan/api/queries";
 import { useSession } from "../../../shared/auth/useSession";
-import { addResource, confirmResource, moveEndpoint, renameResource, resetResource, resetVersion } from "./mock";
+import {
+  addResource,
+  chooseType,
+  confirmResource,
+  moveEndpoint,
+  renameResource,
+  resetResource,
+  resetVersion,
+  startGeneration,
+} from "./mock";
 
 /** One change to the shared layout of a service, by resource, endpoint and version id. */
 export type LayoutEdit =
@@ -52,4 +61,35 @@ export function useEditLayout(name: string) {
  */
 export function useLayoutEdited(name: string) {
   return useMutationState({ filters: { mutationKey: keys.genLayoutEdit(name), exact: true, status: "success" } }).length > 0;
+}
+
+/** A field of a resource's class, and the type chosen for its problem; null takes the choice back. */
+export interface TypeChoice {
+  cls: string;
+  field: string;
+  type: string | null;
+}
+
+/**
+ * The type for a field whose type the docs leave open. The choice records the
+ * signed-in user, and the mock records when. As with the layout, nothing
+ * changes on screen before the mock has answered, and the spec is fetched
+ * again either way.
+ */
+export function useChooseType(name: string, resource: string) {
+  const qc = useQueryClient();
+  const { name: by } = useSession();
+  return useMutation({
+    mutationFn: async ({ cls, field, type }: TypeChoice) => chooseType(name, resource, cls, field, type, by),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.genSpec(name, resource) }),
+  });
+}
+
+/** A generation of the resource on a target, by target id. A refusal comes back as the mutation's error. */
+export function useStartGeneration(name: string, resource: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (target: string) => startGeneration(name, resource, target),
+    onSettled: () => invalidateGenJobs(qc, name),
+  });
 }

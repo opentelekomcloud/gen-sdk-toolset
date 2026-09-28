@@ -83,6 +83,57 @@ export interface GenResource {
   jobs: Partial<Record<string, GenJob>>;
 }
 
+/** How an operation maps onto the SDK: a base CRUD method of the SDK's base
+ *  classes, or a custom action. */
+export type GenOperationKind = "base" | "custom";
+
+/** An endpoint of a resource as the SDK will call it. */
+export interface GenOperation {
+  endpoint: GenEndpoint;
+  kind: GenOperationKind;
+  /** `list`, `get`, `create`, `update`, `delete`, or the custom action's name. */
+  sdkMethod: string;
+}
+
+/** A field whose type a person has to decide before the resource can be
+ *  generated (owner decision): the docs disagree on it, or give none the
+ *  scanner recognizes. */
+export type GenFieldProblem = "type_conflict" | "unknown_type";
+
+export interface GenFieldIssue {
+  problem: GenFieldProblem;
+  /** What is wrong, in the generator's words. */
+  text: string;
+  /** The types to choose from, each with where it comes from. */
+  options: { type: string; note: string }[];
+  /** The documents that describe the field, at the scanned commit. */
+  docs: { label: string; src: string }[];
+  /** The type chosen, who chose it and when (ISO 8601); null while nobody has. */
+  choice: { type: string; by: string; at: string } | null;
+}
+
+export interface GenField {
+  name: string;
+  /** The type the docs give; the scan's `Unknown` when it recognized none. */
+  type: string;
+  required: boolean;
+  description: string;
+  issue: GenFieldIssue | null;
+}
+
+/** A class the generator will emit for the resource. */
+export interface GenClass {
+  name: string;
+  fields: GenField[];
+}
+
+/** What a resource will be generated as: its operations, in the order of its
+ *  endpoints, and its classes. */
+export interface GenSpec {
+  operations: GenOperation[];
+  classes: GenClass[];
+}
+
 /** The list's filter chips: every state still in Generation, plus `all`. */
 export type GenFilter = "all" | Exclude<GenState, "done">;
 

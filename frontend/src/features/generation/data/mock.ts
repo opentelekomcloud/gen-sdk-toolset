@@ -2,19 +2,23 @@
  * In-memory stand-in for the Generation backend, which does not exist yet. The
  * hooks in `queries.ts` and `mutations.ts` read and change it; nothing else may,
  * except a test putting it back with `resetGenerationMock`. Data is the
- * prototype's (`TARGETS`, `AUTO_STRUCTURE`, `JOB_SEED`, `CONFIRM_SEED`); service
- * names are those of `mock/scanApi.ts`.
+ * prototype's (`TARGETS`, `AUTO_STRUCTURE`, `JOB_SEED`, `CONFIRM_SEED`,
+ * `ENTITIES`); service names are those of `mock/scanApi.ts`.
  */
 import type { AttentionRule } from "../../../shared/api/types";
 import type { DocStatus } from "../../scan/types";
-import { lockingJob, mergedEverywhere } from "../lib/layout";
+import { holdOf, lockingJob, mergedEverywhere, type Hold } from "../lib/layout";
 import type {
   GenAttentionCode,
+  GenEndpoint,
+  GenFieldProblem,
   GenJob,
   GenJobStatus,
+  GenOperation,
   GenOrigin,
   GenResource,
   GenService,
+  GenSpec,
   GenState,
   GenTarget,
   GenTargetSummary,
@@ -416,40 +420,53 @@ const laid = (r: LaidOut): Laid => ({
 const seed = (): Record<string, Laid[]> =>
   Object.fromEntries(Object.entries(AUTO).map(([service, resources]) => [service, resources.map(laid)]));
 
-/** The layout of every service as it is now: the scanner's, edited. */
-let layout = seed();
-/** Resources made by hand so far, for their ids. */
-let made = 0;
-
-/** Back to the seed. Tests share this module's memory, so each one that edits starts here. */
-export function resetGenerationMock() {
-  layout = seed();
-  made = 0;
-}
-
 /** Jobs by target id, then resource id. A resource without one was never generated there. */
-const JOBS: Record<string, Record<string, GenJob>> = {
+const seedJobs = (): Record<string, Record<string, GenJob>> => ({
   python: {
     v1_invoices: { status: "done", pr: 131 },
     c_contacts: { status: "failed", pr: null },
     n_topics: { status: "merged", pr: 118 },
     c_customers: { status: "merged", pr: 122 },
   },
-};
+});
+
+/** A type chosen for a field: which, who chose it, and when (ISO 8601). */
+interface Choice {
+  type: string;
+  by: string;
+  at: string;
+}
+
+/** The layout of every service as it is now: the scanner's, edited. */
+let layout = seed();
+/** Resources made by hand so far, for their ids. */
+let made = 0;
+/** The jobs as they are now: the seed, and the generations started since. */
+let jobs = seedJobs();
+/** The types chosen for fields with a problem, by `choiceKey`. Nobody had chosen one before, as in the prototype. */
+let choices = new Map<string, Choice>();
+
+/** Back to the seed. Tests share this module's memory, so each one that edits starts here. */
+export function resetGenerationMock() {
+  layout = seed();
+  made = 0;
+  jobs = seedJobs();
+  choices = new Map();
+}
 
 const jobsOf = (resource: string): Partial<Record<string, GenJob>> =>
   Object.fromEntries(
     TARGETS.flatMap((t) => {
-      const job = JOBS[t.id]?.[resource];
+      const job = jobs[t.id]?.[resource];
       return job ? [[t.id, { ...job }]] : [];
     }),
   );
 
 function summarize(resources: string[], target: string): GenTargetSummary {
-  const jobs = JOBS[target] ?? {};
-  const count = (status: GenJobStatus) => resources.filter((r) => jobs[r]?.status === status).length;
+  const onTarget = jobs[target] ?? {};
+  const count = (status: GenJobStatus) => resources.filter((r) => onTarget[r]?.status === status).length;
   const merged = count("merged");
-  const untouched = resources.filter((r) => !jobs[r]).length;
+  const untouched = resources.filter((r) => !onTarget[r]).length;
   const state: GenState = !resources.length
     ? "not_generated"
     : count("running")
@@ -474,10 +491,21 @@ function layoutOf(service: string): Laid[] {
 
 const resourceIds = (name: string) => layoutOf(name).map((r) => r.id);
 
+function resourceOf(service: string, id: string): Laid {
+  const r = layoutOf(service).find((x) => x.id === id);
+  if (!r) throw new Error(`${service} has no resource ${id}`);
+  return r;
+}
+
 function endpointOf(service: string, id: string): Placed {
   const endpoint = ENDPOINTS[service]?.get(id);
   if (!endpoint) throw new Error(`${service} has no endpoint ${id}`);
   return endpoint;
+}
+
+function endpointView(service: string, id: string): GenEndpoint {
+  const { method, uri, title, file, status } = endpointOf(service, id);
+  return { id, method, uri, title, src: src(service, file), status };
 }
 
 export function generationTargets(): GenTarget[] {
@@ -497,10 +525,7 @@ export function generationResources(service: string): GenResource[] {
     id: r.id,
     version: r.version,
     name: r.name,
-    endpoints: r.endpoints.map((id) => {
-      const { method, uri, title, file, status } = endpointOf(service, id);
-      return { id, method, uri, title, src: src(service, file), status };
-    }),
+    endpoints: r.endpoints.map((id) => endpointView(service, id)),
     origin: r.origin,
     confirmedBy: r.confirmedBy,
     confirmedAt: r.confirmedAt,
@@ -514,7 +539,7 @@ export function generationAttention(): AttentionRule[] {
   const live = TARGETS.filter((t) => t.live);
   const resources = Object.keys(layout).flatMap(resourceIds);
   const tally = (status: GenJobStatus) =>
-    live.reduce((n, t) => n + resources.filter((r) => JOBS[t.id]?.[r]?.status === status).length, 0);
+    live.reduce((n, t) => n + resources.filter((r) => jobs[t.id]?.[r]?.status === status).length, 0);
   const rule = (code: GenAttentionCode, label: string, count: number): AttentionRule => ({
     code,
     panel: "generation",
@@ -537,8 +562,7 @@ function frozen(r: Laid): boolean {
 
 /** A resource whose layout may change - or the refusal that says why it may not. */
 function editable(service: string, id: string): Laid {
-  const r = layoutOf(service).find((x) => x.id === id);
-  if (!r) throw new Error(`${service} has no resource ${id}`);
+  const r = resourceOf(service, id);
   if (frozen(r)) throw new Error(`The layout of ${r.name} is frozen: it is generating, in review or merged`);
   return r;
 }
@@ -651,4 +675,272 @@ export function resetVersion(service: string, version: string) {
       r.endpoints.length > 0 ||
       Object.keys(jobsOf(r.id)).length > 0,
   );
+}
+
+// --- Generation spec -------------------------------------------------------
+
+interface FieldIssue {
+  problem: GenFieldProblem;
+  text: string;
+  /** The types to choose from, each with where it comes from. */
+  options: [type: string, note: string][];
+  /** The documents that describe the field, by path under `api-ref/source`. */
+  docs: string[];
+}
+
+interface Field {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+  issue?: FieldIssue;
+}
+
+interface Class {
+  name: string;
+  fields: Field[];
+}
+
+const field = (name: string, type: string, required: boolean, description: string, issue?: FieldIssue): Field => ({
+  name,
+  type,
+  required,
+  description,
+  issue,
+});
+
+/** The classes the generator would emit, by resource id - the prototype's `ENTITIES`. */
+const ENTITIES: Record<string, Class[]> = {
+  v1_invoices: [
+    {
+      name: "Invoice",
+      fields: [
+        field("id", "String", true, "Invoice ID"),
+        field("project_id", "String", true, "Owning project"),
+        field("amount", "Integer", true, "Total amount, minor units", {
+          problem: "type_conflict",
+          text: "Conflict: the create page documents this field as String, the get page as Integer. Pick the type the SDK should use before generating.",
+          options: [
+            ["Integer", "as in show-invoice.rst"],
+            ["String", "as in create-invoice.rst"],
+          ],
+          docs: ["invoices/create-invoice.rst", "invoices/show-invoice.rst"],
+        }),
+        field("items", "Unknown", false, "Invoice line items", {
+          problem: "unknown_type",
+          text: "Type not recognized — the doc writes “List<x>”. The generator needs a concrete element type for the list.",
+          options: [
+            ["List[InvoiceItem]", "element fields match InvoiceItem"],
+            ["List[String]", "treat items as opaque ids"],
+            ["String", "keep the raw value"],
+          ],
+          docs: ["invoices/show-invoice.rst"],
+        }),
+        field("created_at", "DateTime", false, "Creation timestamp"),
+      ],
+    },
+    {
+      name: "InvoiceItem",
+      fields: [
+        field("resource_id", "String", true, "Billed resource"),
+        field("quantity", "Integer", true, "Billed quantity"),
+        field("unit_price", "Integer", false, "Price per unit, minor units"),
+      ],
+    },
+  ],
+  v1_payments: [
+    {
+      name: "Payment",
+      fields: [
+        field("id", "String", true, "Payment ID"),
+        field("invoice_id", "String", true, "Invoice this payment settles"),
+        field("method", "Unknown", true, "Payment method", {
+          problem: "unknown_type",
+          text: "Type not recognized — the table cell reads “enum (see below)” and the values are only in prose. Choose an enum or a plain string.",
+          options: [
+            ["Enum[PaymentMethod]", "values listed in the prose below the table"],
+            ["String", "accept any value"],
+          ],
+          docs: ["payments/create-payment.rst"],
+        }),
+        field("paid_at", "DateTime", false, "Settlement timestamp"),
+      ],
+    },
+  ],
+  c_customers: [
+    {
+      name: "Customer",
+      fields: [
+        field("id", "String", true, "Customer ID"),
+        field("name", "String", true, "Legal name"),
+        field("segment", "String", false, "Sales segment"),
+        field("active", "Boolean", false, "Whether the account is active", {
+          problem: "type_conflict",
+          text: "Conflict: the list page documents this field as String (“true”/“false”), the update page as Boolean.",
+          options: [
+            ["Boolean", "as in update-customer.rst"],
+            ["String", "as in list-customers.rst"],
+          ],
+          docs: ["customers/list-customers.rst", "customers/update-customer.rst"],
+        }),
+      ],
+    },
+  ],
+};
+
+const singular = (n: string) => (n.endsWith("ses") ? n.slice(0, -2) : n.endsWith("s") ? n.slice(0, -1) : n);
+const pascal = (n: string) =>
+  n
+    .split("_")
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join("");
+
+/** The classes of a resource, or - with none prepared, as in the prototype - one named after it. */
+const classesOf = (id: string, name: string): Class[] =>
+  ENTITIES[id] ?? [
+    {
+      name: pascal(singular(name)),
+      fields: [
+        field("id", "String", true, "Resource ID"),
+        field("name", "String", false, "Human-readable name"),
+        field("created_at", "DateTime", false, "Creation timestamp"),
+      ],
+    },
+  ];
+
+/** A POST to one of these on a collection is a custom action, not a create - the prototype's list. */
+const ACTIONS = new Set(["export", "action", "batch", "validate"]);
+
+/**
+ * A base CRUD method, guessed from the HTTP method and the shape of the URI as
+ * the prototype's `classifyOp` does; anything else is a custom action named
+ * after the last literal segment of the URI (its `customName`).
+ */
+function operationOf({ method, uri }: GenEndpoint): Omit<GenOperation, "endpoint"> {
+  const segs = uri.split("/").filter(Boolean);
+  const last = segs.at(-1) ?? "";
+  const onItem = last.startsWith("{");
+  const collectionAction = segs.length >= 2 && !segs[segs.length - 2].startsWith("{") && ACTIONS.has(last);
+  const base =
+    method === "GET"
+      ? onItem
+        ? "get"
+        : "list"
+      : method === "POST"
+        ? onItem || collectionAction
+          ? null
+          : "create"
+        : method === "PUT" || method === "PATCH"
+          ? onItem
+            ? "update"
+            : null
+          : method === "DELETE" && onItem
+            ? "delete"
+            : null;
+  if (base) return { kind: "base", sdkMethod: base };
+  const named = segs.filter((s) => !s.startsWith("{"));
+  return { kind: "custom", sdkMethod: (named.at(-1) ?? "action").replace(/-/g, "_") };
+}
+
+const choiceKey = (service: string, resource: string, cls: string, name: string) =>
+  JSON.stringify([service, resource, cls, name]);
+
+/** Fields of the resource whose problem nobody has decided yet. */
+const undecided = (service: string, r: Laid) =>
+  classesOf(r.id, r.name).reduce(
+    (n, c) => n + c.fields.filter((f) => f.issue && !choices.has(choiceKey(service, r.id, c.name, f.name))).length,
+    0,
+  );
+
+/** What a resource will be generated as: an operation per endpoint, in order, and its classes with the types chosen so far. */
+export function generationSpec(service: string, id: string): GenSpec {
+  const r = resourceOf(service, id);
+  return {
+    operations: r.endpoints.map((id) => {
+      const endpoint = endpointView(service, id);
+      return { endpoint, ...operationOf(endpoint) };
+    }),
+    classes: classesOf(r.id, r.name).map((c) => ({
+      name: c.name,
+      fields: c.fields.map(({ name, type, required, description, issue }) => {
+        const choice = choices.get(choiceKey(service, r.id, c.name, name));
+        return {
+          name,
+          type,
+          required,
+          description,
+          issue: issue
+            ? {
+                problem: issue.problem,
+                text: issue.text,
+                options: issue.options.map(([option, note]) => ({ type: option, note })),
+                docs: issue.docs.map((file) => ({ label: file.split("/").at(-1) ?? file, src: src(service, file) })),
+                choice: choice ? { ...choice } : null,
+              }
+            : null,
+        };
+      }),
+    })),
+  };
+}
+
+/** The type for a field with a problem, recorded with who chooses it and when; `type` null takes the choice back. */
+export function chooseType(service: string, id: string, cls: string, name: string, type: string | null, by: string) {
+  const r = resourceOf(service, id);
+  const issue = classesOf(r.id, r.name)
+    .find((c) => c.name === cls)
+    ?.fields.find((f) => f.name === name)?.issue;
+  if (!issue) throw new Error(`${cls}.${name} of ${r.name} has nothing to decide`);
+  const key = choiceKey(service, r.id, cls, name);
+  if (type == null) {
+    choices.delete(key);
+    return;
+  }
+  if (!by) throw new Error("A choice has to record who makes it");
+  if (!issue.options.some(([option]) => option === type)) throw new Error(`${type} is not an option for ${cls}.${name}`);
+  choices.set(key, { type, by, at: new Date().toISOString() });
+}
+
+const JOB_REFUSAL: Record<Exclude<GenJobStatus, "failed">, string> = {
+  running: "is generating",
+  done: "is in review",
+  merged: "is merged",
+};
+
+const holdRefusal = (hold: Hold, target: GenTarget): string => {
+  switch (hold.reason) {
+    case "confirm":
+      return "its layout is not confirmed";
+    case "empty":
+      return "it has no endpoints";
+    case "notOk":
+      return `${hold.n} of its endpoints are not recognized in full`;
+    case "waitsOn":
+      return `it is not merged in ${hold.base} yet`;
+    case "notConnected":
+      return `${target.label} is not connected`;
+  }
+};
+
+/**
+ * A generation job for the resource on the target, as the prototype's
+ * `startGeneration` starts it: running, no pull request yet. Refused while a
+ * field still has a problem nobody decided (owner decision), whenever the
+ * resource's card would not offer Generate there, and over a job that has not
+ * failed - one generating, in review or merged is not replaced.
+ */
+export function startGeneration(service: string, id: string, targetId: string) {
+  const resource = generationResources(service).find((r) => r.id === id);
+  if (!resource) throw new Error(`${service} has no resource ${id}`);
+  const target = TARGETS.find((t) => t.id === targetId);
+  if (!target) throw new Error(`There is no target ${targetId}`);
+  const job = resource.jobs[target.id];
+  if (job && job.status !== "failed") {
+    throw new Error(`${resource.name} ${JOB_REFUSAL[job.status]} on ${target.label}`);
+  }
+  const hold = holdOf(resource, target, TARGETS);
+  if (hold) throw new Error(`${resource.name} cannot be generated for ${target.label}: ${holdRefusal(hold, target)}`);
+  const open = undecided(service, resourceOf(service, id));
+  if (open) throw new Error(`${resource.name} cannot be generated: ${open} field(s) still to decide`);
+  (jobs[target.id] ??= {})[id] = { status: "running", pr: null };
 }

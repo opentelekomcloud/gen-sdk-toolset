@@ -20,7 +20,8 @@ import {
 import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import { useGenerationResources, useGenerationServices, useGenerationTargets } from "../data/queries";
 import { useEditLayout, useLayoutEdited, type LayoutEdit } from "../data/mutations";
-import type { GenJobStatus, GenOrigin, GenResource, GenTarget } from "../data/types";
+import type { GenJobStatus, GenResource, GenTarget } from "../data/types";
+import { LayoutBadge } from "../components/LayoutBadge";
 import { lockingJob, mergedEverywhere } from "../lib/layout";
 import { listPath, servicePath } from "../lib/paths";
 import {
@@ -35,15 +36,6 @@ import { fmtSnapshotAt } from "../../scan/lib/snapshot";
 import { DOC_STATUS_CLS, methodCls } from "../../scan/styles";
 import { useSession } from "../../../shared/auth/useSession";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
-
-/** Where a resource stands in the layout: confirmed, or where it came from. */
-type Badge = GenOrigin | "confirmed";
-
-const BADGE_CLS: Record<Badge, string> = {
-  auto: "border-gray-200 bg-gray-100 text-gray-500",
-  confirmed: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  new: "border-blue-200 bg-blue-50 text-blue-700",
-};
 
 /** A job shown on the layout: one that freezes it, or a failed one that does not. */
 type ShownJob = Exclude<GenJobStatus, "merged">;
@@ -113,7 +105,6 @@ function ResourceRow({
       : null;
   const editable = canWrite && !lock;
   const confirmed = resource.confirmedBy != null;
-  const badge: Badge = confirmed ? "confirmed" : resource.origin;
   const JobIcon = shown && JOB_ICON[shown.status];
 
   const dropHere = (e: DragEvent) => {
@@ -182,11 +173,7 @@ function ResourceRow({
               <span className="font-mono text-[11px] tabular-nums text-gray-400">
                 {t("gen.card.endpoints", { n: resource.endpoints.length })}
               </span>
-              <span
-                className={`rounded-full border px-2 py-px text-[10px] font-semibold uppercase tracking-wide ${BADGE_CLS[badge]}`}
-              >
-                {t(`gen.layout.origin.${badge}` as MessageKey)}
-              </span>
+              <LayoutBadge resource={resource} />
               {shown && JobIcon && (
                 <span
                   title={t(`gen.layout.lock.${shown.status}` as MessageKey, { target: shown.target.label })}

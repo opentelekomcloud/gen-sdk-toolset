@@ -1,20 +1,13 @@
 import { Folder, Play } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useGenerationResources, useGenerationServices, useGenerationTargets } from "../data/queries";
-import type { GenJobStatus, GenResource, GenTarget } from "../data/types";
+import type { GenResource, GenTarget } from "../data/types";
+import { HoldReason } from "../components/HoldReason";
+import { JobTag } from "../components/JobTag";
+import { holdOf } from "../lib/layout";
 import { listPath, servicePath } from "../lib/paths";
 import { ServiceBackLink, ServiceLoadFailed, ServiceLoading } from "../../scan/components/ServicePageStates";
-import { useI18n, type MessageKey } from "../../../shared/i18n";
-
-/** A job is drawn as a tag - uppercase and smaller than the state pill, as in the prototype. */
-const JOB_CLS: Record<GenJobStatus, string> = {
-  running: "border-blue-200 bg-blue-50 text-blue-700",
-  done: "border-amber-200 bg-amber-50 text-amber-800",
-  merged: "border-violet-200 bg-violet-50 text-violet-700",
-  failed: "border-red-300 bg-red-50 text-red-700",
-};
-
-const jobKey = (s: GenJobStatus): MessageKey => `gen.job.${s}` as MessageKey;
+import { useI18n } from "../../../shared/i18n";
 
 function ResourceRow({
   resource,
@@ -28,29 +21,11 @@ function ResourceRow({
   pathTo: (rest: string[]) => string;
 }) {
   const { t } = useI18n();
-  /* the list's state rides on into the layout, and back */
+  /* the list's state rides on into the layout and the spec, and back */
   const { state: fromList } = useLocation();
   const job = resource.jobs[target.id];
-  const confirmed = resource.confirmedBy != null;
   const endpoints = resource.endpoints.length;
-  const notOk = resource.endpoints.filter((e) => e.status !== "ok").length;
-  /* A target that builds on another opens a resource only once it is merged there. */
-  const blockedOn =
-    target.base != null && resource.jobs[target.base]?.status !== "merged"
-      ? (targets.find((x) => x.id === target.base)?.label ?? target.base)
-      : null;
-  /* Why the resource cannot be generated, the first reason that holds; null when it can. */
-  const hold = !confirmed
-    ? t("gen.hold.confirm")
-    : endpoints === 0
-      ? t("gen.hold.empty")
-      : notOk > 0
-        ? t("gen.hold.notOk", { n: notOk })
-        : blockedOn
-          ? t("gen.waitsOn", { base: blockedOn })
-          : !target.live
-            ? t("gen.hold.notConnected", { target: target.label })
-            : null;
+  const hold = holdOf(resource, target, targets);
   const mergedIn = targets
     .filter((x) => x.id !== target.id && resource.jobs[x.id]?.status === "merged")
     .map((x) => x.label);
@@ -71,28 +46,17 @@ function ResourceRow({
         <span className="text-[11px] text-gray-400">{meta}</span>
       </span>
       {job ? (
-        <Link
-          to={pathTo(["result", resource.version, resource.id])}
-          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-[3px] text-[10px] font-semibold uppercase tracking-wide ${JOB_CLS[job.status]}`}
-        >
-          {[t(jobKey(job.status)), job.pr != null ? t("gen.job.pr", { pr: job.pr }) : null].filter(Boolean).join(" · ")}
-        </Link>
+        <JobTag job={job} to={pathTo(["result", resource.version, resource.id])} state={fromList} />
       ) : hold === null ? (
         <Link
           to={pathTo(["spec", resource.version, resource.id])}
+          state={fromList}
           className="inline-flex shrink-0 items-center gap-1.5 rounded border border-pink-300 bg-pink-50 px-3.5 py-[5px] text-xs font-semibold text-brand transition hover:border-brand"
         >
           <Play size={12} /> {t("gen.card.generate")}
         </Link>
       ) : (
-        <span className="inline-flex shrink-0 items-center gap-2 text-[11px] text-gray-400">
-          {hold}
-          {!confirmed && (
-            <Link to={pathTo(["layout"])} state={fromList} className="font-semibold text-brand underline">
-              {t("gen.card.fixLayout")}
-            </Link>
-          )}
-        </span>
+        <HoldReason hold={hold} target={target} layoutTo={pathTo(["layout"])} state={fromList} />
       )}
     </div>
   );
