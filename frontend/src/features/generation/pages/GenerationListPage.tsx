@@ -26,13 +26,15 @@ const stateKey = (s: GenState): MessageKey => `gen.state.${s}` as MessageKey;
 /** The service takes half the row and the targets share the rest, however many there are. */
 const gridCols = (targets: number) => ({ gridTemplateColumns: `minmax(0,2fr) repeat(${targets}, minmax(0,1fr))` });
 
-function ServiceRow({ service, targets }: { service: GenService; targets: GenTarget[] }) {
+function ServiceRow({ service, targets, query }: { service: GenService; targets: GenTarget[]; query: string }) {
   const navigate = useNavigate();
   const { search } = useLocation();
   const { t } = useI18n();
   const [defaultTarget] = targets;
   const open = (target: GenTarget) =>
-    navigate(servicePath(service.name, target, defaultTarget), { state: { listSearch: search } satisfies FromList });
+    navigate(servicePath(service.name, target, defaultTarget), {
+      state: { listSearch: search, listQuery: query } satisfies FromList,
+    });
 
   return (
     <div
@@ -89,7 +91,9 @@ function ServiceRow({ service, targets }: { service: GenService; targets: GenTar
 export function GenerationListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useI18n();
-  const [query, setQuery] = useState("");
+  /* Back from a card, the list gets the card's FromList and takes up its search text again. */
+  const fromCard: Partial<FromList> | null = useLocation().state;
+  const [query, setQuery] = useState(fromCard?.listQuery ?? "");
   const { data: targets } = useGenerationTargets();
   const { data: services } = useGenerationServices();
   const filter = (searchParams.get("filter") as GenFilter) ?? "all";
@@ -156,7 +160,7 @@ export function GenerationListPage() {
             ))}
           </div>
           {rows.map((s) => (
-            <ServiceRow key={s.name} service={s} targets={targets} />
+            <ServiceRow key={s.name} service={s} targets={targets} query={query} />
           ))}
           {rows.length === 0 && <div className="px-4 py-10 text-center text-sm text-gray-400">{t("registry.empty")}</div>}
         </div>

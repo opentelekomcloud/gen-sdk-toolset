@@ -103,7 +103,7 @@ function ResourceRow({
 export function GenerationServicePage() {
   const { name = "" } = useParams();
   const [searchParams] = useSearchParams();
-  /* Opened from the list, the card knows the list's query and leads back to it. */
+  /* Opened from the list, the card knows the list's query and search text and leads back to both. */
   const { state: fromList } = useLocation();
   const navigate = useNavigate();
   const { t } = useI18n();
@@ -112,11 +112,12 @@ export function GenerationServicePage() {
   const resources = useGenerationResources(name);
 
   const listTo = listPath(fromList);
-  const back = <ServiceBackLink to={listTo} />;
+  const back = <ServiceBackLink to={listTo} state={fromList} />;
   const loading = <ServiceLoading />;
   const failed = (
     <ServiceLoadFailed
       back={listTo}
+      backState={fromList}
       onRetry={() => {
         for (const q of [targets, services, resources]) if (q.isError) void q.refetch();
       }}

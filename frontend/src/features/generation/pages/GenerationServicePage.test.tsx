@@ -133,10 +133,11 @@ describe("the way back to the list", () => {
     );
   }
 
-  it("returns to the chip the card was opened on, across a switch of target", async () => {
+  it("returns to the chip and the search the card was opened on, across a switch of target", async () => {
     panel("/generation?filter=failed");
 
-    fireEvent.click(await screen.findByText("customer-core"));
+    fireEvent.change(await screen.findByPlaceholderText("Filter services…"), { target: { value: "core" } });
+    fireEvent.click(screen.getByText("customer-core"));
 
     expect(await screen.findByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation?filter=failed");
 
@@ -149,6 +150,9 @@ describe("the way back to the list", () => {
 
     expect(location()).toBe("/generation?filter=failed");
     expect(await screen.findByRole("button", { name: "Failed 1" })).toHaveClass("bg-brand");
+    // the search text is back in its field, and still narrows the list
+    expect(screen.getByPlaceholderText("Filter services…")).toHaveValue("core");
+    expect(screen.getByRole("button", { name: "All 1" })).toBeInTheDocument();
   });
 
   it("returns to the whole list when the card was opened on All", async () => {

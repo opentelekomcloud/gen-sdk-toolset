@@ -2,11 +2,14 @@ import { AlertTriangle, ArrowLeft, Loader2, RefreshCw } from "lucide-react";
 import { Link } from "react-router";
 import { useI18n } from "../../../shared/i18n";
 
-/** "All services": from a service page back to the list of its panel. */
-export function ServiceBackLink({ to }: { to: string }) {
+/**
+ * "All services": from a service page back to the list of its panel. `state`
+ * goes along to the list, for what it keeps outside its address.
+ */
+export function ServiceBackLink({ to, state }: { to: string; state?: unknown }) {
   const { t } = useI18n();
   return (
-    <Link to={to} className="mb-3 flex items-center gap-1.5 text-sm text-gray-500 transition hover:text-gray-900">
+    <Link to={to} state={state} className="mb-3 flex items-center gap-1.5 text-sm text-gray-500 transition hover:text-gray-900">
       <ArrowLeft size={15} /> {t("service.back")}
     </Link>
   );
@@ -23,23 +26,25 @@ export function ServiceLoading() {
 }
 
 /**
- * A service page whose data did not load: the way back and a retry. A service
- * the server does not know - `notFound`, its name - gets a hint instead, since
- * retrying would not bring it back.
+ * A service page whose data did not load: the way back, with its `backState`,
+ * and a retry. A service the server does not know - `notFound`, its name - gets
+ * a hint instead, since retrying would not bring it back.
  */
 export function ServiceLoadFailed({
   back,
+  backState,
   onRetry,
   notFound,
 }: {
   back: string;
+  backState?: unknown;
   onRetry: () => void;
   notFound?: string;
 }) {
   const { t } = useI18n();
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
-      <ServiceBackLink to={back} />
+      <ServiceBackLink to={back} state={backState} />
       <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
         <AlertTriangle size={22} className="mx-auto mb-2 text-gray-400" />
         <div className="mb-1 text-sm font-semibold text-gray-700">
