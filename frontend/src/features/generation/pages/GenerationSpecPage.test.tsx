@@ -7,6 +7,7 @@ import {
   chooseType,
   confirmResource,
   generationResources,
+  generationServices,
   generationSpec,
   resetGenerationMock,
   startGeneration,
@@ -469,6 +470,97 @@ describe("the spec of invoices v2 on the in-memory mock", () => {
   });
 });
 
+describe("the spec of addresses in customer-core on the in-memory mock", () => {
+  it("makes base operations of a nested list and a PATCH on an item, names its class Address, and asks for the layout first", async () => {
+    specPage("/generation/customer-core/spec/v1/c_addresses");
+
+    expect(await screen.findByRole("heading", { name: "customer_core.addresses" })).toBeInTheDocument();
+    expect(screen.getByText("new")).toBeInTheDocument();
+    expect(
+      screen.getByText("Generation spec · Python SDK · v1 · 2 operations · 2 base · 0 custom · 1 class"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "customer-core layout" })).toHaveAttribute(
+      "href",
+      "/generation/customer-core",
+    );
+
+    // a GET on a collection is a list, though the collection sits under a customer
+    const list = operation("List addresses");
+    expect(within(list).getByText("base")).toBeInTheDocument();
+    expect(within(list).getByText("GET")).toBeInTheDocument();
+    expect(within(list).getByText("/v1/customers/{customer_id}/addresses")).toBeInTheDocument();
+    expect(within(list).getByText("addresses.list()")).toBeInTheDocument();
+    expect(within(list).getByTitle("Open this document in the repository at the scanned commit")).toHaveAttribute(
+      "href",
+      "https://github.com/opentelekomcloud-docs/customer-core/blob/mockcommit/api-ref/source/addresses/list-addresses.rst",
+    );
+    // a PATCH on an item is an update, as a PUT is
+    const update = operation("Update an address");
+    expect(within(update).getByText("base")).toBeInTheDocument();
+    expect(within(update).getByText("PATCH")).toHaveClass("text-amber-700");
+    expect(within(update).getByText("/v1/customers/{customer_id}/addresses/{address_id}")).toBeInTheDocument();
+    expect(within(update).getByText("addresses.update()")).toBeInTheDocument();
+    expect(within(update).getByTitle("Open this document in the repository at the scanned commit")).toHaveAttribute(
+      "href",
+      "https://github.com/opentelekomcloud-docs/customer-core/blob/mockcommit/api-ref/source/addresses/update-address.rst",
+    );
+
+    // no classes prepared for it: the one named after the resource, "addresses" losing its "es"
+    expect(screen.getAllByRole("region")).toHaveLength(1);
+    expect(within(cls("Address")).getByText("3 fields")).toBeInTheDocument();
+    expect(within(cls("Address")).queryByText(/to decide/)).toBeNull();
+    for (const [name, type] of [
+      ["id", "String"],
+      ["name", "String"],
+      ["created_at", "DateTime"],
+    ] as const) {
+      const f = field("Address", name);
+      expect(within(f).getByTitle(type)).toBeInTheDocument();
+      expect(f.firstElementChild).toHaveClass("bg-white");
+      expect(within(f).queryByRole("button")).toBeNull();
+    }
+
+    // never generated: only the layout holds it
+    expect(screen.queryByRole("link", { name: /in review|generating|merged|failed/ })).toBeNull();
+    expect(generateButton()).toBeDisabled();
+    expect(screen.getByText("confirm the layout first")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute("href", "/generation/customer-core/layout");
+    expect(screen.queryByText(/^decide the/)).toBeNull();
+  });
+
+  it("is offered for generation once its layout is confirmed, and its job puts customer-core in progress over the failed one", async () => {
+    confirmResource("customer-core", "c_addresses", "valeriia");
+    const { unmount } = specPage("/generation/customer-core/spec/v1/c_addresses?target=ansible");
+
+    expect(await screen.findByText("waits on Python SDK")).toBeInTheDocument();
+    expect(generateButton()).toHaveTextContent("Generate for Ansible modules");
+    expect(generateButton()).toBeDisabled();
+    unmount();
+
+    specPage("/generation/customer-core/spec/v1/c_addresses");
+
+    expect(await screen.findByRole("heading", { name: "customer_core.addresses" })).toBeInTheDocument();
+    expect(screen.getByText("confirmed")).toBeInTheDocument();
+    expect(screen.queryByText(/first$/)).toBeNull();
+
+    fireEvent.click(generateButton());
+
+    await waitFor(() =>
+      expect(generationResources("customer-core").find((r) => r.id === "c_addresses")?.jobs).toEqual({
+        python: startedJob,
+      }),
+    );
+    expectJustNow("customer-core", "c_addresses");
+    // the failed contacts is still failed; a running job ranks above it, and customers stays merged
+    expect(generationResources("customer-core").find((r) => r.id === "c_contacts")?.jobs.python?.status).toBe("failed");
+    expect(generationServices().find((s) => s.name === "customer-core")?.targets.python).toEqual({
+      state: "in_progress",
+      merged: 1,
+      total: 3,
+    });
+  });
+});
+
 describe("other resources on the mock", () => {
   it("holds Generate for a resource whose layout is not confirmed, before its open fields, and leads to the layout", async () => {
     specPage("/generation/billing-api/spec/v1/v1_payments");
@@ -623,6 +715,28 @@ describe("the way in and out", () => {
 
     await waitFor(() => expect(location()).toBe("/generation/billing-api/result/v2/v2_invoices"));
     expect(generationResources("billing-api").find((r) => r.id === "v2_invoices")?.jobs.python).toEqual(startedJob);
+  });
+
+  it("confirms addresses in customer-core, opens its spec from the card and starts the generation", async () => {
+    panel("/generation/customer-core/layout");
+
+    const v1 = await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(within(within(v1).getByRole("group", { name: "addresses" })).getByRole("button", { name: "Confirm layout" }));
+    await within(within(v1).getByRole("group", { name: "addresses" })).findByText("confirmed");
+    fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
+    // the only Generate on the card: customers is merged and contacts failed
+    fireEvent.click(await screen.findByRole("link", { name: "Generate" }));
+
+    expect(location()).toBe("/generation/customer-core/spec/v1/c_addresses");
+    expect(await screen.findByRole("heading", { name: "customer_core.addresses" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Generation spec · Python SDK · v1 · 2 operations · 2 base · 0 custom · 1 class"),
+    ).toBeInTheDocument();
+    expect(generateButton()).toBeEnabled();
+    fireEvent.click(generateButton());
+
+    await waitFor(() => expect(location()).toBe("/generation/customer-core/result/v1/c_addresses"));
+    expect(generationResources("customer-core").find((r) => r.id === "c_addresses")?.jobs.python).toEqual(startedJob);
   });
 
   it("leads back to the card", async () => {
