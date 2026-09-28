@@ -1,9 +1,9 @@
 import { useId, useState, type ReactNode } from "react";
-import { AlertTriangle, Check, Key, Loader2, Play, RefreshCw } from "lucide-react";
+import { Check, Key, Play } from "lucide-react";
 import { useOtcSettings } from "../data/queries";
 import { useSaveOtcSettings, useTestOtcSettings } from "../data/mutations";
 import type { OtcSettingsForm } from "../data/types";
-import { RefusalBanner } from "../../scan/components/ServicePageStates";
+import { BlockLoadFailed, BlockLoading, RefusalBanner } from "../../scan/components/ServicePageStates";
 import { mutationErrorKey } from "../../scan/lib/errors";
 import { fmtSnapshotAt } from "../../scan/lib/snapshot";
 import { useSession } from "../../../shared/auth/useSession";
@@ -57,27 +57,10 @@ export function SettingsPage() {
   );
 
   if (settings.isPending) {
-    return page(
-      <div className="flex items-center gap-2 py-3 text-xs text-gray-500">
-        <Loader2 size={14} className="animate-spin text-gray-400" /> {t("settings.loading")}
-      </div>,
-    );
+    return page(<BlockLoading label={t("settings.loading")} />);
   }
   if (settings.isError) {
-    return page(
-      <div className="flex items-center justify-between rounded border border-red-200 bg-red-50 px-3 py-2">
-        <span className="flex items-center gap-2 text-xs text-red-700">
-          <AlertTriangle size={13} /> {t("settings.loadFailed")}
-        </span>
-        <button
-          type="button"
-          onClick={() => void settings.refetch()}
-          className="flex items-center gap-1 rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 transition hover:border-red-500"
-        >
-          <RefreshCw size={11} /> {t("service.retry")}
-        </button>
-      </div>,
-    );
+    return page(<BlockLoadFailed label={t("settings.loadFailed")} onRetry={() => void settings.refetch()} />);
   }
 
   const { data } = settings;
