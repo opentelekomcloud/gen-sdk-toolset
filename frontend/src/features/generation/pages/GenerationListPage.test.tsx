@@ -82,6 +82,31 @@ describe("the filter lives in the address", () => {
     expect(screen.queryByText("notifications-hub")).toBeNull();
   });
 
+  it("opens narrowed to the services with nothing generated", async () => {
+    listPage("/generation?filter=not_generated");
+
+    expect(await screen.findByText("device-mgmt")).toBeInTheDocument();
+    expect(screen.getByText("tariff-catalog")).toBeInTheDocument();
+    for (const name of ["billing-api", "customer-core", "notifications-hub"]) {
+      expect(screen.queryByText(name)).toBeNull();
+    }
+    expect(screen.getByRole("button", { name: "Not generated 2" })).toHaveClass("bg-brand");
+    // neither has resources: no merged share to show
+    expect(screen.getAllByTitle("Python SDK · Not generated")).toHaveLength(2);
+    expect(screen.queryByText(/^\d+\/\d+$/)).toBeNull();
+  });
+
+  it("opens narrowed to the services merged in part", async () => {
+    listPage("/generation?filter=partial");
+
+    expect(await screen.findByTitle("Python SDK · Partial · 1 of 2 resources merged")).toBeInTheDocument();
+    expect(screen.getByText("notifications-hub")).toBeInTheDocument();
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    for (const name of ["billing-api", "customer-core", "device-mgmt", "tariff-catalog"]) {
+      expect(screen.queryByText(name)).toBeNull();
+    }
+  });
+
   it("follows a chip click, and drops the filter again on All", async () => {
     listPage();
 
@@ -163,6 +188,15 @@ describe("states the mock does not hold today", () => {
 
     expect(await screen.findByTitle("Python SDK · In progress · 0 of 2 resources merged")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "In progress 1" })).toBeInTheDocument();
+  });
+
+  it("opens narrowed to the running generations, the pill spinning", async () => {
+    listPage("/generation?filter=in_progress", SEED);
+
+    const pill = await screen.findByTitle("Python SDK · In progress · 0 of 2 resources merged");
+    expect(pill.querySelector(".animate-spin")).not.toBeNull();
+    expect(screen.getByText("running-svc")).toBeInTheDocument();
+    expect(screen.queryByText("No services match the current filter.")).toBeNull();
   });
 
   it("leaves out a service merged in full, from the rows and the counts", async () => {
