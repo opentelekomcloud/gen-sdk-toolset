@@ -114,8 +114,12 @@ describe("the spec of invoices v1 on the in-memory mock", () => {
     openProblem("Invoice", "items", "resolved");
     expect(option("Invoice", "items", "List[InvoiceItem]")).toHaveAttribute("aria-pressed", "true");
     expect(
-      within(field("Invoice", "items")).getByText(/^chosen by valeriia · 11\/08\/2026, \d\d:\d\d$/),
+      within(field("Invoice", "items")).getByText(/^chosen by valeriia · \d\d\/\d\d\/2026, \d\d:\d\d$/),
     ).toBeInTheDocument();
+    // the day on screen is the viewer's; the moment, before the generation started, is the data's
+    expect(
+      generationSpec("billing-api", "v1_invoices").classes[0].fields.find((f) => f.name === "items")?.issue?.choice,
+    ).toEqual({ type: "List[InvoiceItem]", by: "valeriia", at: "2026-08-11T14:15:00Z" });
 
     // generated on Python SDK already: its job stands in place of Generate, as on the card, and leads to the result
     expect(screen.getByRole("link", { name: "in review · PR 131" })).toHaveAttribute(
@@ -143,7 +147,10 @@ describe("the spec of invoices v1 on the in-memory mock", () => {
     expect(within(amount).getByText("Use this type")).toBeInTheDocument();
     expect(option("Invoice", "amount", "Integer")).toHaveTextContent("as in show-invoice.rst");
     expect(option("Invoice", "amount", "Integer")).toHaveAttribute("aria-pressed", "true");
-    expect(within(amount).getByText(/^chosen by valeriia · 11\/08\/2026, \d\d:\d\d$/)).toBeInTheDocument();
+    expect(within(amount).getByText(/^chosen by valeriia · \d\d\/\d\d\/2026, \d\d:\d\d$/)).toBeInTheDocument();
+    expect(
+      generationSpec("billing-api", "v1_invoices").classes[0].fields.find((f) => f.name === "amount")?.issue?.choice,
+    ).toEqual({ type: "Integer", by: "valeriia", at: "2026-08-11T14:12:00Z" });
 
     fireEvent.click(within(amount).getByRole("button", { name: "Clear choice" }));
 
@@ -353,8 +360,11 @@ describe("other resources on the mock", () => {
     openProblem("Customer", "active", "resolved");
     expect(option("Customer", "active", "Boolean")).toHaveAttribute("aria-pressed", "true");
     expect(
-      within(field("Customer", "active")).getByText(/^chosen by ivan · 04\/08\/2026, \d\d:\d\d$/),
+      within(field("Customer", "active")).getByText(/^chosen by ivan · \d\d\/\d\d\/2026, \d\d:\d\d$/),
     ).toBeInTheDocument();
+    expect(
+      generationSpec("customer-core", "c_customers").classes[0].fields.find((f) => f.name === "active")?.issue?.choice,
+    ).toEqual({ type: "Boolean", by: "ivan", at: "2026-08-04T10:05:00Z" });
   });
 
   it("shows a failed job in place of Generate, leading to its result", async () => {
