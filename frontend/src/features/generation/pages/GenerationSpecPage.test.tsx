@@ -65,7 +65,7 @@ const option = (clsName: string, name: string, type: string) =>
   within(field(clsName, name)).getByText(type, { selector: "button > span" }).closest("button") as HTMLElement;
 
 describe("the spec of invoices v1 on the in-memory mock", () => {
-  it("shows the operations, the classes, the fields left to decide and the job in review, with no dependencies block", async () => {
+  it("shows the operations, the classes, the fields decided before it was generated and the job in review, with no dependencies block", async () => {
     specPage();
 
     expect(screen.getByText("Loading service…")).toBeInTheDocument();
@@ -90,24 +90,32 @@ describe("the spec of invoices v1 on the in-memory mock", () => {
     expect(within(operation("Cancel an invoice")).getByText("invoices.delete()")).toBeInTheDocument();
 
     expect(within(cls("Invoice")).getByText("5 fields")).toBeInTheDocument();
-    expect(within(cls("Invoice")).getByText("2 to decide")).toBeInTheDocument();
+    // it is generated already, so both its problems were decided first
+    expect(within(cls("Invoice")).queryByText(/to decide/)).toBeNull();
     expect(within(cls("InvoiceItem")).getByText("3 fields")).toBeInTheDocument();
     expect(within(cls("InvoiceItem")).queryByText(/to decide/)).toBeNull();
 
     const amount = field("Invoice", "amount");
-    expect(within(amount).getByText("Integer")).toBeInTheDocument();
+    expect(within(amount).getByTitle("Integer")).toBeInTheDocument();
     expect(within(amount).getByText("yes")).toBeInTheDocument();
-    expect(within(amount).getByRole("button", { name: "type conflict" })).toHaveAttribute(
+    expect(within(amount).getByRole("button", { name: "resolved" })).toHaveAttribute(
       "title",
       "Conflict: the create page documents this field as String, the get page as Integer. Pick the type the SDK should use before generating.",
     );
     const items = field("Invoice", "items");
-    expect(within(items).getByText("⚠ Unknown")).toBeInTheDocument();
+    expect(within(items).getByTitle("List[InvoiceItem]")).toBeInTheDocument();
+    expect(within(items).queryByText("⚠ Unknown")).toBeNull();
     expect(within(items).getByText("—")).toBeInTheDocument();
-    expect(within(items).getByRole("button", { name: "unknown type" })).toBeInTheDocument();
+    expect(within(items).getByRole("button", { name: "resolved" })).toBeInTheDocument();
     expect(within(field("Invoice", "created_at")).queryByRole("button")).toBeNull();
     // nothing is open until a problem is clicked
     expect(screen.queryByText("Use this type")).toBeNull();
+
+    openProblem("Invoice", "items", "resolved");
+    expect(option("Invoice", "items", "List[InvoiceItem]")).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(field("Invoice", "items")).getByText(/^chosen by valeriia · 11\/08\/2026, \d\d:\d\d$/),
+    ).toBeInTheDocument();
 
     // generated on Python SDK already: its job stands in place of Generate, as on the card, and leads to the result
     expect(screen.getByRole("link", { name: "in review · PR 131" })).toHaveAttribute(
@@ -119,11 +127,11 @@ describe("the spec of invoices v1 on the in-memory mock", () => {
     expect(screen.queryByText(/Dependencies/)).toBeNull();
   });
 
-  it("opens a type conflict, records who chose a type and when, and takes the choice back", async () => {
+  it("opens a type conflict, takes the choice back, and records who chose a type and when", async () => {
     specPage();
 
     await screen.findByRole("heading", { name: "billing_api.invoices" });
-    openProblem("Invoice", "amount", "type conflict");
+    openProblem("Invoice", "amount", "resolved");
 
     const amount = field("Invoice", "amount");
     expect(within(amount).getByText(/^Conflict: the create page/)).toBeInTheDocument();
@@ -134,8 +142,19 @@ describe("the spec of invoices v1 on the in-memory mock", () => {
     expect(within(amount).getByRole("link", { name: "show-invoice.rst" })).toBeInTheDocument();
     expect(within(amount).getByText("Use this type")).toBeInTheDocument();
     expect(option("Invoice", "amount", "Integer")).toHaveTextContent("as in show-invoice.rst");
+    expect(option("Invoice", "amount", "Integer")).toHaveAttribute("aria-pressed", "true");
+    expect(within(amount).getByText(/^chosen by valeriia · 11\/08\/2026, \d\d:\d\d$/)).toBeInTheDocument();
+
+    fireEvent.click(within(amount).getByRole("button", { name: "Clear choice" }));
+
+    expect(await within(field("Invoice", "amount")).findByRole("button", { name: "type conflict" })).toBeInTheDocument();
+    expect(within(field("Invoice", "amount")).queryByText(/^chosen by/)).toBeNull();
+    expect(within(field("Invoice", "amount")).queryByRole("button", { name: "Clear choice" })).toBeNull();
+    expect(option("Invoice", "amount", "Integer")).toHaveAttribute("aria-pressed", "false");
     expect(option("Invoice", "amount", "String")).toHaveAttribute("aria-pressed", "false");
-    expect(within(amount).queryByRole("button", { name: "Clear choice" })).toBeNull();
+    expect(within(field("Invoice", "amount")).getByTitle("Integer")).toBeInTheDocument();
+    expect(within(cls("Invoice")).getByText("1 to decide")).toBeInTheDocument();
+    expect(generationSpec("billing-api", "v1_invoices").classes[0].fields[2].issue?.choice).toBeNull();
 
     fireEvent.click(option("Invoice", "amount", "String"));
 
@@ -145,43 +164,37 @@ describe("the spec of invoices v1 on the in-memory mock", () => {
     expect(
       within(field("Invoice", "amount")).getByText(/^chosen by ada@otc\.test · \d\d\/\d\d\/\d{4}, \d\d:\d\d$/),
     ).toBeInTheDocument();
-    expect(within(cls("Invoice")).getByText("1 to decide")).toBeInTheDocument();
+    expect(within(cls("Invoice")).queryByText(/to decide/)).toBeNull();
 
     const recorded = generationSpec("billing-api", "v1_invoices").classes[0].fields.find((f) => f.name === "amount");
     expect(recorded?.issue?.choice?.type).toBe("String");
     expect(recorded?.issue?.choice?.by).toBe("ada@otc.test");
     expect(Date.now() - Date.parse(recorded?.issue?.choice?.at ?? "")).toBeLessThan(60_000);
-
-    fireEvent.click(within(field("Invoice", "amount")).getByRole("button", { name: "Clear choice" }));
-
-    expect(await within(field("Invoice", "amount")).findByRole("button", { name: "type conflict" })).toBeInTheDocument();
-    expect(within(field("Invoice", "amount")).queryByText(/^chosen by/)).toBeNull();
-    expect(within(field("Invoice", "amount")).getByTitle("Integer")).toBeInTheDocument();
-    expect(within(cls("Invoice")).getByText("2 to decide")).toBeInTheDocument();
-    expect(generationSpec("billing-api", "v1_invoices").classes[0].fields[2].issue?.choice).toBeNull();
   });
 
   it("changes a choice, takes it back by choosing it again, and keeps one problem open at a time", async () => {
     specPage();
 
     await screen.findByRole("heading", { name: "billing_api.invoices" });
-    openProblem("Invoice", "items", "unknown type");
+    openProblem("Invoice", "items", "resolved");
     fireEvent.click(option("Invoice", "items", "List[String]"));
     expect(await within(field("Invoice", "items")).findByTitle("List[String]")).toBeInTheDocument();
-    expect(within(field("Invoice", "items")).queryByText("⚠ Unknown")).toBeNull();
+    expect(option("Invoice", "items", "List[InvoiceItem]")).toHaveAttribute("aria-pressed", "false");
 
     fireEvent.click(option("Invoice", "items", "List[InvoiceItem]"));
     expect(await within(field("Invoice", "items")).findByTitle("List[InvoiceItem]")).toBeInTheDocument();
     expect(option("Invoice", "items", "List[String]")).toHaveAttribute("aria-pressed", "false");
+    expect(within(field("Invoice", "items")).queryByText("⚠ Unknown")).toBeNull();
 
     fireEvent.click(option("Invoice", "items", "List[InvoiceItem]"));
     expect(await within(field("Invoice", "items")).findByText("⚠ Unknown")).toBeInTheDocument();
+    expect(within(field("Invoice", "items")).getByRole("button", { name: "unknown type" })).toBeInTheDocument();
 
-    openProblem("Invoice", "amount", "type conflict");
+    openProblem("Invoice", "amount", "resolved");
     expect(screen.getAllByText("Use this type")).toHaveLength(1);
     expect(within(field("Invoice", "amount")).getByText("Use this type")).toBeInTheDocument();
 
-    openProblem("Invoice", "amount", "type conflict");
+    openProblem("Invoice", "amount", "resolved");
     expect(screen.queryByText("Use this type")).toBeNull();
   });
 
@@ -219,15 +232,40 @@ describe("the spec of invoices v1 on the in-memory mock", () => {
     await waitFor(() => expect(screen.queryByText("That did not go through")).toBeNull());
   });
 
+  it("says why Generate is refused when someone took a choice back meanwhile, and shows the field to decide", async () => {
+    confirmResource("billing-api", "v1_payments", "valeriia");
+    chooseType("billing-api", "v1_payments", "Payment", "method", "String", "valeriia");
+    specPage("/generation/billing-api/spec/v1/v1_payments");
+
+    await screen.findByRole("heading", { name: "billing_api.payments" });
+    expect(within(field("Payment", "method")).getByRole("button", { name: "resolved" })).toBeInTheDocument();
+    expect(generateButton()).toBeEnabled();
+
+    // someone takes the choice back elsewhere before this page has heard of it
+    chooseType("billing-api", "v1_payments", "Payment", "method", null, "valeriia");
+    fireEvent.click(generateButton());
+
+    expect(await screen.findByText("payments cannot be generated: 1 field(s) still to decide")).toBeInTheDocument();
+    // with the refusal the page hears of it: the field is open again, and it holds Generate
+    expect(await within(field("Payment", "method")).findByRole("button", { name: "unknown type" })).toBeInTheDocument();
+    expect(within(cls("Payment")).getByText("1 to decide")).toBeInTheDocument();
+    expect(generateButton()).toBeDisabled();
+    expect(screen.getByText("decide the highlighted field first")).toBeInTheDocument();
+    expect(location()).toBe("/generation/billing-api/spec/v1/v1_payments");
+    expect(generationResources("billing-api").find((r) => r.id === "v1_payments")?.jobs).toEqual({});
+  });
+
   it("works on the target in the address, holds Generate there as the card does, and keeps the target on the way back", async () => {
+    chooseType("billing-api", "v1_invoices", "Invoice", "amount", null, "valeriia");
     specPage("/generation/billing-api/spec/v1/v1_invoices?target=ansible");
 
     expect(
       await screen.findByText("Generation spec · Ansible modules · v1 · 4 operations · 4 base · 0 custom · 2 classes"),
     ).toBeInTheDocument();
+    expect(within(cls("Invoice")).getByText("1 to decide")).toBeInTheDocument();
     expect(generateButton()).toHaveTextContent("Generate for Ansible modules");
     expect(generateButton()).toBeDisabled();
-    // the card's reason comes first; the two open fields are not the one named
+    // the card's reason comes first; the open field is not the one named
     expect(screen.getByText("waits on Python SDK")).toBeInTheDocument();
     expect(screen.queryByText(/^decide the/)).toBeNull();
     // Python SDK's job is not this target's
@@ -248,11 +286,12 @@ describe("a viewer", () => {
     specPage();
 
     await screen.findByRole("heading", { name: "billing_api.invoices" });
-    openProblem("Invoice", "amount", "type conflict");
+    openProblem("Invoice", "amount", "resolved");
 
     const amount = field("Invoice", "amount");
     expect(within(amount).getByText("Use this type")).toBeInTheDocument();
     expect(within(amount).getByText("as in show-invoice.rst")).toBeInTheDocument();
+    expect(within(amount).getByText(/^chosen by valeriia · /)).toBeInTheDocument();
     // the tag that opened the problem is the only button left in the field
     expect(within(amount).getAllByRole("button")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "in review · PR 131" })).toBeInTheDocument();
@@ -300,6 +339,22 @@ describe("other resources on the mock", () => {
     expect(screen.queryByText(/^decide the/)).toBeNull();
     expect(generateButton()).toBeDisabled();
     expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute("href", "/generation/billing-api/layout");
+  });
+
+  it("shows a merged resource with its type conflict decided before it was generated", async () => {
+    specPage("/generation/customer-core/spec/v1/c_customers");
+
+    expect(await screen.findByRole("heading", { name: "customer_core.customers" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "merged · PR 122" })).toHaveAttribute(
+      "href",
+      "/generation/customer-core/result/v1/c_customers",
+    );
+    expect(within(cls("Customer")).queryByText(/to decide/)).toBeNull();
+    openProblem("Customer", "active", "resolved");
+    expect(option("Customer", "active", "Boolean")).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(field("Customer", "active")).getByText(/^chosen by ivan · 04\/08\/2026, \d\d:\d\d$/),
+    ).toBeInTheDocument();
   });
 
   it("shows a failed job in place of Generate, leading to its result", async () => {

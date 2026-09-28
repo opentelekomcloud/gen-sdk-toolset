@@ -437,21 +437,47 @@ interface Choice {
   at: string;
 }
 
+const choiceKey = (service: string, resource: string, cls: string, name: string) =>
+  JSON.stringify([service, resource, cls, name]);
+
+/**
+ * The choices made before: a resource is not generated while a field has a
+ * problem nobody decided (owner decision), so the fields of the resources with
+ * a job have theirs. The prototype has none; each is the first type offered,
+ * chosen by who started the generation, before the prototype's `JOB_SEED` has
+ * it start (owner decision).
+ */
+const seedChoices = () =>
+  new Map<string, Choice>([
+    [
+      choiceKey("billing-api", "v1_invoices", "Invoice", "amount"),
+      { type: "Integer", by: "valeriia", at: "2026-08-11T14:12:00Z" },
+    ],
+    [
+      choiceKey("billing-api", "v1_invoices", "Invoice", "items"),
+      { type: "List[InvoiceItem]", by: "valeriia", at: "2026-08-11T14:15:00Z" },
+    ],
+    [
+      choiceKey("customer-core", "c_customers", "Customer", "active"),
+      { type: "Boolean", by: "ivan", at: "2026-08-04T10:05:00Z" },
+    ],
+  ]);
+
 /** The layout of every service as it is now: the scanner's, edited. */
 let layout = seed();
 /** Resources made by hand so far, for their ids. */
 let made = 0;
 /** The jobs as they are now: the seed, and the generations started since. */
 let jobs = seedJobs();
-/** The types chosen for fields with a problem, by `choiceKey`. Nobody had chosen one before, as in the prototype. */
-let choices = new Map<string, Choice>();
+/** The types chosen for fields with a problem, by `choiceKey`: the seed, and the choices made and taken back since. */
+let choices = seedChoices();
 
 /** Back to the seed. Tests share this module's memory, so each one that edits starts here. */
 export function resetGenerationMock() {
   layout = seed();
   made = 0;
   jobs = seedJobs();
-  choices = new Map();
+  choices = seedChoices();
 }
 
 const jobsOf = (resource: string): Partial<Record<string, GenJob>> =>
@@ -841,9 +867,6 @@ function operationOf({ method, uri }: GenEndpoint): Omit<GenOperation, "endpoint
   const named = segs.filter((s) => !s.startsWith("{"));
   return { kind: "custom", sdkMethod: (named.at(-1) ?? "action").replace(/-/g, "_") };
 }
-
-const choiceKey = (service: string, resource: string, cls: string, name: string) =>
-  JSON.stringify([service, resource, cls, name]);
 
 /** Fields of the resource whose problem nobody has decided yet. */
 const undecided = (service: string, r: Laid) =>

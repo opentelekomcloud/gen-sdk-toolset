@@ -95,12 +95,15 @@ export function invalidateGenLayout(qc: QueryClient, name: string) {
 /**
  * A generation started for a resource gives it a job: its resources carry the
  * jobs, the list and the card count them into the state of the service, and a
- * failed job it replaces no longer counts in the attention rules.
+ * failed job it replaces no longer counts in the attention rules. A refused one
+ * says the page was stale, on the job, the layout or a field left to decide -
+ * so the specs, whose fields carry the choices, are fetched again with the rest.
  */
 export function invalidateGenJobs(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.genResources(name) });
   void qc.invalidateQueries({ queryKey: keys.genServices });
   void qc.invalidateQueries({ queryKey: keys.genAttention });
+  void qc.invalidateQueries({ queryKey: keys.genSpecs(name) });
 }
 
 export interface ServicesParams {
