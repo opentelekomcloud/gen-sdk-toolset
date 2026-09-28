@@ -39,10 +39,10 @@ export interface GenService {
 
 /** A resource's generation job on one target. `done` is a job whose pull request
  *  is open and waiting for review; `merged` is one whose pull request was merged. */
-export type JobStatus = "running" | "done" | "merged" | "failed";
+export type GenJobStatus = "running" | "done" | "merged" | "failed";
 
 export interface GenJob {
-  status: JobStatus;
+  status: GenJobStatus;
   /** The job's pull request; null until one is open. */
   pr: number | null;
 }

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
-import { useLocation } from "react-router";
+import { Route, Routes, useLocation } from "react-router";
 import { renderPage } from "../../../test/render";
 import { keys } from "../../scan/api/queries";
 import { generationResources } from "../data/mock";
 import type { GenResource, GenService, GenTarget } from "../data/types";
+import { GenerationListPage } from "./GenerationListPage";
 import { GenerationServicePage } from "./GenerationServicePage";
 
 /** Where the page navigated to. */
@@ -114,6 +115,48 @@ describe("the billing-api card on the in-memory mock", () => {
     expect(await screen.findByText("1 endpoint not recognized in full")).toBeInTheDocument();
     expect(screen.getAllByText("confirm the layout first")).toHaveLength(2);
     expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+  });
+});
+
+describe("the way back to the list", () => {
+  /** The list and the card under their own routes, so one can be left for the other. */
+  function panel(path: string) {
+    return renderPage(
+      <>
+        <Routes>
+          <Route path="generation" element={<GenerationListPage />} />
+          <Route path="generation/:name" element={<GenerationServicePage />} />
+        </Routes>
+        <Location />
+      </>,
+      { path, route: "*" },
+    );
+  }
+
+  it("returns to the chip the card was opened on, across a switch of target", async () => {
+    panel("/generation?filter=failed");
+
+    fireEvent.click(await screen.findByText("customer-core"));
+
+    expect(await screen.findByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation?filter=failed");
+
+    fireEvent.click(targetButton("Ansible modules"));
+
+    expect(location()).toBe("/generation/customer-core?target=ansible");
+    expect(screen.getByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation?filter=failed");
+
+    fireEvent.click(screen.getByRole("link", { name: "All services" }));
+
+    expect(location()).toBe("/generation?filter=failed");
+    expect(await screen.findByRole("button", { name: "Failed 1" })).toHaveClass("bg-brand");
+  });
+
+  it("returns to the whole list when the card was opened on All", async () => {
+    panel("/generation");
+
+    fireEvent.click(await screen.findByTitle(/^Ansible modules · not connected · 0 of 4/));
+
+    expect(await screen.findByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation");
   });
 });
 

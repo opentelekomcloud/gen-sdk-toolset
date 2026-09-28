@@ -1,19 +1,20 @@
-import { AlertTriangle, ArrowLeft, Folder, Loader2, Play, RefreshCw } from "lucide-react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Folder, Play } from "lucide-react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useGenerationResources, useGenerationServices, useGenerationTargets } from "../data/queries";
-import type { GenResource, GenTarget, JobStatus } from "../data/types";
-import { servicePath } from "../lib/paths";
+import type { GenJobStatus, GenResource, GenTarget } from "../data/types";
+import { listPath, servicePath } from "../lib/paths";
+import { ServiceBackLink, ServiceLoadFailed, ServiceLoading } from "../../scan/components/ServicePageStates";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
 
 /** A job is drawn as a tag - uppercase and smaller than the state pill, as in the prototype. */
-const JOB_CLS: Record<JobStatus, string> = {
+const JOB_CLS: Record<GenJobStatus, string> = {
   running: "border-blue-200 bg-blue-50 text-blue-700",
   done: "border-amber-200 bg-amber-50 text-amber-800",
   merged: "border-violet-200 bg-violet-50 text-violet-700",
   failed: "border-red-300 bg-red-50 text-red-700",
 };
 
-const jobKey = (s: JobStatus): MessageKey => `gen.job.${s}` as MessageKey;
+const jobKey = (s: GenJobStatus): MessageKey => `gen.job.${s}` as MessageKey;
 
 function ResourceRow({
   resource,
@@ -102,39 +103,24 @@ function ResourceRow({
 export function GenerationServicePage() {
   const { name = "" } = useParams();
   const [searchParams] = useSearchParams();
+  /* Opened from the list, the card knows the list's query and leads back to it. */
+  const { state: fromList } = useLocation();
   const navigate = useNavigate();
   const { t } = useI18n();
   const targets = useGenerationTargets();
   const services = useGenerationServices();
   const resources = useGenerationResources(name);
 
-  const back = (
-    <Link to="/generation" className="mb-3 flex items-center gap-1.5 text-sm text-gray-500 transition hover:text-gray-900">
-      <ArrowLeft size={15} /> {t("service.back")}
-    </Link>
-  );
-  const loading = (
-    <div className="flex items-center justify-center gap-2 py-24 text-sm text-gray-400">
-      <Loader2 size={16} className="animate-spin" /> {t("service.loading")}
-    </div>
-  );
+  const listTo = listPath(fromList);
+  const back = <ServiceBackLink to={listTo} />;
+  const loading = <ServiceLoading />;
   const failed = (
-    <div className="mx-auto max-w-6xl px-6 py-5">
-      {back}
-      <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
-        <AlertTriangle size={22} className="mx-auto mb-2 text-gray-400" />
-        <div className="mb-1 text-sm font-semibold text-gray-700">{t("service.loadFailed")}</div>
-        <button
-          type="button"
-          onClick={() => {
-            for (const q of [targets, services, resources]) if (q.isError) void q.refetch();
-          }}
-          className="mx-auto mt-2 flex items-center gap-1 rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500"
-        >
-          <RefreshCw size={11} /> {t("service.retry")}
-        </button>
-      </div>
-    </div>
+    <ServiceLoadFailed
+      back={listTo}
+      onRetry={() => {
+        for (const q of [targets, services, resources]) if (q.isError) void q.refetch();
+      }}
+    />
   );
 
   if (targets.isPending || services.isPending) return loading;
@@ -191,7 +177,7 @@ export function GenerationServicePage() {
               type="button"
               key={x.id}
               aria-pressed={on}
-              onClick={() => navigate(servicePath(name, x, defaultTarget), { replace: true })}
+              onClick={() => navigate(servicePath(name, x, defaultTarget), { replace: true, state: fromList })}
               className={`min-w-0 flex-1 rounded-lg border px-2.5 py-2 text-left transition ${
                 on ? "border-brand bg-pink-50" : "border-gray-200 bg-white hover:border-gray-400"
               }`}

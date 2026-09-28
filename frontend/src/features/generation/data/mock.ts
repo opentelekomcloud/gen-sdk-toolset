@@ -9,12 +9,12 @@ import type { DocStatus } from "../../scan/types";
 import type {
   GenAttentionCode,
   GenJob,
+  GenJobStatus,
   GenResource,
   GenService,
   GenState,
   GenTarget,
   GenTargetSummary,
-  JobStatus,
 } from "./types";
 
 const TARGETS: GenTarget[] = [
@@ -147,7 +147,7 @@ const JOBS: Record<string, Record<string, GenJob>> = {
 
 function summarize(resources: string[], target: string): GenTargetSummary {
   const jobs = JOBS[target] ?? {};
-  const count = (status: JobStatus) => resources.filter((r) => jobs[r]?.status === status).length;
+  const count = (status: GenJobStatus) => resources.filter((r) => jobs[r]?.status === status).length;
   const merged = count("merged");
   const untouched = resources.filter((r) => !jobs[r]).length;
   const state: GenState = !resources.length
@@ -204,7 +204,7 @@ export function generationResources(service: string): GenResource[] {
 export function generationAttention(): AttentionRule[] {
   const live = TARGETS.filter((t) => t.live);
   const resources = Object.keys(LAYOUT).flatMap(resourceIds);
-  const tally = (status: JobStatus) =>
+  const tally = (status: GenJobStatus) =>
     live.reduce((n, t) => n + resources.filter((r) => JOBS[t.id]?.[r]?.status === status).length, 0);
   const rule = (code: GenAttentionCode, label: string, count: number): AttentionRule => ({
     code,

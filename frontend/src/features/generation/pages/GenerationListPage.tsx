@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { ChevronRight, Search } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { useGenerationServices, useGenerationTargets } from "../data/queries";
 import type { GenFilter, GenService, GenState, GenTarget } from "../data/types";
-import { servicePath } from "../lib/paths";
+import { servicePath, type FromList } from "../lib/paths";
 import { StatusPill } from "../../scan/components/StatusPill";
 import { chipCls } from "../../scan/styles";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
@@ -28,14 +28,17 @@ const gridCols = (targets: number) => ({ gridTemplateColumns: `minmax(0,2fr) rep
 
 function ServiceRow({ service, targets }: { service: GenService; targets: GenTarget[] }) {
   const navigate = useNavigate();
+  const { search } = useLocation();
   const { t } = useI18n();
   const [defaultTarget] = targets;
+  const open = (target: GenTarget) =>
+    navigate(servicePath(service.name, target, defaultTarget), { state: { listSearch: search } satisfies FromList });
 
   return (
     <div
       style={gridCols(targets.length)}
       className="grid cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-2.5 transition last:border-0 hover:bg-gray-50"
-      onClick={() => navigate(servicePath(service.name, defaultTarget, defaultTarget))}
+      onClick={() => open(defaultTarget)}
     >
       <div className="flex items-center gap-1.5 overflow-hidden">
         <ChevronRight size={14} className="shrink-0 text-gray-400" />
@@ -61,7 +64,7 @@ function ServiceRow({ service, targets }: { service: GenService; targets: GenTar
               title={title}
               onClick={(e) => {
                 e.stopPropagation();
-                navigate(servicePath(service.name, target, defaultTarget));
+                open(target);
               }}
             >
               <StatusPill
