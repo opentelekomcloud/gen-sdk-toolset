@@ -193,7 +193,7 @@ describe("the way back to the list", () => {
 
 describe("other services on the mock", () => {
   it("says so when nothing is laid out", async () => {
-    cardPage("/generation/device-mgmt");
+    cardPage("/generation/tariff-catalog");
 
     expect(await screen.findByText("Nothing laid out for this service yet.")).toBeInTheDocument();
     expect(targetButton("Python SDK")).toHaveTextContent("no resources");

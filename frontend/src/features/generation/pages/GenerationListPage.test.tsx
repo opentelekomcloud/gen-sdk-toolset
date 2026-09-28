@@ -91,9 +91,10 @@ describe("the filter lives in the address", () => {
       expect(screen.queryByText(name)).toBeNull();
     }
     expect(screen.getByRole("button", { name: "Not generated 2" })).toHaveClass("bg-brand");
-    // neither has resources: no merged share to show
-    expect(screen.getAllByTitle("Python SDK · Not generated")).toHaveLength(2);
-    expect(screen.queryByText(/^\d+\/\d+$/)).toBeNull();
+    // device-mgmt has resources, none of them generated; tariff-catalog has none, so no merged share to show
+    expect(screen.getByTitle("Python SDK · Not generated · 0 of 6 resources merged")).toBeInTheDocument();
+    expect(screen.getByTitle("Python SDK · Not generated")).toBeInTheDocument();
+    expect(screen.getAllByText(/^\d+\/\d+$/).map((e) => e.textContent)).toEqual(["0/6", "0/6"]);
   });
 
   it("opens narrowed to the services merged in part", async () => {

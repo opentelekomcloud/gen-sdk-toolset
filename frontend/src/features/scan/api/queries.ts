@@ -42,6 +42,8 @@ export const keys = {
   genServices: ["generation", "services"] as const,
   genResources: (name: string) => ["generation", "resources", name] as const,
   genAttention: ["generation", "attention"] as const,
+  /** Mutation key of a service's layout edits; the edits that went through say it was edited. */
+  genLayoutEdit: (name: string) => ["generation", "layout-edit", name] as const,
 };
 
 /**

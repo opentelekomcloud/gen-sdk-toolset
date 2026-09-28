@@ -259,7 +259,7 @@ describe("the billing-api layout on the in-memory mock", () => {
     expect(within(resource("v1", "misc")).getByText("3 endpoints")).toBeInTheDocument();
   });
 
-  it("resets a resource made by hand by sending its endpoints back", async () => {
+  it("leaves a resource made by hand as it is on its reset: the scanner's layout has no such resource", async () => {
     layoutPage();
 
     await screen.findByRole("heading", { name: "billing-api" });
@@ -269,9 +269,13 @@ describe("the billing-api layout on the in-memory mock", () => {
     await within(resource("v1", "new_resource_1")).findByText("List credit notes");
 
     fireEvent.click(button(resource("v1", "new_resource_1"), "Reset to auto"));
+    // edits go through in the order they are made: once the confirmation shows, the reset has been through
+    fireEvent.click(button(resource("v1", "new_resource_1"), "Confirm layout"));
 
-    expect(await within(resource("v1", "misc")).findByText("List credit notes")).toBeInTheDocument();
-    expect(within(resource("v1", "new_resource_1")).getByText("0 endpoints")).toBeInTheDocument();
+    expect(await within(resource("v1", "new_resource_1")).findByText("confirmed")).toBeInTheDocument();
+    expect(within(resource("v1", "new_resource_1")).getByText("List credit notes")).toBeInTheDocument();
+    expect(within(resource("v1", "misc")).getByText("2 endpoints")).toBeInTheDocument();
+    expect(screen.queryByText("That did not go through")).toBeNull();
   });
 
   it("resets a version: names, endpoints and confirmations come back, resources made by hand go", async () => {
@@ -382,6 +386,29 @@ describe("the way in and out", () => {
     expect(await screen.findByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation?filter=review");
   });
 
+  it("keeps the note that the layout was edited once the layout is left, for that service only", async () => {
+    panel("/generation/billing-api/layout");
+
+    await screen.findByText(/^Shared layout · 2 versions/);
+    fireEvent.click(button(version("v1"), "New resource"));
+    expect(await screen.findByText("Layout edited · saved on the service")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
+    fireEvent.click(await screen.findByRole("link", { name: "Edit layout" }));
+
+    expect(await screen.findByText(/^Shared layout · 2 versions · 5 resources/)).toBeInTheDocument();
+    expect(screen.getByText("Layout edited · saved on the service")).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
+    fireEvent.click(await screen.findByRole("link", { name: "All services" }));
+    fireEvent.click(await screen.findByText("customer-core"));
+    fireEvent.click(await screen.findByRole("link", { name: "Edit layout" }));
+
+    expect(await screen.findByText(/^Shared layout · 1 version/)).toBeInTheDocument();
+    expect(location()).toBe("/generation/customer-core/layout");
+    expect(screen.queryByText("Layout edited · saved on the service")).toBeNull();
+  });
+
   it("keeps the card's target on the way back", async () => {
     layoutPage("/generation/billing-api/layout?target=ansible");
 
@@ -417,6 +444,27 @@ describe("other services on the mock", () => {
     expect(button(contacts, "Confirm layout")).toBeInTheDocument();
     expect(within(resource("v1", "addresses")).getByText("new")).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
+  });
+
+  it("lays out device-mgmt, scanned in part, from its documents, and marks the ones not recognized in full", async () => {
+    layoutPage("/generation/device-mgmt/layout");
+
+    expect(
+      await screen.findByText("Shared layout · 1 version · 6 resources · 31 endpoints · 0 of 6 resources confirmed"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("needs confirmation")).toBeInTheDocument();
+    expect(within(version("v2")).getAllByText("auto")).toHaveLength(6);
+    // the scan mock has 18 of its documents ok, 9 partial and 4 failed
+    expect(screen.getAllByText("partial")).toHaveLength(9);
+    expect(screen.getAllByText("failed")).toHaveLength(4);
+    const shadow = endpointRow("Query a device shadow");
+    expect(within(shadow).getByText("failed")).toHaveAttribute(
+      "title",
+      "Not recognized in full — a resource holding this endpoint cannot be generated. It can be dragged to another resource.",
+    );
+    expect(shadow).toHaveAttribute("draggable", "true");
+    expect(screen.queryByText("Scanned — no endpoint documents found. Nothing to lay out.")).toBeNull();
+    expect(screen.queryByText("nothing to lay out")).toBeNull();
   });
 
   it("says there is nothing to lay out", async () => {

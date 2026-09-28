@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import { useGenerationResources, useGenerationServices, useGenerationTargets } from "../data/queries";
-import { useEditLayout, type LayoutEdit } from "../data/mutations";
+import { useEditLayout, useLayoutEdited, type LayoutEdit } from "../data/mutations";
 import type { GenJobStatus, GenOrigin, GenResource, GenTarget } from "../data/types";
 import { lockingJob, mergedEverywhere } from "../lib/layout";
 import { listPath, servicePath } from "../lib/paths";
@@ -320,14 +320,14 @@ export function GenerationLayoutPage() {
   const services = useGenerationServices();
   const resources = useGenerationResources(name);
   const edit = useEditLayout(name);
+  /* The prototype's note next to the title: the layout of this service was edited in this session. */
+  const edited = useLayoutEdited(name);
   /* Everything starts open, as in the prototype. */
   const [closedVersions, setClosedVersions] = useState<ReadonlySet<string>>(new Set());
   const [closedResources, setClosedResources] = useState<ReadonlySet<string>>(new Set());
   const [renaming, setRenaming] = useState<Renaming | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [over, setOver] = useState<string | null>(null);
-  /* Whether this visit changed the layout: the prototype's note next to the title. */
-  const [edited, setEdited] = useState(false);
 
   const listTo = listPath(fromList);
   const loading = <ServiceLoading />;
@@ -376,13 +376,7 @@ export function GenerationLayoutPage() {
     .filter(Boolean)
     .join(" · ");
 
-  const apply = (change: LayoutEdit, then?: () => void) =>
-    edit.mutate(change, {
-      onSuccess: () => {
-        setEdited(true);
-        then?.();
-      },
-    });
+  const apply = (change: LayoutEdit, then?: () => void) => edit.mutate(change, { onSuccess: () => then?.() });
   const saveRename = (resource: GenResource) => {
     if (!renaming) return;
     const value = renaming.value.trim();

@@ -1,5 +1,5 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { invalidateGenLayout } from "../../scan/api/queries";
+import { useMutation, useMutationState, useQueryClient } from "@tanstack/react-query";
+import { invalidateGenLayout, keys } from "../../scan/api/queries";
 import { useSession } from "../../../shared/auth/useSession";
 import { addResource, confirmResource, moveEndpoint, renameResource, resetResource, resetVersion } from "./mock";
 
@@ -16,12 +16,15 @@ export type LayoutEdit =
  * Edits of a service's layout. Nothing changes on screen before the mock has
  * answered, so there is nothing to roll back: a refusal comes back as the
  * mutation's error, and the layout is fetched again either way. A confirmation
- * records the signed-in user; the mock records when (owner decision).
+ * records the signed-in user; the mock records when (owner decision). The edits
+ * are kept for the session, for `useLayoutEdited`.
  */
 export function useEditLayout(name: string) {
   const qc = useQueryClient();
   const { name: by } = useSession();
   return useMutation({
+    mutationKey: keys.genLayoutEdit(name),
+    gcTime: Infinity,
     mutationFn: async (edit: LayoutEdit) => {
       switch (edit.kind) {
         case "rename":
@@ -40,4 +43,13 @@ export function useEditLayout(name: string) {
     },
     onSettled: () => invalidateGenLayout(qc, name),
   });
+}
+
+/**
+ * Whether an edit of the service's layout went through in this session: the
+ * prototype's note, kept per service until the panel reloads - as long as the
+ * mock keeps the edits - however often the page is left.
+ */
+export function useLayoutEdited(name: string) {
+  return useMutationState({ filters: { mutationKey: keys.genLayoutEdit(name), exact: true, status: "success" } }).length > 0;
 }

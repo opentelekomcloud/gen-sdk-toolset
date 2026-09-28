@@ -67,8 +67,10 @@ interface LaidOut {
  * The layout the scanner proposed for every service in Generation - the scan
  * mock's services with scan status `scanned` or `partial` (owner decision) -
  * with the confirmations recorded before. "Reset to auto" goes back to it. The
- * prototype has no layout for device-mgmt and none for tariff-catalog, which has
- * no endpoints.
+ * prototype has no layout for device-mgmt, which it does not have in Generation:
+ * it is given one (owner decision) from its 31 documents in the scan mock, with
+ * their statuses there - 18 ok, 9 partial, 4 failed. tariff-catalog has no
+ * endpoints, so no layout.
  */
 const AUTO: Record<string, LaidOut[]> = {
   "billing-api": [
@@ -165,7 +167,184 @@ const AUTO: Record<string, LaidOut[]> = {
       ],
     },
   ],
-  "device-mgmt": [],
+  "device-mgmt": [
+    {
+      id: "d_devices",
+      version: "v2",
+      name: "devices",
+      origin: "auto",
+      confirmed: null,
+      endpoints: [
+        ep("d1", "GET", "/v2/devices", "List devices", "devices/list-devices.rst"),
+        ep("d2", "GET", "/v2/devices/{device_id}", "Query device details", "devices/show-device.rst"),
+        ep("d3", "POST", "/v2/devices", "Register a device", "devices/create-device.rst", "partial"),
+        ep("d4", "PUT", "/v2/devices/{device_id}", "Update a device", "devices/update-device.rst", "partial"),
+        ep("d5", "DELETE", "/v2/devices/{device_id}", "Delete a device", "devices/delete-device.rst"),
+        ep(
+          "d6",
+          "POST",
+          "/v2/devices/{device_id}/action",
+          "Reset a device secret",
+          "devices/reset-device-secret.rst",
+          "partial",
+        ),
+        ep("d7", "GET", "/v2/devices/{device_id}/shadow", "Query a device shadow", "devices/show-shadow.rst", "failed"),
+      ],
+    },
+    {
+      id: "d_device_groups",
+      version: "v2",
+      name: "device_groups",
+      origin: "auto",
+      confirmed: null,
+      endpoints: [
+        ep("d8", "GET", "/v2/device-groups", "List device groups", "device-groups/list-device-groups.rst"),
+        ep("d9", "POST", "/v2/device-groups", "Create a device group", "device-groups/create-device-group.rst"),
+        ep("d10", "GET", "/v2/device-groups/{group_id}", "Query a device group", "device-groups/show-device-group.rst"),
+        ep(
+          "d11",
+          "DELETE",
+          "/v2/device-groups/{group_id}",
+          "Delete a device group",
+          "device-groups/delete-device-group.rst",
+        ),
+        ep(
+          "d12",
+          "POST",
+          "/v2/device-groups/{group_id}/action",
+          "Add or remove devices of a group",
+          "device-groups/manage-group-devices.rst",
+        ),
+      ],
+    },
+    {
+      id: "d_products",
+      version: "v2",
+      name: "products",
+      origin: "auto",
+      confirmed: null,
+      endpoints: [
+        ep("d13", "GET", "/v2/products", "List products", "products/list-products.rst"),
+        ep("d14", "POST", "/v2/products", "Create a product", "products/create-product.rst", "partial"),
+        ep("d15", "GET", "/v2/products/{product_id}", "Query a product", "products/show-product.rst"),
+        ep("d16", "PUT", "/v2/products/{product_id}", "Update a product", "products/update-product.rst", "partial"),
+        ep("d17", "DELETE", "/v2/products/{product_id}", "Delete a product", "products/delete-product.rst"),
+      ],
+    },
+    {
+      id: "d_commands",
+      version: "v2",
+      name: "commands",
+      origin: "auto",
+      confirmed: null,
+      endpoints: [
+        ep(
+          "d18",
+          "POST",
+          "/v2/devices/{device_id}/commands",
+          "Send a command to a device",
+          "commands/create-command.rst",
+          "failed",
+        ),
+        ep(
+          "d19",
+          "POST",
+          "/v2/devices/{device_id}/async-commands",
+          "Send an asynchronous command",
+          "commands/create-async-command.rst",
+          "failed",
+        ),
+        ep(
+          "d20",
+          "GET",
+          "/v2/devices/{device_id}/async-commands",
+          "List asynchronous commands",
+          "commands/list-async-commands.rst",
+          "partial",
+        ),
+        ep(
+          "d21",
+          "GET",
+          "/v2/devices/{device_id}/async-commands/{command_id}",
+          "Query an asynchronous command",
+          "commands/show-async-command.rst",
+        ),
+      ],
+    },
+    {
+      id: "d_upgrades",
+      version: "v2",
+      name: "upgrades",
+      origin: "auto",
+      confirmed: null,
+      endpoints: [
+        ep("d22", "GET", "/v2/ota-upgrades/packages", "List upgrade packages", "upgrades/list-packages.rst"),
+        ep(
+          "d23",
+          "POST",
+          "/v2/ota-upgrades/packages",
+          "Upload an upgrade package",
+          "upgrades/create-package.rst",
+          "partial",
+        ),
+        ep(
+          "d24",
+          "GET",
+          "/v2/ota-upgrades/packages/{package_id}",
+          "Query an upgrade package",
+          "upgrades/show-package.rst",
+        ),
+        ep(
+          "d25",
+          "DELETE",
+          "/v2/ota-upgrades/packages/{package_id}",
+          "Delete an upgrade package",
+          "upgrades/delete-package.rst",
+        ),
+        ep("d26", "POST", "/v2/ota-upgrades/tasks", "Create an upgrade task", "upgrades/create-task.rst", "failed"),
+      ],
+    },
+    {
+      id: "d_certificates",
+      version: "v2",
+      name: "certificates",
+      origin: "auto",
+      confirmed: null,
+      endpoints: [
+        ep("d27", "GET", "/v2/certificates", "List CA certificates", "certificates/list-certificates.rst"),
+        ep(
+          "d28",
+          "POST",
+          "/v2/certificates",
+          "Upload a CA certificate",
+          "certificates/create-certificate.rst",
+          "partial",
+        ),
+        ep(
+          "d29",
+          "GET",
+          "/v2/certificates/{certificate_id}",
+          "Query a CA certificate",
+          "certificates/show-certificate.rst",
+        ),
+        ep(
+          "d30",
+          "POST",
+          "/v2/certificates/{certificate_id}/action",
+          "Verify a CA certificate",
+          "certificates/verify-certificate.rst",
+          "partial",
+        ),
+        ep(
+          "d31",
+          "DELETE",
+          "/v2/certificates/{certificate_id}",
+          "Delete a CA certificate",
+          "certificates/delete-certificate.rst",
+        ),
+      ],
+    },
+  ],
   "notifications-hub": [
     {
       id: "n_topics",
@@ -445,9 +624,10 @@ function putBack(service: string, reset: Laid[]) {
 }
 
 /** One resource back to the scanner's layout. One made by hand is not in it, so
- *  only its endpoints go back; the prototype's button does nothing there. */
+ *  nothing changes there, as in the prototype. */
 export function resetResource(service: string, id: string) {
-  putBack(service, [editable(service, id)]);
+  const r = editable(service, id);
+  if (fromScanner(service, id)) putBack(service, [r]);
 }
 
 /**
