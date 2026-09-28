@@ -5,7 +5,9 @@ import {
   addResource,
   chooseType,
   confirmResource,
+  liveCall,
   moveEndpoint,
+  refreshPullRequest,
   renameResource,
   resetResource,
   resetVersion,
@@ -85,11 +87,50 @@ export function useChooseType(name: string, resource: string) {
   });
 }
 
-/** A generation of the resource on a target, by target id. A refusal comes back as the mutation's error. */
+/**
+ * A generation of the resource on a target, by target id. The job records the
+ * signed-in user as who started it, and the mock records when. A refusal comes
+ * back as the mutation's error.
+ */
 export function useStartGeneration(name: string, resource: string) {
   const qc = useQueryClient();
+  const { name: by } = useSession();
   return useMutation({
-    mutationFn: async (target: string) => startGeneration(name, resource, target),
+    mutationFn: async (target: string) => startGeneration(name, resource, target, by),
     onSettled: () => invalidateGenJobs(qc, name),
+  });
+}
+
+/**
+ * The state of the pull request of the resource's job on a target, by target
+ * id, asked of GitHub now rather than at its next scheduled poll (owner
+ * decision). Nothing changes on screen before the mock has answered; the jobs
+ * are fetched again either way, and a refusal comes back as the mutation's error.
+ */
+export function useRefreshPullRequest(name: string, resource: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (target: string) => refreshPullRequest(name, resource, target),
+    onSettled: () => invalidateGenJobs(qc, name),
+  });
+}
+
+/** One live call: the target whose generated SDK makes it, the endpoint, and the path and query values. */
+export interface LiveCall {
+  target: string;
+  endpoint: string;
+  path: Record<string, string>;
+  query: Record<string, string>;
+}
+
+/**
+ * A live call of a GET operation of the resource against the OTC tenant. It
+ * changes nothing, in the panel or in the tenant, so nothing is fetched again:
+ * the answer is the mutation's data, and a refusal its error.
+ */
+export function useLiveCall(name: string, resource: string) {
+  return useMutation({
+    mutationFn: async ({ target, endpoint, path, query }: LiveCall) =>
+      liveCall(name, resource, target, endpoint, { path, query }),
   });
 }

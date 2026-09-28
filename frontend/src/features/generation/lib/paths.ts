@@ -24,3 +24,12 @@ export interface FromList {
 
 /** The list a card leads back to: as it was left, or unfiltered when the card was opened some other way. */
 export const listPath = (state: Partial<FromList> | null) => `/generation${state?.listSearch ?? ""}`;
+
+/**
+ * Navigation state of a result opened from its resource's spec: the list's
+ * state, and the mark that the way back leads to the spec - the prototype keeps
+ * the spec open under the result it started, and names the way back after it.
+ */
+export interface FromSpec extends Partial<FromList> {
+  fromSpec: true;
+}

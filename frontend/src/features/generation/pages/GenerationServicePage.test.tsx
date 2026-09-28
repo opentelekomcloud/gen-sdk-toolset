@@ -4,7 +4,7 @@ import { Route, Routes, useLocation } from "react-router";
 import { renderPage } from "../../../test/render";
 import { keys } from "../../scan/api/queries";
 import { generationResources } from "../data/mock";
-import type { GenEndpoint, GenResource, GenService, GenTarget } from "../data/types";
+import type { GenEndpoint, GenJob, GenJobStatus, GenResource, GenService, GenTarget } from "../data/types";
 import { GenerationListPage } from "./GenerationListPage";
 import { GenerationServicePage } from "./GenerationServicePage";
 
@@ -252,14 +252,23 @@ describe("states the mock does not hold today", () => {
     jobs: {},
     ...o,
   });
+  const job = (status: GenJobStatus, pr: number | null): GenJob => ({
+    id: 3000,
+    status,
+    pr,
+    startedBy: "anna",
+    startedAt: "2026-08-02T10:00:00Z",
+    mergedBy: status === "merged" ? "ivan" : null,
+    mergedAt: status === "merged" ? "2026-08-03T10:00:00Z" : null,
+  });
   const RESOURCES: GenResource[] = [
     res("ready", {}),
     res("hollow", { endpoints: [] }),
     res("unread", { endpoints: eps("unread", 3, 1) }),
     res("unconfirmed", { confirmedBy: null, confirmedAt: null, endpoints: eps("unconfirmed", 2, 1) }),
-    res("running", { jobs: { python: { status: "running", pr: null } } }),
-    res("broken", { jobs: { python: { status: "failed", pr: null } } }),
-    res("landed", { jobs: { python: { status: "merged", pr: 140 } } }),
+    res("running", { jobs: { python: job("running", null) } }),
+    res("broken", { jobs: { python: job("failed", null) } }),
+    res("landed", { jobs: { python: job("merged", 140) } }),
   ];
   const SEED: [readonly unknown[], unknown][] = [
     [keys.genTargets, TARGETS],

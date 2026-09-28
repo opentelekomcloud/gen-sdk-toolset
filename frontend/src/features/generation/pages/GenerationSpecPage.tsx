@@ -14,7 +14,7 @@ import { JobTag } from "../components/JobTag";
 import { LayoutBadge } from "../components/LayoutBadge";
 import { PageNotFound } from "../components/PageNotFound";
 import { holdOf } from "../lib/layout";
-import { listPath, servicePath } from "../lib/paths";
+import { listPath, servicePath, type FromSpec } from "../lib/paths";
 import {
   RefusalBanner,
   ServiceBackLink,
@@ -234,6 +234,7 @@ export function GenerationSpecPage() {
   const job = resource.jobs[target.id];
   const hold = holdOf(resource, target, targets.data);
   const resultTo = pathTo(["result", resource.version, resource.id]);
+  const toResult = { ...fromList, fromSpec: true } satisfies FromSpec;
   const summary = [
     t("gen.spec.heading", { target: target.label }),
     resource.version,
@@ -259,7 +260,7 @@ export function GenerationSpecPage() {
           <div className="mt-1 text-xs text-gray-400">{summary}</div>
         </div>
         {job ? (
-          <JobTag job={job} to={resultTo} state={fromList} />
+          <JobTag job={job} to={resultTo} state={toResult} />
         ) : (
           <div className="flex flex-wrap items-center gap-3">
             {hold ? (
@@ -271,7 +272,7 @@ export function GenerationSpecPage() {
               <button
                 type="button"
                 disabled={hold != null || open > 0 || generate.isPending}
-                onClick={() => generate.mutate(target.id, { onSuccess: () => navigate(resultTo, { state: fromList }) })}
+                onClick={() => generate.mutate(target.id, { onSuccess: () => navigate(resultTo, { state: toResult }) })}
                 className="inline-flex items-center gap-1.5 rounded border border-transparent bg-brand px-3.5 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-300 disabled:hover:opacity-100"
               >
                 <Play size={14} /> {t("gen.spec.generate", { target: target.label })}

@@ -47,6 +47,8 @@ export const keys = {
   genSpec: (name: string, resource: string) => ["generation", "spec", name, resource] as const,
   /** Mutation key of a service's layout edits; the edits that went through say it was edited. */
   genLayoutEdit: (name: string) => ["generation", "layout-edit", name] as const,
+  /** The OTC tenant the panel's live calls go to - served from the Generation mock too. */
+  otcSettings: ["settings", "otc"] as const,
 };
 
 /**
@@ -93,11 +95,12 @@ export function invalidateGenLayout(qc: QueryClient, name: string) {
 }
 
 /**
- * A generation started for a resource gives it a job: its resources carry the
- * jobs, the list and the card count them into the state of the service, and a
- * failed job it replaces no longer counts in the attention rules. A refused one
- * says the page was stale, on the job, the layout or a field left to decide -
- * so the specs, whose fields carry the choices, are fetched again with the rest.
+ * A generation started for a resource gives it a job, and a merge picked up
+ * from GitHub changes one: its resources carry the jobs, the list and the card
+ * count them into the state of the service, and the attention rules count the
+ * jobs in review and the failed ones. A refused start says the page was stale,
+ * on the job, the layout or a field left to decide - so the specs, whose fields
+ * carry the choices, are fetched again with the rest.
  */
 export function invalidateGenJobs(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.genResources(name) });

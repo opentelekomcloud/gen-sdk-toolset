@@ -43,9 +43,17 @@ export interface GenService {
 export type GenJobStatus = "running" | "done" | "merged" | "failed";
 
 export interface GenJob {
+  /** The job's number. */
+  id: number;
   status: GenJobStatus;
   /** The job's pull request; null until one is open. */
   pr: number | null;
+  /** Who started the job, and when (ISO 8601). */
+  startedBy: string;
+  startedAt: string;
+  /** Who merged its pull request on GitHub, and when (ISO 8601); null until the panel learns of a merge. */
+  mergedBy: string | null;
+  mergedAt: string | null;
 }
 
 /** An endpoint of the service: one endpoint document of the scan. */
@@ -87,12 +95,22 @@ export interface GenResource {
  *  classes, or a custom action. */
 export type GenOperationKind = "base" | "custom";
 
+/** A query parameter of an operation, as its document gives it. */
+export interface GenQueryParam {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+}
+
 /** An endpoint of a resource as the SDK will call it. */
 export interface GenOperation {
   endpoint: GenEndpoint;
   kind: GenOperationKind;
   /** `list`, `get`, `create`, `update`, `delete`, or the custom action's name. */
   sdkMethod: string;
+  /** The query parameters the operation takes. */
+  query: GenQueryParam[];
 }
 
 /** A field whose type a person has to decide before the resource can be
@@ -132,6 +150,26 @@ export interface GenClass {
 export interface GenSpec {
   operations: GenOperation[];
   classes: GenClass[];
+}
+
+/** What OTC answered a live call of an operation of the generated SDK. */
+export interface GenLiveResponse {
+  /** The HTTP status, and its reason phrase: `200` `OK`, `404` `Not Found`. */
+  code: number;
+  reason: string;
+  /** How long the call took, in milliseconds. */
+  ms: number;
+  /** The request id OTC gave the call, when its answer names one. */
+  requestId: string | null;
+  /** The body OTC answered with. */
+  body: unknown;
+  /** For a call that failed: what went wrong, and what to do about it. */
+  error: { message: string; hint: string } | null;
+}
+
+/** The OTC tenant the panel calls, from its settings (owner decision). */
+export interface OtcSettings {
+  region: string;
 }
 
 /** The list's filter chips: every state still in Generation, plus `all`. */

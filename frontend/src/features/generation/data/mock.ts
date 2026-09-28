@@ -3,17 +3,21 @@
  * hooks in `queries.ts` and `mutations.ts` read and change it; nothing else may,
  * except a test putting it back with `resetGenerationMock`. Data is the
  * prototype's (`TARGETS`, `AUTO_STRUCTURE`, `JOB_SEED`, `CONFIRM_SEED`,
- * `ENTITIES`); service names are those of `mock/scanApi.ts`.
+ * `ENTITIES`, `QUERY_IR`, `QUERY_EXTRA`, the settings); service names are those
+ * of `mock/scanApi.ts`. It stands in for GitHub and OTC as well: a pull request's
+ * state and a live call's answer come from here.
  */
 import type { AttentionRule } from "../../../shared/api/types";
 import type { DocStatus } from "../../scan/types";
 import { holdOf, lockingJob, mergedEverywhere, type Hold } from "../lib/layout";
+import { pathParams } from "../lib/uri";
 import type {
   GenAttentionCode,
   GenEndpoint,
   GenFieldProblem,
   GenJob,
   GenJobStatus,
+  GenLiveResponse,
   GenOperation,
   GenOrigin,
   GenResource,
@@ -22,6 +26,7 @@ import type {
   GenState,
   GenTarget,
   GenTargetSummary,
+  OtcSettings,
 } from "./types";
 
 const TARGETS: GenTarget[] = [
@@ -420,15 +425,45 @@ const laid = (r: LaidOut): Laid => ({
 const seed = (): Record<string, Laid[]> =>
   Object.fromEntries(Object.entries(AUTO).map(([service, resources]) => [service, resources.map(laid)]));
 
-/** Jobs by target id, then resource id. A resource without one was never generated there. */
+const job = (
+  id: number,
+  status: GenJobStatus,
+  pr: number | null,
+  started: [by: string, at: string],
+  merged: [by: string, at: string] | null = null,
+): GenJob => ({
+  id,
+  status,
+  pr,
+  startedBy: started[0],
+  startedAt: started[1],
+  mergedBy: merged?.[0] ?? null,
+  mergedAt: merged?.[1] ?? null,
+});
+
+/** Jobs by target id, then resource id - the prototype's `JOB_SEED`. A resource without one was never generated there. */
 const seedJobs = (): Record<string, Record<string, GenJob>> => ({
   python: {
-    v1_invoices: { status: "done", pr: 131 },
-    c_contacts: { status: "failed", pr: null },
-    n_topics: { status: "merged", pr: 118 },
-    c_customers: { status: "merged", pr: 122 },
+    v1_invoices: job(2088, "done", 131, ["valeriia", "2026-08-11T14:20:00Z"]),
+    c_contacts: job(2094, "failed", null, ["ivan", "2026-08-12T08:05:00Z"]),
+    n_topics: job(2071, "merged", 118, ["valeriia", "2026-07-29T11:02:00Z"], ["anna", "2026-08-01T09:40:00Z"]),
+    c_customers: job(2079, "merged", 122, ["ivan", "2026-08-04T10:12:00Z"], ["valeriia", "2026-08-06T15:05:00Z"]),
   },
 });
+
+/**
+ * The pull requests merged on GitHub since the panel last asked, by repository
+ * and number, with who merged each and when. The panel learns of a merge only by
+ * asking GitHub - on a schedule, which is not simulated here, or when someone
+ * refreshes the state (owner decision). The prototype's refresh finds PR 131
+ * merged, by its panel user at its "now".
+ */
+const MERGED_ON_GITHUB: Record<string, { by: string; at: string }> = {
+  "opentelekomcloud/python-t-cloud#131": { by: "valeriia", at: "2026-08-12T09:24:00Z" },
+};
+
+/** The OTC tenant settings the live calls go out with - the prototype's. */
+const SETTINGS: OtcSettings = { region: "eu-de" };
 
 /** A type chosen for a field: which, who chose it, and when (ISO 8601). */
 interface Choice {
@@ -469,15 +504,21 @@ let layout = seed();
 let made = 0;
 /** The jobs as they are now: the seed, and the generations started since. */
 let jobs = seedJobs();
+/** The number of the last job started here: they count on from 2101, past the prototype's seed. */
+let lastJob = 2100;
 /** The types chosen for fields with a problem, by `choiceKey`: the seed, and the choices made and taken back since. */
 let choices = seedChoices();
+/** Request ids OTC has handed out to live calls so far. */
+let calls = 0;
 
 /** Back to the seed. Tests share this module's memory, so each one that edits starts here. */
 export function resetGenerationMock() {
   layout = seed();
   made = 0;
   jobs = seedJobs();
+  lastJob = 2100;
   choices = seedChoices();
+  calls = 0;
 }
 
 const jobsOf = (resource: string): Partial<Record<string, GenJob>> =>
@@ -534,8 +575,18 @@ function endpointView(service: string, id: string): GenEndpoint {
   return { id, method, uri, title, src: src(service, file), status };
 }
 
+function targetOf(id: string): GenTarget {
+  const target = TARGETS.find((t) => t.id === id);
+  if (!target) throw new Error(`There is no target ${id}`);
+  return target;
+}
+
 export function generationTargets(): GenTarget[] {
   return TARGETS.map((t) => ({ ...t }));
+}
+
+export function otcSettings(): OtcSettings {
+  return { ...SETTINGS };
 }
 
 export function generationServices(): GenService[] {
@@ -842,7 +893,7 @@ const ACTIONS = new Set(["export", "action", "batch", "validate"]);
  * the prototype's `classifyOp` does; anything else is a custom action named
  * after the last literal segment of the URI (its `customName`).
  */
-function operationOf({ method, uri }: GenEndpoint): Omit<GenOperation, "endpoint"> {
+function operationOf({ method, uri }: GenEndpoint): Pick<GenOperation, "kind" | "sdkMethod"> {
   const segs = uri.split("/").filter(Boolean);
   const last = segs.at(-1) ?? "";
   const onItem = last.startsWith("{");
@@ -868,6 +919,29 @@ function operationOf({ method, uri }: GenEndpoint): Omit<GenOperation, "endpoint
   return { kind: "custom", sdkMethod: (named.at(-1) ?? "action").replace(/-/g, "_") };
 }
 
+/** The query parameters every base list and get takes - the prototype's `QUERY_IR`. */
+const QUERY: Partial<Record<string, Field[]>> = {
+  list: [
+    field("limit", "Integer", false, "Number of records returned"),
+    field("marker", "String", false, "Pagination marker of the last record"),
+    field("sort_key", "String", false, "Field the result is sorted by"),
+  ],
+  get: [field("fields", "String", false, "Comma-separated list of fields to return")],
+};
+
+/** The ones a document adds, by endpoint id - the prototype's `QUERY_EXTRA`, which has them by resource. */
+const QUERY_EXTRA: Record<string, Field[]> = {
+  e1: [field("status", "String", false, "Filter by invoice status")],
+  e5: [field("invoice_id", "String", false, "Only payments of this invoice")],
+  c1: [field("segment", "String", false, "Filter by sales segment")],
+};
+
+/** The query parameters of an operation. */
+const queryOf = (endpoint: GenEndpoint, { kind, sdkMethod }: Pick<GenOperation, "kind" | "sdkMethod">) =>
+  [...((kind === "base" && QUERY[sdkMethod]) || []), ...(QUERY_EXTRA[endpoint.id] ?? [])].map(
+    ({ name, type, required, description }) => ({ name, type, required, description }),
+  );
+
 /** Fields of the resource whose problem nobody has decided yet. */
 const undecided = (service: string, r: Laid) =>
   classesOf(r.id, r.name).reduce(
@@ -881,7 +955,8 @@ export function generationSpec(service: string, id: string): GenSpec {
   return {
     operations: r.endpoints.map((id) => {
       const endpoint = endpointView(service, id);
-      return { endpoint, ...operationOf(endpoint) };
+      const operation = operationOf(endpoint);
+      return { endpoint, ...operation, query: queryOf(endpoint, operation) };
     }),
     classes: classesOf(r.id, r.name).map((c) => ({
       name: c.name,
@@ -947,23 +1022,108 @@ const holdRefusal = (hold: Hold, target: GenTarget): string => {
 
 /**
  * A generation job for the resource on the target, as the prototype's
- * `startGeneration` starts it: running, no pull request yet. Refused while a
- * field still has a problem nobody decided (owner decision), whenever the
- * resource's card would not offer Generate there, and over a job that has not
- * failed - one generating, in review or merged is not replaced.
+ * `startGeneration` starts it: numbered, running, no pull request yet, with who
+ * started it and when. Refused while a field still has a problem nobody decided
+ * (owner decision), whenever the resource's card would not offer Generate there,
+ * and over a job that has not failed - one generating, in review or merged is
+ * not replaced.
  */
-export function startGeneration(service: string, id: string, targetId: string) {
+export function startGeneration(service: string, id: string, targetId: string, by: string) {
   const resource = generationResources(service).find((r) => r.id === id);
   if (!resource) throw new Error(`${service} has no resource ${id}`);
-  const target = TARGETS.find((t) => t.id === targetId);
-  if (!target) throw new Error(`There is no target ${targetId}`);
-  const job = resource.jobs[target.id];
-  if (job && job.status !== "failed") {
-    throw new Error(`${resource.name} ${JOB_REFUSAL[job.status]} on ${target.label}`);
+  const target = targetOf(targetId);
+  const current = resource.jobs[target.id];
+  if (current && current.status !== "failed") {
+    throw new Error(`${resource.name} ${JOB_REFUSAL[current.status]} on ${target.label}`);
   }
   const hold = holdOf(resource, target, TARGETS);
   if (hold) throw new Error(`${resource.name} cannot be generated for ${target.label}: ${holdRefusal(hold, target)}`);
   const open = undecided(service, resourceOf(service, id));
   if (open) throw new Error(`${resource.name} cannot be generated: ${open} field(s) still to decide`);
-  (jobs[target.id] ??= {})[id] = { status: "running", pr: null };
+  if (!by) throw new Error("A generation has to record who starts it");
+  (jobs[target.id] ??= {})[id] = job(++lastJob, "running", null, [by, new Date().toISOString()]);
+}
+
+/** The resource, and its job on the target, which must have opened a pull request by now. */
+function withPullRequest(service: string, id: string, target: GenTarget): { resource: Laid; job: GenJob } {
+  const resource = resourceOf(service, id);
+  const current = jobs[target.id]?.[id];
+  if (current?.pr == null) throw new Error(`${resource.name} has no pull request on ${target.label}`);
+  return { resource, job: current };
+}
+
+/**
+ * The state of the job's pull request, from GitHub (owner decision): a merge
+ * made there since the panel last asked is taken over, with who merged it and
+ * when. A pull request still open there leaves the job as it is.
+ */
+export function refreshPullRequest(service: string, id: string, targetId: string) {
+  const target = targetOf(targetId);
+  const { job: current } = withPullRequest(service, id, target);
+  const merge = MERGED_ON_GITHUB[`${target.repo}#${current.pr}`];
+  if (!merge || current.status === "merged") return;
+  current.status = "merged";
+  current.mergedBy = merge.by;
+  current.mergedAt = merge.at;
+}
+
+/** A value of the kind the docs give a field, for the sample an answer is made of - the prototype's `sampleFor`. */
+const sampleValue = (resource: string, { name, type }: Field) =>
+  name === "id"
+    ? `${singular(resource)}-3f9c`
+    : type === "Integer"
+      ? 1200
+      : type === "Boolean"
+        ? true
+        : type === "DateTime"
+          ? "2026-08-12T08:41:07Z"
+          : `${name}-value`;
+
+/**
+ * A live call of one of the resource's operations, through the SDK generated in
+ * the job's pull request, as the prototype's `sendLive` answers it: an empty
+ * path parameter has the SDK call the collection URL, which OTC does not find;
+ * otherwise OTC answers with the resource's first class. Only a GET is called
+ * (owner decision) - nothing is created in the tenant, so there is nothing to
+ * clean up. The query parameters go out with the call; as in the prototype,
+ * they change nothing in the answer.
+ */
+export function liveCall(
+  service: string,
+  id: string,
+  targetId: string,
+  endpointId: string,
+  request: { path: Record<string, string>; query: Record<string, string> },
+): GenLiveResponse {
+  const { resource: r } = withPullRequest(service, id, targetOf(targetId));
+  if (!r.endpoints.includes(endpointId)) throw new Error(`${r.name} has no endpoint ${endpointId}`);
+  const endpoint = endpointView(service, endpointId);
+  if (endpoint.method !== "GET") {
+    throw new Error(`Only GET operations are called live, not ${endpoint.method} ${endpoint.uri}`);
+  }
+  const missing = pathParams(endpoint.uri).find((p) => !request.path[p]?.trim());
+  if (missing) {
+    const requestId = `req-${++calls}f3a91`;
+    return {
+      code: 404,
+      reason: "Not Found",
+      ms: 240,
+      requestId,
+      body: { error_code: "APIGW.0301", error_msg: "resource not found", request_id: requestId },
+      error: {
+        message: "Resource not found",
+        hint: `The path parameter ${missing} is empty, so the SDK called the collection URL with a trailing slash. Fill it in with a real id.`,
+      },
+    };
+  }
+  const [cls] = classesOf(r.id, r.name);
+  const item = Object.fromEntries(cls.fields.map((f) => [f.name, sampleValue(r.name, f)]));
+  return {
+    code: 200,
+    reason: "OK",
+    ms: 480,
+    requestId: null,
+    body: operationOf(endpoint).sdkMethod === "list" ? { [r.name]: [item], count: 1 } : { [singular(r.name)]: item },
+    error: null,
+  };
 }

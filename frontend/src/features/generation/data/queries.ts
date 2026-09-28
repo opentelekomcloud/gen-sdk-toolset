@@ -1,6 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { keys } from "../../scan/api/queries";
-import { generationAttention, generationResources, generationServices, generationSpec, generationTargets } from "./mock";
+import {
+  generationAttention,
+  generationResources,
+  generationServices,
+  generationSpec,
+  generationTargets,
+  otcSettings,
+} from "./mock";
 
 /** Targets in display order. The first is the default: the one a page works on
  *  when the address names none. */
@@ -26,4 +33,9 @@ export function useGenerationSpec(name: string, resource: string) {
 /** Generation's rules for the shared attention band - same shape as the scan rules. */
 export function useGenerationAttention() {
   return useQuery({ queryKey: keys.genAttention, queryFn: async () => generationAttention() });
+}
+
+/** The OTC tenant the panel's live calls go to. */
+export function useOtcSettings() {
+  return useQuery({ queryKey: keys.otcSettings, queryFn: async () => otcSettings() });
 }

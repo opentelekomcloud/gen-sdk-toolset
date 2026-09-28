@@ -2,26 +2,17 @@ import { useState } from "react";
 import { ChevronRight, Search } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { useGenerationServices, useGenerationTargets } from "../data/queries";
-import type { GenFilter, GenService, GenState, GenTarget } from "../data/types";
+import type { GenFilter, GenService, GenTarget } from "../data/types";
 import { servicePath, type FromList } from "../lib/paths";
+import { GEN_STATE_CLS, genStateKey } from "../styles";
 import { StatusPill } from "../../scan/components/StatusPill";
 import { chipCls } from "../../scan/styles";
-import { useI18n, type MessageKey } from "../../../shared/i18n";
+import { useI18n } from "../../../shared/i18n";
 
 const CHIPS: GenFilter[] = ["all", "not_generated", "in_progress", "failed", "review", "partial"];
 
-const STATE_CLS: Record<GenState, string> = {
-  not_generated: "bg-gray-100 text-gray-500 border-gray-200",
-  in_progress: "bg-blue-50 text-blue-700 border-blue-200",
-  failed: "bg-red-50 text-red-700 border-red-200",
-  review: "bg-violet-50 text-violet-700 border-violet-200",
-  partial: "bg-amber-50 text-amber-700 border-amber-200",
-  done: "bg-violet-50 text-violet-700 border-violet-200",
-};
 /** A target that is not connected and has nothing generated. */
 const NOT_CONNECTED_CLS = "bg-white text-gray-400 border-gray-200";
-
-const stateKey = (s: GenState): MessageKey => `gen.state.${s}` as MessageKey;
 
 /** The service takes half the row and the targets share the rest, however many there are. */
 const gridCols = (targets: number) => ({ gridTemplateColumns: `minmax(0,2fr) repeat(${targets}, minmax(0,1fr))` });
@@ -49,7 +40,7 @@ function ServiceRow({ service, targets, query }: { service: GenService; targets:
       {targets.map((target) => {
         const { state, merged, total } = service.targets[target.id];
         const notConnected = !target.live && state === "not_generated";
-        const label = notConnected ? t("gen.target.notConnected") : t(stateKey(state));
+        const label = notConnected ? t("gen.target.notConnected") : t(genStateKey(state));
         const base = targets.find((x) => x.id === target.base);
         const title = [
           target.label,
@@ -70,7 +61,7 @@ function ServiceRow({ service, targets, query }: { service: GenService; targets:
               }}
             >
               <StatusPill
-                cls={notConnected ? NOT_CONNECTED_CLS : STATE_CLS[state]}
+                cls={notConnected ? NOT_CONNECTED_CLS : GEN_STATE_CLS[state]}
                 label={label}
                 running={state === "in_progress"}
               />
@@ -130,7 +121,7 @@ export function GenerationListPage() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {CHIPS.map((k) => (
           <button type="button" key={k} onClick={() => setFilter(k)} className={chipCls(filter === k)}>
-            {k === "all" ? t("filter.all") : t(stateKey(k))}{" "}
+            {k === "all" ? t("filter.all") : t(genStateKey(k))}{" "}
             <span className="font-mono tabular-nums opacity-70">{count(k)}</span>
           </button>
         ))}

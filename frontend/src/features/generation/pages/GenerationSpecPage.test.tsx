@@ -52,6 +52,21 @@ function specPage(path = "/generation/billing-api/spec/v1/v1_invoices") {
 }
 
 const location = () => screen.getByTestId("location").textContent;
+/** The job Generate starts: the first numbered after the seed, running, by the signed-in user, no pull request yet. */
+const startedJob = {
+  id: 2101,
+  status: "running",
+  pr: null,
+  startedBy: "ada@otc.test",
+  startedAt: expect.any(String),
+  mergedBy: null,
+  mergedAt: null,
+};
+/** The mock records when a job started; the page does not send it. */
+const expectJustNow = (service: string, resource: string) => {
+  const job = generationResources(service).find((r) => r.id === resource)?.jobs.python;
+  expect(Date.now() - Date.parse(job?.startedAt ?? "")).toBeLessThan(60_000);
+};
 const cls = (name: string) => screen.getByRole("region", { name });
 const field = (clsName: string, name: string) => within(cls(clsName)).getByRole("group", { name });
 const operation = (title: string) => screen.getByRole("group", { name: title });
@@ -222,7 +237,7 @@ describe("the spec of invoices v1 on the in-memory mock", () => {
     expect(within(cls("Payment")).queryByText(/to decide/)).toBeNull();
 
     // someone starts it elsewhere before this page has heard of it
-    startGeneration("billing-api", "v1_payments", "python");
+    startGeneration("billing-api", "v1_payments", "python", "valeriia");
     fireEvent.click(generateButton());
 
     expect(await screen.findByText("That did not go through")).toBeInTheDocument();
@@ -446,9 +461,10 @@ describe("the spec of invoices v2 on the in-memory mock", () => {
 
     await waitFor(() =>
       expect(generationResources("billing-api").find((r) => r.id === "v2_invoices")?.jobs).toEqual({
-        python: { status: "running", pr: null },
+        python: startedJob,
       }),
     );
+    expectJustNow("billing-api", "v2_invoices");
   });
 });
 
@@ -495,20 +511,31 @@ describe("other resources on the mock", () => {
   });
 
   it("is backed by a mock that refuses what the page would not offer, and keeps the job it would replace", () => {
-    expect(() => startGeneration("billing-api", "v1_invoices", "python")).toThrow("invoices is in review on Python SDK");
+    expect(() => startGeneration("billing-api", "v1_invoices", "python", "ada")).toThrow(
+      "invoices is in review on Python SDK",
+    );
     expect(generationResources("billing-api").find((r) => r.id === "v1_invoices")?.jobs.python).toEqual({
+      id: 2088,
       status: "done",
       pr: 131,
+      startedBy: "valeriia",
+      startedAt: "2026-08-11T14:20:00Z",
+      mergedBy: null,
+      mergedAt: null,
     });
-    expect(() => startGeneration("billing-api", "v2_invoices", "python")).toThrow(
+    expect(() => startGeneration("billing-api", "v2_invoices", "python", "ada")).toThrow(
       "invoices cannot be generated for Python SDK: its layout is not confirmed",
     );
-    expect(() => startGeneration("billing-api", "v1_invoices", "ansible")).toThrow(
+    expect(() => startGeneration("billing-api", "v1_invoices", "ansible", "ada")).toThrow(
       "invoices cannot be generated for Ansible modules: it is not merged in Python SDK yet",
     );
     confirmResource("billing-api", "v1_payments", "valeriia");
-    expect(() => startGeneration("billing-api", "v1_payments", "python")).toThrow(
+    expect(() => startGeneration("billing-api", "v1_payments", "python", "ada")).toThrow(
       "payments cannot be generated: 1 field(s) still to decide",
+    );
+    chooseType("billing-api", "v1_payments", "Payment", "method", "String", "valeriia");
+    expect(() => startGeneration("billing-api", "v1_payments", "python", "")).toThrow(
+      "A generation has to record who starts it",
     );
     expect(generationResources("billing-api").find((r) => r.id === "v1_payments")?.jobs).toEqual({});
   });
@@ -572,10 +599,8 @@ describe("the way in and out", () => {
     fireEvent.click(generateButton());
 
     await waitFor(() => expect(location()).toBe("/generation/billing-api/result/v1/v1_payments"));
-    expect(generationResources("billing-api").find((r) => r.id === "v1_payments")?.jobs.python).toEqual({
-      status: "running",
-      pr: null,
-    });
+    expect(generationResources("billing-api").find((r) => r.id === "v1_payments")?.jobs.python).toEqual(startedJob);
+    expectJustNow("billing-api", "v1_payments");
   });
 
   it("confirms invoices v2, opens its spec from the card and starts the generation with nothing to decide", async () => {
@@ -595,10 +620,7 @@ describe("the way in and out", () => {
     fireEvent.click(generateButton());
 
     await waitFor(() => expect(location()).toBe("/generation/billing-api/result/v2/v2_invoices"));
-    expect(generationResources("billing-api").find((r) => r.id === "v2_invoices")?.jobs.python).toEqual({
-      status: "running",
-      pr: null,
-    });
+    expect(generationResources("billing-api").find((r) => r.id === "v2_invoices")?.jobs.python).toEqual(startedJob);
   });
 
   it("leads back to the card", async () => {
