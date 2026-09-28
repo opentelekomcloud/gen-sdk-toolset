@@ -26,7 +26,9 @@ import type {
   GenState,
   GenTarget,
   GenTargetSummary,
+  OtcCheck,
   OtcSettings,
+  OtcSettingsForm,
 } from "./types";
 
 const TARGETS: GenTarget[] = [
@@ -473,8 +475,14 @@ const MERGED_ON_GITHUB: Record<string, { by: string; at: string }> = {
   "opentelekomcloud/python-t-cloud#131": { by: "valeriia", at: "2026-08-12T09:24:00Z" },
 };
 
-/** The OTC tenant settings the live calls go out with - the prototype's. */
-const SETTINGS: OtcSettings = { region: "eu-de" };
+/** The OTC tenant settings the live calls go out with, keys included - the prototype's. */
+const seedSettings = (): OtcSettingsForm => ({
+  account: "OTC00000000001000000042",
+  tenant: "eu-de_gen-sdk",
+  region: "eu-de",
+  ak: "AKSTORED9F21",
+  sk: "SKSTORED4C7E",
+});
 
 /** A type chosen for a field: which, who chose it, and when (ISO 8601). */
 interface Choice {
@@ -521,6 +529,8 @@ let lastJob = 2100;
 let choices = seedChoices();
 /** Request ids OTC has handed out to live calls so far. */
 let calls = 0;
+/** The OTC tenant settings as saved. The keys stay here: `otcSettings` says whether each is stored. */
+let settings = seedSettings();
 
 /** Back to the seed. Tests share this module's memory, so each one that edits starts here. */
 export function resetGenerationMock() {
@@ -530,6 +540,7 @@ export function resetGenerationMock() {
   lastJob = 2100;
   choices = seedChoices();
   calls = 0;
+  settings = seedSettings();
 }
 
 const jobsOf = (resource: string): Partial<Record<string, GenJob>> =>
@@ -597,7 +608,22 @@ export function generationTargets(): GenTarget[] {
 }
 
 export function otcSettings(): OtcSettings {
-  return { ...SETTINGS };
+  const { ak, sk, ...rest } = settings;
+  return { ...rest, akStored: ak !== "", skStored: sk !== "" };
+}
+
+/** The settings the form sends; a key it leaves empty stays as stored. */
+export function saveOtcSettings({ ak, sk, ...rest }: OtcSettingsForm) {
+  settings = { ...rest, ak: ak || settings.ak, sk: sk || settings.sk };
+}
+
+/**
+ * A test of the OTC tenant the form names, with the stored keys where it leaves
+ * them empty. As in the prototype, it can be called once there are both keys
+ * and a tenant; nothing is saved.
+ */
+export function testOtcSettings({ ak, sk, tenant }: OtcSettingsForm): OtcCheck {
+  return { error: (ak || settings.ak) && (sk || settings.sk) && tenant ? null : "AK/SK or tenant missing" };
 }
 
 export function generationServices(): GenService[] {

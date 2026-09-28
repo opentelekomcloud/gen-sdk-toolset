@@ -169,9 +169,35 @@ export interface GenLiveResponse {
   error: { message: string; hint: string } | null;
 }
 
-/** The OTC tenant the panel calls, from its settings (owner decision). */
+/** The OTC tenant the panel calls, from its settings (owner decision). The keys
+ *  never come back once saved: only whether each one is stored does. */
 export interface OtcSettings {
+  /** The account (domain) the calls are billed to. */
+  account: string;
+  /** The tenant (project) the live calls run against. */
+  tenant: string;
   region: string;
+  /** Whether an access key (AK) is stored. */
+  akStored: boolean;
+  /** Whether a secret key (SK) is stored. */
+  skStored: boolean;
+}
+
+/** The OTC tenant as the settings form has it, for saving or testing. An empty
+ *  key keeps the stored one: the panel never has it to show, so it cannot be
+ *  typed back in. */
+export interface OtcSettingsForm {
+  account: string;
+  tenant: string;
+  region: string;
+  ak: string;
+  sk: string;
+}
+
+/** How a test of the OTC tenant went. */
+export interface OtcCheck {
+  /** What went wrong; null when the tenant can be called. */
+  error: string | null;
 }
 
 /** The list's filter chips: every state still in Generation, plus `all`. */

@@ -11,6 +11,7 @@ import { GenerationServicePage } from "./features/generation/pages/GenerationSer
 import { GenerationLayoutPage } from "./features/generation/pages/GenerationLayoutPage";
 import { GenerationSpecPage } from "./features/generation/pages/GenerationSpecPage";
 import { GenerationResultPage } from "./features/generation/pages/GenerationResultPage";
+import { SettingsPage } from "./features/generation/pages/SettingsPage";
 
 function NotFound() {
   const { t } = useI18n();
@@ -33,6 +34,7 @@ function App() {
         <Route path="/generation/:name/layout" element={<GenerationLayoutPage />} />
         <Route path="/generation/:name/spec/:version/:resource" element={<GenerationSpecPage />} />
         <Route path="/generation/:name/result/:version/:resource" element={<GenerationResultPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </div>

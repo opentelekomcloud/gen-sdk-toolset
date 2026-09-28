@@ -35,7 +35,7 @@ export function useGenerationAttention() {
   return useQuery({ queryKey: keys.genAttention, queryFn: async () => generationAttention() });
 }
 
-/** The OTC tenant the panel's live calls go to. */
+/** The OTC tenant the panel's live calls go to; of its keys, only whether each is stored. */
 export function useOtcSettings() {
   return useQuery({ queryKey: keys.otcSettings, queryFn: async () => otcSettings() });
 }

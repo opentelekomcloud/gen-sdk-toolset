@@ -11,8 +11,11 @@ import {
   renameResource,
   resetResource,
   resetVersion,
+  saveOtcSettings,
   startGeneration,
+  testOtcSettings,
 } from "./mock";
+import type { OtcSettingsForm } from "./types";
 
 /** One change to the shared layout of a service, by resource, endpoint and version id. */
 export type LayoutEdit =
@@ -133,4 +136,27 @@ export function useLiveCall(name: string, resource: string) {
     mutationFn: async ({ target, endpoint, path, query }: LiveCall) =>
       liveCall(name, resource, target, endpoint, { path, query }),
   });
+}
+
+/**
+ * The OTC tenant settings, as the form has them; the keys are written, never
+ * read back. Nothing changes on screen before the mock has answered, so there
+ * is nothing to roll back: a refusal comes back as the mutation's error, and the
+ * settings are fetched again either way - before the mutation settles, so the
+ * form can drop what was typed without showing the old values in between.
+ */
+export function useSaveOtcSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (form: OtcSettingsForm) => saveOtcSettings(form),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.otcSettings }),
+  });
+}
+
+/**
+ * A test of the OTC tenant as the form has it. It saves nothing, so nothing is
+ * fetched again: how it went is the mutation's data, and a refusal its error.
+ */
+export function useTestOtcSettings() {
+  return useMutation({ mutationFn: async (form: OtcSettingsForm) => testOtcSettings(form) });
 }
