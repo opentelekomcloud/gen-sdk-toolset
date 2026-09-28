@@ -40,6 +40,7 @@ export const keys = {
   /** Generation panel - served by features/generation/data/ from its in-memory mock. */
   genTargets: ["generation", "targets"] as const,
   genServices: ["generation", "services"] as const,
+  genResources: (name: string) => ["generation", "resources", name] as const,
   genAttention: ["generation", "attention"] as const,
 };
 

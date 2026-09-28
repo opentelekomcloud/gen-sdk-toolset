@@ -12,6 +12,8 @@ export interface GenTarget {
   live: boolean;
   /** The target this one builds on - a resource generates here only once merged there. */
   base: string | null;
+  /** Repository the target's pull requests are opened in. */
+  repo: string;
 }
 
 /**
@@ -33,6 +35,34 @@ export interface GenService {
   name: string;
   /** Keyed by `GenTarget.id`. */
   targets: Record<string, GenTargetSummary>;
+}
+
+/** A resource's generation job on one target. `done` is a job whose pull request
+ *  is open and waiting for review; `merged` is one whose pull request was merged. */
+export type JobStatus = "running" | "done" | "merged" | "failed";
+
+export interface GenJob {
+  status: JobStatus;
+  /** The job's pull request; null until one is open. */
+  pr: number | null;
+}
+
+/** A resource of a service's layout. The layout is shared by every target; the
+ *  generation is not. */
+export interface GenResource {
+  id: string;
+  /** Id of the API version the resource is laid out under. */
+  version: string;
+  name: string;
+  /** Endpoints laid out in the resource. */
+  endpoints: number;
+  /** Of those, the endpoints whose document's `overall_status` is not `ok`. A
+   *  resource holding one cannot be generated (owner decision). */
+  notOk: number;
+  /** Who confirmed the layout of the resource; null while nobody has. */
+  confirmedBy: string | null;
+  /** The resource's job, keyed by `GenTarget.id`. A target without one never generated it. */
+  jobs: Partial<Record<string, GenJob>>;
 }
 
 /** The list's filter chips: every state still in Generation, plus `all`. */

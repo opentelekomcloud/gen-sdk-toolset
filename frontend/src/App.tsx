@@ -7,6 +7,7 @@ import { AttentionBand } from "./features/scan/components/AttentionBand";
 import { RegistryPage } from "./features/scan/pages/RegistryPage";
 import { ServicePage } from "./features/scan/pages/ServicePage";
 import { GenerationListPage } from "./features/generation/pages/GenerationListPage";
+import { GenerationServicePage } from "./features/generation/pages/GenerationServicePage";
 
 function NotFound() {
   const { t } = useI18n();
@@ -25,6 +26,7 @@ function App() {
         <Route path="/scan" element={<RegistryPage />} />
         <Route path="/scan/services/:name" element={<ServicePage />} />
         <Route path="/generation" element={<GenerationListPage />} />
+        <Route path="/generation/:name" element={<GenerationServicePage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </div>

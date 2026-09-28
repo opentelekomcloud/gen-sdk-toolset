@@ -165,8 +165,8 @@ describe("the way into a service card", () => {
 
 describe("states the mock does not hold today", () => {
   const TARGETS: GenTarget[] = [
-    { id: "python", label: "Python SDK", live: true, base: null },
-    { id: "ansible", label: "Ansible modules", live: false, base: "python" },
+    { id: "python", label: "Python SDK", live: true, base: null, repo: "opentelekomcloud/python-t-cloud" },
+    { id: "ansible", label: "Ansible modules", live: false, base: "python", repo: "opentelekomcloud/ansible-collection-cloud" },
   ];
   const service = (name: string, state: GenService["targets"][string]["state"], merged: number): GenService => ({
     name,

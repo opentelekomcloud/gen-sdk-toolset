@@ -3,6 +3,7 @@ import { ChevronRight, Search } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useGenerationServices, useGenerationTargets } from "../data/queries";
 import type { GenFilter, GenService, GenState, GenTarget } from "../data/types";
+import { servicePath } from "../lib/paths";
 import { StatusPill } from "../../scan/components/StatusPill";
 import { chipCls } from "../../scan/styles";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
@@ -25,10 +26,6 @@ const stateKey = (s: GenState): MessageKey => `gen.state.${s}` as MessageKey;
 /** The service takes half the row and the targets share the rest, however many there are. */
 const gridCols = (targets: number) => ({ gridTemplateColumns: `minmax(0,2fr) repeat(${targets}, minmax(0,1fr))` });
 
-/** The service card; the default target is left out of the address. */
-const cardPath = (name: string, target: GenTarget, defaultTarget: GenTarget) =>
-  `/generation/${encodeURIComponent(name)}${target.id === defaultTarget.id ? "" : `?target=${target.id}`}`;
-
 function ServiceRow({ service, targets }: { service: GenService; targets: GenTarget[] }) {
   const navigate = useNavigate();
   const { t } = useI18n();
@@ -38,7 +35,7 @@ function ServiceRow({ service, targets }: { service: GenService; targets: GenTar
     <div
       style={gridCols(targets.length)}
       className="grid cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-2.5 transition last:border-0 hover:bg-gray-50"
-      onClick={() => navigate(cardPath(service.name, defaultTarget, defaultTarget))}
+      onClick={() => navigate(servicePath(service.name, defaultTarget, defaultTarget))}
     >
       <div className="flex items-center gap-1.5 overflow-hidden">
         <ChevronRight size={14} className="shrink-0 text-gray-400" />
@@ -64,7 +61,7 @@ function ServiceRow({ service, targets }: { service: GenService; targets: GenTar
               title={title}
               onClick={(e) => {
                 e.stopPropagation();
-                navigate(cardPath(service.name, target, defaultTarget));
+                navigate(servicePath(service.name, target, defaultTarget));
               }}
             >
               <StatusPill
