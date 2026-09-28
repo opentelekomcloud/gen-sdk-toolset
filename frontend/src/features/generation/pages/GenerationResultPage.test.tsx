@@ -347,6 +347,7 @@ describe("the result of contacts: its generation failed", () => {
     expect(screen.getByRole("button", { name: "Retry generation" })).toBeEnabled();
     expect(screen.queryByText("confirm the layout first")).toBeNull();
     expect(screen.queryByText(/highlighted field/)).toBeNull();
+    expect(screen.queryByRole("link", { name: "open spec" })).toBeNull();
 
     // nothing was opened, so there is nothing to review or call
     expect(screen.queryByRole("link", { name: /^PR #/ })).toBeNull();
@@ -409,12 +410,20 @@ describe("the result of contacts: its generation failed", () => {
       ...spec,
       classes: [{ ...contact, fields: contact.fields.map((f) => (f.name === "name" ? { ...f, issue } : f)) }],
     };
-    resultPage(CONTACTS, [[keys.genSpec("customer-core", "c_contacts"), open]]);
+    panel(CONTACTS, [[keys.genSpec("customer-core", "c_contacts"), open]]);
 
     expect(await screen.findByText("decide the highlighted field first")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry generation" })).toBeDisabled();
     expect(screen.queryByText("confirm the layout first")).toBeNull();
+    expect(screen.queryByRole("link", { name: "edit layout" })).toBeNull();
     expect(contactsJob()).toMatchObject({ id: 2094, status: "failed", error: LLM_ERROR });
+
+    // the field is highlighted on the spec, where the reason's link leads (owner decision)
+    fireEvent.click(screen.getByRole("link", { name: "open spec" }));
+    expect(location()).toBe("/generation/customer-core/spec/v1/c_contacts");
+    const name = await screen.findByRole("group", { name: "name" });
+    expect(name.firstElementChild).toHaveClass("bg-amber-50");
+    expect(within(name).getByRole("button", { name: "unknown type" })).toBeInTheDocument();
   });
 
   it("says why a retry was refused, and picks the job up as it is now", async () => {

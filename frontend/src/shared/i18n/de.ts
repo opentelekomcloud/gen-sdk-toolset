@@ -353,6 +353,7 @@ export const de: Record<keyof typeof en, string> = {
   "gen.result.failedHint":
     "Es wurde nichts geschrieben und kein Pull Request geöffnet. Das Layout und seine Bestätigungen bleiben unverändert — erneut versuchen, sobald das LLM-Backend wieder antwortet.",
   "gen.result.retry": "Generierung wiederholen",
+  "gen.result.openSpec": "Spezifikation öffnen",
   "gen.result.mergedNote":
     "Gemergt — diese Ressource hat die Generierung verlassen und wird jetzt im Maintenance-Panel gepflegt.",
   "gen.live.title": "Live-Prüfung",

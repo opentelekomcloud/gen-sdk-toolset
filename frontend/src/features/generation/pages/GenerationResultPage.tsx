@@ -321,7 +321,8 @@ function LiveOperation({
  * changes the job, and only a role that may write is offered it. A failed job
  * says what went wrong and offers that role to generate again, which starts a
  * new job on the same terms as Generate on the spec: held by the same reasons,
- * with the first one beside it (owner decision). The target rides along in the
+ * with the first one beside it, and fields left to decide with the way to the
+ * spec where they are highlighted (owner decisions). The target rides along in the
  * address; the way back leads to the spec when the result was opened from it,
  * and to the card otherwise, as in the prototype.
  */
@@ -539,7 +540,14 @@ export function GenerationResultPage() {
                 <RefreshCw size={12} /> {t("gen.result.retry")}
               </button>
             )}
-            <HoldReason hold={hold} open={open} target={target} layoutTo={pathTo(["layout"])} state={fromList} />
+            <HoldReason
+              hold={hold}
+              open={open}
+              target={target}
+              layoutTo={pathTo(["layout"])}
+              specTo={pathTo(["spec", resource.version, resource.id])}
+              state={fromList}
+            />
           </div>
         </div>
       )}

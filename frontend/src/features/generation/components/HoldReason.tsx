@@ -6,14 +6,16 @@ import { useI18n } from "../../../shared/i18n";
 /**
  * Why a resource cannot be generated on a target, in the card's words; an
  * unconfirmed layout also offers the way to the layout editor. Where the spec
- * is at hand, fields left to decide come after that (owner decision); nothing
- * is said when nothing holds it.
+ * is at hand, fields left to decide come after that (owner decision); away
+ * from it, they come with the way to the spec, where they are highlighted
+ * (owner decision). Nothing is said when nothing holds it.
  */
 export function HoldReason({
   hold,
   open = 0,
   target,
   layoutTo,
+  specTo,
   state,
 }: {
   hold: Hold | null;
@@ -21,11 +23,24 @@ export function HoldReason({
   open?: number;
   target: GenTarget;
   layoutTo: string;
+  /** The resource's spec, when the reason is shown away from it. */
+  specTo?: string;
   state?: unknown;
 }) {
   const { t } = useI18n();
   if (!hold) {
-    return open > 0 ? <span className="text-[11px] text-gray-400">{t("gen.spec.decideFirst", { n: open })}</span> : null;
+    if (open === 0) return null;
+    const decide = t("gen.spec.decideFirst", { n: open });
+    return specTo ? (
+      <span className="inline-flex shrink-0 items-center gap-2 text-[11px] text-gray-400">
+        {decide}
+        <Link to={specTo} state={state} className="font-semibold text-brand underline">
+          {t("gen.result.openSpec")}
+        </Link>
+      </span>
+    ) : (
+      <span className="text-[11px] text-gray-400">{decide}</span>
+    );
   }
   const text = (() => {
     switch (hold.reason) {
