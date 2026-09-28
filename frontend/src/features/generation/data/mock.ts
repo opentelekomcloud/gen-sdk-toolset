@@ -1,15 +1,18 @@
 /**
  * In-memory stand-in for the Generation backend, which does not exist yet. The
- * hooks in `queries.ts` read it; nothing else may. Data is the prototype's
- * (`TARGETS`, `AUTO_STRUCTURE`, `JOB_SEED`, `CONFIRM_SEED`); service names are
- * those of `mock/scanApi.ts`.
+ * hooks in `queries.ts` and `mutations.ts` read and change it; nothing else may,
+ * except a test putting it back with `resetGenerationMock`. Data is the
+ * prototype's (`TARGETS`, `AUTO_STRUCTURE`, `JOB_SEED`, `CONFIRM_SEED`); service
+ * names are those of `mock/scanApi.ts`.
  */
 import type { AttentionRule } from "../../../shared/api/types";
 import type { DocStatus } from "../../scan/types";
+import { lockingJob, mergedEverywhere } from "../lib/layout";
 import type {
   GenAttentionCode,
   GenJob,
   GenJobStatus,
+  GenOrigin,
   GenResource,
   GenService,
   GenState,
@@ -28,56 +31,95 @@ const TARGETS: GenTarget[] = [
   },
 ];
 
+interface Endpoint {
+  id: string;
+  method: string;
+  uri: string;
+  title: string;
+  /** The document's path under `api-ref/source`. */
+  file: string;
+  status: DocStatus;
+}
+
+/** An endpoint document; its `overall_status` is `ok` unless given. */
+const ep = (id: string, method: string, uri: string, title: string, file: string, status: DocStatus = "ok"): Endpoint => ({
+  id,
+  method,
+  uri,
+  title,
+  file,
+  status,
+});
+
 interface LaidOut {
   id: string;
   version: string;
   name: string;
-  /** As `METHOD uri`. */
-  endpoints: string[];
+  origin: GenOrigin;
+  endpoints: Endpoint[];
   /** From the prototype's `CONFIRM_SEED`, not its `origin`: a layout is confirmed
-   *  when the confirmation is recorded (owner decision). */
-  confirmedBy: string | null;
+   *  when the confirmation is recorded (owner decision). So the prototype's
+   *  `confirmed` origin is `auto` here, and n_topics, `auto` there, is confirmed. */
+  confirmed: { by: string; at: string } | null;
 }
 
 /**
- * The layout of every service in Generation - the scan mock's services with scan
- * status `scanned` or `partial` (owner decision). The prototype has no layout for
- * device-mgmt and none for tariff-catalog, which has no endpoints.
+ * The layout the scanner proposed for every service in Generation - the scan
+ * mock's services with scan status `scanned` or `partial` (owner decision) -
+ * with the confirmations recorded before. "Reset to auto" goes back to it. The
+ * prototype has no layout for device-mgmt and none for tariff-catalog, which has
+ * no endpoints.
  */
-const LAYOUT: Record<string, LaidOut[]> = {
+const AUTO: Record<string, LaidOut[]> = {
   "billing-api": [
     {
       id: "v1_invoices",
       version: "v1",
       name: "invoices",
-      confirmedBy: "valeriia",
+      origin: "auto",
+      confirmed: { by: "valeriia", at: "2026-08-11T13:58:00Z" },
       endpoints: [
-        "GET /v1/billing/invoices",
-        "GET /v1/billing/invoices/{invoice_id}",
-        "POST /v1/billing/invoices",
-        "DELETE /v1/billing/invoices/{invoice_id}",
+        ep("e1", "GET", "/v1/billing/invoices", "List invoices of a project", "invoices/list-invoices.rst"),
+        ep("e2", "GET", "/v1/billing/invoices/{invoice_id}", "Query invoice details", "invoices/show-invoice.rst"),
+        ep("e3", "POST", "/v1/billing/invoices", "Create a manual invoice", "invoices/create-invoice.rst"),
+        ep("e4", "DELETE", "/v1/billing/invoices/{invoice_id}", "Cancel an invoice", "invoices/cancel-invoice.rst"),
       ],
     },
     {
       id: "v1_payments",
       version: "v1",
       name: "payments",
-      confirmedBy: null,
-      endpoints: ["GET /v1/billing/payments", "POST /v1/billing/payments", "PUT /v1/billing/payments/{payment_id}"],
+      origin: "auto",
+      confirmed: null,
+      endpoints: [
+        ep("e5", "GET", "/v1/billing/payments", "List payments", "payments/list-payments.rst"),
+        ep("e6", "POST", "/v1/billing/payments", "Submit a payment", "payments/create-payment.rst"),
+        ep("e7", "PUT", "/v1/billing/payments/{payment_id}", "Update payment method", "payments/update-payment.rst"),
+      ],
     },
     {
       id: "v1_misc",
       version: "v1",
       name: "misc",
-      confirmedBy: null,
-      endpoints: ["GET /v1/billing/credit-notes", "GET /v1/billing/credit-notes/{note_id}", "GET /v1/billing/quotas"],
+      origin: "auto",
+      confirmed: null,
+      endpoints: [
+        ep("e8", "GET", "/v1/billing/credit-notes", "List credit notes", "credit-notes/list-credit-notes.rst"),
+        ep("e9", "GET", "/v1/billing/credit-notes/{note_id}", "Query a credit note", "credit-notes/show-credit-note.rst"),
+        /* The prototype has no endpoint whose document is not ok, so the mock makes one. */
+        ep("e10", "GET", "/v1/billing/quotas", "Query billing quotas", "quotas/show-quotas.rst", "partial"),
+      ],
     },
     {
       id: "v2_invoices",
       version: "v2",
       name: "invoices",
-      confirmedBy: null,
-      endpoints: ["GET /v2/billing/invoices", "POST /v2/billing/invoices/export"],
+      origin: "new",
+      confirmed: null,
+      endpoints: [
+        ep("e11", "GET", "/v2/billing/invoices", "List invoices (v2)", "v2/invoices/list-invoices.rst"),
+        ep("e12", "POST", "/v2/billing/invoices/export", "Export invoices as CSV", "v2/invoices/export-invoices.rst"),
+      ],
     },
   ],
   "customer-core": [
@@ -85,29 +127,41 @@ const LAYOUT: Record<string, LaidOut[]> = {
       id: "c_customers",
       version: "v1",
       name: "customers",
-      confirmedBy: "ivan",
+      origin: "auto",
+      confirmed: { by: "ivan", at: "2026-08-10T16:31:00Z" },
       endpoints: [
-        "GET /v1/customers",
-        "GET /v1/customers/{customer_id}",
-        "PUT /v1/customers/{customer_id}",
-        "DELETE /v1/customers/{customer_id}",
+        ep("c1", "GET", "/v1/customers", "List customers", "customers/list-customers.rst"),
+        ep("c2", "GET", "/v1/customers/{customer_id}", "Query customer details", "customers/show-customer.rst"),
+        ep("c3", "PUT", "/v1/customers/{customer_id}", "Update a customer", "customers/update-customer.rst"),
+        ep("c4", "DELETE", "/v1/customers/{customer_id}", "Delete a customer", "customers/delete-customer.rst"),
       ],
     },
     {
       id: "c_contacts",
       version: "v1",
       name: "contacts",
-      confirmedBy: null,
-      endpoints: ["GET /v1/customers/{customer_id}/contacts", "POST /v1/customers/{customer_id}/contacts"],
+      origin: "auto",
+      confirmed: null,
+      endpoints: [
+        ep("c5", "GET", "/v1/customers/{customer_id}/contacts", "List contacts of a customer", "contacts/list-contacts.rst"),
+        ep("c6", "POST", "/v1/customers/{customer_id}/contacts", "Add a contact", "contacts/create-contact.rst"),
+      ],
     },
     {
       id: "c_addresses",
       version: "v1",
       name: "addresses",
-      confirmedBy: null,
+      origin: "new",
+      confirmed: null,
       endpoints: [
-        "GET /v1/customers/{customer_id}/addresses",
-        "PATCH /v1/customers/{customer_id}/addresses/{address_id}",
+        ep("c7", "GET", "/v1/customers/{customer_id}/addresses", "List addresses", "addresses/list-addresses.rst"),
+        ep(
+          "c8",
+          "PATCH",
+          "/v1/customers/{customer_id}/addresses/{address_id}",
+          "Update an address",
+          "addresses/update-address.rst",
+        ),
       ],
     },
   ],
@@ -117,23 +171,82 @@ const LAYOUT: Record<string, LaidOut[]> = {
       id: "n_topics",
       version: "v1",
       name: "topics",
-      confirmedBy: "valeriia",
-      endpoints: ["GET /v1/notifications/topics", "POST /v1/notifications/topics", "DELETE /v1/notifications/topics/{topic_urn}"],
+      origin: "auto",
+      confirmed: { by: "valeriia", at: "2026-07-29T10:48:00Z" },
+      endpoints: [
+        ep("n1", "GET", "/v1/notifications/topics", "List topics", "topics/list-topics.rst"),
+        ep("n2", "POST", "/v1/notifications/topics", "Create a topic", "topics/create-topic.rst"),
+        ep("n3", "DELETE", "/v1/notifications/topics/{topic_urn}", "Delete a topic", "topics/delete-topic.rst"),
+      ],
     },
     {
       id: "n_subscriptions",
       version: "v1",
       name: "subscriptions",
-      confirmedBy: null,
-      endpoints: ["GET /v1/notifications/subscriptions", "POST /v1/notifications/subscriptions"],
+      origin: "auto",
+      confirmed: null,
+      endpoints: [
+        ep("n4", "GET", "/v1/notifications/subscriptions", "List subscriptions", "subscriptions/list-subscriptions.rst"),
+        ep("n5", "POST", "/v1/notifications/subscriptions", "Subscribe to a topic", "subscriptions/create-subscription.rst"),
+      ],
     },
   ],
   "tariff-catalog": [],
 };
 
-/** `overall_status` of the endpoint documents that are not `ok`; every other one
- *  is. The prototype has no such endpoint, so the mock makes one. */
-const DOC_STATUS: Record<string, DocStatus> = { "GET /v1/billing/quotas": "partial" };
+const src = (service: string, file: string) =>
+  `https://github.com/opentelekomcloud-docs/${service}/blob/mockcommit/api-ref/source/${file}`;
+
+interface Placed extends Endpoint {
+  /** The resource the scanner put the endpoint in. */
+  home: string;
+  /** Its place in the scanner's layout of the service. */
+  order: number;
+}
+
+/** Every endpoint of a service, by id. */
+const ENDPOINTS: Record<string, Map<string, Placed>> = Object.fromEntries(
+  Object.entries(AUTO).map(([service, resources]) => {
+    const placed = resources.flatMap((r) => r.endpoints.map((e) => ({ ...e, home: r.id })));
+    return [service, new Map(placed.map((e, order) => [e.id, { ...e, order }]))];
+  }),
+);
+
+/** A resource as it is laid out now. */
+interface Laid {
+  id: string;
+  version: string;
+  name: string;
+  origin: GenOrigin;
+  /** Endpoint ids, in order. */
+  endpoints: string[];
+  confirmedBy: string | null;
+  confirmedAt: string | null;
+}
+
+const laid = (r: LaidOut): Laid => ({
+  id: r.id,
+  version: r.version,
+  name: r.name,
+  origin: r.origin,
+  endpoints: r.endpoints.map((e) => e.id),
+  confirmedBy: r.confirmed?.by ?? null,
+  confirmedAt: r.confirmed?.at ?? null,
+});
+
+const seed = (): Record<string, Laid[]> =>
+  Object.fromEntries(Object.entries(AUTO).map(([service, resources]) => [service, resources.map(laid)]));
+
+/** The layout of every service as it is now: the scanner's, edited. */
+let layout = seed();
+/** Resources made by hand so far, for their ids. */
+let made = 0;
+
+/** Back to the seed. Tests share this module's memory, so each one that edits starts here. */
+export function resetGenerationMock() {
+  layout = seed();
+  made = 0;
+}
 
 /** Jobs by target id, then resource id. A resource without one was never generated there. */
 const JOBS: Record<string, Record<string, GenJob>> = {
@@ -144,6 +257,14 @@ const JOBS: Record<string, Record<string, GenJob>> = {
     c_customers: { status: "merged", pr: 122 },
   },
 };
+
+const jobsOf = (resource: string): Partial<Record<string, GenJob>> =>
+  Object.fromEntries(
+    TARGETS.flatMap((t) => {
+      const job = JOBS[t.id]?.[resource];
+      return job ? [[t.id, { ...job }]] : [];
+    }),
+  );
 
 function summarize(resources: string[], target: string): GenTargetSummary {
   const jobs = JOBS[target] ?? {};
@@ -166,14 +287,26 @@ function summarize(resources: string[], target: string): GenTargetSummary {
   return { state, merged, total: resources.length };
 }
 
-const resourceIds = (name: string) => LAYOUT[name].map((r) => r.id);
+function layoutOf(service: string): Laid[] {
+  const resources = layout[service];
+  if (!resources) throw new Error(`${service} is not in Generation`);
+  return resources;
+}
+
+const resourceIds = (name: string) => layoutOf(name).map((r) => r.id);
+
+function endpointOf(service: string, id: string): Placed {
+  const endpoint = ENDPOINTS[service]?.get(id);
+  if (!endpoint) throw new Error(`${service} has no endpoint ${id}`);
+  return endpoint;
+}
 
 export function generationTargets(): GenTarget[] {
   return TARGETS.map((t) => ({ ...t }));
 }
 
 export function generationServices(): GenService[] {
-  return Object.keys(LAYOUT).map((name) => ({
+  return Object.keys(layout).map((name) => ({
     name,
     targets: Object.fromEntries(TARGETS.map((t) => [t.id, summarize(resourceIds(name), t.id)])),
   }));
@@ -181,21 +314,18 @@ export function generationServices(): GenService[] {
 
 /** The layout of one service, in order, with each resource's job on every target. */
 export function generationResources(service: string): GenResource[] {
-  const layout = LAYOUT[service];
-  if (!layout) throw new Error(`${service} is not in Generation`);
-  return layout.map((r) => ({
+  return layoutOf(service).map((r) => ({
     id: r.id,
     version: r.version,
     name: r.name,
-    endpoints: r.endpoints.length,
-    notOk: r.endpoints.filter((e) => (DOC_STATUS[e] ?? "ok") !== "ok").length,
+    endpoints: r.endpoints.map((id) => {
+      const { method, uri, title, file, status } = endpointOf(service, id);
+      return { id, method, uri, title, src: src(service, file), status };
+    }),
+    origin: r.origin,
     confirmedBy: r.confirmedBy,
-    jobs: Object.fromEntries(
-      TARGETS.flatMap((t) => {
-        const job = JOBS[t.id]?.[r.id];
-        return job ? [[t.id, { ...job }]] : [];
-      }),
-    ),
+    confirmedAt: r.confirmedAt,
+    jobs: jobsOf(r.id),
   }));
 }
 
@@ -203,7 +333,7 @@ export function generationResources(service: string): GenResource[] {
  *  and resources whose generation failed, over every connected target. */
 export function generationAttention(): AttentionRule[] {
   const live = TARGETS.filter((t) => t.live);
-  const resources = Object.keys(LAYOUT).flatMap(resourceIds);
+  const resources = Object.keys(layout).flatMap(resourceIds);
   const tally = (status: GenJobStatus) =>
     live.reduce((n, t) => n + resources.filter((r) => JOBS[t.id]?.[r]?.status === status).length, 0);
   const rule = (code: GenAttentionCode, label: string, count: number): AttentionRule => ({
@@ -216,4 +346,129 @@ export function generationAttention(): AttentionRule[] {
     rule("gen_review", "generated, waiting for review", tally("done")),
     rule("gen_failed", "generation failed — LLM unavailable", tally("failed")),
   ].filter((r) => r.count > 0);
+}
+
+// --- Layout edits ----------------------------------------------------------
+
+/** Generating, in review, or merged on every connected target: the layout of the resource must not change. */
+function frozen(r: Laid): boolean {
+  const jobs = jobsOf(r.id);
+  return lockingJob(jobs, TARGETS) != null || mergedEverywhere(jobs, TARGETS);
+}
+
+/** A resource whose layout may change - or the refusal that says why it may not. */
+function editable(service: string, id: string): Laid {
+  const r = layoutOf(service).find((x) => x.id === id);
+  if (!r) throw new Error(`${service} has no resource ${id}`);
+  if (frozen(r)) throw new Error(`The layout of ${r.name} is frozen: it is generating, in review or merged`);
+  return r;
+}
+
+const fromScanner = (service: string, id: string) => AUTO[service]?.find((r) => r.id === id);
+
+/** A new name; the page has checked it. It does not confirm the resource (owner decision). */
+export function renameResource(service: string, id: string, name: string) {
+  editable(service, id).name = name;
+}
+
+/** An endpoint to the end of another resource, in this version or another, as in the prototype. */
+export function moveEndpoint(service: string, endpoint: string, to: string) {
+  const from = layoutOf(service).find((r) => r.endpoints.includes(endpoint));
+  if (!from) throw new Error(`${service} has no endpoint ${endpoint}`);
+  const into = editable(service, to);
+  if (from === into) return;
+  editable(service, from.id);
+  from.endpoints = from.endpoints.filter((e) => e !== endpoint);
+  into.endpoints.push(endpoint);
+}
+
+/**
+ * An empty resource made by hand, after the last one of its version. It is not
+ * confirmed - confirming takes the button (owner decision), where the prototype
+ * made it confirmed - so it is `new` until someone does.
+ */
+export function addResource(service: string, version: string) {
+  const resources = layoutOf(service);
+  const last = resources.findLastIndex((r) => r.version === version);
+  if (last < 0) throw new Error(`${service} has no version ${version}`);
+  const taken = new Set(resources.filter((r) => r.version === version).map((r) => r.name));
+  let n = 1;
+  while (taken.has(`new_resource_${n}`)) n++;
+  resources.splice(last + 1, 0, {
+    id: `new_${version}_${++made}`,
+    version,
+    name: `new_resource_${n}`,
+    origin: "new",
+    endpoints: [],
+    confirmedBy: null,
+    confirmedAt: null,
+  });
+}
+
+/** The confirmation, with who gives it and when (owner decision). */
+export function confirmResource(service: string, id: string, by: string) {
+  const r = editable(service, id);
+  if (!by) throw new Error("A confirmation has to record who gives it");
+  if (r.confirmedBy != null) throw new Error(`${r.name} is already confirmed by ${r.confirmedBy}`);
+  r.confirmedBy = by;
+  r.confirmedAt = new Date().toISOString();
+}
+
+/**
+ * Put the scanner's layout back on `reset`: each resource gets its name, its
+ * endpoints and its confirmation as the scanner's layout has them - the
+ * prototype restores a resource from `AUTO_STRUCTURE` whole. An endpoint is only
+ * ever moved, never dropped: one that sits in a reset resource but belongs
+ * elsewhere goes back to where the scanner put it. A frozen resource neither
+ * gives nor takes, so what it holds stays where it is.
+ */
+function putBack(service: string, reset: Laid[]) {
+  const resources = layoutOf(service);
+  const resetting = new Set(reset);
+  const byId = new Map(resources.map((r) => [r.id, r]));
+  const placed = resources.flatMap((holder) => holder.endpoints.map((id) => ({ id, holder })));
+  for (const { id, holder } of placed) {
+    /* the scanner's resources are never removed, so an endpoint's home is always there */
+    const home = byId.get(endpointOf(service, id).home) as Laid;
+    if (home === holder || !(resetting.has(home) || resetting.has(holder)) || frozen(home) || frozen(holder)) continue;
+    holder.endpoints = holder.endpoints.filter((e) => e !== id);
+    home.endpoints.push(id);
+  }
+  for (const r of reset) {
+    const auto = fromScanner(service, r.id);
+    if (!auto) continue;
+    r.name = auto.name;
+    r.confirmedBy = auto.confirmed?.by ?? null;
+    r.confirmedAt = auto.confirmed?.at ?? null;
+    r.endpoints.sort((a, b) => endpointOf(service, a).order - endpointOf(service, b).order);
+  }
+}
+
+/** One resource back to the scanner's layout. One made by hand is not in it, so
+ *  only its endpoints go back; the prototype's button does nothing there. */
+export function resetResource(service: string, id: string) {
+  putBack(service, [editable(service, id)]);
+}
+
+/**
+ * A version back to the scanner's layout, but for its frozen resources. The
+ * resources made by hand in it go, as in the prototype - each once nothing is
+ * left in it: an endpoint that could not go home stays, and so does a resource
+ * that has a job.
+ */
+export function resetVersion(service: string, version: string) {
+  const resources = layoutOf(service);
+  const inVersion = resources.filter((r) => r.version === version);
+  if (!inVersion.length) throw new Error(`${service} has no version ${version}`);
+  putBack(
+    service,
+    inVersion.filter((r) => !frozen(r)),
+  );
+  layout[service] = resources.filter(
+    (r) =>
+      r.version !== version ||
+      fromScanner(service, r.id) != null ||
+      r.endpoints.length > 0 ||
+      Object.keys(jobsOf(r.id)).length > 0,
+  );
 }

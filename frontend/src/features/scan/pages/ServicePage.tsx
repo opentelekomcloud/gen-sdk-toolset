@@ -10,7 +10,7 @@ import { SnapshotSelector } from "../components/SnapshotSelector";
 import { RescanButton } from "../components/RescanButton";
 import { ScanJobWatcher } from "../components/ScanJobWatcher";
 import { SectionCard } from "../components/SectionCard";
-import { ServiceBackLink, ServiceLoadFailed, ServiceLoading } from "../components/ServicePageStates";
+import { RefusalBanner, ServiceBackLink, ServiceLoadFailed, ServiceLoading } from "../components/ServicePageStates";
 import { StatusPill } from "../components/StatusPill";
 import { OverallBar } from "../components/OverallBar";
 import { SECTIONS } from "../constants";
@@ -126,20 +126,7 @@ export function ServicePage() {
           A 403 lands here when the UI offered something this session may not do
           - hiding the control is the courtesy, this is the answer. */}
       {refusal && (
-        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-          <AlertTriangle size={14} className="mt-px shrink-0 text-amber-500" />
-          <div className="min-w-0">
-            <span className="font-semibold">{t(refusal.key)}</span>
-            {" — "}
-            <span className="font-mono">{refusal.error.message}</span>
-          </div>
-          <button type="button"
-            onClick={refusal.dismiss}
-            className="ml-auto shrink-0 rounded border border-amber-300 px-2 py-1 font-medium text-amber-800 transition hover:border-amber-500 hover:bg-white"
-          >
-            {t("snap.dismiss")}
-          </button>
-        </div>
+        <RefusalBanner title={t(refusal.key)} message={refusal.error.message} onDismiss={refusal.dismiss} />
       )}
 
       {scanning && service.job_id != null && (

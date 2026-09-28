@@ -4,7 +4,7 @@ import { Route, Routes, useLocation } from "react-router";
 import { renderPage } from "../../../test/render";
 import { keys } from "../../scan/api/queries";
 import { generationResources } from "../data/mock";
-import type { GenResource, GenService, GenTarget } from "../data/types";
+import type { GenEndpoint, GenResource, GenService, GenTarget } from "../data/types";
 import { GenerationListPage } from "./GenerationListPage";
 import { GenerationServicePage } from "./GenerationServicePage";
 
@@ -135,7 +135,7 @@ describe("the billing-api card on the in-memory mock", () => {
 
   it("names misc's endpoint not recognized in full once its layout is confirmed", async () => {
     const confirmed = generationResources("billing-api").map((r) =>
-      r.name === "misc" ? { ...r, confirmedBy: "valeriia" } : r,
+      r.name === "misc" ? { ...r, confirmedBy: "valeriia", confirmedAt: "2026-08-12T09:24:00Z" } : r,
     );
     cardPage("/generation/billing-api", [[keys.genResources("billing-api"), confirmed]]);
 
@@ -231,21 +231,32 @@ describe("states the mock does not hold today", () => {
       terraform: { state: "not_generated", merged: 0, total: 8 },
     },
   };
+  /** `n` endpoints, the last `notOk` of them with a document not recognized in full. */
+  const eps = (id: string, n: number, notOk = 0): GenEndpoint[] =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `${id}-${i}`,
+      method: "GET",
+      uri: `/v1/${id}/${i}`,
+      title: `${id} ${i}`,
+      src: `https://github.com/opentelekomcloud-docs/svc/blob/mockcommit/api-ref/source/${id}-${i}.rst`,
+      status: i >= n - notOk ? "partial" : "ok",
+    }));
   const res = (id: string, o: Partial<GenResource>): GenResource => ({
     id,
     version: "v1",
     name: id,
-    endpoints: 2,
-    notOk: 0,
+    endpoints: eps(id, 2),
+    origin: "auto",
     confirmedBy: "anna",
+    confirmedAt: "2026-08-01T10:00:00Z",
     jobs: {},
     ...o,
   });
   const RESOURCES: GenResource[] = [
     res("ready", {}),
-    res("hollow", { endpoints: 0 }),
-    res("unread", { endpoints: 3, notOk: 1 }),
-    res("unconfirmed", { confirmedBy: null, notOk: 1 }),
+    res("hollow", { endpoints: [] }),
+    res("unread", { endpoints: eps("unread", 3, 1) }),
+    res("unconfirmed", { confirmedBy: null, confirmedAt: null, endpoints: eps("unconfirmed", 2, 1) }),
     res("running", { jobs: { python: { status: "running", pr: null } } }),
     res("broken", { jobs: { python: { status: "failed", pr: null } } }),
     res("landed", { jobs: { python: { status: "merged", pr: 140 } } }),

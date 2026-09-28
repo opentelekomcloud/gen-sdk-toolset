@@ -265,4 +265,41 @@ export const de: Record<keyof typeof en, string> = {
   "gen.hold.empty": "leere Ressource",
   "gen.hold.notOk": "{n} Endpunkt nicht vollständig erkannt|{n} Endpunkte nicht vollständig erkannt",
   "gen.hold.notConnected": "{target} noch nicht angebunden",
+  "gen.layout.back": "Zurück zur Generierung",
+  "gen.layout.shared": "Gemeinsames Layout",
+  "gen.layout.versions": "{n} Version|{n} Versionen",
+  "gen.layout.resources": "{n} Ressource|{n} Ressourcen",
+  "gen.layout.confirmedOf": "{n} von {total} Ressourcen bestätigt",
+  "gen.layout.pill.empty": "nichts anzulegen",
+  "gen.layout.pill.confirmed": "Layout bestätigt",
+  "gen.layout.pill.unconfirmed": "Bestätigung nötig",
+  "gen.layout.edited": "Layout bearbeitet · am Service gespeichert",
+  "gen.layout.info":
+    "Dieses Layout ist allen Zielen gemeinsam — einmal bestätigt, übernimmt es jede Ausgabe. Die automatische Gruppierung kann bei uneinheitlichen Docs danebenliegen; Änderungen werden am Service gespeichert und überstehen einen Rescan.",
+  "gen.layout.moved":
+    "{n} Ressource vollständig gemergt — in Maintenance verschoben|{n} Ressourcen vollständig gemergt — in Maintenance verschoben",
+  "gen.layout.newResource": "Neue Ressource",
+  "gen.layout.reset": "Auf automatisch zurücksetzen",
+  "gen.layout.col": "Ressource · gemeinsames Layout",
+  "gen.layout.origin.auto": "auto",
+  "gen.layout.origin.new": "neu",
+  "gen.layout.origin.confirmed": "bestätigt",
+  "gen.layout.lock.done":
+    "Für {target} generiert und wartet auf Review — das gemeinsame Layout ist eingefroren, bis dieser Pull Request gemergt oder geschlossen ist.",
+  "gen.layout.lock.running": "Ein Job für {target} läuft — das gemeinsame Layout ist eingefroren, bis er fertig ist.",
+  "gen.layout.lock.failed":
+    "Der letzte Job für {target} ist fehlgeschlagen und hat nichts geschrieben — das Layout bleibt bearbeitbar; wiederholen lässt er sich auf der Fehlerseite.",
+  "gen.layout.confirmedNote": "bestätigt von {by} · {at}",
+  "gen.layout.confirm": "Layout bestätigen",
+  "gen.layout.rename": "Ressource umbenennen",
+  "gen.layout.save": "Speichern",
+  "gen.layout.cancel": "Abbrechen",
+  "gen.layout.name.invalid":
+    "Paketname: lateinische Kleinbuchstaben, Ziffern und Unterstriche, beginnend mit einem Buchstaben.",
+  "gen.layout.name.taken": "In {version} gibt es bereits eine Ressource mit diesem Namen.",
+  "gen.layout.empty": "Leere Ressource — Endpunkte hierher ziehen.",
+  "gen.layout.notOk":
+    "Nicht vollständig erkannt — eine Ressource mit diesem Endpunkt lässt sich nicht generieren. Er lässt sich in eine andere Ressource ziehen.",
+  "gen.layout.nothing": "Gescannt — keine Endpunkt-Dokumente gefunden. Nichts anzulegen.",
+  "gen.layout.footer": "Bestätigte Ressourcen sind für jede Ausgabe bereit.",
 };

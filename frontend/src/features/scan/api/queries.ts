@@ -75,6 +75,16 @@ export function invalidateScanFailure(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.attention });
 }
 
+/**
+ * An edit of a service's Generation layout changes its resources, and with
+ * them what the list and the card count for it: `total`, and the state, when a
+ * resource is made or goes. Jobs are untouched, so the attention rules are not.
+ */
+export function invalidateGenLayout(qc: QueryClient, name: string) {
+  void qc.invalidateQueries({ queryKey: keys.genResources(name) });
+  void qc.invalidateQueries({ queryKey: keys.genServices });
+}
+
 export interface ServicesParams {
   status?: ServiceFilter;
   q?: string;

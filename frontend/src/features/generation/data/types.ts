@@ -3,6 +3,7 @@
  * backend for this panel does not exist yet: `mock.ts` serves these shapes from
  * memory, so a field is here only because a page reads it.
  */
+import type { DocStatus } from "../../scan/types";
 
 /** An edition built from the shared structure of a service (Python SDK, Ansible modules). */
 export interface GenTarget {
@@ -47,6 +48,23 @@ export interface GenJob {
   pr: number | null;
 }
 
+/** An endpoint of the service: one endpoint document of the scan. */
+export interface GenEndpoint {
+  id: string;
+  method: string;
+  uri: string;
+  title: string;
+  /** The document in the docs repository, at the scanned commit. */
+  src: string;
+  /** The document's `overall_status`. A resource holding an endpoint that is not
+   *  `ok` cannot be generated (owner decision). */
+  status: DocStatus;
+}
+
+/** Where a resource nobody has confirmed yet comes from: `auto` - grouped by the
+ *  scanner; `new` - appeared in new docs, or made by hand in the layout (owner decision). */
+export type GenOrigin = "auto" | "new";
+
 /** A resource of a service's layout. The layout is shared by every target; the
  *  generation is not. */
 export interface GenResource {
@@ -54,13 +72,13 @@ export interface GenResource {
   /** Id of the API version the resource is laid out under. */
   version: string;
   name: string;
-  /** Endpoints laid out in the resource. */
-  endpoints: number;
-  /** Of those, the endpoints whose document's `overall_status` is not `ok`. A
-   *  resource holding one cannot be generated (owner decision). */
-  notOk: number;
+  /** Endpoints laid out in the resource, in order. */
+  endpoints: GenEndpoint[];
+  origin: GenOrigin;
   /** Who confirmed the layout of the resource; null while nobody has. */
   confirmedBy: string | null;
+  /** When it was confirmed, ISO 8601; null while nobody has. */
+  confirmedAt: string | null;
   /** The resource's job, keyed by `GenTarget.id`. A target without one never generated it. */
   jobs: Partial<Record<string, GenJob>>;
 }

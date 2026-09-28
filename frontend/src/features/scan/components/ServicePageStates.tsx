@@ -3,15 +3,40 @@ import { Link } from "react-router";
 import { useI18n } from "../../../shared/i18n";
 
 /**
- * "All services": from a service page back to the list of its panel. `state`
- * goes along to the list, for what it keeps outside its address.
+ * "All services": from a service page back to the list of its panel, or - with
+ * its own `label` - to the page above. `state` goes along, for what that page
+ * keeps outside its address.
  */
-export function ServiceBackLink({ to, state }: { to: string; state?: unknown }) {
+export function ServiceBackLink({ to, state, label }: { to: string; state?: unknown; label?: string }) {
   const { t } = useI18n();
   return (
     <Link to={to} state={state} className="mb-3 flex items-center gap-1.5 text-sm text-gray-500 transition hover:text-gray-900">
-      <ArrowLeft size={15} /> {t("service.back")}
+      <ArrowLeft size={15} /> {label ?? t("service.back")}
     </Link>
+  );
+}
+
+/**
+ * A refused mutation changes nothing on screen, so say why it did not take:
+ * `title` is the line for the case, `message` the refusal's own wording.
+ */
+export function RefusalBanner({ title, message, onDismiss }: { title: string; message: string; onDismiss: () => void }) {
+  const { t } = useI18n();
+  return (
+    <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+      <AlertTriangle size={14} className="mt-px shrink-0 text-amber-500" />
+      <div className="min-w-0">
+        <span className="font-semibold">{title}</span>
+        {" — "}
+        <span className="font-mono">{message}</span>
+      </div>
+      <button type="button"
+        onClick={onDismiss}
+        className="ml-auto shrink-0 rounded border border-amber-300 px-2 py-1 font-medium text-amber-800 transition hover:border-amber-500 hover:bg-white"
+      >
+        {t("snap.dismiss")}
+      </button>
+    </div>
   );
 }
 

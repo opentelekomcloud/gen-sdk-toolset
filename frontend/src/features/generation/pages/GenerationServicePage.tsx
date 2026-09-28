@@ -28,8 +28,12 @@ function ResourceRow({
   pathTo: (rest: string[]) => string;
 }) {
   const { t } = useI18n();
+  /* the list's state rides on into the layout, and back */
+  const { state: fromList } = useLocation();
   const job = resource.jobs[target.id];
   const confirmed = resource.confirmedBy != null;
+  const endpoints = resource.endpoints.length;
+  const notOk = resource.endpoints.filter((e) => e.status !== "ok").length;
   /* A target that builds on another opens a resource only once it is merged there. */
   const blockedOn =
     target.base != null && resource.jobs[target.base]?.status !== "merged"
@@ -38,10 +42,10 @@ function ResourceRow({
   /* Why the resource cannot be generated, the first reason that holds; null when it can. */
   const hold = !confirmed
     ? t("gen.hold.confirm")
-    : resource.endpoints === 0
+    : endpoints === 0
       ? t("gen.hold.empty")
-      : resource.notOk > 0
-        ? t("gen.hold.notOk", { n: resource.notOk })
+      : notOk > 0
+        ? t("gen.hold.notOk", { n: notOk })
         : blockedOn
           ? t("gen.waitsOn", { base: blockedOn })
           : !target.live
@@ -51,7 +55,7 @@ function ResourceRow({
     .filter((x) => x.id !== target.id && resource.jobs[x.id]?.status === "merged")
     .map((x) => x.label);
   const meta = [
-    t("gen.card.endpoints", { n: resource.endpoints }),
+    t("gen.card.endpoints", { n: endpoints }),
     resource.confirmedBy != null
       ? t("gen.card.confirmedBy", { by: resource.confirmedBy })
       : t("gen.card.notConfirmed"),
@@ -84,7 +88,7 @@ function ResourceRow({
         <span className="inline-flex shrink-0 items-center gap-2 text-[11px] text-gray-400">
           {hold}
           {!confirmed && (
-            <Link to={pathTo(["layout"])} className="font-semibold text-brand underline">
+            <Link to={pathTo(["layout"])} state={fromList} className="font-semibold text-brand underline">
               {t("gen.card.fixLayout")}
             </Link>
           )}
@@ -155,6 +159,7 @@ export function GenerationServicePage() {
         </div>
         <Link
           to={servicePath(name, target, defaultTarget, ["layout"])}
+          state={fromList}
           className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-gray-500"
         >
           <Folder size={14} className="text-gray-400" /> {t("gen.card.editLayout")}
