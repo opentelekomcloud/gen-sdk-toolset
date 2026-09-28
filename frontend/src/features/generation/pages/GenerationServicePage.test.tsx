@@ -201,6 +201,76 @@ describe("the customer-core card on the in-memory mock", () => {
   });
 });
 
+describe("the notifications-hub card on the in-memory mock", () => {
+  it("shows one resource merged on Python SDK and the other held, filling the coverage bar with the merged share", async () => {
+    cardPage("/generation/notifications-hub");
+
+    expect(await screen.findByRole("heading", { name: "notifications-hub" })).toBeInTheDocument();
+    const python = targetButton("Python SDK");
+    expect(python).toHaveAttribute("aria-pressed", "true");
+    expect(python).toHaveTextContent("1 / 2 merged");
+    expect(python.querySelector("[style]")).toHaveStyle({ width: "50%" });
+    const ansible = targetButton("Ansible modules");
+    expect(ansible).toHaveTextContent("waits on Python SDK");
+    expect(ansible.querySelector("[style]")).toHaveStyle({ width: "0%" });
+    expect(screen.getByText("Pull requests for this edition go to opentelekomcloud/python-t-cloud.")).toBeInTheDocument();
+
+    expect(screen.getByText("topics")).toBeInTheDocument();
+    expect(screen.getByText("3 endpoints · layout confirmed by valeriia")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "merged · PR 118" })).toHaveAttribute(
+      "href",
+      "/generation/notifications-hub/result/v1/n_topics",
+    );
+
+    expect(screen.getByText("subscriptions")).toBeInTheDocument();
+    expect(screen.getByText("2 endpoints · layout not confirmed yet")).toBeInTheDocument();
+    expect(screen.getByText("confirm the layout first")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute(
+      "href",
+      "/generation/notifications-hub/layout",
+    );
+    expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+  });
+
+  it("offers Generate for subscriptions once its layout is confirmed", async () => {
+    const confirmed = generationResources("notifications-hub").map((r) =>
+      r.name === "subscriptions" ? { ...r, confirmedBy: "valeriia", confirmedAt: "2026-08-12T09:24:00Z" } : r,
+    );
+    cardPage("/generation/notifications-hub", [[keys.genResources("notifications-hub"), confirmed]]);
+
+    expect(await screen.findByRole("link", { name: "Generate" })).toHaveAttribute(
+      "href",
+      "/generation/notifications-hub/spec/v1/n_subscriptions",
+    );
+    expect(screen.getByRole("link", { name: "merged · PR 118" })).toBeInTheDocument();
+    expect(screen.queryByText("confirm the layout first")).toBeNull();
+  });
+
+  it("opens the merged resource up on Ansible modules, which is not connected yet", async () => {
+    cardPage("/generation/notifications-hub?target=ansible");
+
+    expect(
+      await screen.findByText("3 endpoints · layout confirmed by valeriia · already merged in Python SDK"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Ansible modules not connected yet")).toBeInTheDocument();
+    expect(targetButton("Ansible modules")).toHaveAttribute("aria-pressed", "true");
+    expect(targetButton("Python SDK")).toHaveTextContent("1 / 2 merged");
+    expect(
+      screen.getByText("Ansible modules is built on Python SDK — a resource opens up here once it is merged there."),
+    ).toBeInTheDocument();
+    // only the coverage card waits on the base target: no resource here does
+    expect(screen.getAllByText("waits on Python SDK")).toHaveLength(1);
+    // Python's merged job is not Ansible's
+    expect(screen.queryByRole("link", { name: /merged/ })).toBeNull();
+    expect(screen.getByText("2 endpoints · layout not confirmed yet")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute(
+      "href",
+      "/generation/notifications-hub/layout?target=ansible",
+    );
+    expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+  });
+});
+
 describe("the way back to the list", () => {
   /** The list and the card under their own routes, so one can be left for the other. */
   function panel(path: string) {
@@ -253,16 +323,6 @@ describe("other services on the mock", () => {
 
     expect(await screen.findByText("Nothing laid out for this service yet.")).toBeInTheDocument();
     expect(targetButton("Python SDK")).toHaveTextContent("no resources");
-  });
-
-  it("fills the coverage bar with the merged share", async () => {
-    cardPage("/generation/notifications-hub");
-
-    const python = await screen.findByRole("button", { name: /^Python SDK/ });
-    expect(python).toHaveTextContent("1 / 2 merged");
-    expect(python.querySelector("[style]")).toHaveStyle({ width: "50%" });
-    expect(screen.getByRole("link", { name: "merged · PR 118" })).toBeInTheDocument();
-    expect(screen.getByText("3 endpoints · layout confirmed by valeriia")).toBeInTheDocument();
   });
 
   it("does not open a service that is not in Generation", async () => {
