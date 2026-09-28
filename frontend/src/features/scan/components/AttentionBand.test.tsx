@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import { useLocation } from "react-router";
 import { renderPage } from "../../../test/render";
@@ -56,5 +56,30 @@ describe("the attention band shared by the panels", () => {
     fireEvent.click(await screen.findByRole("button", { name: /failed and hold no data/ }));
 
     expect(location()).toBe("/scan?rule=failed");
+  });
+});
+
+describe("the attention band when a panel's rules fail to load", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** The scan rules request fails; nothing seeds it, so the band has to fetch. */
+  function bandWithScanDown(seed: [readonly unknown[], unknown][] = []) {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 500 })));
+    return renderPage(<AttentionBand />, { path: "/scan", route: "*", seed });
+  }
+
+  it("keeps the Generation rules and names the panel that did not load", async () => {
+    bandWithScanDown();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the Scan rules");
+    expect(screen.getByRole("button", { name: /generated, waiting for review/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /generation failed — LLM unavailable/ })).toBeInTheDocument();
+  });
+
+  it("does not pass for all clear when the rules that loaded are empty", async () => {
+    bandWithScanDown([[keys.genAttention, []]]);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the Scan rules");
+    expect(screen.queryByText(/All caught up/)).not.toBeInTheDocument();
   });
 });

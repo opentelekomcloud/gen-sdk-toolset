@@ -33,6 +33,7 @@ export const en = {
   "attention.subtitle": "across all panels · computed from current state — items clear themselves once handled",
   "attention.allClear": "All caught up — nothing requires attention.",
   "attention.futurePanel": "Arrives with the Generation / Maintenance panels",
+  "attention.loadFailed": "Could not load the {panel} rules — this list may be incomplete.",
   "attention.rule.failed": "failed and hold no data",
   "attention.rule.version": "scanned with an outdated scanner",
   "attention.rule.drift": "docs changed since last scan",

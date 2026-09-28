@@ -35,6 +35,7 @@ export const de: Record<keyof typeof en, string> = {
   "attention.subtitle": "über alle Panels · aus dem aktuellen Zustand berechnet — Einträge verschwinden nach Bearbeitung von selbst",
   "attention.allClear": "Alles erledigt — nichts erfordert Aufmerksamkeit.",
   "attention.futurePanel": "Kommt mit den Panels Generierung / Wartung",
+  "attention.loadFailed": "Die Regeln von {panel} konnten nicht geladen werden — die Liste ist möglicherweise unvollständig.",
   "attention.rule.failed": "fehlgeschlagen, keine Daten vorhanden",
   "attention.rule.version": "mit veraltetem Scanner gescannt",
   "attention.rule.drift": "Doku seit letztem Scan geändert",

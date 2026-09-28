@@ -67,17 +67,22 @@ function AllClear() {
  * tags appear only when rules span >1 panel.
  */
 export function AttentionBand() {
-  const { data: scanRules } = useAttention();
-  const { data: genRules } = useGenerationAttention();
+  const scan = useAttention();
+  const gen = useGenerationAttention();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { t } = useI18n();
   const activeRule = searchParams.get("rule");
 
-  // band appears when data arrives; no layout jump worth a skeleton
-  if (!scanRules || !genRules) return null;
-  const rules = [...scanRules, ...genRules];
-  if (rules.length === 0) return <AllClear />;
+  // band appears once every panel has answered; no layout jump worth a skeleton
+  if (scan.isPending || gen.isPending) return null;
+  /* One panel failing must not hide the other's rules, nor pass for "all clear":
+     what arrived is shown, and a panel whose rules did not load is named. */
+  const rules = [...(scan.data ?? []), ...(gen.data ?? [])];
+  const unloaded: MessageKey[] = [];
+  if (scan.isError) unloaded.push("tab.scan");
+  if (gen.isError) unloaded.push("tab.generation");
+  if (rules.length === 0 && unloaded.length === 0) return <AllClear />;
   const showTags = new Set(rules.map((r) => r.panel)).size > 1;
 
   return (
@@ -87,49 +92,58 @@ export function AttentionBand() {
           <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">{t("attention.title")}</span>
           <span className="text-[10px] text-gray-400">{t("attention.subtitle")}</span>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {rules.map((r) => {
-            const meta = RULE_ICON[r.code];
-            const Icon = meta?.icon ?? AlertTriangle;
-            /* only a scan rule filters by `rule` and toggles back off, as in the prototype */
-            const active = r.panel === "scan" && activeRule === r.code;
-            const label = RULE_LABEL_KEY[r.code] ? t(RULE_LABEL_KEY[r.code]) : r.label;
-            const target = ruleTarget(r);
-            return (
-              <button type="button"
-                key={r.code}
-                disabled={!target}
-                title={target ? undefined : t("attention.futurePanel")}
-                onClick={() => target && navigate(active ? "/scan" : target)}
-                className={`group flex items-center gap-2.5 rounded-lg border bg-white px-3 py-2 text-left transition ${
-                  active
-                    ? "border-brand ring-1 ring-brand"
-                    : target
-                      ? "border-gray-200 hover:border-gray-400"
-                      : "cursor-not-allowed border-dashed border-gray-200 bg-white/60"
-                }`}
-              >
-                <Icon size={15} className={meta?.cls ?? "text-gray-400"} />
-                <span className="font-mono text-lg font-semibold tabular-nums text-gray-900">{r.count}</span>
-                <span className="max-w-[150px] text-xs leading-tight text-gray-600">{label}</span>
-                {showTags && (
-                  <span
-                    className={`rounded px-1 py-px text-[9px] font-medium uppercase tracking-wide ${
-                      r.panel === "generation" ? "bg-purple-50 text-purple-700" : "bg-gray-100 text-gray-400"
+        <div className="flex flex-col gap-2">
+          {rules.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {rules.map((r) => {
+                const meta = RULE_ICON[r.code];
+                const Icon = meta?.icon ?? AlertTriangle;
+                /* only a scan rule filters by `rule` and toggles back off, as in the prototype */
+                const active = r.panel === "scan" && activeRule === r.code;
+                const label = RULE_LABEL_KEY[r.code] ? t(RULE_LABEL_KEY[r.code]) : r.label;
+                const target = ruleTarget(r);
+                return (
+                  <button type="button"
+                    key={r.code}
+                    disabled={!target}
+                    title={target ? undefined : t("attention.futurePanel")}
+                    onClick={() => target && navigate(active ? "/scan" : target)}
+                    className={`group flex items-center gap-2.5 rounded-lg border bg-white px-3 py-2 text-left transition ${
+                      active
+                        ? "border-brand ring-1 ring-brand"
+                        : target
+                          ? "border-gray-200 hover:border-gray-400"
+                          : "cursor-not-allowed border-dashed border-gray-200 bg-white/60"
                     }`}
                   >
-                    {r.panel}
-                  </span>
-                )}
-                {target && (
-                  <ChevronRight
-                    size={13}
-                    className={active ? "text-brand" : "text-gray-300 transition group-hover:text-gray-500"}
-                  />
-                )}
-              </button>
-            );
-          })}
+                    <Icon size={15} className={meta?.cls ?? "text-gray-400"} />
+                    <span className="font-mono text-lg font-semibold tabular-nums text-gray-900">{r.count}</span>
+                    <span className="max-w-[150px] text-xs leading-tight text-gray-600">{label}</span>
+                    {showTags && (
+                      <span
+                        className={`rounded px-1 py-px text-[9px] font-medium uppercase tracking-wide ${
+                          r.panel === "generation" ? "bg-purple-50 text-purple-700" : "bg-gray-100 text-gray-400"
+                        }`}
+                      >
+                        {r.panel}
+                      </span>
+                    )}
+                    {target && (
+                      <ChevronRight
+                        size={13}
+                        className={active ? "text-brand" : "text-gray-300 transition group-hover:text-gray-500"}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {unloaded.map((panel) => (
+            <div key={panel} role="alert" className="flex items-center gap-1.5 text-xs font-medium text-red-600">
+              <AlertTriangle size={14} /> {t("attention.loadFailed", { panel: t(panel) })}
+            </div>
+          ))}
         </div>
       </div>
     </div>

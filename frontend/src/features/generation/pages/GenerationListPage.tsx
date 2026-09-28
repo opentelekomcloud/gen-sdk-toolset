@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ChevronRight, Loader2, Search } from "lucide-react";
+import { ChevronRight, Search } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useGenerationServices, useGenerationTargets } from "../data/queries";
 import type { GenFilter, GenService, GenState, GenTarget } from "../data/types";
+import { StatusPill } from "../../scan/components/StatusPill";
 import { chipCls } from "../../scan/styles";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
 
@@ -65,12 +66,12 @@ function ServiceRow({ service, targets }: { service: GenService; targets: GenTar
                 e.stopPropagation();
                 navigate(cardPath(service.name, target, defaultTarget));
               }}
-              className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium ${
-                notConnected ? NOT_CONNECTED_CLS : STATE_CLS[state]
-              }`}
             >
-              {state === "in_progress" && <Loader2 size={10} className="animate-spin" />}
-              {label}
+              <StatusPill
+                cls={notConnected ? NOT_CONNECTED_CLS : STATE_CLS[state]}
+                label={label}
+                running={state === "in_progress"}
+              />
             </button>
             {total > 0 && (
               <span className="font-mono text-[11px] text-gray-400">
