@@ -284,6 +284,57 @@ describe("the spec of invoices v1 on the in-memory mock", () => {
   });
 });
 
+describe("the spec of payments v1 on the in-memory mock", () => {
+  it("shows a field of unknown type left to decide, what the docs say of it and the types to choose from", async () => {
+    specPage("/generation/billing-api/spec/v1/v1_payments");
+
+    expect(await screen.findByRole("heading", { name: "billing_api.payments" })).toBeInTheDocument();
+    expect(screen.getByText("auto")).toBeInTheDocument();
+    expect(
+      screen.getByText("Generation spec · Python SDK · v1 · 3 operations · 3 base · 0 custom · 1 class"),
+    ).toBeInTheDocument();
+    expect(within(operation("List payments")).getByText("payments.list()")).toBeInTheDocument();
+    expect(within(operation("Submit a payment")).getByText("payments.create()")).toBeInTheDocument();
+    expect(within(operation("Update payment method")).getByText("payments.update()")).toBeInTheDocument();
+
+    expect(within(cls("Payment")).getByText("4 fields")).toBeInTheDocument();
+    expect(within(cls("Payment")).getByText("1 to decide")).toBeInTheDocument();
+
+    const method = field("Payment", "method");
+    expect(within(method).getByText("⚠ Unknown")).toHaveClass("text-amber-700");
+    expect(within(method).getByText("yes")).toBeInTheDocument();
+    expect(within(method).getByText("Payment method")).toBeInTheDocument();
+    expect(within(method).getByRole("button", { name: "unknown type" })).toHaveAttribute(
+      "title",
+      "Type not recognized — the table cell reads “enum (see below)” and the values are only in prose. Choose an enum or a plain string.",
+    );
+    // only the field left to decide is highlighted
+    expect(method.firstElementChild).toHaveClass("bg-amber-50");
+    expect(field("Payment", "invoice_id").firstElementChild).toHaveClass("bg-white");
+    expect(within(field("Payment", "invoice_id")).getByTitle("String")).toBeInTheDocument();
+    expect(within(field("Payment", "paid_at")).queryByRole("button")).toBeNull();
+
+    openProblem("Payment", "method", "unknown type");
+    expect(within(method).getByText(/^Type not recognized — the table cell reads/)).toBeInTheDocument();
+    expect(within(method).getByRole("link", { name: "create-payment.rst" })).toHaveAttribute(
+      "href",
+      "https://github.com/opentelekomcloud-docs/billing-api/blob/mockcommit/api-ref/source/payments/create-payment.rst",
+    );
+    expect(option("Payment", "method", "Enum[PaymentMethod]")).toHaveTextContent(
+      "values listed in the prose below the table",
+    );
+    expect(option("Payment", "method", "Enum[PaymentMethod]")).toHaveAttribute("aria-pressed", "false");
+    expect(option("Payment", "method", "String")).toHaveTextContent("accept any value");
+    expect(option("Payment", "method", "String")).toHaveAttribute("aria-pressed", "false");
+    // nobody has chosen, so there is no one to name and nothing to take back
+    expect(within(method).queryByText(/^chosen by/)).toBeNull();
+    expect(within(method).queryByRole("button", { name: "Clear choice" })).toBeNull();
+    expect(
+      generationSpec("billing-api", "v1_payments").classes[0].fields.find((f) => f.name === "method")?.issue?.choice,
+    ).toBeNull();
+  });
+});
+
 describe("a viewer", () => {
   beforeEach(() => {
     session.token = tokenWithRoles("viewer");
