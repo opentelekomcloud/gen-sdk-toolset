@@ -39,6 +39,8 @@ export const de: Record<keyof typeof en, string> = {
   "attention.rule.version": "mit veraltetem Scanner gescannt",
   "attention.rule.drift": "Doku seit letztem Scan geändert",
   "attention.rule.new": "entdeckt, noch nie gescannt",
+  "attention.rule.gen_review": "generiert, wartet auf Review",
+  "attention.rule.gen_failed": "Generierung fehlgeschlagen — LLM nicht erreichbar",
 
   "status.scanned": "Gescannt",
   "status.partial": "Teilweise gescannt",
@@ -222,4 +224,18 @@ export const de: Record<keyof typeof en, string> = {
   "ineligible.neverChecked": "{branch} · noch nicht geprüft",
   "ineligible.empty":
     "Jedes gefundene Repository hat eine API-Referenz. Repos landen hier, wenn die Discovery keinen api-ref-Pfad findet; sie verschwinden von selbst wieder, sobald einer auftaucht.",
+
+  "gen.list.eligible": "Für die Generierung zugelassene Services — vom Scanner vollständig oder teilweise gescannt.",
+  "gen.list.editions":
+    "Eine Struktur pro Service; {n} Ausgabe wird daraus gebaut.|Eine Struktur pro Service; {n} Ausgaben werden daraus gebaut.",
+  "gen.col.tbd": "noch offen",
+  "gen.state.not_generated": "Nicht generiert",
+  "gen.state.in_progress": "In Arbeit",
+  "gen.state.failed": "Fehlgeschlagen",
+  "gen.state.review": "Wartet auf Review",
+  "gen.state.partial": "Teilweise",
+  "gen.state.done": "Gemergt",
+  "gen.target.notConnected": "nicht angebunden",
+  "gen.cell.merged": "{n} von {total} Ressourcen gemergt",
+  "gen.cell.buildsOn": "baut auf {base} auf",
 };

@@ -37,6 +37,10 @@ export const keys = {
   attention: ["attention"] as const,
   excluded: ["excluded"] as const,
   ineligible: ["ineligible"] as const,
+  /** Generation panel - served by features/generation/data/ from its in-memory mock. */
+  genTargets: ["generation", "targets"] as const,
+  genServices: ["generation", "services"] as const,
+  genAttention: ["generation", "attention"] as const,
 };
 
 /**

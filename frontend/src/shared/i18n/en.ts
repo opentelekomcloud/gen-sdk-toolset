@@ -37,6 +37,8 @@ export const en = {
   "attention.rule.version": "scanned with an outdated scanner",
   "attention.rule.drift": "docs changed since last scan",
   "attention.rule.new": "discovered, never scanned",
+  "attention.rule.gen_review": "generated, waiting for review",
+  "attention.rule.gen_failed": "generation failed — LLM unavailable",
 
   "status.scanned": "Scanned",
   "status.partial": "Partially scanned",
@@ -220,4 +222,17 @@ export const en = {
   "ineligible.neverChecked": "{branch} · not yet checked",
   "ineligible.empty":
     "Every discovered repository has an API reference. Repos land here when discovery finds no api-ref path; they leave again by themselves once one appears.",
+
+  "gen.list.eligible": "Services eligible for generation — scanned or partially scanned by the scanner.",
+  "gen.list.editions": "One structure per service; {n} edition built from it.|One structure per service; {n} editions built from it.",
+  "gen.col.tbd": "TBD",
+  "gen.state.not_generated": "Not generated",
+  "gen.state.in_progress": "In progress",
+  "gen.state.failed": "Failed",
+  "gen.state.review": "Waiting for review",
+  "gen.state.partial": "Partial",
+  "gen.state.done": "Merged",
+  "gen.target.notConnected": "not connected",
+  "gen.cell.merged": "{n} of {total} resources merged",
+  "gen.cell.buildsOn": "builds on {base}",
 } as const;
