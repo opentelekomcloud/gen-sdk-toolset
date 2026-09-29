@@ -1,10 +1,10 @@
 import { NavLink } from "react-router";
 import { useI18n, type MessageKey } from "../shared/i18n";
 
-/** Shell-level nav. Add entries here as the Generation / Maintenance panels land. */
+/** Shell-level nav. Add entries here as panels land. */
 const NAV: { key: MessageKey; path: string; enabled: boolean }[] = [
   { key: "tab.scan", path: "/scan", enabled: true },
-  { key: "tab.generation", path: "/generation", enabled: false },
+  { key: "tab.generation", path: "/generation", enabled: true },
   { key: "tab.maintenance", path: "/maintenance", enabled: false },
 ];
 

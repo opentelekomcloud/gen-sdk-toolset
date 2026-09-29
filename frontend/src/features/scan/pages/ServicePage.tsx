@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { DocFilter, DocStatus, RepositoryInterruption } from "../types";
-import { AlertTriangle, ArrowLeft, Ban, CheckCircle2, Download, FolderOpen, Loader2, RefreshCw } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router";
+import { AlertTriangle, Ban, CheckCircle2, Download, FolderOpen, Loader2 } from "lucide-react";
+import { useNavigate, useParams } from "react-router";
 import { ApiError } from "../api/client";
 import { useActivateSnapshot, useExclude, useRescan } from "../api/mutations";
 import { useService, useSummary } from "../api/queries";
@@ -10,6 +10,7 @@ import { SnapshotSelector } from "../components/SnapshotSelector";
 import { RescanButton } from "../components/RescanButton";
 import { ScanJobWatcher } from "../components/ScanJobWatcher";
 import { SectionCard } from "../components/SectionCard";
+import { RefusalBanner, ServiceBackLink, ServiceLoadFailed, ServiceLoading } from "../components/ServicePageStates";
 import { StatusPill } from "../components/StatusPill";
 import { OverallBar } from "../components/OverallBar";
 import { SECTIONS } from "../constants";
@@ -51,38 +52,10 @@ export function ServicePage() {
   const activate = useActivateSnapshot(name);
   const exclude = useExclude(name);
 
-  if (isPending) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-24 text-sm text-gray-400">
-        <Loader2 size={16} className="animate-spin" /> {t("service.loading")}
-      </div>
-    );
-  }
+  if (isPending) return <ServiceLoading />;
   if (isError || !service) {
     const notFound = error instanceof ApiError && error.status === 404;
-    return (
-      <div className="mx-auto max-w-6xl px-6 py-5">
-        <Link to="/scan" className="mb-3 flex items-center gap-1.5 text-sm text-gray-500 transition hover:text-gray-900">
-          <ArrowLeft size={15} /> {t("service.back")}
-        </Link>
-        <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
-          <AlertTriangle size={22} className="mx-auto mb-2 text-gray-400" />
-          <div className="mb-1 text-sm font-semibold text-gray-700">
-            {notFound ? t("service.notFound", { name }) : t("service.loadFailed")}
-          </div>
-          {notFound ? (
-            <div className="text-xs text-gray-500">{t("service.notFoundHint")}</div>
-          ) : (
-            <button type="button"
-              onClick={() => void refetch()}
-              className="mx-auto mt-2 flex items-center gap-1 rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500"
-            >
-              <RefreshCw size={11} /> {t("service.retry")}
-            </button>
-          )}
-        </div>
-      </div>
-    );
+    return <ServiceLoadFailed back="/scan" onRetry={() => void refetch()} notFound={notFound ? name : undefined} />;
   }
   const scanning = service.scan_status === "scanning";
   const switching = activate.isPending;
@@ -102,9 +75,7 @@ export function ServicePage() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
-      <Link to="/scan" className="mb-3 flex items-center gap-1.5 text-sm text-gray-500 transition hover:text-gray-900">
-        <ArrowLeft size={15} /> {t("service.back")}
-      </Link>
+      <ServiceBackLink to="/scan" />
 
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -155,20 +126,7 @@ export function ServicePage() {
           A 403 lands here when the UI offered something this session may not do
           - hiding the control is the courtesy, this is the answer. */}
       {refusal && (
-        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-          <AlertTriangle size={14} className="mt-px shrink-0 text-amber-500" />
-          <div className="min-w-0">
-            <span className="font-semibold">{t(refusal.key)}</span>
-            {" — "}
-            <span className="font-mono">{refusal.error.message}</span>
-          </div>
-          <button type="button"
-            onClick={refusal.dismiss}
-            className="ml-auto shrink-0 rounded border border-amber-300 px-2 py-1 font-medium text-amber-800 transition hover:border-amber-500 hover:bg-white"
-          >
-            {t("snap.dismiss")}
-          </button>
-        </div>
+        <RefusalBanner title={t(refusal.key)} message={refusal.error.message} onDismiss={refusal.dismiss} />
       )}
 
       {scanning && service.job_id != null && (

@@ -1,4 +1,5 @@
-import { Activity, Eye, LogOut } from "lucide-react";
+import { Activity, Eye, LogOut, Settings } from "lucide-react";
+import { NavLink } from "react-router";
 import { useSummary } from "../features/scan/api/queries";
 import { useSession } from "../shared/auth/useSession";
 import { useI18n, type Lang } from "../shared/i18n";
@@ -80,6 +81,17 @@ export function Header() {
             {t("header.scanner", { v: summary.scanner_version })}
           </span>
         )}
+        {/* the way to the settings page, lit while it is open - as in the prototype */}
+        <NavLink
+          to="/settings"
+          title={t("settings.title")}
+          aria-label={t("settings.title")}
+          className={({ isActive }) =>
+            `inline-flex items-center justify-center rounded-full p-1.5 transition ${isActive ? "bg-white text-brand" : "bg-white/15 text-white hover:bg-white/25"}`
+          }
+        >
+          <Settings size={16} />
+        </NavLink>
         <LangToggle />
         <Session />
       </div>

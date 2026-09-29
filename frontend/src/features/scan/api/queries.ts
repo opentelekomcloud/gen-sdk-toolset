@@ -37,6 +37,18 @@ export const keys = {
   attention: ["attention"] as const,
   excluded: ["excluded"] as const,
   ineligible: ["ineligible"] as const,
+  /** Generation panel - served by features/generation/data/ from its in-memory mock. */
+  genTargets: ["generation", "targets"] as const,
+  genServices: ["generation", "services"] as const,
+  genResources: (name: string) => ["generation", "resources", name] as const,
+  genAttention: ["generation", "attention"] as const,
+  /** Prefix for the generation specs of every resource of a service — invalidation target. */
+  genSpecs: (name: string) => ["generation", "spec", name] as const,
+  genSpec: (name: string, resource: string) => ["generation", "spec", name, resource] as const,
+  /** Mutation key of a service's layout edits; the edits that went through say it was edited. */
+  genLayoutEdit: (name: string) => ["generation", "layout-edit", name] as const,
+  /** The OTC tenant the panel's live calls go to - served from the Generation mock too. */
+  otcSettings: ["settings", "otc"] as const,
 };
 
 /**
@@ -68,6 +80,33 @@ export function invalidateScanFailure(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.services() });
   void qc.invalidateQueries({ queryKey: keys.summary });
   void qc.invalidateQueries({ queryKey: keys.attention });
+}
+
+/**
+ * An edit of a service's Generation layout changes its resources, and with
+ * them what the list and the card count for it: `total`, and the state, when a
+ * resource is made or goes - and the specs, whose operations are the endpoints
+ * of a resource. Jobs are untouched, so the attention rules are not.
+ */
+export function invalidateGenLayout(qc: QueryClient, name: string) {
+  void qc.invalidateQueries({ queryKey: keys.genResources(name) });
+  void qc.invalidateQueries({ queryKey: keys.genServices });
+  void qc.invalidateQueries({ queryKey: keys.genSpecs(name) });
+}
+
+/**
+ * A generation started for a resource gives it a job, and a merge picked up
+ * from GitHub changes one: its resources carry the jobs, the list and the card
+ * count them into the state of the service, and the attention rules count the
+ * jobs in review and the failed ones. A refused start says the page was stale,
+ * on the job, the layout or a field left to decide - so the specs, whose fields
+ * carry the choices, are fetched again with the rest.
+ */
+export function invalidateGenJobs(qc: QueryClient, name: string) {
+  void qc.invalidateQueries({ queryKey: keys.genResources(name) });
+  void qc.invalidateQueries({ queryKey: keys.genServices });
+  void qc.invalidateQueries({ queryKey: keys.genAttention });
+  void qc.invalidateQueries({ queryKey: keys.genSpecs(name) });
 }
 
 export interface ServicesParams {

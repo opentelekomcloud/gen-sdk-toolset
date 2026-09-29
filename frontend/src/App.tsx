@@ -6,6 +6,12 @@ import { TabBar } from "./components/TabBar";
 import { AttentionBand } from "./features/scan/components/AttentionBand";
 import { RegistryPage } from "./features/scan/pages/RegistryPage";
 import { ServicePage } from "./features/scan/pages/ServicePage";
+import { GenerationListPage } from "./features/generation/pages/GenerationListPage";
+import { GenerationServicePage } from "./features/generation/pages/GenerationServicePage";
+import { GenerationLayoutPage } from "./features/generation/pages/GenerationLayoutPage";
+import { GenerationSpecPage } from "./features/generation/pages/GenerationSpecPage";
+import { GenerationResultPage } from "./features/generation/pages/GenerationResultPage";
+import { SettingsPage } from "./features/generation/pages/SettingsPage";
 
 function NotFound() {
   const { t } = useI18n();
@@ -23,6 +29,12 @@ function App() {
         <Route path="/" element={<Navigate to="/scan" replace />} />
         <Route path="/scan" element={<RegistryPage />} />
         <Route path="/scan/services/:name" element={<ServicePage />} />
+        <Route path="/generation" element={<GenerationListPage />} />
+        <Route path="/generation/:name" element={<GenerationServicePage />} />
+        <Route path="/generation/:name/layout" element={<GenerationLayoutPage />} />
+        <Route path="/generation/:name/spec/:version/:resource" element={<GenerationSpecPage />} />
+        <Route path="/generation/:name/result/:version/:resource" element={<GenerationResultPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </div>
