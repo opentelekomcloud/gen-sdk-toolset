@@ -59,7 +59,7 @@ const SERVICES = [
     rescan_reason: "version", overall_breakdown: { ok: 110, partial: 12, unsupported: 6 },
     section_rollup: rollup(110, 12, 0, 6),
     top_issues: [{ code: "unknown_type", count: 14 }, { code: "missing_description", count: 9 }] }),
-  svc({ name: "device-mgmt", scan_status: "partial", documents: 31, docs_ok: 64, rescan_reason: "partial",
+  svc({ name: "device-mgmt", scan_status: "partial", documents: 31, docs_ok: 64,
     overall_breakdown: { ok: 18, partial: 9, failed: 4 }, section_rollup: rollup(18, 9, 4),
     top_issues: [{ code: "table_parse_error", count: 6 }] }),
   svc({ name: "legacy-soap-bridge", scan_status: "failed", rescan_reason: "retry",
@@ -190,8 +190,19 @@ const detail = (name: string, id: number) => ({
 
 const EXCLUDED = [{ name: "internal-sandbox", reason: "Test repository, never had real docs", excluded_by: "ivan", excluded_at: "2026-06-30" }];
 
-/* mock-only: in-flight scan jobs for useJob polling. */
-const MOCK_JOBS: Record<number, { id: number; name: string; service_id: number; startedMs: number; created_at: string; completed: boolean }> = {};
+const INELIGIBLE = [
+  { repo: "opentelekomcloud-docs/status-dashboard", name: "Status Dashboard", branch: "main", checked_at: "2026-07-22T04:00:00Z" },
+  { repo: "opentelekomcloud-docs/docs-starter", name: "Docs Starter", branch: "main", checked_at: null },
+];
+
+/* mock-only: in-flight scan jobs for useJob polling. payments-gw's seeded job
+   never finishes, so the registry keeps one service mid-scan. */
+const MOCK_JOBS: Record<number, { id: number; name: string; service_id: number; startedMs: number; created_at: string; completed: boolean }> = {
+  1042: {
+    id: 1042, name: "payments-gw", service_id: SERVICES.findIndex((s) => s.name === "payments-gw") + 1,
+    startedMs: Number.POSITIVE_INFINITY, created_at: "2026-07-23T12:58:00Z", completed: false,
+  },
+};
 let mockJobSeq = 5000;
 
 export function mockScanApi(): Plugin {
@@ -258,6 +269,8 @@ export function mockScanApi(): Plugin {
         ]);
 
         if (p === "/excluded") return json(res, EXCLUDED);
+
+        if (p === "/ineligible") return json(res, INELIGIBLE);
 
         if (p === "/services") {
           const status = url.searchParams.get("status") ?? "all";
