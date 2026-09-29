@@ -14,7 +14,12 @@ from .context import (
     build_repository_context,
     parse_doctree,
 )
-from .patterns import API_VERSION_RE, URI_RE
+from .patterns import (
+    API_VERSION_RE,
+    URI_PLACEHOLDER_MARKUP_RE,
+    URI_PLACEHOLDER_RE,
+    URI_RE,
+)
 from .routing import extract_sections
 from .title import extract_document_title
 
@@ -55,7 +60,9 @@ class DocutilsParser(RstParser):
                 IssueCode.NO_URI_MATCH,
                 details=f"No 'METHOD /path' line found in {path}",
             )
-        return HttpMethod(match.group(1).upper()), match.group(2)
+        return HttpMethod(match.group(1).upper()), _strip_placeholder_markup(
+            match.group(2)
+        )
 
     @staticmethod
     def _extract_api_version(uri: str, source_path: str) -> str | None:
@@ -67,3 +74,18 @@ class DocutilsParser(RstParser):
         if match:
             return match.group(1).lower()
         return None
+
+
+def _strip_placeholder_markup(uri: str) -> str:
+    """Drop RST inline markup the raw text keeps inside URI placeholders.
+
+    The URI is read from the raw source, so ``{*project_id*}`` arrives with the
+    emphasis stars the rendered page does not show, and the placeholder name
+    no longer matches its path-parameter row.
+
+    :param uri: The URI path as matched in the document.
+    """
+    return URI_PLACEHOLDER_RE.sub(
+        lambda match: "{" + URI_PLACEHOLDER_MARKUP_RE.sub("", match.group(1)) + "}",
+        uri,
+    )

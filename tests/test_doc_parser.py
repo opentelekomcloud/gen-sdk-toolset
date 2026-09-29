@@ -223,6 +223,102 @@ GET /v1/items/{item_id}
     assert path_params.scan_result.issues[0].location == "payload"
 
 
+def test_uri_written_as_list_item_wins_over_example_uri(
+    parser: DocutilsParser,
+) -> None:
+    content = """
+Tag Item
+========
+
+URI
+---
+
+-  POST /v3/{project_id}/items/{item_id}/tags
+
+Example Requests
+----------------
+
+.. code-block::
+
+   POST https://api.example.com/v3/c80a2157aaa/items/42/tags
+
+   {"key": "env"}
+"""
+
+    parsed = parser.parse(content, "tag_item.rst")
+
+    assert parsed.method is HttpMethod.POST
+    assert parsed.uri == "/v3/{project_id}/items/{item_id}/tags"
+
+
+@pytest.mark.parametrize(
+    ("uri_line", "expected_uri", "expected_name"),
+    [
+        ("GET /v1/{*project_id*}/items", "/v1/{project_id}/items", "project_id"),
+        ("GET /v1/{begin\\_time}/items", "/v1/{begin_time}/items", "begin_time"),
+    ],
+)
+def test_uri_placeholder_markup_is_stripped(
+    parser: DocutilsParser, uri_line: str, expected_uri: str, expected_name: str
+) -> None:
+    content = f"""
+List Items
+==========
+
+URI
+---
+
+{uri_line}
+"""
+
+    parsed = parser.parse(content, "list_items.rst")
+    path_params = _sections(parsed)["path_params"]
+
+    assert parsed.uri == expected_uri
+    assert [parameter.name for parameter in path_params.parameters] == [expected_name]
+    assert path_params.scan_result.status is SectionStatus.OK
+
+
+def test_uri_placeholder_with_space_is_read_and_reported(
+    parser: DocutilsParser,
+) -> None:
+    content = """
+List Items
+==========
+
+URI
+---
+
+GET /v1/{begin \\_time}/items
+
+.. table:: Parameter description
+
+   ========== ====== ============
+   Name       Type   Description
+   ========== ====== ============
+   begin_time String Start time
+   ========== ====== ============
+
+Example Requests
+----------------
+
+.. code-block::
+
+   GET https://api.example.com/v1/20260101/items
+"""
+
+    parsed = parser.parse(content, "list_items.rst")
+    path_params = _sections(parsed)["path_params"]
+
+    assert parsed.uri == "/v1/{begin _time}/items"
+    assert [parameter.name for parameter in path_params.parameters] == ["begin _time"]
+    assert path_params.scan_result.status is SectionStatus.PARTIAL
+    assert [issue.code for issue in path_params.scan_result.issues] == [
+        IssueCode.PATH_PARAMETER_NOT_IN_URI
+    ]
+    assert path_params.scan_result.issues[0].location == "begin_time"
+
+
 # --------------------------------------------------------------------------- #
 # Anti-DDoS — root endpoint from querying_all_api_versions.rst
 # --------------------------------------------------------------------------- #

@@ -10,14 +10,23 @@ from .types import SectionKind, TableTarget
 
 HTTP_METHODS_PATTERN = "|".join(m.value for m in HttpMethod)
 
-# Matches "POST /path" or "POST https://host/path"
+# Matches "POST /path" or "POST https://host/path", also written as a bullet
+# list item ("-  POST /path"): skipping that form let the first example's
+# concrete URI win instead of the template. Whitespace is allowed inside a
+# closed placeholder ("{begin _time}") and kept as written: the name then fails
+# to match its path-parameter row, which reports PATH_PARAMETER_NOT_IN_URI.
 URI_RE = re.compile(
-    rf"^\s*({HTTP_METHODS_PATTERN})\s+(?:https?://[^/\s]+)?(/\S*)\s*$",
+    rf"^\s*(?:[-*+]\s+)?({HTTP_METHODS_PATTERN})\s+(?:https?://[^/\s]+)?"
+    r"(/(?:[^\s{]|\{[^{}\n]*\})*)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 
 # Matches "{project_id}"
 URI_PLACEHOLDER_RE = re.compile(r"\{([^{}]+)\}")
+
+# RST inline markup read raw inside a placeholder: emphasis stars in
+# "{*project_id*}" and the escape in "{begin\_time}".
+URI_PLACEHOLDER_MARKUP_RE = re.compile(r"[*\\]")
 
 # Matches "POST /path\n" prefix in example blocks
 EXAMPLE_HTTP_PREFIX_RE = re.compile(
