@@ -59,7 +59,38 @@ forbidden_modules = ["tools.panel.core.db", "tools.panel.api", "tools.scanner"]
 name = "shared is a leaf (imports nothing internal)"
 type = "forbidden"
 source_modules = ["tools.shared"]
-forbidden_modules = ["tools.scanner", "tools.panel"]
+forbidden_modules = ["tools.scanner", "tools.panel", "tools.llm"]
+
+[[tool.importlinter.contracts]]
+name = "the scanner and the llm client do not depend on each other"
+type = "independence"
+modules = ["tools.scanner", "tools.llm"]
+
+[[tool.importlinter.contracts]]
+name = "the llm client does not depend on the panel"
+type = "forbidden"
+source_modules = ["tools.llm"]
+forbidden_modules = ["tools.panel"]
+
+[[tool.importlinter.contracts]]
+name = "the llm port does not depend on its implementations"
+type = "forbidden"
+source_modules = ["tools.llm.port"]
+forbidden_modules = [
+    "tools.llm.factory",
+    "tools.llm.parsing",
+    "tools.llm.providers",
+    "tools.llm.schemas",
+    "tools.llm.service",
+    "tools.llm.timeouts",
+    "tools.llm.transport",
+]
+
+[[tool.importlinter.contracts]]
+name = "the llm transport knows nothing of the port or the adapter"
+type = "forbidden"
+source_modules = ["tools.llm.transport"]
+forbidden_modules = ["tools.llm.port", "tools.llm.providers", "tools.llm.service"]
 
 [tool.ruff]
 line-length = 88
