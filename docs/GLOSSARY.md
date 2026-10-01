@@ -329,3 +329,16 @@ a status-code page, two structures, an unknown anchor — is left alone and
 raises nothing, because it was never a claim about this row. A struct table no
 parameter claimed is still accounted for: `report_unused_tables` reports it as
 `NESTED_PARENT_NOT_FOUND`.
+
+## LLM client vocabulary
+
+Defined in `src/tools/llm/`. A call never raises for an expected failure: it
+returns a `Result` whose `failure` names what went wrong, so a caller can record
+it instead of losing it in a log line.
+
+| Name | Where | Meaning |
+|---|---|---|
+| `FAILURES` | `llm/port.py` | Every value `Result.failure` takes; `""` is success. `config` - refused before sending (unknown model, missing or bad schema, no validator for a requested schema). `rate_limit`, `timeout`, `network`, `http` - the transport's outcome. `empty` - the model answered nothing. `truncated` - the answer was cut at `max_tokens` (`finish_reason == "length"`); it is a failure even without a schema, because nothing downstream would notice the missing part. `invalid_json`, `schema_invalid` - the answer did not parse, or parsed but broke its schema. |
+| `Result.sent` | `llm/port.py` | `False` only when the request never reached the endpoint (connect or send failed, the limiter refused to wait, a `config` failure). Such a result says nothing about the model. Only these requests are ever repeated: a failure after the send may hide a generation that already ran. |
+| Transport statuses | `llm/transport/base.py` | `ok`, `rate_limited`, `timeout`, `network`, `http_error` - the transport's own vocabulary, mapped to `FAILURES` by `providers.public_failure`. Not part of the port. |
+| Structured-output modes | `llm/providers.py` | `json_schema`, `json_object`, `none` - how a requested schema is passed to the endpoint. |
