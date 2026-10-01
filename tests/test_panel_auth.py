@@ -298,6 +298,23 @@ def test_a_token_signed_by_someone_else_is_401(client):
     assert client.get("/api/scan/summary", headers=_auth(token)).status_code == 401
 
 
+def test_a_deeply_nested_unsigned_token_is_401_not_500(client):
+    """`PyJWKClient` reads the payload before any signature is checked, and
+    pyjwt before 2.15 let a payload nested past the recursion limit escape as a
+    raw `RecursionError` (GHSA-42vr-xj54-vc7v): one anonymous request, one 500.
+    Needs the real client - the injected one never looks at the payload. The
+    payload is rejected before the key set is fetched, so nothing is contacted."""
+    client.app.state.jwks_client = jwt.PyJWKClient(f"{ISSUER}/oauth/v2/keys")
+    header = jwt.utils.base64url_encode(b'{"alg":"RS256","kid":"x"}').decode()
+    nested = jwt.utils.base64url_encode(b"[" * 20_000 + b"]" * 20_000).decode()
+    token = f"{header}.{nested}.c2ln"
+
+    resp = client.get("/api/scan/summary", headers=_auth(token))
+
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "unauthenticated"
+
+
 def test_a_token_with_no_panel_role_is_401(client, signing_key):
     """Not a 403: a caller holding only another application's roles is not a
     principal of this panel at all, and 403 would confirm what exists here."""
