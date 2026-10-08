@@ -39,8 +39,9 @@ that output is *produced*, not what it looks like.
 ## Component layout
 
 `gen-sdk-tooling` is a single repository with modules sharing a common
-type layer. Today `shared/`, `scanner/` and `panel/` exist; `generator/` and
-`llm/` are planned (this document).
+type layer. Today `shared/`, `scanner/`, `panel/` and the `llm/` client exist;
+`generator/` and the refinement step that calls `llm/` are planned (this
+document).
 
 ```
 gen-sdk-tooling/
@@ -49,7 +50,7 @@ gen-sdk-tooling/
     ├── scanner/       # RST → RepositoryScanResult (IR + scan diagnostics)   [exists]
     ├── panel/         # FastAPI + React control plane: scans, snapshots      [exists]
     ├── generator/     # IR → Python files (via Jinja2)                       [planned]
-    └── llm/           # FIXME placeholders → resolved (via Ollama)           [planned]
+    └── llm/           # LLM client: OpenAI-compatible calls via LiteLLM      [exists]
 ```
 
 ### Dependency rules
