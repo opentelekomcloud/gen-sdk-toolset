@@ -1225,7 +1225,7 @@ def test_generation_list_reads_the_active_snapshot_not_the_latest(
         commit_hash=NEXT_COMMIT,
     )
     body = scanned.get(f"/api/scan/services/{REPO}/snapshots").json()
-    latest, older = (item["id"] for item in body["items"])  # newest first
+    latest, older = (item["id"] for item in body["items"])
     assert body["active_id"] == latest
     assert scanned.get(GENERATION_LIST).json() == []
 

@@ -534,13 +534,13 @@ class IneligibleRepositoryResponse(BaseModel):
 class GenerationServiceItem(BaseModel):
     """One row of the Generation list: a service selected by its Scan data.
 
-    Only what names the service. Generation, resource layout and pull requests
-    do not exist for these services yet, so nothing about them is served.
+    Only what names the service: ``name`` is Service.repo, the identifier links
+    use as in Scan, and ``label`` is Service.name, what the UI prints.
+    Generation, resource layout and pull requests do not exist for these
+    services yet, so nothing about them is served.
     """
 
-    #: The identifier routes and links use: Service.repo, the same as in Scan.
     name: str
-    #: What the UI prints: Service.name.
     label: str
 
     @classmethod

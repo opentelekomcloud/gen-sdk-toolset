@@ -350,7 +350,7 @@
         "type": "object"
       },
       "GenerationServiceItem": {
-        "description": "One row of the Generation list: a service selected by its Scan data.\n\nOnly what names the service. Generation, resource layout and pull requests\ndo not exist for these services yet, so nothing about them is served.",
+        "description": "One row of the Generation list: a service selected by its Scan data.\n\nOnly what names the service: ``name`` is Service.repo, the identifier links\nuse as in Scan, and ``label`` is Service.name, what the UI prints.\nGeneration, resource layout and pull requests do not exist for these\nservices yet, so nothing about them is served.",
         "properties": {
           "label": {
             "title": "Label",
