@@ -9,6 +9,7 @@ from starlette.middleware.cors import CORSMiddleware
 from tools.config import load_settings
 from tools.panel.api.auth import require_viewer
 from tools.panel.api.errors import register_error_handlers
+from tools.panel.api.routes.generation_read import router as generation_read_router
 from tools.panel.api.routes.health import router as health_router
 from tools.panel.api.routes.scan_read import router as scan_read_router
 from tools.panel.api.routes.scans import router as scan_router
@@ -94,6 +95,9 @@ def create_app() -> FastAPI:
     authenticated = [Depends(require_viewer)]
     app.include_router(scan_router, prefix="/api", dependencies=authenticated)
     app.include_router(scan_read_router, prefix="/api", dependencies=authenticated)
+    app.include_router(
+        generation_read_router, prefix="/api", dependencies=authenticated
+    )
 
     register_error_handlers(app)
     return app

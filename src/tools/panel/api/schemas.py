@@ -531,6 +531,23 @@ class IneligibleRepositoryResponse(BaseModel):
     checked_at: datetime | None
 
 
+class GenerationServiceItem(BaseModel):
+    """One row of the Generation list: a service selected by its Scan data.
+
+    Only what names the service. Generation, resource layout and pull requests
+    do not exist for these services yet, so nothing about them is served.
+    """
+
+    #: The identifier routes and links use: Service.repo, the same as in Scan.
+    name: str
+    #: What the UI prints: Service.name.
+    label: str
+
+    @classmethod
+    def from_service(cls, service: Service) -> GenerationServiceItem:
+        return cls(name=service.repo, label=service.name)
+
+
 # ---------------------------------------------------------------------------
 # Projections shared by the read models
 # ---------------------------------------------------------------------------

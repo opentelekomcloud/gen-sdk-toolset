@@ -251,6 +251,7 @@ jobs and snapshots on every read - never stored, so it cannot go stale.
 | `docs_ok` (`clean_endpoint_share`) | **Documentation quality**: how much of the documentation a generator can use, `0..1`. Documents are **weighted**, not counted - clean `1`, degraded `0.5`, uninterpretable `0` - so "half the endpoints are partial" stops reading like "half are unusable". `None` when nothing carries a status: unknown, not zero. |
 | `EXAMPLE_SECTIONS` | `example_request`, `example_response`. Diagnostics found there (invalid JSON, an unread example block) stay visible on the document and in the issue filters but move **no** quality number: a generator builds from the parameter tables, so a broken example says nothing about whether the endpoint can be generated. Decided with the team on 2026-07-29. |
 | `document_status` | The panel's document roll-up, and the only one: judged on the material sections only, so an example defect never degrades it. |
+| `in_generation_list` | Whether a service belongs on the Generation list: its **active** snapshot has `endpoints_total` above zero. A running or failed scan never changes the answer, and neither does the Scan status. Applied on top of the Scan registry's set, so excluded and ineligible services are never on it. |
 
 Two numbers answer two different questions and must not be swapped: `docs_ok`
 measures the documentation, `Snapshot.completeness` measures our parser (the

@@ -191,7 +191,7 @@ def list_services(
     """
     matched = [
         (service, state)
-        for service, state in _all_services(db)
+        for service, state in all_services(db)
         if q.lower() in service.repo.lower()
     ]
     counts = {
@@ -436,15 +436,15 @@ def _service_or_404(db: Session, repo: str) -> Service:
     return service
 
 
-def _all_services(db: Session) -> list[tuple[Service, ServiceState]]:
+def all_services(db: Session) -> list[tuple[Service, ServiceState]]:
     """Every Service the panel counts, excluded ones left out.
 
     The filter belongs here and not in ``_service_query``: this is what the
-    registry, the summary counters and the attention rules are all built from,
-    so one place decides what "the services" means and none of them can drift
-    apart. ``_service_query`` stays unfiltered on purpose - the detail
-    endpoints must keep answering for an excluded Service, or the UI could
-    never load the page that restores it.
+    registry, the summary counters, the attention rules and the Generation list
+    in ``generation_read.py`` are all built from, so one place decides what "the
+    services" means and none of them can drift apart. ``_service_query`` stays
+    unfiltered on purpose - the detail endpoints must keep answering for an
+    excluded Service, or the UI could never load the page that restores it.
     """
     services = (
         db.scalars(
@@ -460,7 +460,7 @@ def _all_services(db: Session) -> list[tuple[Service, ServiceState]]:
 
 
 def _all_states(db: Session) -> list[ServiceState]:
-    return [state for _service, state in _all_services(db)]
+    return [state for _service, state in all_services(db)]
 
 
 def _matches_filter(state: ServiceState, name: str) -> bool:

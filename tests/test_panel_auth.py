@@ -70,6 +70,7 @@ READS = [
     f"/api/scan/services/{REPO}/documents/1",
     f"/api/scan/services/{REPO}/export",
     "/api/jobs/1",
+    "/api/generation/services",
 ]
 
 MUTATIONS = [
