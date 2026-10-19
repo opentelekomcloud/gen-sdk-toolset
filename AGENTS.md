@@ -66,6 +66,8 @@ src/tools/
 frontend/     React + TypeScript (Vite, TanStack Query).
 tests/        pytest suite; RST fixtures in tests/fixtures/.
 docs/         Architecture, glossary, recipes.
+  council/    Design decisions behind tasks (IDEA → … → ADR → OUTCOME).
+              Read-only: maintained outside the repository.
 ```
 
 Dependency direction is enforced by `lint-imports` (contracts live in
@@ -123,6 +125,10 @@ task as finished with a known-red check.
 - Stay inside the scope you were given. Note anything else you notice instead of
   fixing it silently in the same change.
 - Extend an existing module rather than creating a parallel one beside it.
+- When a task names outcomes and decisions (`OUT-…`, `ADR-…`), read them in
+  `docs/council/` before planning. If the code or the task contradicts one,
+  stop and raise it on the issue instead of deciding in code. How to read the
+  notes: README.md, "Design decisions".
 
 **Ask first**
 
@@ -145,6 +151,8 @@ task as finished with a known-red check.
 - Weaken a test's data assertions to make it pass — see STYLEGUIDE.md,
   "Tests versus code".
 - Delete scaffolding that names an open issue.
+- Add, edit or delete anything under `docs/council/`. The notes are
+  regenerated outside the repository; report a problem on the issue.
 
 ## Scaffolding
 
@@ -159,8 +167,9 @@ def ingest_service_result(...) -> None:
 
 `# TODO(#23): ...` in a comment works the same way. A seam with no issue number
 is indistinguishable from forgotten dead code and will eventually be treated as
-such. Plans live outside this repository; the issue number is the only link
-that survives.
+such. Implementation plans live outside this repository; the issue number is
+the only link that survives. The decisions a task rests on are the exception:
+they are kept in `docs/council/`.
 
 ## Where the rules live
 
@@ -171,6 +180,7 @@ that survives.
 | `docs/GLOSSARY.md` | Canonical domain vocabulary |
 | `docs/FAQ.md` | How to do the common tasks, with working examples |
 | `docs/architecture.md` | Intended system shape |
+| `docs/council/` | Decisions behind each task, read-only; how to read them is in README.md, "Design decisions" |
 | `.claude/rules/*.md` | Area rules, loaded automatically by path |
 
 Keep this file short. If a rule can be enforced by ruff, import-linter or a

@@ -342,3 +342,19 @@ it instead of losing it in a log line.
 | `Result.sent` | `llm/port.py` | `False` only when the request never reached the endpoint (connect or send failed, the limiter refused to wait, a `config` failure). Such a result says nothing about the model. Only these requests are ever repeated: a failure after the send may hide a generation that already ran. |
 | Transport statuses | `llm/transport/base.py` | `ok`, `rate_limited`, `timeout`, `network`, `http_error` - the transport's own vocabulary, mapped to `FAILURES` by `providers.public_failure`. Not part of the port. |
 | Structured-output modes | `llm/providers.py` | `json_schema`, `json_object`, `none` - how a requested schema is passed to the endpoint. |
+
+## Design notes
+
+Defined in `docs/council/`, one file per note, named by its ID. The notes are
+maintained outside the repository and are read-only here; how to read them is
+in README.md, "Design decisions". `links` in a note's frontmatter points one
+step up the chain: IDEA → OQ → PRO → ADR → OUT.
+
+| Name | Where | Meaning |
+|---|---|---|
+| `IDEA-` | `council/ideas/` | What should improve or become possible. The root of a chain. |
+| `OQ-` | `council/open_questions/` | Open question: one thing that had to be decided for the idea. |
+| `PRO-` | `council/proposals/` | Proposal: one candidate answer to a question. Accepted when an ADR links to it; turned down when its question has an ADR that links elsewhere. |
+| `ADR-` | `council/adrs/` | The accepted answer and why, as "decision, because rationale". Links to exactly one proposal. |
+| `OUT-` | `council/outcomes/` | Outcome: what the system must do once the linked ADRs are implemented, with acceptance criteria. |
+| `ISS-` | the task's GitHub issue | A task built from one outcome. It names its outcome and ADRs and quotes the ADR text. Its number goes into the final commit message. **Not** the scanner's `Issue` / `IssueCode` (`scan/issue.py`), which is a diagnostic about a document. |
