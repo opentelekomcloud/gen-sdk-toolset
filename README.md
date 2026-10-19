@@ -191,6 +191,47 @@ indent = 2
 level = "INFO"
 ```
 
+## Design decisions
+
+`docs/council/` records why a task is shaped the way it is: the decisions a
+task rests on and the reasoning behind them. One maintainer keeps the folder and
+produces it with an external tool. Everyone else, developers and coding agents
+alike, only reads it.
+
+### How the notes connect
+
+Each note is one file, named by its ID, with `id`, `type` and `links` in the
+frontmatter. `links` points to the note it grew out of, one step up the chain:
+
+```
+IDEA → OPEN QUESTION → PROPOSAL → ADR → OUTCOME
+```
+
+What each prefix means, `IDEA-` through `ISS-`, is defined in
+[docs/GLOSSARY.md](docs/GLOSSARY.md), "Design notes". To see what was weighed
+for a decision, go up from the ADR: it links to the proposal it chose. The other
+proposals under the same question are the alternatives that were turned down.
+
+### Working on a task
+
+1. Read the outcome and the ADRs the issue names. The acceptance criteria in the
+   outcome are what the change must satisfy. When the issue's copy of an ADR and
+   the file here differ, the file wins.
+2. The issue's *Open questions* are left to implementation on purpose. Settle
+   them while you work on the task.
+3. If the code, the issue or what you find while working contradicts an ADR or
+   an outcome, stop. Raise it on the issue instead of deciding in code. A
+   decision taken silently in code is exactly the gap these notes exist to
+   close.
+4. Put the task's `ISS-` number, given at the end of the issue, into the final
+   commit message. When merging, keep the squash commit body: the repository
+   fills it from the branch's commit messages, and that is how the `ISS-` number
+   reaches `main`.
+
+Do not add, edit, rename or delete anything under `docs/council/`, not even a
+typo. The notes are regenerated outside the repository, so a local edit is lost
+or conflicts with the next export. Report the problem on the issue instead.
+
 ## Development
 
 Working on the code itself is documented separately, so it stays in one place:
