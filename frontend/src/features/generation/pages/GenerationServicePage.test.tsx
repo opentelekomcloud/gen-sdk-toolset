@@ -26,8 +26,7 @@ function cardPage(path: string, seed?: [readonly unknown[], unknown][]) {
 
 const location = () => screen.getByTestId("location").textContent;
 
-/* The way back to the list carries its filter chip, which is switched off until
-   generation data is connected; these tests keep that path driven, switched on. */
+/* The way back carries the filter chip, which is behind the flag. */
 vi.mock("../flags", () => ({ SHOW_GEN_STATE: true }));
 const targetButton = (label: string) => screen.getByRole("button", { name: new RegExp(`^${label}`) });
 

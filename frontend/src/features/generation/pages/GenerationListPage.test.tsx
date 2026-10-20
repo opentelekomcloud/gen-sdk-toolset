@@ -25,9 +25,7 @@ function listPage(path = "/generation", seed?: [readonly unknown[], unknown][]) 
 
 const location = () => screen.getByTestId("location").textContent;
 
-/* The per-target state is built but switched off until generation data is
-   connected; most of this file drives it switched on, so it does not rot while
-   hidden. Mocked through a getter, so a test can flip it before rendering. */
+/* Tests drive the hidden state switched on, so it does not rot; the last block checks it switched off. */
 const flags = vi.hoisted(() => ({ showGenState: true }));
 
 vi.mock("../flags", () => ({

@@ -80,8 +80,7 @@ function ServiceRow({ service, targets, query }: { service: GenService; targets:
   );
 }
 
-/** Generation list: services by target; the filter chip round-trips through the URL.
- *  With `SHOW_GEN_STATE` off it lists names only, and `?filter` is not applied. */
+/** Generation list: services by target; the filter chip round-trips through the URL. */
 export function GenerationListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useI18n();
