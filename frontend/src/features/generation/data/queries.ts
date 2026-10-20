@@ -22,8 +22,7 @@ export function useGenerationServices() {
   return useQuery({ queryKey: keys.genServices, queryFn: async () => generationServices() });
 }
 
-/** The Generation list: the services the backend selected from Scan data,
- *  searched by `q` as the Scan registry is. */
+/** The Generation list from the backend, searched by `q`. */
 export function useGenerationList(params: { q: string }) {
   return useQuery({
     queryKey: keys.genList(params),

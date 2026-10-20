@@ -1,7 +1,6 @@
 import { Search } from "lucide-react";
 import { useI18n } from "../i18n";
 
-/** The search field of a service list. */
 export function SearchInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const { t } = useI18n();
   return (

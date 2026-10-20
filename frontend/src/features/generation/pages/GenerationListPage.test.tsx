@@ -244,7 +244,6 @@ describe("with the per-target state switched off: the list the backend serves", 
     expect(screen.getByText("Service")).toBeInTheDocument();
     expect(screen.queryByText("opentelekomcloud-docs/ecs")).toBeNull();
     expect(screen.queryByText("Python SDK")).toBeNull();
-    // nothing of the mock's services comes in
     expect(screen.queryByText("billing-api")).toBeNull();
   });
 

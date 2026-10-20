@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 
-/**
- * A service list's search, kept in the address as `?q=`: the field follows every
- * keystroke, the address (and the request behind it) 300 ms after typing stops.
- */
+/** Search text kept in `?q=`, written 300 ms after typing stops. */
 export function useUrlSearch() {
   const [searchParams, setSearchParams] = useSearchParams();
   const q = searchParams.get("q") ?? "";

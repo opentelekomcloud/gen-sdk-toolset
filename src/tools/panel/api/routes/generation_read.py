@@ -28,8 +28,7 @@ def list_generation_services(
 
     Built on the same set as the Scan registry, so an excluded or ineligible
     service never shows up here; the rule that narrows it lives in
-    :func:`tools.panel.core.service_state.in_generation_list`. ``q`` searches
-    as the Scan registry does.
+    :func:`tools.panel.core.service_state.in_generation_list`.
     """
     return [
         GenerationServiceItem.from_service(service)

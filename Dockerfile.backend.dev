@@ -1,6 +1,4 @@
-# The API for local development: `Dockerfile.backend` on the public Python
-# image, so a build needs no Artifactory. Used by docker-compose.dev.yml only -
-# deployed images are built from `Dockerfile.backend`.
+# Local development: Dockerfile.backend on the public Python image, no Artifactory.
 FROM python:3.13-slim
 
 RUN pip install --no-cache-dir uv==0.8.17

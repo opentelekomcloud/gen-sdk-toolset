@@ -1,6 +1,4 @@
-# Local development without Artifactory: docker-compose.yml with the backend
-# built on the public Python image (Dockerfile.backend.dev).
-#   docker compose -f docker-compose.dev.yml up --build
+# Local development without Artifactory: docker compose -f docker-compose.dev.yml up --build
 services:
   db:
     image: postgres:16-alpine

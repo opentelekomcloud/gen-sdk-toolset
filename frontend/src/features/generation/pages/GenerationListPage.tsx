@@ -87,8 +87,7 @@ function ServiceRow({ service, targets }: { service: GenService; targets: GenTar
   );
 }
 
-/** The list as the prototype has it, on the in-memory mock: services by target;
- *  the filter chip round-trips through the URL. */
+/** The prototype's list on the mock, behind SHOW_GEN_STATE. */
 function StateList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useI18n();
@@ -157,8 +156,7 @@ function StateList() {
   );
 }
 
-/** The list as the backend serves it: the services it selected from Scan data,
- *  by name only (ADR-0045, ADR-0049). */
+/** The list from the backend: names only (ADR-0045, ADR-0049). */
 function ServiceList() {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -204,7 +202,6 @@ function ServiceList() {
   );
 }
 
-/** Generation list: from the backend, or the prototype's per-target state on the mock while `SHOW_GEN_STATE` is on. */
 export function GenerationListPage() {
   return SHOW_GEN_STATE ? <StateList /> : <ServiceList />;
 }

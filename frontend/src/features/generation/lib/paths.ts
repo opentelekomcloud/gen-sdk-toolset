@@ -10,12 +10,7 @@ export const servicePath = (name: string, target: GenTarget, defaultTarget: GenT
     target.id === defaultTarget.id ? "" : `?target=${target.id}`
   }`;
 
-/**
- * Navigation state of a card opened from the list: the list's query, its chip
- * and search text included, so the way back returns to the list as it was left -
- * the prototype's `backToGen` keeps `genChip` and `genQuery`. The card's own
- * address does not carry it.
- */
+/** Navigation state of a card opened from the list: the list's query, so the way back returns to it as it was left. */
 export interface FromList {
   listSearch: string;
 }

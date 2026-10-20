@@ -460,9 +460,7 @@ def all_services(db: Session) -> list[tuple[Service, ServiceState]]:
 
 
 def matches_search(service: Service, q: str) -> bool:
-    """Whether a service matches a service-list search: ``q`` as a substring of
-    its repository, case ignored. Shared by every service list, so a search
-    finds the same services everywhere."""
+    """Service-list search: ``q`` as a substring of the repository, case ignored."""
     return q.lower() in service.repo.lower()
 
 

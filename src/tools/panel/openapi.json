@@ -1539,7 +1539,7 @@
   "paths": {
     "/api/generation/services": {
       "get": {
-        "description": "Services with something to generate, in the Scan registry's order.\n\nBuilt on the same set as the Scan registry, so an excluded or ineligible\nservice never shows up here; the rule that narrows it lives in\n:func:`tools.panel.core.service_state.in_generation_list`. ``q`` searches\nas the Scan registry does.",
+        "description": "Services with something to generate, in the Scan registry's order.\n\nBuilt on the same set as the Scan registry, so an excluded or ineligible\nservice never shows up here; the rule that narrows it lives in\n:func:`tools.panel.core.service_state.in_generation_list`.",
         "operationId": "list_generation_services_api_generation_services_get",
         "parameters": [
           {
