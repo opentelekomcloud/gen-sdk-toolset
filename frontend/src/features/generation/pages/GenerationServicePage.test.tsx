@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
 import { renderPage } from "../../../test/render";
@@ -25,6 +25,9 @@ function cardPage(path: string, seed?: [readonly unknown[], unknown][]) {
 }
 
 const location = () => screen.getByTestId("location").textContent;
+
+/* The way back carries the filter chip, which is behind the flag. */
+vi.mock("../flags", () => ({ SHOW_GEN_STATE: true }));
 const targetButton = (label: string) => screen.getByRole("button", { name: new RegExp(`^${label}`) });
 
 describe("the billing-api card on the in-memory mock", () => {
