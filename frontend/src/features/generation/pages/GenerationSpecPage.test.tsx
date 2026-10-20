@@ -20,6 +20,9 @@ import { GenerationSpecPage } from "./GenerationSpecPage";
 /** The session the mocked provider hands back; each test sets the roles. */
 const session = vi.hoisted(() => ({ token: "" }));
 
+/* These tests go through the prototype's list, which is behind the flag. */
+vi.mock("../flags", () => ({ SHOW_GEN_STATE: true }));
+
 vi.mock("react-oidc-context", () => ({
   useAuth: () => ({
     user: { access_token: session.token, profile: { preferred_username: "ada@otc.test" } },
@@ -897,11 +900,15 @@ describe("the way in and out", () => {
     panel("/generation?filter=review");
 
     fireEvent.change(await screen.findByPlaceholderText("Filter services…"), { target: { value: "billing" } });
+    await waitFor(() => expect(location()).toBe("/generation?filter=review&q=billing"));
     fireEvent.click(screen.getByText("billing-api"));
     fireEvent.click(await screen.findByRole("link", { name: "Generate" }));
     fireEvent.click(await screen.findByRole("link", { name: "billing-api layout" }));
 
     expect(location()).toBe("/generation/billing-api");
-    expect(await screen.findByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation?filter=review");
+    expect(await screen.findByRole("link", { name: "All services" })).toHaveAttribute(
+      "href",
+      "/generation?filter=review&q=billing",
+    );
   });
 });

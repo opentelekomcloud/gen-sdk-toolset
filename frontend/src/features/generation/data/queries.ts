@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiFetch, qs } from "../../scan/api/client";
 import { keys } from "../../scan/api/queries";
+import type { GenerationServiceItem } from "../../../shared/api/types";
 import {
   generationAttention,
   generationResources,
@@ -18,6 +20,13 @@ export function useGenerationTargets() {
 /** Every service in Generation, with its state on each target. */
 export function useGenerationServices() {
   return useQuery({ queryKey: keys.genServices, queryFn: async () => generationServices() });
+}
+
+export function useGenerationList(params: { q: string }) {
+  return useQuery({
+    queryKey: keys.genList(params),
+    queryFn: () => apiFetch<GenerationServiceItem[]>(`/generation/services${qs({ ...params })}`),
+  });
 }
 
 /** The resources of one service's layout, each with its generation on every target. */

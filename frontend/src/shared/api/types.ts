@@ -37,3 +37,5 @@ export type ScanRequest = Schemas["ScanRequest"];
 export type ScanResponse = Schemas["StartScanResponse"];
 export type ExcludeRequest = Schemas["ExcludeRequest"];
 export type ActivateSnapshotRequest = Schemas["ActivateSnapshotRequest"];
+
+export type GenerationServiceItem = Schemas["GenerationServiceItem"];

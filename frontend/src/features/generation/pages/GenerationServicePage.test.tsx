@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
 import { renderPage } from "../../../test/render";
 import { keys } from "../../scan/api/queries";
@@ -25,6 +25,9 @@ function cardPage(path: string, seed?: [readonly unknown[], unknown][]) {
 }
 
 const location = () => screen.getByTestId("location").textContent;
+
+/* The way back carries the filter chip, which is behind the flag. */
+vi.mock("../flags", () => ({ SHOW_GEN_STATE: true }));
 const targetButton = (label: string) => screen.getByRole("button", { name: new RegExp(`^${label}`) });
 
 describe("the billing-api card on the in-memory mock", () => {
@@ -290,18 +293,20 @@ describe("the way back to the list", () => {
     panel("/generation?filter=failed");
 
     fireEvent.change(await screen.findByPlaceholderText("Filter services…"), { target: { value: "core" } });
+    await waitFor(() => expect(location()).toBe("/generation?filter=failed&q=core"));
     fireEvent.click(screen.getByText("customer-core"));
 
-    expect(await screen.findByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation?filter=failed");
+    const back = "/generation?filter=failed&q=core";
+    expect(await screen.findByRole("link", { name: "All services" })).toHaveAttribute("href", back);
 
     fireEvent.click(targetButton("Ansible modules"));
 
     expect(location()).toBe("/generation/customer-core?target=ansible");
-    expect(screen.getByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation?filter=failed");
+    expect(screen.getByRole("link", { name: "All services" })).toHaveAttribute("href", back);
 
     fireEvent.click(screen.getByRole("link", { name: "All services" }));
 
-    expect(location()).toBe("/generation?filter=failed");
+    expect(location()).toBe(back);
     expect(await screen.findByRole("button", { name: "Failed 1" })).toHaveClass("bg-brand");
     // the search text is back in its field, and still narrows the list
     expect(screen.getByPlaceholderText("Filter services…")).toHaveValue("core");

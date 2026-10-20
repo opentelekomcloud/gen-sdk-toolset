@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { ODSNavigationRight, ODSSearch } from "@telekom-ods/react-icons";
+import { useCallback } from "react";
+import { ODSNavigationRight } from "@telekom-ods/react-icons";
 import { ODSDropdownSelect } from "@telekom-ods/react-ui-kit/ODSDropdownSelect";
 import { ODSInlineNotification } from "@telekom-ods/react-ui-kit/ODSInlineNotification";
 import { useNavigate, useSearchParams } from "react-router";
@@ -17,8 +17,9 @@ import { ExcludedSection } from "../excluded/ExcludedSection";
 import { IneligibleSection } from "../ineligible/IneligibleSection";
 import { shortError } from "../lib/errors";
 import { chipCls, structOkCls } from "../styles";
-import { fieldCls } from "../../../shared/ui/field";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
+import { SearchInput } from "../../../shared/search/SearchInput";
+import { useUrlSearch } from "../../../shared/search/useUrlSearch";
 
 const SORTS: [ServiceSort, MessageKey][] = [
   ["quality", "sort.quality"],
@@ -113,9 +114,10 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
 export function RegistryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useI18n();
+  const { q, input, setInput } = useUrlSearch();
   const params: ServicesParams = {
     status: (searchParams.get("status") as ServiceFilter) ?? "all",
-    q: searchParams.get("q") ?? "",
+    q,
     sort: (searchParams.get("sort") as ServiceSort) ?? "quality",
     rule: (searchParams.get("rule") as AttentionRuleCode) ?? undefined,
   };
@@ -136,14 +138,6 @@ export function RegistryPage() {
       ),
     [setSearchParams],
   );
-
-  /* Debounced search: keystrokes land in local state; the URL (and the API
-     request behind it) updates 300 ms after typing stops. */
-  const [qInput, setQInput] = useState(params.q ?? "");
-  useEffect(() => {
-    const t = setTimeout(() => setParam("q", qInput), 300);
-    return () => clearTimeout(t);
-  }, [qInput, setParam]);
 
   const { data } = useServices(params);
   const { data: summary } = useSummary();
@@ -173,16 +167,7 @@ export function RegistryPage() {
             </button>
           ))}
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <ODSSearch decorative size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600" />
-              <input
-                value={qInput}
-                onChange={(e) => setQInput(e.target.value)}
-                placeholder={t("registry.search")}
-                aria-label={t("registry.search")}
-                className={`${fieldCls} w-56 pl-9`}
-              />
-            </div>
+            <SearchInput value={input} onChange={setInput} />
             <div className="w-60">
               <ODSDropdownSelect
                 size="small"

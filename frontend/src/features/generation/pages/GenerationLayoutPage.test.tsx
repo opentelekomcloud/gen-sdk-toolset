@@ -12,6 +12,9 @@ import { GenerationServicePage } from "./GenerationServicePage";
 /** The session the mocked provider hands back; each test sets the roles. */
 const session = vi.hoisted(() => ({ token: "" }));
 
+/* These tests go through the prototype's list, which is behind the flag. */
+vi.mock("../flags", () => ({ SHOW_GEN_STATE: true }));
+
 vi.mock("react-oidc-context", () => ({
   useAuth: () => ({
     user: { access_token: session.token, profile: { preferred_username: "ada@otc.test" } },

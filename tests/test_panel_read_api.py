@@ -1286,6 +1286,16 @@ def test_an_ineligible_repository_is_not_on_the_generation_list(
     assert scanned.get(GENERATION_LIST).json() == []
 
 
+def test_generation_list_search_filters_by_repository(client, session_factory):
+    for repo in (REPO, "opentelekomcloud-docs/vpc"):
+        _register(session_factory, repo)
+        _run_scan(session_factory, repo)
+
+    body = client.get(f"{GENERATION_LIST}?q=VPC").json()
+
+    assert [item["name"] for item in body] == ["opentelekomcloud-docs/vpc"]
+
+
 def test_generation_list_is_ordered_by_repository(client, session_factory):
     for repo in ("opentelekomcloud-docs/vpc", REPO):
         _register(session_factory, repo)

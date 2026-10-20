@@ -1,14 +1,15 @@
-import { fieldCls } from "../../../shared/ui/field";
-import { useState } from "react";
-import { ODSNavigationRight, ODSSearch } from "@telekom-ods/react-icons";
+import { ODSNavigationRight } from "@telekom-ods/react-icons";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
-import { useGenerationServices, useGenerationTargets } from "../data/queries";
+import { useGenerationList, useGenerationServices, useGenerationTargets } from "../data/queries";
 import type { GenFilter, GenService, GenTarget } from "../data/types";
 import { servicePath, type FromList } from "../lib/paths";
 import { GEN_STATE_CLS, genStateKey } from "../styles";
+import { SHOW_GEN_STATE } from "../flags";
 import { StatusPill } from "../../scan/components/StatusPill";
 import { chipCls } from "../../scan/styles";
 import { useI18n } from "../../../shared/i18n";
+import { SearchInput } from "../../../shared/search/SearchInput";
+import { useUrlSearch } from "../../../shared/search/useUrlSearch";
 
 const CHIPS: GenFilter[] = ["all", "not_generated", "in_progress", "failed", "review", "partial"];
 
@@ -18,26 +19,33 @@ const NOT_CONNECTED_CLS = "bg-surface text-neutral-600 border-neutral-200";
 /** The service takes half the row and the targets share the rest, however many there are. */
 const gridCols = (targets: number) => ({ gridTemplateColumns: `minmax(0,2fr) repeat(${targets}, minmax(0,1fr))` });
 
-function ServiceRow({ service, targets, query }: { service: GenService; targets: GenTarget[]; query: string }) {
+const ROW_CLS =
+  "grid cursor-pointer items-center gap-3 border-b border-neutral-100 px-4 py-2.5 transition last:border-0 hover:bg-neutral-50";
+const HEAD_CLS =
+  "grid gap-3 border-b border-neutral-200 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-700";
+
+function ServiceCell({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-1.5 overflow-hidden">
+      <ODSNavigationRight decorative size={14} className="shrink-0 text-neutral-600" />
+      <span className="truncate font-mono text-sm text-ink">{label}</span>
+    </div>
+  );
+}
+
+function ServiceRow({ service, targets }: { service: GenService; targets: GenTarget[] }) {
   const navigate = useNavigate();
   const { search } = useLocation();
   const { t } = useI18n();
   const [defaultTarget] = targets;
   const open = (target: GenTarget) =>
     navigate(servicePath(service.name, target, defaultTarget), {
-      state: { listSearch: search, listQuery: query } satisfies FromList,
+      state: { listSearch: search } satisfies FromList,
     });
 
   return (
-    <div
-      style={gridCols(targets.length)}
-      className="grid cursor-pointer items-center gap-3 border-b border-neutral-100 px-4 py-2.5 transition last:border-0 hover:bg-neutral-50"
-      onClick={() => open(defaultTarget)}
-    >
-      <div className="flex items-center gap-1.5 overflow-hidden">
-        <ODSNavigationRight decorative size={14} className="shrink-0 text-neutral-600" />
-        <span className="truncate font-mono text-sm text-ink">{service.name}</span>
-      </div>
+    <div style={gridCols(targets.length)} className={ROW_CLS} onClick={() => open(defaultTarget)}>
+      <ServiceCell label={service.name} />
       {targets.map((target) => {
         const { state, merged, total } = service.targets[target.id];
         const notConnected = !target.live && state === "not_generated";
@@ -79,13 +87,10 @@ function ServiceRow({ service, targets, query }: { service: GenService; targets:
   );
 }
 
-/** Generation list: services by target; the filter chip round-trips through the URL. */
-export function GenerationListPage() {
+function StateList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useI18n();
-  /* Back from a card, the list gets the card's FromList and takes up its search text again. */
-  const fromCard: Partial<FromList> | null = useLocation().state;
-  const [query, setQuery] = useState(fromCard?.listQuery ?? "");
+  const { q: query, input, setInput } = useUrlSearch();
   const { data: targets } = useGenerationTargets();
   const { data: services } = useGenerationServices();
   const filter = (searchParams.get("filter") as GenFilter) ?? "all";
@@ -126,24 +131,12 @@ export function GenerationListPage() {
             <span className="font-mono tabular-nums opacity-70">{count(k)}</span>
           </button>
         ))}
-        <div className="relative ml-auto">
-          <ODSSearch decorative size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("registry.search")}
-            aria-label={t("registry.search")}
-            className={`${fieldCls} w-56 pl-9`}
-          />
-        </div>
+        <SearchInput value={input} onChange={setInput} />
       </div>
 
       {targets && services && (
         <div className="overflow-hidden rounded-xl border border-neutral-200 bg-surface shadow-sm">
-          <div
-            style={gridCols(targets.length)}
-            className="grid gap-3 border-b border-neutral-200 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-700"
-          >
+          <div style={gridCols(targets.length)} className={HEAD_CLS}>
             <div>{t("registry.col.service")}</div>
             {targets.map((target) => (
               <div key={target.id}>
@@ -153,11 +146,60 @@ export function GenerationListPage() {
             ))}
           </div>
           {rows.map((s) => (
-            <ServiceRow key={s.name} service={s} targets={targets} query={query} />
+            <ServiceRow key={s.name} service={s} targets={targets} />
           ))}
           {rows.length === 0 && <div className="px-4 py-10 text-center text-sm text-neutral-600">{t("registry.empty")}</div>}
         </div>
       )}
     </div>
   );
+}
+
+function ServiceList() {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  const { q, input, setInput } = useUrlSearch();
+  const { data: targets } = useGenerationTargets();
+  const { data: services } = useGenerationList({ q });
+
+  return (
+    <div className="mx-auto max-w-6xl px-6 py-5">
+      <div className="mb-3 text-xs text-neutral-600">
+        {t("gen.list.eligible")} {targets && t("gen.list.editions", { n: targets.length })}
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <SearchInput value={input} onChange={setInput} />
+      </div>
+
+      {services && (
+        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-surface shadow-sm">
+          <div style={gridCols(0)} className={HEAD_CLS}>
+            <div>{t("registry.col.service")}</div>
+          </div>
+          {services.map((s) => (
+            <div
+              key={s.name}
+              style={gridCols(0)}
+              className={ROW_CLS}
+              onClick={() =>
+                navigate(`/generation/${encodeURIComponent(s.name)}`, {
+                  state: { listSearch: search } satisfies FromList,
+                })
+              }
+            >
+              <ServiceCell label={s.label} />
+            </div>
+          ))}
+          {services.length === 0 && (
+            <div className="px-4 py-10 text-center text-sm text-neutral-600">{t("registry.empty")}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function GenerationListPage() {
+  return SHOW_GEN_STATE ? <StateList /> : <ServiceList />;
 }
