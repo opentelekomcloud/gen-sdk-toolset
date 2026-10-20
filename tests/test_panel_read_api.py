@@ -47,8 +47,9 @@ from tools.panel.core.db.models import (  # noqa: E402
     Snapshot,
 )
 from tools.panel.core.ingest import ingest_service_result  # noqa: E402
+from tools.shared.ir import Document  # noqa: E402
 from tools.shared.ir import Service as IrService  # noqa: E402
-from tools.shared.scan import RepositoryScanResult  # noqa: E402
+from tools.shared.scan import DocumentScanResult, RepositoryScanResult  # noqa: E402
 
 REPO = "opentelekomcloud-docs/ecs"
 COMMIT = "a" * 40
@@ -399,7 +400,7 @@ def _exclude(client, repo: str = REPO, reason: str = "retired upstream"):
 
 
 def test_an_excluded_service_leaves_every_list_but_keeps_its_own_page(scanned):
-    """The filter lives in ``_all_services``, so one decision covers the
+    """The filter lives in ``all_services``, so one decision covers the
     registry, the summary counters and the attention rules at once - a service
     hidden from the table but still counted in the header would make the two
     disagree.
@@ -1164,3 +1165,130 @@ def test_an_unchanged_rescan_leaves_a_pinned_older_snapshot_active(
     assert after[older] == before[older]  # the pinned result was not touched
     with session_factory() as session:
         assert len(session.scalars(select(Snapshot)).all()) == 2
+
+
+# ---------------------------------------------------------------------------
+# Generation list
+# ---------------------------------------------------------------------------
+
+GENERATION_LIST = "/api/generation/services"
+
+
+def _page_without_endpoints() -> Document:
+    """A non-endpoint page read cleanly: a snapshot of only this one comes out
+    `scanned` and still has no endpoint to generate."""
+    return Document(
+        path="api-ref/source/overview.rst",
+        title="Overview",
+        scan_result=DocumentScanResult(),
+    )
+
+
+def _generation_names(client) -> list[str]:
+    return [item["name"] for item in client.get(GENERATION_LIST).json()]
+
+
+def test_generation_list_serves_a_service_whose_active_snapshot_has_endpoints(
+    scanned,
+):
+    assert scanned.get(GENERATION_LIST).json() == [{"name": REPO, "label": "ecs"}]
+
+
+def test_a_scanned_service_without_endpoints_is_not_on_the_generation_list(
+    client, session_factory
+):
+    """The Scan status does not decide: this service is fully `scanned`, and
+    still has nothing to generate."""
+    _register(session_factory)
+    _run_scan(session_factory, documents=[_page_without_endpoints()])
+
+    (item,) = client.get("/api/scan/services").json()["items"]
+    assert item["scan_status"] == "scanned"
+    assert client.get(GENERATION_LIST).json() == []
+
+
+def test_a_never_scanned_service_is_not_on_the_generation_list(client, session_factory):
+    _register(session_factory)
+
+    assert client.get(GENERATION_LIST).json() == []
+
+
+def test_generation_list_reads_the_active_snapshot_not_the_latest(
+    scanned, session_factory
+):
+    """The latest snapshot has no endpoints and the older one has: a list read
+    from `latest_snapshot` would answer the other way round once the older one
+    is pinned."""
+    _run_scan(
+        session_factory,
+        documents=[_page_without_endpoints()],
+        commit_hash=NEXT_COMMIT,
+    )
+    body = scanned.get(f"/api/scan/services/{REPO}/snapshots").json()
+    latest, older = (item["id"] for item in body["items"])
+    assert body["active_id"] == latest
+    assert scanned.get(GENERATION_LIST).json() == []
+
+    assert _activate(scanned, older).status_code == 200
+
+    assert _generation_names(scanned) == [REPO]
+
+
+def test_a_running_scan_keeps_a_service_on_the_generation_list(
+    scanned, session_factory
+):
+    _queue_job(session_factory, JobStatus.running)
+
+    assert _generation_names(scanned) == [REPO]
+
+
+def test_a_first_scan_in_flight_puts_nothing_on_the_generation_list(
+    client, session_factory
+):
+    _register(session_factory)
+    _queue_job(session_factory, JobStatus.running)
+
+    assert client.get(GENERATION_LIST).json() == []
+
+
+def test_a_failed_scan_keeps_a_service_on_the_generation_list(scanned, session_factory):
+    _queue_job(session_factory, JobStatus.failed)
+
+    assert _generation_names(scanned) == [REPO]
+
+
+def test_an_excluded_service_leaves_the_generation_list_until_restored(scanned):
+    assert _exclude(scanned).status_code == 204
+    assert scanned.get(GENERATION_LIST).json() == []
+
+    assert scanned.post(f"/api/scan/services/{REPO}/include").status_code == 204
+
+    assert _generation_names(scanned) == [REPO]
+
+
+def test_a_restored_service_without_endpoints_stays_off_the_generation_list(
+    client, session_factory
+):
+    """Restoring brings no special rule with it: the service is checked like
+    any other, and a never-scanned one has nothing to show."""
+    _register(session_factory)
+    assert _exclude(client).status_code == 204
+    assert client.post(f"/api/scan/services/{REPO}/include").status_code == 204
+
+    assert client.get(GENERATION_LIST).json() == []
+
+
+def test_an_ineligible_repository_is_not_on_the_generation_list(
+    scanned, session_factory
+):
+    _set_eligibility(session_factory, REPO, False)
+
+    assert scanned.get(GENERATION_LIST).json() == []
+
+
+def test_generation_list_is_ordered_by_repository(client, session_factory):
+    for repo in ("opentelekomcloud-docs/vpc", REPO):
+        _register(session_factory, repo)
+        _run_scan(session_factory, repo)
+
+    assert _generation_names(client) == [REPO, "opentelekomcloud-docs/vpc"]

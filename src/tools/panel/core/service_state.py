@@ -185,6 +185,25 @@ def failed_job(state: ServiceState) -> RepositoryScanJob | None:
     return job
 
 
+def in_generation_list(state: ServiceState) -> bool:
+    """Whether the service belongs on the Generation list.
+
+    It does when its active snapshot has at least one endpoint: then there is
+    something to generate. The active snapshot, not the latest one - it is the
+    result the panel stands behind, and an operator may have pinned an older
+    one. So a running scan never moves a service on or off the list (the active
+    snapshot does not change while it runs), and neither does a failed one (it
+    stores no snapshot).
+
+    Exclusion is not checked here: an excluded service is already outside the
+    set every list is built from (``all_services`` in the read routes).
+
+    :param state: The derived state of one service.
+    """
+    snapshot = state.active_snapshot
+    return snapshot is not None and snapshot.endpoints_total > 0
+
+
 def _last_job(service: Service) -> RepositoryScanJob | None:
     if not service.jobs:
         return None

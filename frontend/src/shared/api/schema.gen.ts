@@ -4,6 +4,30 @@
  */
 
 export interface paths {
+    "/api/generation/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Generation Services
+         * @description Services with something to generate, in the Scan registry's order.
+         *
+         *     Built on the same set as the Scan registry, so an excluded or ineligible
+         *     service never shows up here; the rule that narrows it lives in
+         *     :func:`tools.panel.core.service_state.in_generation_list`.
+         */
+        get: operations["list_generation_services_api_generation_services_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -571,6 +595,21 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /**
+         * GenerationServiceItem
+         * @description One row of the Generation list: a service selected by its Scan data.
+         *
+         *     Only what names the service: ``name`` is Service.repo, the identifier links
+         *     use as in Scan, and ``label`` is Service.name, what the UI prints.
+         *     Generation, resource layout and pull requests do not exist for these
+         *     services yet, so nothing about them is served.
+         */
+        GenerationServiceItem: {
+            /** Label */
+            label: string;
+            /** Name */
+            name: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1003,6 +1042,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_generation_services_api_generation_services_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationServiceItem"][];
+                };
+            };
+        };
+    };
     get_job_api_jobs__job_id__get: {
         parameters: {
             query?: never;

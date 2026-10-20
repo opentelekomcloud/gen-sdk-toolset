@@ -349,6 +349,25 @@
         "title": "ExcludedServiceResponse",
         "type": "object"
       },
+      "GenerationServiceItem": {
+        "description": "One row of the Generation list: a service selected by its Scan data.\n\nOnly what names the service: ``name`` is Service.repo, the identifier links\nuse as in Scan, and ``label`` is Service.name, what the UI prints.\nGeneration, resource layout and pull requests do not exist for these\nservices yet, so nothing about them is served.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label"
+        ],
+        "title": "GenerationServiceItem",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1518,6 +1537,34 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/generation/services": {
+      "get": {
+        "description": "Services with something to generate, in the Scan registry's order.\n\nBuilt on the same set as the Scan registry, so an excluded or ineligible\nservice never shows up here; the rule that narrows it lives in\n:func:`tools.panel.core.service_state.in_generation_list`.",
+        "operationId": "list_generation_services_api_generation_services_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GenerationServiceItem"
+                  },
+                  "title": "Response List Generation Services Api Generation Services Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Generation Services"
+      }
+    },
     "/api/jobs/{job_id}": {
       "get": {
         "description": "Return one Job's state for frontend polling.",
