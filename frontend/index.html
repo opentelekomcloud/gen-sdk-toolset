@@ -9,7 +9,9 @@
          (deferred) module bundle below: see src/shared/auth/config.ts -->
     <script src="/config.js"></script>
   </head>
-  <body>
+  <!-- ODS scheme for the whole app; data-mode (light/dark) is set by
+       src/shared/theme from the stored choice or the OS preference. -->
+  <body data-scheme="neutral">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

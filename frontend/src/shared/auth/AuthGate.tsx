@@ -1,6 +1,8 @@
+import { ODSButton } from "@telekom-ods/react-ui-kit/ODSButton";
 import { useLayoutEffect, type ReactNode } from "react";
 import { AuthProvider, useAuth } from "react-oidc-context";
-import { Loader2, LogIn, ShieldAlert } from "lucide-react";
+import { ODSLogin, ODSSecurity } from "@telekom-ods/react-icons";
+import { Spinner } from "../ui/Spinner";
 import { OIDC, isConfigured } from "./config";
 import { rolesFromToken } from "./roles";
 import { bindSession } from "./session";
@@ -74,9 +76,9 @@ function SessionBoundary({ children }: { children: ReactNode }) {
 
   if (auth.error) {
     return (
-      <Notice icon={<ShieldAlert size={22} className="text-red-500" />} tone="red">
-        <div className="mb-1 text-sm font-semibold text-red-800">{t("auth.failed")}</div>
-        <div className="font-mono text-xs text-red-600">{auth.error.message}</div>
+      <Notice icon={<ODSSecurity decorative size={22} className="text-danger" />} tone="red">
+        <div className="mb-1 text-sm font-semibold text-danger">{t("auth.failed")}</div>
+        <div className="font-mono text-xs text-danger">{auth.error.message}</div>
         <SignInButton onClick={() => void auth.signinRedirect()} label={t("auth.retry")} />
       </Notice>
     );
@@ -84,9 +86,9 @@ function SessionBoundary({ children }: { children: ReactNode }) {
 
   if (!auth.isAuthenticated) {
     return (
-      <Notice icon={<LogIn size={22} className="text-gray-400" />} tone="gray">
-        <div className="mb-1 text-sm font-semibold text-gray-700">{t("auth.required")}</div>
-        <div className="mb-2 text-xs text-gray-500">{t("auth.requiredHint")}</div>
+      <Notice icon={<ODSLogin decorative size={22} className="text-neutral-600" />} tone="gray">
+        <div className="mb-1 text-sm font-semibold text-ink-recessive">{t("auth.required")}</div>
+        <div className="mb-2 text-xs text-neutral-700">{t("auth.requiredHint")}</div>
         <SignInButton onClick={() => void auth.signinRedirect()} label={t("auth.signIn")} />
       </Notice>
     );
@@ -99,9 +101,9 @@ function SessionBoundary({ children }: { children: ReactNode }) {
      Stopping here says what is wrong and offers the only thing that helps. */
   if (rolesFromToken(auth.user?.access_token).length === 0) {
     return (
-      <Notice icon={<ShieldAlert size={22} className="text-amber-500" />} tone="amber">
-        <div className="mb-1 text-sm font-semibold text-amber-900">{t("auth.noRole")}</div>
-        <div className="mb-2 text-xs text-amber-800">{t("auth.noRoleHint")}</div>
+      <Notice icon={<ODSSecurity decorative size={22} className="text-warning" />} tone="amber">
+        <div className="mb-1 text-sm font-semibold text-warning">{t("auth.noRole")}</div>
+        <div className="mb-2 text-xs text-warning">{t("auth.noRoleHint")}</div>
         <SignInButton onClick={() => void auth.signoutRedirect()} label={t("auth.signOut")} />
       </Notice>
     );
@@ -112,8 +114,8 @@ function SessionBoundary({ children }: { children: ReactNode }) {
 
 function Waiting({ label }: { label: string }) {
   return (
-    <div className="flex items-center justify-center gap-2 py-24 text-sm text-gray-400">
-      <Loader2 size={16} className="animate-spin" /> {label}
+    <div className="flex items-center justify-center gap-2 py-24 text-sm text-neutral-600">
+      <Spinner /> {label}
     </div>
   );
 }
@@ -129,10 +131,10 @@ function Notice({
 }) {
   const border =
     tone === "red"
-      ? "border-red-200 bg-red-50"
+      ? "border-danger-line bg-danger-subtle"
       : tone === "amber"
-        ? "border-amber-200 bg-amber-50"
-        : "border-gray-200 bg-white";
+        ? "border-warning-line bg-warning-subtle"
+        : "border-neutral-200 bg-surface";
   return (
     <div className="mx-auto max-w-md px-6 py-24">
       <div className={`rounded-xl border p-8 text-center ${border}`}>
@@ -145,13 +147,14 @@ function Notice({
 
 function SignInButton({ onClick, label }: { onClick: () => void; label: string }) {
   return (
-    <button
-      type="button"
+    <ODSButton
+      className="mx-auto mt-3"
+      size="small"
+      label={label}
+      buttonIcon={<ODSLogin decorative />}
+      leftIcon
       onClick={onClick}
-      className="mx-auto mt-3 flex items-center gap-1.5 rounded bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
-    >
-      <LogIn size={13} /> {label}
-    </button>
+    />
   );
 }
 
@@ -161,10 +164,10 @@ function NotConfigured() {
   const { t } = useI18n();
   return (
     <div className="mx-auto max-w-md px-6 py-24">
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-8 text-center">
-        <ShieldAlert size={22} className="mx-auto mb-2 text-amber-500" />
-        <div className="mb-1 text-sm font-semibold text-amber-900">{t("auth.notConfigured")}</div>
-        <div className="font-mono text-xs text-amber-800">{t("auth.notConfiguredHint")}</div>
+      <div className="rounded-xl border border-warning-line bg-warning-subtle p-8 text-center">
+        <ODSSecurity decorative size={22} className="mx-auto mb-2 text-warning" />
+        <div className="mb-1 text-sm font-semibold text-warning">{t("auth.notConfigured")}</div>
+        <div className="font-mono text-xs text-warning">{t("auth.notConfiguredHint")}</div>
       </div>
     </div>
   );

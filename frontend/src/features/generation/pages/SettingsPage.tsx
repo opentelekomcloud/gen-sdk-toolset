@@ -1,5 +1,7 @@
+import { fieldCls } from "../../../shared/ui/field";
+import { ODSButton } from "@telekom-ods/react-ui-kit/ODSButton";
 import { useId, useState, type ReactNode } from "react";
-import { Check, Key, Play } from "lucide-react";
+import { ODSCheckmark, ODSKey, ODSPlay } from "@telekom-ods/react-icons";
 import { useOtcSettings } from "../data/queries";
 import { useSaveOtcSettings, useTestOtcSettings } from "../data/mutations";
 import type { OtcSettingsForm } from "../data/types";
@@ -50,8 +52,8 @@ export function SettingsPage() {
 
   const page = (content: ReactNode) => (
     <div className="mx-auto max-w-[760px] px-6 py-5">
-      <h1 className="mb-1 text-xl font-semibold text-gray-900">{t("settings.title")}</h1>
-      <div className="mb-5 text-pretty text-xs text-gray-400">{t("settings.intro")}</div>
+      <h1 className="mb-1 text-xl font-semibold text-ink">{t("settings.title")}</h1>
+      <div className="mb-5 text-pretty text-xs text-neutral-600">{t("settings.intro")}</div>
       {content}
     </div>
   );
@@ -100,25 +102,25 @@ export function SettingsPage() {
         />
       )}
 
-      <div className="mb-4 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2.5">
-          <Key size={14} className="text-brand" />
-          <span className="text-[13px] font-semibold text-gray-900">{t("settings.otc")}</span>
+      <div className="mb-4 overflow-hidden rounded-xl border border-neutral-200 bg-surface shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 border-b border-neutral-200 bg-neutral-50 px-4 py-2.5">
+          <ODSKey decorative size={14} className="text-brand-text" />
+          <span className="text-[13px] font-semibold text-ink">{t("settings.otc")}</span>
           <span
             className={`rounded-full border px-2 py-px text-[10px] font-semibold uppercase tracking-wide ${
-              complete ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"
+              complete ? "border-success-line bg-success-subtle text-success" : "border-warning-line bg-warning-subtle text-warning"
             }`}
           >
             {t(complete ? "settings.complete" : "settings.incomplete")}
           </span>
-          <span className="ml-auto text-[10px] text-gray-400">{t("settings.otcUse")}</span>
+          <span className="ml-auto text-[10px] text-neutral-600">{t("settings.otcUse")}</span>
         </div>
         <div className="flex flex-col gap-3 px-4 py-3.5">
           {FIELDS.map((f) => {
             const inputId = `${id}-${f.key}`;
             return (
               <div key={f.key} className="flex flex-wrap items-center gap-2.5">
-                <label htmlFor={inputId} className="w-[170px] shrink-0 text-xs text-gray-600">
+                <label htmlFor={inputId} className="w-[170px] shrink-0 text-xs text-ink-recessive">
                   {t(f.label)}
                 </label>
                 <input
@@ -130,9 +132,9 @@ export function SettingsPage() {
                   readOnly={!canWrite}
                   onChange={(e) => edit(f.key, e.target.value)}
                   placeholder={f.stored && data[f.stored] ? t("settings.stored") : f.placeholder}
-                  className="min-w-0 flex-1 rounded border border-gray-300 bg-white px-2.5 py-1.5 font-mono text-xs text-gray-800 outline-none focus:border-gray-500"
+                  className={`${fieldCls} min-w-0 flex-1 font-mono read-only:bg-surface-subtle`}
                 />
-                {f.hint && <span className="w-full pl-[180px] text-[10px] text-gray-400">{t(f.hint)}</span>}
+                {f.hint && <span className="w-full pl-[180px] text-[10px] text-neutral-600">{t(f.hint)}</span>}
               </div>
             );
           })}
@@ -141,8 +143,11 @@ export function SettingsPage() {
 
       <div className="flex flex-wrap items-center gap-3">
         {canWrite && (
-          <button
-            type="button"
+          <ODSButton
+            size="small"
+            label={t("settings.save")}
+            buttonIcon={<ODSCheckmark decorative />}
+            leftIcon
             disabled={save.isPending}
             onClick={() =>
               save.mutate(form, {
@@ -152,22 +157,20 @@ export function SettingsPage() {
                 },
               })
             }
-            className="inline-flex items-center gap-1.5 rounded bg-brand px-3.5 py-2 text-[13px] font-semibold text-white transition hover:opacity-90 disabled:cursor-default disabled:bg-pink-400 disabled:hover:opacity-100"
-          >
-            <Check size={14} /> {t("settings.save")}
-          </button>
+          />
         )}
-        <button
-          type="button"
+        <ODSButton
+          size="small"
+          variant="outline"
+          label={t("settings.test")}
+          buttonIcon={<ODSPlay decorative />}
+          leftIcon
           disabled={test.isPending}
           onClick={() =>
             test.mutate(form, { onSuccess: ({ error }) => setNote({ kind: "tested", region: form.region, error }) })
           }
-          className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3.5 py-2 text-[13px] font-medium text-gray-600 transition hover:border-gray-500 disabled:cursor-default disabled:text-gray-300 disabled:hover:border-gray-300"
-        >
-          <Play size={12} /> {t("settings.test")}
-        </button>
-        <span className="text-xs text-gray-500">{noteText}</span>
+        />
+        <span className="text-xs text-neutral-700">{noteText}</span>
       </div>
     </>,
   );

@@ -7,7 +7,7 @@ export function PageNotFound({ back }: { back: ReactNode }) {
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
       {back}
-      <div className="py-16 text-center text-sm text-gray-400">{t("app.notFound")}</div>
+      <div className="py-16 text-center text-sm text-neutral-600">{t("app.notFound")}</div>
     </div>
   );
 }

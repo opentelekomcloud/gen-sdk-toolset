@@ -1,5 +1,76 @@
 @import "tailwindcss";
 
-@theme {
-  --color-brand: #E20074;
+/*
+ * ODS bridge (issue #135). Every colour the panel paints comes from the ODS
+ * design tokens loaded in main.tsx, so `data-mode` (light/dark) and
+ * `data-scheme` on <body> restyle the whole app. Tailwind's own palette is
+ * switched off, so a stray `bg-gray-100` generates no CSS at all rather than a
+ * colour that ignores the mode - and src/theme.test.ts fails on it, because
+ * Tailwind itself drops an unknown class without a word.
+ *
+ * `inline` makes each utility emit the ODS variable itself rather than a copy
+ * resolved at :root, which is what lets a nested data-scheme override it.
+ */
+@theme inline {
+  --color-*: initial;
+
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  /* Surfaces, text and lines */
+  --color-surface: var(--colours-basic-background);
+  --color-surface-subtle: var(--colours-basic-background-subtle);
+  --color-ink: var(--colours-basic-text);
+  --color-ink-recessive: var(--colours-basic-text-recessive);
+  --color-overlay: var(--colours-basic-modal-overlay);
+
+  /* The neutral ramp - light-dark pairs, so it inverts with the mode */
+  --color-neutral-50: var(--colours-shades-neutral-shades-50);
+  --color-neutral-100: var(--colours-shades-neutral-shades-100);
+  --color-neutral-200: var(--colours-shades-neutral-shades-200);
+  --color-neutral-300: var(--colours-shades-neutral-shades-300);
+  --color-neutral-400: var(--colours-shades-neutral-shades-400);
+  --color-neutral-500: var(--colours-shades-neutral-shades-500);
+  --color-neutral-600: var(--colours-shades-neutral-shades-600);
+  --color-neutral-700: var(--colours-shades-neutral-shades-700);
+  --color-neutral-800: var(--colours-shades-neutral-shades-800);
+  --color-neutral-900: var(--colours-shades-neutral-shades-900);
+
+  /* Brand */
+  --color-brand: var(--colours-basic-accent);
+  --color-brand-text: var(--colours-basic-text-dominant);
+  --color-on-brand: var(--colours-basic-text-on-accent);
+  --color-brand-subtle: var(--colours-shades-accents-accent-subtle);
+  --color-on-brand-subtle: var(--colours-shades-accents-text-on-accent-subtle);
+  --color-brand-line: color-mix(in srgb, var(--colours-basic-accent) 35%, transparent);
+  --color-contrast: var(--colours-basic-accent-secondary);
+  --color-on-contrast: var(--colours-basic-text-on-accent-secondary);
+
+  /* Functional colours. `-line` is a border that stays visible on the
+     matching `-subtle` fill, which ODS ships no token for. */
+  --color-success: var(--colours-functional-success-standard);
+  --color-success-subtle: var(--colours-functional-success-subtle);
+  --color-success-line: color-mix(in srgb, var(--colours-functional-success-standard) 35%, transparent);
+  --color-warning: var(--colours-functional-warning-standard);
+  --color-warning-subtle: var(--colours-functional-warning-subtle);
+  --color-warning-line: color-mix(in srgb, var(--colours-functional-warning-standard) 35%, transparent);
+  /* Fills that sit next to danger fills (bars, section squares, legends).
+     ODS's standard warning and destructive are close in dark mode (orange
+     #FF8B52 vs salmon #FF7066); the next step on the warning ramp moves
+     "partial" away from "failed" in lightness too, in both modes. */
+  --color-warning-fill: var(--colours-functional-warning-hovered);
+  --color-danger: var(--colours-functional-destructive-standard);
+  --color-danger-subtle: var(--colours-functional-destructive-subtle);
+  --color-danger-line: color-mix(in srgb, var(--colours-functional-destructive-standard) 35%, transparent);
+  --color-info: var(--colours-functional-informational-standard);
+  --color-info-subtle: var(--colours-functional-informational-subtle);
+  --color-info-line: color-mix(in srgb, var(--colours-functional-informational-standard) 35%, transparent);
+
+  --font-sans: "TeleNeo Var", "TeleNeoWeb", ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--colours-basic-background);
+  color: var(--colours-basic-text);
+  font-family: var(--font-sans);
 }

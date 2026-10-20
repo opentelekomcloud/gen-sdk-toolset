@@ -23,25 +23,25 @@ describe("typed class maps", () => {
 
 describe("methodCls", () => {
   it("maps known methods and falls back for exotic ones", () => {
-    expect(methodCls("GET")).toContain("blue");
-    expect(methodCls("DELETE")).toContain("red");
-    expect(methodCls("PROPFIND")).toBe("bg-gray-100 text-gray-600");
+    expect(methodCls("GET")).toContain("info");
+    expect(methodCls("DELETE")).toContain("danger");
+    expect(methodCls("PROPFIND")).toBe("bg-neutral-100 text-ink-recessive");
   });
 });
 
 describe("structOkCls thresholds", () => {
   it("null → muted, ≥90 ok, ≥60 warn, else bad", () => {
-    expect(structOkCls(null)).toContain("gray");
-    expect(structOkCls(90)).toContain("emerald");
-    expect(structOkCls(89)).toContain("amber");
-    expect(structOkCls(60)).toContain("amber");
-    expect(structOkCls(59)).toContain("red");
+    expect(structOkCls(null)).toContain("neutral");
+    expect(structOkCls(90)).toContain("success");
+    expect(structOkCls(89)).toContain("warning");
+    expect(structOkCls(60)).toContain("warning");
+    expect(structOkCls(59)).toContain("danger");
   });
 });
 
 describe("chipCls", () => {
   it("switches between active and inactive styles", () => {
     expect(chipCls(true)).toContain("bg-brand");
-    expect(chipCls(false)).toContain("bg-white");
+    expect(chipCls(false)).toContain("bg-surface");
   });
 });

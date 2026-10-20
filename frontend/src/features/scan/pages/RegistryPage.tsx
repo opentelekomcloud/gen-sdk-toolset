@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, ChevronRight, Search } from "lucide-react";
+import { ODSNavigationRight, ODSSearch } from "@telekom-ods/react-icons";
+import { ODSDropdownSelect } from "@telekom-ods/react-ui-kit/ODSDropdownSelect";
+import { ODSInlineNotification } from "@telekom-ods/react-ui-kit/ODSInlineNotification";
 import { useNavigate, useSearchParams } from "react-router";
 import { useRescan } from "../api/mutations";
 import { useServices, useSummary, type ServicesParams } from "../api/queries";
@@ -15,7 +17,14 @@ import { ExcludedSection } from "../excluded/ExcludedSection";
 import { IneligibleSection } from "../ineligible/IneligibleSection";
 import { shortError } from "../lib/errors";
 import { chipCls, structOkCls } from "../styles";
+import { fieldCls } from "../../../shared/ui/field";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
+
+const SORTS: [ServiceSort, MessageKey][] = [
+  ["quality", "sort.quality"],
+  ["docs", "sort.docs"],
+  ["name", "sort.name"],
+];
 
 const CHIPS: [ServiceFilter, MessageKey][] = [
   ["all", "filter.all"],
@@ -37,8 +46,8 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
 
   return (
     <div
-      className={`grid cursor-pointer grid-cols-12 items-center gap-3 border-b border-gray-100 px-4 py-2.5 transition last:border-0 hover:bg-gray-50 ${
-        scanning ? "bg-blue-50/40" : ""
+      className={`grid cursor-pointer grid-cols-12 items-center gap-3 border-b border-neutral-100 px-4 py-2.5 transition last:border-0 hover:bg-neutral-50 ${
+        scanning ? "bg-info-subtle/40" : ""
       }`}
       onClick={() => navigate(`/scan/services/${encodeURIComponent(item.name)}`)}
     >
@@ -49,8 +58,8 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
         <ScanJobWatcher key={item.job_id} serviceName={item.name} jobId={item.job_id} />
       )}
       <div className="col-span-3 flex items-center gap-1.5 overflow-hidden">
-        <ChevronRight size={14} className="shrink-0 text-gray-400" />
-        <span className="truncate font-mono text-sm text-gray-800">{item.label}</span>
+        <ODSNavigationRight decorative size={14} className="shrink-0 text-neutral-600" />
+        <span className="truncate font-mono text-sm text-ink">{item.label}</span>
       </div>
       <div className="col-span-2">
         <StatusPill kind={item.scan_status} />
@@ -58,25 +67,25 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
       <div className="col-span-3 min-w-0">
         {item.documents ? (
           <div className="space-y-1">
-            <div className="font-mono text-xs tabular-nums text-gray-600">
+            <div className="font-mono text-xs tabular-nums text-ink-recessive">
               {item.read_in_full != null && item.read_in_full !== item.documents
                 ? t("registry.docsOf", { n: item.read_in_full, total: item.documents })
                 : t("registry.docs", { n: item.documents })} · <span className={structOkCls(item.docs_ok)} title={item.unread_documents ? t("registry.docsOkBound", { n: item.unread_documents }) : undefined}>
                 {item.unread_documents ? "≤" : ""}{item.docs_ok}%
               </span>
-              {outdated && <span className="text-gray-400"> · v{item.scanner_version}</span>}
+              {outdated && <span className="text-neutral-600"> · v{item.scanner_version}</span>}
             </div>
             <OverallBar overall={item.overall_breakdown} docs={item.documents} unread={item.unread_breakdown} />
           </div>
         ) : item.scan_status === "failed" ? (
           /* Full text stays reachable on hover and on the service page. */
-          <span className="block truncate text-xs text-red-600" title={item.error ?? undefined}>
+          <span className="block truncate text-xs text-danger" title={item.error ?? undefined}>
             {item.error ? shortError(item.error) : ""}
           </span>
         ) : item.scan_status === "scanning" ? (
-          <span className="text-xs text-blue-600">{t("registry.scanning")}</span>
+          <span className="text-xs text-info">{t("registry.scanning")}</span>
         ) : (
-          <span className="text-xs text-gray-400">{item.documents === 0 ? t("registry.noEndpointDocs") : "—"}</span>
+          <span className="text-xs text-neutral-600">{item.documents === 0 ? t("registry.noEndpointDocs") : "—"}</span>
         )}
       </div>
       <div className="col-span-2">
@@ -143,12 +152,17 @@ export function RegistryPage() {
   return (
     <>
       {summary && summary.failed_services > 0 && (
-        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-6 py-2 text-xs text-amber-800">
-          <AlertTriangle size={14} />
-          {t("registry.failedBanner", {
-            failed: summary.failed_services,
-            ok: summary.services_total - summary.failed_services,
-          })}
+        /* placement lives on a wrapper: ODS styles are not in a cascade layer,
+           so they win over Tailwind utilities set on the component itself */
+        <div className="mx-auto max-w-6xl px-6 pt-5">
+          <ODSInlineNotification
+            mode="warning"
+            showCloseButton={false}
+            text={t("registry.failedBanner", {
+              failed: summary.failed_services,
+              ok: summary.services_total - summary.failed_services,
+            })}
+          />
         </div>
       )}
       <div className="mx-auto max-w-6xl px-6 py-5">
@@ -158,51 +172,57 @@ export function RegistryPage() {
               {t(labelKey)} <span className="font-mono tabular-nums opacity-70">{data?.counts[k] ?? 0}</span>
             </button>
           ))}
-          <div className="relative ml-auto">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={qInput}
-              onChange={(e) => setQInput(e.target.value)}
-              placeholder={t("registry.search")}
-              className="w-48 rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm outline-none transition focus:border-gray-500"
-            />
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <ODSSearch decorative size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600" />
+              <input
+                value={qInput}
+                onChange={(e) => setQInput(e.target.value)}
+                placeholder={t("registry.search")}
+                aria-label={t("registry.search")}
+                className={`${fieldCls} w-56 pl-9`}
+              />
+            </div>
+            <div className="w-60">
+              <ODSDropdownSelect
+                size="small"
+                label={t("registry.sort")}
+                value={params.sort}
+                items={SORTS.map(([id, key]) => ({ id, value: id, label: t(key) }))}
+                onValueChange={({ value }) => value && setParam("sort", value)}
+              />
+            </div>
           </div>
-          <select
-            value={params.sort}
-            onChange={(e) => setParam("sort", e.target.value)}
-            className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-600 outline-none"
-          >
-            <option value="quality">{t("sort.quality")}</option>
-            <option value="docs">{t("sort.docs")}</option>
-            <option value="name">{t("sort.name")}</option>
-          </select>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="grid grid-cols-12 gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            <div className="col-span-3">{t("registry.col.service")}</div>
-            <div className="col-span-2">{t("registry.col.status")}</div>
-            <div className="col-span-3">{t("registry.col.docs")}</div>
-            <div className="col-span-2">{t("registry.col.sections")}</div>
-            <div className="col-span-2 text-right">{t("registry.col.rescan")}</div>
+        {/* wide rows scroll inside the card on a narrow screen instead of squeezing */}
+        <div className="overflow-x-auto rounded-xl border border-neutral-200 bg-surface">
+          <div className="min-w-[56rem]">
+            <div className="grid grid-cols-12 gap-3 border-b border-neutral-200 bg-surface-subtle px-4 py-2.5 text-xs font-bold text-ink-recessive">
+              <div className="col-span-3">{t("registry.col.service")}</div>
+              <div className="col-span-2">{t("registry.col.status")}</div>
+              <div className="col-span-3">{t("registry.col.docs")}</div>
+              <div className="col-span-2">{t("registry.col.sections")}</div>
+              <div className="col-span-2 text-right">{t("registry.col.rescan")}</div>
+            </div>
+            {data?.items.map((item) => (
+              <ServiceRow key={item.name} item={item} scannerVersion={scannerVersion} />
+            ))}
+            {data && data.items.length === 0 && (
+              <div className="px-4 py-10 text-center text-sm text-neutral-600">{t("registry.empty")}</div>
+            )}
           </div>
-          {data?.items.map((item) => (
-            <ServiceRow key={item.name} item={item} scannerVersion={scannerVersion} />
-          ))}
-          {data && data.items.length === 0 && (
-            <div className="px-4 py-10 text-center text-sm text-gray-400">{t("registry.empty")}</div>
-          )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
+        <div className="mt-3 flex items-center justify-between text-xs text-neutral-600">
           <span>
             {t("header.scanner", { v: scannerVersion })}
           </span>
           <span className="flex items-center gap-3">
-            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> {t("legend.ok")}</span>
-            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-amber-400" /> {t("legend.partial")}</span>
-            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-red-500" /> {t("legend.failed")}</span>
-            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-gray-200" /> {t("legend.noSection")}</span>
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-success" /> {t("legend.ok")}</span>
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-warning-fill" /> {t("legend.partial")}</span>
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-danger" /> {t("legend.failed")}</span>
+            <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-neutral-200" /> {t("legend.noSection")}</span>
           </span>
         </div>
 

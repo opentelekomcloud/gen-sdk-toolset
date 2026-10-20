@@ -1,5 +1,9 @@
-import { AlertTriangle, ArrowLeft, Loader2, RefreshCw } from "lucide-react";
-import { Link } from "react-router";
+import { ODSArrowLeft, ODSRefresh, ODSWarning } from "@telekom-ods/react-icons";
+import { ODSButton } from "@telekom-ods/react-ui-kit/ODSButton";
+import { ODSInlineNotification } from "@telekom-ods/react-ui-kit/ODSInlineNotification";
+import { ODSLink } from "@telekom-ods/react-ui-kit/ODSLink";
+import { RouterAnchor } from "../../../shared/ui/RouterAnchor";
+import { Spinner } from "../../../shared/ui/Spinner";
 import { useI18n } from "../../../shared/i18n";
 
 /**
@@ -10,9 +14,15 @@ import { useI18n } from "../../../shared/i18n";
 export function ServiceBackLink({ to, state, label }: { to: string; state?: unknown; label?: string }) {
   const { t } = useI18n();
   return (
-    <Link to={to} state={state} className="mb-3 flex items-center gap-1.5 text-sm text-gray-500 transition hover:text-gray-900">
-      <ArrowLeft size={15} /> {label ?? t("service.back")}
-    </Link>
+    <div className="mb-3">
+      <ODSLink
+        Component={RouterAnchor}
+        href={to}
+        data-state={state}
+        label={label ?? t("service.back")}
+        leftIcon={<ODSArrowLeft decorative small />}
+      />
+    </div>
   );
 }
 
@@ -23,28 +33,22 @@ export function ServiceBackLink({ to, state, label }: { to: string; state?: unkn
 export function RefusalBanner({ title, message, onDismiss }: { title: string; message: string; onDismiss: () => void }) {
   const { t } = useI18n();
   return (
-    <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-      <AlertTriangle size={14} className="mt-px shrink-0 text-amber-500" />
-      <div className="min-w-0">
-        <span className="font-semibold">{title}</span>
-        {" — "}
-        <span className="font-mono">{message}</span>
-      </div>
-      <button type="button"
-        onClick={onDismiss}
-        className="ml-auto shrink-0 rounded border border-amber-300 px-2 py-1 font-medium text-amber-800 transition hover:border-amber-500 hover:bg-white"
-      >
-        {t("snap.dismiss")}
-      </button>
-    </div>
+    <ODSInlineNotification
+      className="mb-4"
+      mode="warning"
+      title={title}
+      text={message}
+      onClose={onDismiss}
+      buttonProps={{ "aria-label": t("snap.dismiss") }}
+    />
   );
 }
 
 /** A block inside a page while its own data is on the way; the page around it stays. */
 export function BlockLoading({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-2 py-3 text-xs text-gray-500">
-      <Loader2 size={14} className="animate-spin text-gray-400" /> {label}
+    <div className="flex items-center gap-2 py-3 text-xs text-neutral-700">
+      <Spinner /> {label}
     </div>
   );
 }
@@ -53,16 +57,18 @@ export function BlockLoading({ label }: { label: string }) {
 export function BlockLoadFailed({ label, onRetry }: { label: string; onRetry: () => void }) {
   const { t } = useI18n();
   return (
-    <div className="flex items-center justify-between rounded border border-red-200 bg-red-50 px-3 py-2">
-      <span className="flex items-center gap-2 text-xs text-red-700">
-        <AlertTriangle size={13} /> {label}
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-danger-line bg-danger-subtle px-3 py-2">
+      <span className="flex items-center gap-2 text-xs text-danger">
+        <ODSWarning decorative size={14} /> {label}
       </span>
-      <button type="button"
+      <ODSButton
+        size="small"
+        variant="outline"
+        label={t("service.retry")}
+        buttonIcon={<ODSRefresh decorative />}
+        leftIcon
         onClick={onRetry}
-        className="flex items-center gap-1 rounded border border-red-300 px-2 py-1 text-xs font-medium text-red-700 transition hover:border-red-500"
-      >
-        <RefreshCw size={11} /> {t("service.retry")}
-      </button>
+      />
     </div>
   );
 }
@@ -71,8 +77,8 @@ export function BlockLoadFailed({ label, onRetry }: { label: string; onRetry: ()
 export function ServiceLoading() {
   const { t } = useI18n();
   return (
-    <div className="flex items-center justify-center gap-2 py-24 text-sm text-gray-400">
-      <Loader2 size={16} className="animate-spin" /> {t("service.loading")}
+    <div className="flex items-center justify-center gap-2 py-24 text-sm text-neutral-600">
+      <Spinner /> {t("service.loading")}
     </div>
   );
 }
@@ -97,20 +103,23 @@ export function ServiceLoadFailed({
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
       <ServiceBackLink to={back} state={backState} />
-      <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
-        <AlertTriangle size={22} className="mx-auto mb-2 text-gray-400" />
-        <div className="mb-1 text-sm font-semibold text-gray-700">
+      <div className="flex flex-col items-center rounded-xl border border-neutral-200 bg-surface p-10 text-center">
+        <ODSWarning decorative size={24} className="mb-2 text-neutral-600" />
+        <div className="mb-1 text-sm font-semibold text-ink-recessive">
           {notFound != null ? t("service.notFound", { name: notFound }) : t("service.loadFailed")}
         </div>
         {notFound != null ? (
-          <div className="text-xs text-gray-500">{t("service.notFoundHint")}</div>
+          <div className="text-xs text-neutral-700">{t("service.notFoundHint")}</div>
         ) : (
-          <button type="button"
+          <ODSButton
+            className="mt-2"
+            size="small"
+            variant="outline"
+            label={t("service.retry")}
+            buttonIcon={<ODSRefresh decorative />}
+            leftIcon
             onClick={onRetry}
-            className="mx-auto mt-2 flex items-center gap-1 rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500"
-          >
-            <RefreshCw size={11} /> {t("service.retry")}
-          </button>
+          />
         )}
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { Spinner } from "../../../shared/ui/Spinner";
 import type { ScanStatus } from "../../../shared/api/types";
 import { SCAN_PILL_CLS, scanPillKey } from "../styles";
 import { useI18n } from "../../../shared/i18n";
@@ -21,7 +21,7 @@ export function StatusPill(props: StatusPillProps) {
     <span
       className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium ${cls}`}
     >
-      {running && <Loader2 size={11} className="animate-spin" />}
+      {running && <Spinner />}
       {label}
     </span>
   );

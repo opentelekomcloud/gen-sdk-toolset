@@ -15,7 +15,7 @@ import { SettingsPage } from "./features/generation/pages/SettingsPage";
 
 function NotFound() {
   const { t } = useI18n();
-  return <div className="px-6 py-16 text-center text-sm text-gray-400">{t("app.notFound")}</div>;
+  return <div className="px-6 py-16 text-center text-sm text-neutral-600">{t("app.notFound")}</div>;
 }
 
 /** Shell order is deliberate: header → attention band (app-level) → tabs → content. */

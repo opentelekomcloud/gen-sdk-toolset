@@ -1,16 +1,8 @@
+import { fieldCls } from "../../../shared/ui/field";
+import { ODSButton } from "@telekom-ods/react-ui-kit/ODSButton";
 import { useState, type ReactNode } from "react";
-import {
-  AlertTriangle,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ClipboardCheck,
-  ExternalLink,
-  GitPullRequest,
-  Loader2,
-  Play,
-  RefreshCw,
-} from "lucide-react";
+import { ODSCheckmark, ODSClipboard, ODSCollapseDown, ODSLink, ODSNavigationExternalLink, ODSNavigationRight, ODSPlay, ODSRefresh, ODSWarning } from "@telekom-ods/react-icons";
+import { Spinner } from "../../../shared/ui/Spinner";
 import { useLocation, useParams, useSearchParams } from "react-router";
 import {
   useGenerationResources,
@@ -52,14 +44,13 @@ const JOB_STATE: Record<GenJobStatus, GenState> = {
 type CallStatus = "none" | "sending" | "ok" | "failed";
 
 const CALL_CLS: Record<CallStatus, string> = {
-  none: "border-gray-200 bg-gray-50 text-gray-400",
-  sending: "border-blue-200 bg-blue-50 text-blue-700",
-  ok: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  failed: "border-red-200 bg-red-50 text-red-700",
+  none: "border-neutral-200 bg-neutral-50 text-neutral-600",
+  sending: "border-info-line bg-info-subtle text-info",
+  ok: "border-success-line bg-success-subtle text-success",
+  failed: "border-danger-line bg-danger-subtle text-danger",
 };
 
-const INPUT_CLS =
-  "min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 py-1 font-mono text-[11px] text-gray-800 outline-none focus:border-gray-500";
+const INPUT_CLS = `${fieldCls} min-w-0 flex-1 font-mono`;
 
 /** What was typed for an operation's call: path and query values by parameter name. */
 interface Inputs {
@@ -97,7 +88,7 @@ function ParamGroup({
   children: ReactNode;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+    <div className="overflow-hidden rounded-lg border border-neutral-200 bg-surface">
       <button
         type="button"
         onClick={onToggle}
@@ -105,14 +96,14 @@ function ParamGroup({
         className="flex w-full items-center gap-2 px-3 py-2 text-left"
       >
         {open ? (
-          <ChevronDown size={12} className="shrink-0 text-gray-400" />
+          <ODSCollapseDown decorative size={12} className="shrink-0 text-neutral-600" />
         ) : (
-          <ChevronRight size={12} className="shrink-0 text-gray-400" />
+          <ODSNavigationRight decorative size={12} className="shrink-0 text-neutral-600" />
         )}
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">{label}</span>
-        <span className="truncate font-mono text-[10px] text-gray-400">{summary}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-700">{label}</span>
+        <span className="truncate font-mono text-[10px] text-neutral-600">{summary}</span>
       </button>
-      {open && <div className="flex flex-col gap-1.5 border-t border-gray-100 px-3 py-2.5">{children}</div>}
+      {open && <div className="flex flex-col gap-1.5 border-t border-neutral-100 px-3 py-2.5">{children}</div>}
     </div>
   );
 }
@@ -129,26 +120,26 @@ function Answer({ response }: { response: GenLiveResponse }) {
     .join(" · ");
   return (
     <div
-      className={`rounded-lg border px-3 py-2.5 ${ok ? "border-emerald-200 bg-green-50" : "border-red-200 bg-red-50"}`}
+      className={`rounded-lg border px-3 py-2.5 ${ok ? "border-success-line bg-success-subtle" : "border-danger-line bg-danger-subtle"}`}
     >
       <div className="flex flex-wrap items-center gap-2.5">
         <span
           className={`rounded px-2 py-px font-mono text-xs font-bold ${
-            ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+            ok ? "bg-success-subtle text-success" : "bg-danger-subtle text-danger"
           }`}
         >
           {response.code}
         </span>
-        <span className={`text-xs font-semibold ${ok ? "text-emerald-700" : "text-red-700"}`}>{response.reason}</span>
-        <span className="font-mono text-[11px] text-gray-400">{meta}</span>
+        <span className={`text-xs font-semibold ${ok ? "text-success" : "text-danger"}`}>{response.reason}</span>
+        <span className="font-mono text-[11px] text-neutral-600">{meta}</span>
       </div>
       {response.error && (
         <div className="mt-2 flex flex-col gap-1">
-          <span className="text-xs font-semibold text-red-700">{response.error.message}</span>
-          <span className="text-pretty text-[11px] leading-normal text-red-900">{response.error.hint}</span>
+          <span className="text-xs font-semibold text-danger">{response.error.message}</span>
+          <span className="text-pretty text-[11px] leading-normal text-danger">{response.error.hint}</span>
         </div>
       )}
-      <pre className="mt-2 overflow-auto rounded-md bg-gray-900 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-gray-200">
+      <pre className="mt-2 overflow-auto rounded-md bg-neutral-900 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-neutral-200">
         {JSON.stringify(response.body, null, 2)}
       </pre>
     </div>
@@ -195,7 +186,7 @@ function LiveOperation({
     .join("&");
 
   return (
-    <div role="group" aria-label={sdk} className="border-b border-gray-100 last:border-0">
+    <div role="group" aria-label={sdk} className="border-b border-neutral-100 last:border-0">
       <button
         type="button"
         onClick={onToggle}
@@ -203,36 +194,36 @@ function LiveOperation({
         className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left"
       >
         {open ? (
-          <ChevronDown size={13} className="shrink-0 text-gray-400" />
+          <ODSCollapseDown decorative size={13} className="shrink-0 text-neutral-600" />
         ) : (
-          <ChevronRight size={13} className="shrink-0 text-gray-400" />
+          <ODSNavigationRight decorative size={13} className="shrink-0 text-neutral-600" />
         )}
         <span
           className={`inline-block w-14 shrink-0 rounded px-1.5 py-0.5 text-center font-mono text-[11px] font-semibold ${methodCls(method)}`}
         >
           {method}
         </span>
-        <span className="font-mono text-xs font-semibold text-gray-800">{sdk}</span>
-        <span className="min-w-0 truncate font-mono text-[11px] text-gray-400" title={uri}>
+        <span className="font-mono text-xs font-semibold text-ink">{sdk}</span>
+        <span className="min-w-0 truncate font-mono text-[11px] text-neutral-600" title={uri}>
           {uri}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-2">
           <span
             className={`inline-flex items-center gap-1 rounded-full border px-2 py-px text-[10px] font-semibold uppercase tracking-wide ${CALL_CLS[status]}`}
           >
-            {status === "sending" && <Loader2 size={11} className="animate-spin" />}
-            {status === "ok" && <Check size={11} />}
-            {status === "failed" && <AlertTriangle size={11} />}
+            {status === "sending" && <Spinner />}
+            {status === "ok" && <ODSCheckmark decorative size={11} />}
+            {status === "failed" && <ODSWarning decorative size={11} />}
             {t(`gen.live.status.${status}` as MessageKey)}
           </span>
           {response && !sending && (
-            <span className="font-mono text-[10px] text-gray-300">{t("gen.live.ms", { ms: response.ms })}</span>
+            <span className="font-mono text-[10px] text-neutral-400">{t("gen.live.ms", { ms: response.ms })}</span>
           )}
         </span>
       </button>
 
       {open && (
-        <div className="flex flex-wrap items-start gap-5 border-t border-gray-100 bg-gray-50 py-3 pl-10 pr-4">
+        <div className="flex flex-wrap items-start gap-5 border-t border-neutral-100 bg-neutral-50 py-3 pl-10 pr-4">
           <div className="flex min-w-0 flex-[1_1_340px] flex-col gap-1.5">
             {path.length > 0 && (
               <ParamGroup
@@ -243,7 +234,7 @@ function LiveOperation({
               >
                 {path.map((param) => (
                   <label key={param} className="flex items-center gap-2">
-                    <span className="w-[104px] shrink-0 truncate font-mono text-[11px] text-gray-600">{param}</span>
+                    <span className="w-[104px] shrink-0 truncate font-mono text-[11px] text-ink-recessive">{param}</span>
                     <input
                       aria-label={param}
                       value={inputs?.path[param] ?? ""}
@@ -265,12 +256,12 @@ function LiveOperation({
                 {op.query.map((p) => (
                   <label key={p.name} className="flex items-center gap-2">
                     <span
-                      className="w-[88px] shrink-0 truncate font-mono text-[11px] text-gray-600"
+                      className="w-[88px] shrink-0 truncate font-mono text-[11px] text-ink-recessive"
                       title={t(p.required ? "gen.live.required" : "gen.live.optional", { description: p.description })}
                     >
                       {p.required ? `${p.name} *` : p.name}
                     </span>
-                    <span className="w-14 shrink-0 font-mono text-[10px] text-gray-400">{p.type}</span>
+                    <span className="w-14 shrink-0 font-mono text-[10px] text-neutral-600">{p.type}</span>
                     <input
                       aria-label={p.name}
                       value={inputs?.query[p.name] ?? prefill(p.name)}
@@ -282,16 +273,15 @@ function LiveOperation({
               </ParamGroup>
             )}
             <div className="mt-1 flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
+              <ODSButton
+                size="small"
+                label={t(response && !sending ? "gen.live.again" : "gen.live.send")}
+                buttonIcon={sending ? <Spinner /> : <ODSPlay decorative />}
+                leftIcon
                 onClick={onSend}
                 disabled={sending}
-                className="inline-flex items-center gap-1.5 rounded bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90 disabled:cursor-default disabled:bg-pink-400 disabled:hover:opacity-100"
-              >
-                {sending ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-                {t(response && !sending ? "gen.live.again" : "gen.live.send")}
-              </button>
-              <span className="text-[10px] text-gray-400">{against}</span>
+              />
+              <span className="text-[10px] text-neutral-600">{against}</span>
             </div>
           </div>
 
@@ -299,7 +289,7 @@ function LiveOperation({
             {sending ? null : response ? (
               <Answer response={response} />
             ) : (
-              <div className="rounded-lg border border-dashed border-gray-200 bg-white px-4 py-7 text-center text-[11px] text-gray-400">
+              <div className="rounded-lg border border-dashed border-neutral-200 bg-surface px-4 py-7 text-center text-[11px] text-neutral-600">
                 {t("gen.live.empty")}
               </div>
             )}
@@ -452,7 +442,7 @@ export function GenerationResultPage() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-mono text-xl font-semibold text-gray-900">
+            <h1 className="font-mono text-xl font-semibold text-ink">
               {pkg}.{resource.name}
             </h1>
             <StatusPill
@@ -460,11 +450,11 @@ export function GenerationResultPage() {
               label={t(genStateKey(jobState))}
               running={jobState === "in_progress"}
             />
-            <span className="rounded-full border border-pink-300 bg-pink-50 px-2 py-px text-[10px] font-semibold uppercase tracking-wide text-brand">
+            <span className="rounded-full border border-brand-line bg-brand-subtle px-2 py-px text-[10px] font-semibold uppercase tracking-wide text-brand-text">
               {target.label}
             </span>
           </div>
-          <div className="mt-1 text-xs text-gray-400">{summary}</div>
+          <div className="mt-1 text-xs text-neutral-600">{summary}</div>
         </div>
         {(inReview || merged) && job.pr != null && (
           <div className="flex flex-wrap items-center gap-2.5">
@@ -473,27 +463,28 @@ export function GenerationResultPage() {
               target="_blank"
               rel="noreferrer"
               title={t("gen.result.prTitle", { resource: resource.name, pkg, version: resource.version })}
-              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand"
+              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand-text"
             >
-              <GitPullRequest size={14} /> {t("gen.result.pr", { pr: job.pr })} <ExternalLink size={12} />
+              <ODSLink decorative size={14} /> {t("gen.result.pr", { pr: job.pr })} <ODSNavigationExternalLink decorative size={12} />
             </a>
             <span
               className={`rounded-full border px-2 py-px text-[10px] font-semibold uppercase tracking-wide ${
-                merged ? "border-violet-200 bg-violet-50 text-violet-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                merged ? "border-brand-line bg-brand-subtle text-on-brand-subtle" : "border-success-line bg-success-subtle text-success"
               }`}
             >
               {t(merged ? "gen.result.prMerged" : "gen.result.prOpen")}
             </span>
             {inReview && canWrite && (
-              <button
-                type="button"
+              <ODSButton
+                size="small"
+                variant="outline"
+                label={t("gen.result.refresh")}
                 title={t("gen.result.refreshHint")}
+                buttonIcon={<ODSRefresh decorative />}
+                leftIcon
                 disabled={refresh.isPending}
                 onClick={() => refresh.mutate(target.id)}
-                className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500 disabled:cursor-default disabled:text-gray-300 disabled:hover:border-gray-300"
-              >
-                <RefreshCw size={12} /> {t("gen.result.refresh")}
-              </button>
+              />
             )}
           </div>
         )}
@@ -512,33 +503,34 @@ export function GenerationResultPage() {
       )}
 
       {job.status === "running" && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 px-6 py-10 text-center">
-          <div className="flex items-center justify-center gap-2 text-sm font-semibold text-blue-700">
-            <Loader2 size={15} className="animate-spin" /> {t("gen.result.running", { id: job.id })}
+        <div className="rounded-xl border border-info-line bg-info-subtle px-6 py-10 text-center">
+          <div className="flex items-center justify-center gap-2 text-sm font-semibold text-info">
+            <Spinner /> {t("gen.result.running", { id: job.id })}
           </div>
-          <div className="mt-1.5 text-xs text-blue-500">{t("gen.result.runningHint")}</div>
+          <div className="mt-1.5 text-xs text-info">{t("gen.result.runningHint")}</div>
         </div>
       )}
 
       {job.status === "failed" && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
-            <AlertTriangle size={14} /> {t("gen.result.failed")}
+        <div className="rounded-xl border border-danger-line bg-danger-subtle p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-danger">
+            <ODSWarning decorative size={14} /> {t("gen.result.failed")}
           </div>
-          {job.error && <div className="mt-1.5 font-mono text-[11px] text-red-900">{job.error}</div>}
-          <div className="mt-2 max-w-[640px] text-pretty text-xs leading-normal text-red-900">
+          {job.error && <div className="mt-1.5 font-mono text-[11px] text-danger">{job.error}</div>}
+          <div className="mt-2 max-w-[640px] text-pretty text-xs leading-normal text-danger">
             {t("gen.result.failedHint")}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3 empty:hidden">
             {canWrite && (
-              <button
-                type="button"
+              <ODSButton
+                size="small"
+                variant="secondary"
+                label={t("gen.result.retry")}
+                buttonIcon={<ODSRefresh decorative />}
+                leftIcon
                 disabled={hold != null || open > 0 || retry.isPending}
                 onClick={() => retry.mutate(target.id)}
-                className="inline-flex items-center gap-1.5 rounded border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:border-red-500 disabled:cursor-not-allowed disabled:text-red-300 disabled:hover:border-red-300"
-              >
-                <RefreshCw size={12} /> {t("gen.result.retry")}
-              </button>
+              />
             )}
             <HoldReason
               hold={hold}
@@ -555,22 +547,24 @@ export function GenerationResultPage() {
       {(inReview || merged) && (
         <>
           {merged && (
-            <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2.5 text-xs text-violet-700">
-              <ClipboardCheck size={14} /> {t("gen.result.mergedNote")}
+            <div className="mb-4 flex flex-wrap items-center gap-2.5 rounded-lg border border-brand-line bg-brand-subtle px-3 py-2.5 text-xs text-on-brand-subtle">
+              <ODSClipboard decorative size={14} /> {t("gen.result.mergedNote")}
             </div>
           )}
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t("gen.live.title")}</span>
-            <span className="text-[10px] text-gray-400">{t("gen.live.hint")}</span>
-            <button
-              type="button"
+            <span className="text-xs font-semibold uppercase tracking-wider text-neutral-700">{t("gen.live.title")}</span>
+            <span className="text-[10px] text-neutral-600">{t("gen.live.hint")}</span>
+            <ODSButton
+              className="ml-auto"
+              size="small"
+              variant="outline"
+              label={t("gen.live.runAll")}
+              buttonIcon={<ODSPlay decorative />}
+              leftIcon
               onClick={() => live.forEach(send)}
-              className="ml-auto inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500"
-            >
-              <Play size={12} /> {t("gen.live.runAll")}
-            </button>
+            />
           </div>
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="overflow-hidden rounded-xl border border-neutral-200 bg-surface shadow-sm">
             {live.map((op) => {
               const key = op.endpoint.id;
               return (

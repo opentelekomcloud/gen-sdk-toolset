@@ -4,7 +4,8 @@ React + TypeScript + Vite frontend for the scan panel.
 
 ## Local development
 
-Requires Node 22+. Run from this `frontend/` directory:
+Requires Node 22+ and a token for the ODS packages (next section). Run from
+this `frontend/` directory:
 
 ```bash
 npm install
@@ -14,6 +15,45 @@ npm run dev
 The dev server starts on `http://localhost:5173` and proxies API requests
 to the backend at `http://127.0.0.1:8000` (start the backend separately —
 see the root README).
+
+## ODS packages
+
+The UI is built on ODS, the OneExperience Design System (issue #135):
+`@telekom-ods/react-ui-kit`, `@telekom-ods/design-tokens` and
+`@telekom-ods/react-icons`. They live in the Telekom Artifactory npm registry,
+which needs a token.
+
+`.npmrc` in this directory names the registry and holds no secret. The token
+goes into your **user-level** npm config, once:
+
+1. Log in at <https://artifactory.devops.telekom.de/ui/login/>, open your
+   profile and generate an identity token.
+2. Store it - the prompt hides what you paste:
+
+   ```bash
+   read -s "T?Paste token: " && npm config set --location=user "//artifactory.devops.telekom.de/artifactory/api/npm/one-design-system-npm/:_authToken" "$T"; unset T
+   chmod 600 ~/.npmrc
+   ```
+
+After that `npm install` and `npm ci` work as usual, and `docker compose`
+passes the same `~/.npmrc` into the image build as a secret. Never put the
+token into `frontend/.npmrc` - it is committed, and this repository is public.
+
+CI needs no token of its own: the workflows log in with the organization's
+JFrog service account (`ARTIFACTORY_AUTH_USERNAME` / `ARTIFACTORY_AUTH_PASSWORD`,
+the secrets the Docker builds already use), which can read the ODS registry like
+any signed-in JFrog user. Pull requests from forks get no secrets, so their
+frontend jobs cannot install the packages.
+
+**How the UI uses ODS.** `src/main.tsx` loads the fonts, tokens and component
+styles; `data-scheme` and `data-mode` on `<body>` drive the colours, and the
+header's light/dark switch sets `data-mode`. `src/index.css` maps Tailwind's
+colours onto the ODS tokens - use `bg-surface`, `text-ink`, `text-success`,
+`neutral-*` and so on; the Tailwind palette (`gray-*`, `red-*`, …) is switched
+off and `src/theme.test.ts` fails on it. Use the ODS component where one fits
+(`ODSButton`, `ODSInlineNotification`, `ODSDialog`, …) and its icons from
+`@telekom-ods/react-icons`; `src/shared/ui/` holds the few helpers for what
+ODS 3.0.1 does not cover (text fields, router links drawn as buttons).
 
 ## Signing in
 

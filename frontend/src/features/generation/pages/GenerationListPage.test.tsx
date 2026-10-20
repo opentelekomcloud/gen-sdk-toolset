@@ -195,7 +195,7 @@ describe("states the mock does not hold today", () => {
     listPage("/generation?filter=in_progress", SEED);
 
     const pill = await screen.findByTitle("Python SDK · In progress · 0 of 2 resources merged");
-    expect(pill.querySelector(".animate-spin")).not.toBeNull();
+    expect(pill.querySelector(".ODSLoadingSpinner")).not.toBeNull();
     expect(screen.getByText("running-svc")).toBeInTheDocument();
     expect(screen.queryByText("No services match the current filter.")).toBeNull();
   });

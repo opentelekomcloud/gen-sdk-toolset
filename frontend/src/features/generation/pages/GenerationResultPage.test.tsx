@@ -422,7 +422,7 @@ describe("the result of contacts: its generation failed", () => {
     fireEvent.click(screen.getByRole("link", { name: "open spec" }));
     expect(location()).toBe("/generation/customer-core/spec/v1/c_contacts");
     const name = await screen.findByRole("group", { name: "name" });
-    expect(name.firstElementChild).toHaveClass("bg-amber-50");
+    expect(name.firstElementChild).toHaveClass("bg-warning-subtle");
     expect(within(name).getByRole("button", { name: "unknown type" })).toBeInTheDocument();
   });
 

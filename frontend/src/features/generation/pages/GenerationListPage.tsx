@@ -1,5 +1,6 @@
+import { fieldCls } from "../../../shared/ui/field";
 import { useState } from "react";
-import { ChevronRight, Search } from "lucide-react";
+import { ODSNavigationRight, ODSSearch } from "@telekom-ods/react-icons";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { useGenerationServices, useGenerationTargets } from "../data/queries";
 import type { GenFilter, GenService, GenTarget } from "../data/types";
@@ -12,7 +13,7 @@ import { useI18n } from "../../../shared/i18n";
 const CHIPS: GenFilter[] = ["all", "not_generated", "in_progress", "failed", "review", "partial"];
 
 /** A target that is not connected and has nothing generated. */
-const NOT_CONNECTED_CLS = "bg-white text-gray-400 border-gray-200";
+const NOT_CONNECTED_CLS = "bg-surface text-neutral-600 border-neutral-200";
 
 /** The service takes half the row and the targets share the rest, however many there are. */
 const gridCols = (targets: number) => ({ gridTemplateColumns: `minmax(0,2fr) repeat(${targets}, minmax(0,1fr))` });
@@ -30,12 +31,12 @@ function ServiceRow({ service, targets, query }: { service: GenService; targets:
   return (
     <div
       style={gridCols(targets.length)}
-      className="grid cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-2.5 transition last:border-0 hover:bg-gray-50"
+      className="grid cursor-pointer items-center gap-3 border-b border-neutral-100 px-4 py-2.5 transition last:border-0 hover:bg-neutral-50"
       onClick={() => open(defaultTarget)}
     >
       <div className="flex items-center gap-1.5 overflow-hidden">
-        <ChevronRight size={14} className="shrink-0 text-gray-400" />
-        <span className="truncate font-mono text-sm text-gray-800">{service.name}</span>
+        <ODSNavigationRight decorative size={14} className="shrink-0 text-neutral-600" />
+        <span className="truncate font-mono text-sm text-ink">{service.name}</span>
       </div>
       {targets.map((target) => {
         const { state, merged, total } = service.targets[target.id];
@@ -67,7 +68,7 @@ function ServiceRow({ service, targets, query }: { service: GenService; targets:
               />
             </button>
             {total > 0 && (
-              <span className="font-mono text-[11px] text-gray-400">
+              <span className="font-mono text-[11px] text-neutral-600">
                 {merged}/{total}
               </span>
             )}
@@ -115,7 +116,7 @@ export function GenerationListPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
-      <div className="mb-3 text-xs text-gray-400">
+      <div className="mb-3 text-xs text-neutral-600">
         {t("gen.list.eligible")} {targets && t("gen.list.editions", { n: targets.length })}
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -126,21 +127,22 @@ export function GenerationListPage() {
           </button>
         ))}
         <div className="relative ml-auto">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <ODSSearch decorative size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-600" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("registry.search")}
-            className="w-48 rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm outline-none transition focus:border-gray-500"
+            aria-label={t("registry.search")}
+            className={`${fieldCls} w-56 pl-9`}
           />
         </div>
       </div>
 
       {targets && services && (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-surface shadow-sm">
           <div
             style={gridCols(targets.length)}
-            className="grid gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500"
+            className="grid gap-3 border-b border-neutral-200 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-700"
           >
             <div>{t("registry.col.service")}</div>
             {targets.map((target) => (
@@ -153,7 +155,7 @@ export function GenerationListPage() {
           {rows.map((s) => (
             <ServiceRow key={s.name} service={s} targets={targets} query={query} />
           ))}
-          {rows.length === 0 && <div className="px-4 py-10 text-center text-sm text-gray-400">{t("registry.empty")}</div>}
+          {rows.length === 0 && <div className="px-4 py-10 text-center text-sm text-neutral-600">{t("registry.empty")}</div>}
         </div>
       )}
     </div>

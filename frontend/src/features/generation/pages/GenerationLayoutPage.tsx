@@ -1,22 +1,10 @@
+import { fieldCls } from "../../../shared/ui/field";
+import { linkButtonCls } from "../../../shared/ui/linkButton";
+import { ODSButton } from "@telekom-ods/react-ui-kit/ODSButton";
 import { useState, type DragEvent } from "react";
-import {
-  AlertTriangle,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  ClipboardCheck,
-  ExternalLink,
-  Folder,
-  FolderPlus,
-  GripVertical,
-  Info,
-  Loader2,
-  Lock,
-  Pencil,
-  Play,
-  RotateCcw,
-  type LucideIcon,
-} from "lucide-react";
+import { ODSArrowUTurnBackwards, ODSCheckmark, ODSCircleAdd, ODSClipboard, ODSCollapseDown, ODSDragAndDrop, ODSEdit, ODSFolder, ODSInformation, ODSLock, ODSNavigationExternalLink, ODSNavigationRight, ODSPlay, ODSWarning } from "@telekom-ods/react-icons";
+import { Spinner } from "../../../shared/ui/Spinner";
+import type { IconComponent } from "../../../shared/ui/icon";
 import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import { useGenerationResources, useGenerationServices, useGenerationTargets } from "../data/queries";
 import { useEditLayout, useLayoutEdited, type LayoutEdit } from "../data/mutations";
@@ -42,12 +30,13 @@ import { useI18n, type MessageKey } from "../../../shared/i18n";
 type ShownJob = Exclude<GenJobStatus, "merged">;
 
 const JOB_CLS: Record<ShownJob, string> = {
-  done: "border-violet-200 bg-violet-50 text-violet-700",
-  running: "border-blue-200 bg-blue-50 text-blue-700",
-  failed: "border-red-200 bg-red-50 text-red-700",
+  done: "border-brand-line bg-brand-subtle text-on-brand-subtle",
+  running: "border-info-line bg-info-subtle text-info",
+  failed: "border-danger-line bg-danger-subtle text-danger",
 };
 
-const JOB_ICON: Record<ShownJob, LucideIcon> = { done: Lock, running: Loader2, failed: AlertTriangle };
+/* a running job shows the ODS spinner instead of an icon */
+const JOB_ICON: Record<Exclude<ShownJob, "running">, IconComponent> = { done: ODSLock, failed: ODSWarning };
 
 /** A resource becomes a package of the SDK, so its name has to be a package name - the prototype's rule. */
 const PACKAGE_NAME = /^[a-z][a-z0-9_]*$/;
@@ -106,7 +95,7 @@ function ResourceRow({
       : null;
   const editable = canWrite && !lock;
   const confirmed = resource.confirmedBy != null;
-  const JobIcon = shown && JOB_ICON[shown.status];
+  const JobIcon = shown && shown.status !== "running" ? JOB_ICON[shown.status] : undefined;
 
   const dropHere = (e: DragEvent) => {
     if (!drag || !editable) return;
@@ -127,12 +116,12 @@ function ResourceRow({
       onDragOver={dropHere}
       onDragLeave={() => over && setOver(null)}
       onDrop={drop}
-      className={`border-b border-gray-100 ${over ? "bg-pink-50 ring-1 ring-inset ring-brand" : ""}`}
+      className={`border-b border-neutral-100 ${over ? "bg-brand-subtle ring-1 ring-inset ring-brand" : ""}`}
     >
       <div className="flex items-center gap-2.5 py-2.5 pl-8 pr-4">
         <button type="button" onClick={onToggle} aria-expanded={open} aria-label={resource.name} className="flex items-center gap-2">
-          {open ? <ChevronDown size={13} className="text-gray-400" /> : <ChevronRight size={13} className="text-gray-400" />}
-          <Folder size={14} className="text-gray-400" />
+          {open ? <ODSCollapseDown decorative size={13} className="text-neutral-600" /> : <ODSNavigationRight decorative size={13} className="text-neutral-600" />}
+          <ODSFolder decorative size={14} className="text-neutral-600" />
         </button>
         {renaming ? (
           <span className="flex flex-auto flex-col gap-1">
@@ -146,46 +135,32 @@ function ResourceRow({
                   if (e.key === "Enter") saveRename();
                   if (e.key === "Escape") setRenaming(null);
                 }}
-                className={`w-[200px] rounded border bg-white px-2 py-1 font-mono text-[13px] text-gray-800 outline-none ${
-                  renaming.error ? "border-red-300" : "border-gray-300"
-                }`}
+                className={`${fieldCls} w-[220px] font-mono ${renaming.error ? "border-danger hover:border-danger" : ""}`}
               />
-              <button
-                type="button"
-                onClick={saveRename}
-                className="rounded bg-brand px-2.5 py-1 text-xs font-semibold text-white transition hover:opacity-90"
-              >
-                {t("gen.layout.save")}
-              </button>
-              <button
-                type="button"
-                onClick={() => setRenaming(null)}
-                className="rounded border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500"
-              >
-                {t("gen.layout.cancel")}
-              </button>
+              <ODSButton size="small" label={t("gen.layout.save")} onClick={saveRename} />
+              <ODSButton size="small" variant="outline" label={t("gen.layout.cancel")} onClick={() => setRenaming(null)} />
             </span>
-            {renaming.error && <span className="text-[11px] text-red-700">{renaming.error}</span>}
+            {renaming.error && <span className="text-[11px] text-danger">{renaming.error}</span>}
           </span>
         ) : (
           <span className="flex min-w-[200px] flex-auto flex-col gap-0.5 overflow-hidden">
-            <span className="truncate font-mono text-sm text-gray-800">{resource.name}</span>
+            <span className="truncate font-mono text-sm text-ink">{resource.name}</span>
             <span className="flex flex-wrap items-center gap-1.5">
-              <span className="font-mono text-[11px] tabular-nums text-gray-400">
+              <span className="font-mono text-[11px] tabular-nums text-neutral-600">
                 {t("gen.card.endpoints", { n: resource.endpoints.length })}
               </span>
               <LayoutBadge resource={resource} />
-              {shown && JobIcon && (
+              {shown && (
                 <span
                   title={t(`gen.layout.lock.${shown.status}` as MessageKey, { target: shown.target.label })}
                   className={`inline-flex items-center gap-1 rounded-full border px-2 py-px text-[10px] font-semibold uppercase tracking-wide ${JOB_CLS[shown.status]}`}
                 >
-                  <JobIcon size={10} className={shown.status === "running" ? "animate-spin" : undefined} />
+                  {shown.status === "running" ? <Spinner /> : JobIcon && <JobIcon decorative size={10} />}
                   {t(`gen.job.${shown.status}` as MessageKey)} · {shown.target.label}
                 </span>
               )}
               {confirmed && (
-                <span className="text-[10px] text-gray-400">
+                <span className="text-[10px] text-neutral-600">
                   {t("gen.layout.confirmedNote", {
                     by: resource.confirmedBy ?? "",
                     at: fmtSnapshotAt(resource.confirmedAt, locale),
@@ -198,36 +173,38 @@ function ResourceRow({
         {editable && (
           <span className="flex shrink-0 items-center gap-1.5">
             {!confirmed && (
-              <button
-                type="button"
+              <ODSButton
+                size="small"
+                label={t("gen.layout.confirm")}
+                buttonIcon={<ODSCheckmark decorative />}
+                leftIcon
                 onClick={() => apply({ kind: "confirm", resource: resource.id })}
-                className="inline-flex items-center gap-1.5 rounded border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition hover:border-emerald-400"
-              >
-                <Check size={12} /> {t("gen.layout.confirm")}
-              </button>
+              />
             )}
-            <button
-              type="button"
+            <ODSButton
+              size="small"
+              variant="outline"
+              buttonType="iconOnly"
+              aria-label={t("gen.layout.rename")}
               title={t("gen.layout.rename")}
+              buttonIcon={<ODSEdit decorative />}
               onClick={() => setRenaming({ id: resource.id, value: resource.name, error: null })}
-              className="inline-flex items-center rounded border border-gray-300 bg-white px-1.5 py-1 transition hover:border-gray-500"
-            >
-              <Pencil size={12} className="text-gray-500" />
-            </button>
-            <button
-              type="button"
+            />
+            <ODSButton
+              size="small"
+              variant="outline"
+              buttonType="iconOnly"
+              aria-label={t("gen.layout.reset")}
               title={t("gen.layout.reset")}
+              buttonIcon={<ODSArrowUTurnBackwards decorative />}
               onClick={() => apply({ kind: "resetResource", resource: resource.id })}
-              className="inline-flex items-center rounded border border-gray-300 bg-white px-1.5 py-1 text-gray-600 transition hover:border-gray-500"
-            >
-              <RotateCcw size={12} />
-            </button>
+            />
           </span>
         )}
       </div>
 
       {open && (
-        <div className="border-t border-gray-100 bg-gray-50">
+        <div className="border-t border-neutral-100 bg-neutral-50">
           {resource.endpoints.map((e) => (
             <div
               key={e.id}
@@ -242,20 +219,20 @@ function ResourceRow({
                 setDrag(null);
                 setOver(null);
               }}
-              className={`flex items-center gap-2.5 border-t border-gray-100 py-2 pl-14 pr-4 first:border-t-0 ${
+              className={`flex items-center gap-2.5 border-t border-neutral-100 py-2 pl-14 pr-4 first:border-t-0 ${
                 editable ? "cursor-grab" : ""
               } ${drag?.endpoint === e.id ? "opacity-40" : ""}`}
             >
-              <GripVertical size={13} className="shrink-0 text-gray-300" />
+              <ODSDragAndDrop decorative size={13} className="shrink-0 text-neutral-400" />
               <span
                 className={`inline-block w-14 shrink-0 rounded px-1.5 py-0.5 text-center font-mono text-[11px] font-semibold ${methodCls(e.method)}`}
               >
                 {e.method}
               </span>
-              <span className="w-[230px] shrink-0 truncate font-mono text-xs text-gray-600" title={e.uri}>
+              <span className="w-[230px] shrink-0 truncate font-mono text-xs text-ink-recessive" title={e.uri}>
                 {e.uri}
               </span>
-              <span className="min-w-0 flex-1 truncate text-xs text-gray-500" title={e.title}>
+              <span className="min-w-0 flex-1 truncate text-xs text-neutral-700" title={e.title}>
                 {e.title}
               </span>
               {e.status !== "ok" && (
@@ -268,14 +245,14 @@ function ResourceRow({
                 target="_blank"
                 rel="noreferrer"
                 title={t("doc.openSourceHint")}
-                className="flex items-center text-gray-400 transition hover:text-gray-700"
+                className="flex items-center text-neutral-600 transition hover:text-ink-recessive"
               >
-                <ExternalLink size={13} />
+                <ODSNavigationExternalLink decorative size={13} />
               </a>
             </div>
           ))}
           {resource.endpoints.length === 0 && (
-            <div className="py-3.5 pl-14 pr-4 text-xs text-gray-400">{t("gen.layout.empty")}</div>
+            <div className="py-3.5 pl-14 pr-4 text-xs text-neutral-600">{t("gen.layout.empty")}</div>
           )}
         </div>
       )}
@@ -345,10 +322,10 @@ export function GenerationLayoutPage() {
   const endpoints = all.reduce((n, r) => n + r.endpoints.length, 0);
   const confirmed = all.filter((r) => r.confirmedBy != null).length;
   const pill = !all.length
-    ? { cls: "border-gray-200 bg-gray-50 text-gray-400", label: t("gen.layout.pill.empty") }
+    ? { cls: "border-neutral-200 bg-neutral-50 text-neutral-600", label: t("gen.layout.pill.empty") }
     : confirmed === all.length
-      ? { cls: "border-emerald-200 bg-emerald-50 text-emerald-700", label: t("gen.layout.pill.confirmed") }
-      : { cls: "border-amber-200 bg-amber-50 text-amber-800", label: t("gen.layout.pill.unconfirmed") };
+      ? { cls: "border-success-line bg-success-subtle text-success", label: t("gen.layout.pill.confirmed") }
+      : { cls: "border-warning-line bg-warning-subtle text-warning", label: t("gen.layout.pill.unconfirmed") };
   const summary = [
     t("gen.layout.shared"),
     t("gen.layout.versions", { n: versions.length }),
@@ -379,12 +356,12 @@ export function GenerationLayoutPage() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-mono text-xl font-semibold text-gray-900">{name}</h1>
+            <h1 className="font-mono text-xl font-semibold text-ink">{name}</h1>
             <StatusPill cls={pill.cls} label={pill.label} running={false} />
           </div>
-          <div className="mt-1 text-xs text-gray-400">{summary}</div>
+          <div className="mt-1 text-xs text-neutral-600">{summary}</div>
         </div>
-        {edited && <span className="text-xs text-gray-400">{t("gen.layout.edited")}</span>}
+        {edited && <span className="text-xs text-neutral-600">{t("gen.layout.edited")}</span>}
       </div>
 
       {edit.isError && (
@@ -395,8 +372,8 @@ export function GenerationLayoutPage() {
         />
       )}
 
-      <div className="mb-4 flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
-        <Info size={14} className="shrink-0 text-gray-400" /> {t("gen.layout.info")}
+      <div className="mb-4 flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
+        <ODSInformation decorative size={14} className="shrink-0 text-neutral-600" /> {t("gen.layout.info")}
       </div>
 
       {versions.map((version) => {
@@ -408,49 +385,51 @@ export function GenerationLayoutPage() {
           <section
             key={version}
             aria-label={version}
-            className="mb-4 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+            className="mb-4 overflow-hidden rounded-xl border border-neutral-200 bg-surface shadow-sm"
           >
-            <div className="flex items-center gap-2.5 border-b border-gray-200 bg-gray-50 px-4 py-2.5">
+            <div className="flex items-center gap-2.5 border-b border-neutral-200 bg-neutral-50 px-4 py-2.5">
               <button
                 type="button"
                 aria-expanded={open}
                 onClick={() => setClosedVersions(toggled(closedVersions, version))}
                 className="flex items-center gap-2"
               >
-                {open ? <ChevronDown size={14} className="text-gray-500" /> : <ChevronRight size={14} className="text-gray-500" />}
-                <span className="font-mono text-sm font-semibold text-gray-900">{version}</span>
+                {open ? <ODSCollapseDown decorative size={14} className="text-neutral-700" /> : <ODSNavigationRight decorative size={14} className="text-neutral-700" />}
+                <span className="font-mono text-sm font-semibold text-ink">{version}</span>
               </button>
-              <span className="font-mono text-xs tabular-nums text-gray-400">
+              <span className="font-mono text-xs tabular-nums text-neutral-600">
                 {t("gen.layout.resources", { n: shown.length })} ·{" "}
                 {t("gen.card.endpoints", { n: shown.reduce((n, r) => n + r.endpoints.length, 0) })}
               </span>
               {moved > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-px text-[10px] font-semibold text-violet-700">
-                  <ClipboardCheck size={12} /> {t("gen.layout.moved", { n: moved })}
+                <span className="inline-flex items-center gap-1 rounded-full border border-brand-line bg-brand-subtle px-2 py-px text-[10px] font-semibold text-on-brand-subtle">
+                  <ODSClipboard decorative size={12} /> {t("gen.layout.moved", { n: moved })}
                 </span>
               )}
               {canWrite && (
                 <span className="ml-auto flex items-center gap-2">
-                  <button
-                    type="button"
+                  <ODSButton
+                    size="small"
+                    variant="outline"
+                    label={t("gen.layout.newResource")}
+                    buttonIcon={<ODSCircleAdd decorative />}
+                    leftIcon
                     onClick={() => apply({ kind: "add", version })}
-                    className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500"
-                  >
-                    <FolderPlus size={12} /> {t("gen.layout.newResource")}
-                  </button>
-                  <button
-                    type="button"
+                  />
+                  <ODSButton
+                    size="small"
+                    variant="outline"
+                    label={t("gen.layout.reset")}
+                    buttonIcon={<ODSArrowUTurnBackwards decorative />}
+                    leftIcon
                     onClick={() => apply({ kind: "resetVersion", version })}
-                    className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500"
-                  >
-                    <RotateCcw size={12} /> {t("gen.layout.reset")}
-                  </button>
+                  />
                 </span>
               )}
             </div>
             {open && (
               <div>
-                <div className="border-b border-gray-100 bg-gray-50/50 py-1.5 pl-8 pr-4 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                <div className="border-b border-neutral-100 bg-neutral-50/50 py-1.5 pl-8 pr-4 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
                   {t("gen.layout.col")}
                 </div>
                 {shown.map((r) => (
@@ -478,19 +457,19 @@ export function GenerationLayoutPage() {
       })}
 
       {versions.length === 0 && (
-        <div className="mb-4 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 py-14 text-center text-sm text-gray-400">
+        <div className="mb-4 rounded-xl border border-dashed border-neutral-200 bg-neutral-50 px-6 py-14 text-center text-sm text-neutral-600">
           {t("gen.layout.nothing")}
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-3 text-xs text-gray-500">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-neutral-200 bg-surface px-3.5 py-3 text-xs text-neutral-700">
         {t("gen.layout.footer")}
         <Link
           to={cardTo}
           state={fromList}
-          className="ml-auto inline-flex items-center gap-1.5 rounded border border-pink-300 bg-pink-50 px-3 py-1.5 text-xs font-semibold text-brand transition hover:border-brand"
+          className={`ml-auto ${linkButtonCls}`}
         >
-          <Play size={12} /> {t("gen.layout.back")}
+          <ODSPlay decorative size={16} /> {t("gen.layout.back")}
         </Link>
       </div>
     </div>

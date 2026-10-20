@@ -22,6 +22,11 @@ export const en = {
   "header.subtitle": "Service scan registry · T Cloud Public",
   "header.scansRunning": "scans running: {n}",
   "header.scanner": "scanner v{v}",
+  "header.mainMenu": "Panels",
+  "header.secondaryMenu": "Account and display",
+  "header.switchLang": "Deutsch",
+  "theme.toDark": "Dark mode",
+  "theme.toLight": "Light mode",
 
   "tab.scan": "Scan",
   "tab.generation": "Generation",
@@ -59,6 +64,7 @@ export const en = {
   "sort.docs": "Most docs first",
   "sort.name": "By name",
 
+  "registry.sort": "Sort",
   "registry.search": "Filter services…",
   "registry.col.service": "Service",
   "registry.col.status": "Scan status",

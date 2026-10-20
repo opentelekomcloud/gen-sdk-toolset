@@ -10,7 +10,7 @@ import { useI18n } from "../../../shared/i18n";
  *  reads the eight it knows. */
 export function SectionStrip({ sections }: { sections: ServiceListItem["section_rollup"] | null }) {
   const { t } = useI18n();
-  if (!sections) return <span className="text-xs text-gray-300">·······</span>;
+  if (!sections) return <span className="text-xs text-neutral-400">·······</span>;
   return (
     <div className="flex gap-0.5">
       {SECTIONS.map((s) => {

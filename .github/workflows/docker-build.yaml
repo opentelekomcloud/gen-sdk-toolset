@@ -53,6 +53,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # The ODS npm credential for Dockerfile.frontend (issue #135): an npmrc
+      # line with the JFrog service account as basic auth, in the runner's temp
+      # directory, which is discarded with the job. GitHub masks the secrets
+      # but not a value derived from them, hence the explicit mask.
+      - name: Write the ODS npm credential
+        env:
+          ARTIFACTORY_AUTH_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USERNAME }}
+          ARTIFACTORY_AUTH_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_PASSWORD }}
+        run: |
+          auth=$(printf '%s:%s' "$ARTIFACTORY_AUTH_USERNAME" "$ARTIFACTORY_AUTH_PASSWORD" | base64 -w0)
+          echo "::add-mask::$auth"
+          printf '//artifactory.devops.telekom.de/artifactory/api/npm/one-design-system-npm/:_auth=%s\n' "$auth" > "$RUNNER_TEMP/ods_npmrc"
+
       - name: Build
         uses: docker/build-push-action@v5
         with:
@@ -63,3 +76,7 @@ jobs:
           push: false
           build-args: |
             ARTIFACTORY_URL=${{ secrets.ARTIFACTORY_URL }}
+          # the ODS npm credential, mounted for `npm ci` only
+          # (Dockerfile.frontend); the backend build ignores it
+          secret-files: |
+            ods_npmrc=${{ runner.temp }}/ods_npmrc

@@ -108,6 +108,20 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # ODS packages come from the Telekom Artifactory npm registry. the credential is the
+      # organization's JFrog service account (ARTIFACTORY_AUTH_*), written as
+      # npm basic auth into the runner's user-level npm config so it never
+      # touches the checkout. GitHub masks the secrets but not a value derived
+      # from them, hence the explicit mask on the base64 form.
+      - name: Authenticate to the ODS npm registry
+        env:
+          ARTIFACTORY_AUTH_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USERNAME }}
+          ARTIFACTORY_AUTH_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_PASSWORD }}
+        run: |
+          auth=$(printf '%s:%s' "$ARTIFACTORY_AUTH_USERNAME" "$ARTIFACTORY_AUTH_PASSWORD" | base64 -w0)
+          echo "::add-mask::$auth"
+          npm config set --location=user "//artifactory.devops.telekom.de/artifactory/api/npm/one-design-system-npm/:_auth" "$auth"
+
       - name: Install dependencies
         run: npm ci
 
@@ -148,6 +162,14 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Authenticate to the ODS npm registry
+        env:
+          ARTIFACTORY_AUTH_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USERNAME }}
+          ARTIFACTORY_AUTH_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_PASSWORD }}
+        run: |
+          auth=$(printf '%s:%s' "$ARTIFACTORY_AUTH_USERNAME" "$ARTIFACTORY_AUTH_PASSWORD" | base64 -w0)
+          echo "::add-mask::$auth"
+          npm config set --location=user "//artifactory.devops.telekom.de/artifactory/api/npm/one-design-system-npm/:_auth" "$auth"
 
       # The install the setup docs prescribe, from both lockfiles: the artifacts
       # are only reproducible against the dependency set that produced them, and
