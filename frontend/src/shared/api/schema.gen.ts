@@ -17,7 +17,8 @@ export interface paths {
          *
          *     Built on the same set as the Scan registry, so an excluded or ineligible
          *     service never shows up here; the rule that narrows it lives in
-         *     :func:`tools.panel.core.service_state.in_generation_list`.
+         *     :func:`tools.panel.core.service_state.in_generation_list`. ``q`` searches
+         *     as the Scan registry does.
          */
         get: operations["list_generation_services_api_generation_services_get"];
         put?: never;
@@ -1044,7 +1045,9 @@ export type $defs = Record<string, never>;
 export interface operations {
     list_generation_services_api_generation_services_get: {
         parameters: {
-            query?: never;
+            query?: {
+                q?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1058,6 +1061,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GenerationServiceItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

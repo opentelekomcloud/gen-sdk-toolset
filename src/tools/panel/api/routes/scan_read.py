@@ -192,7 +192,7 @@ def list_services(
     matched = [
         (service, state)
         for service, state in all_services(db)
-        if q.lower() in service.repo.lower()
+        if matches_search(service, q)
     ]
     counts = {
         name: sum(_matches_filter(state, name) for _service, state in matched)
@@ -457,6 +457,13 @@ def all_services(db: Session) -> list[tuple[Service, ServiceState]]:
         (service, derive_service_state(service, scanner_version=SCANNER_VERSION))
         for service in services
     ]
+
+
+def matches_search(service: Service, q: str) -> bool:
+    """Whether a service matches a service-list search: ``q`` as a substring of
+    its repository, case ignored. Shared by every service list, so a search
+    finds the same services everywhere."""
+    return q.lower() in service.repo.lower()
 
 
 def _all_states(db: Session) -> list[ServiceState]:

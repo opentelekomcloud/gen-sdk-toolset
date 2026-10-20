@@ -40,6 +40,8 @@ export const keys = {
   /** Generation panel - served by features/generation/data/ from its in-memory mock. */
   genTargets: ["generation", "targets"] as const,
   genServices: ["generation", "services"] as const,
+  /** The Generation list as the backend serves it - served by the API, not the mock. */
+  genList: (p?: object) => (p ? (["generation", "list", p] as const) : (["generation", "list"] as const)),
   genResources: (name: string) => ["generation", "resources", name] as const,
   genAttention: ["generation", "attention"] as const,
   /** Prefix for the generation specs of every resource of a service — invalidation target. */

@@ -1539,8 +1539,20 @@
   "paths": {
     "/api/generation/services": {
       "get": {
-        "description": "Services with something to generate, in the Scan registry's order.\n\nBuilt on the same set as the Scan registry, so an excluded or ineligible\nservice never shows up here; the rule that narrows it lives in\n:func:`tools.panel.core.service_state.in_generation_list`.",
+        "description": "Services with something to generate, in the Scan registry's order.\n\nBuilt on the same set as the Scan registry, so an excluded or ineligible\nservice never shows up here; the rule that narrows it lives in\n:func:`tools.panel.core.service_state.in_generation_list`. ``q`` searches\nas the Scan registry does.",
         "operationId": "list_generation_services_api_generation_services_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1555,6 +1567,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [

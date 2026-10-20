@@ -1,7 +1,6 @@
-import { useState } from "react";
-import { ChevronRight, Search } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
-import { useGenerationServices, useGenerationTargets } from "../data/queries";
+import { useGenerationList, useGenerationServices, useGenerationTargets } from "../data/queries";
 import type { GenFilter, GenService, GenTarget } from "../data/types";
 import { servicePath, type FromList } from "../lib/paths";
 import { GEN_STATE_CLS, genStateKey } from "../styles";
@@ -9,6 +8,8 @@ import { SHOW_GEN_STATE } from "../flags";
 import { StatusPill } from "../../scan/components/StatusPill";
 import { chipCls } from "../../scan/styles";
 import { useI18n } from "../../../shared/i18n";
+import { SearchInput } from "../../../shared/search/SearchInput";
+import { useUrlSearch } from "../../../shared/search/useUrlSearch";
 
 const CHIPS: GenFilter[] = ["all", "not_generated", "in_progress", "failed", "review", "partial"];
 
@@ -18,28 +19,34 @@ const NOT_CONNECTED_CLS = "bg-white text-gray-400 border-gray-200";
 /** The service takes half the row and the targets share the rest, however many there are. */
 const gridCols = (targets: number) => ({ gridTemplateColumns: `minmax(0,2fr) repeat(${targets}, minmax(0,1fr))` });
 
-function ServiceRow({ service, targets, query }: { service: GenService; targets: GenTarget[]; query: string }) {
+const ROW_CLS =
+  "grid cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-2.5 transition last:border-0 hover:bg-gray-50";
+const HEAD_CLS =
+  "grid gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500";
+
+function ServiceCell({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-1.5 overflow-hidden">
+      <ChevronRight size={14} className="shrink-0 text-gray-400" />
+      <span className="truncate font-mono text-sm text-gray-800">{label}</span>
+    </div>
+  );
+}
+
+function ServiceRow({ service, targets }: { service: GenService; targets: GenTarget[] }) {
   const navigate = useNavigate();
   const { search } = useLocation();
   const { t } = useI18n();
   const [defaultTarget] = targets;
-  const columns = SHOW_GEN_STATE ? targets : [];
   const open = (target: GenTarget) =>
     navigate(servicePath(service.name, target, defaultTarget), {
-      state: { listSearch: search, listQuery: query } satisfies FromList,
+      state: { listSearch: search } satisfies FromList,
     });
 
   return (
-    <div
-      style={gridCols(columns.length)}
-      className="grid cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-2.5 transition last:border-0 hover:bg-gray-50"
-      onClick={() => open(defaultTarget)}
-    >
-      <div className="flex items-center gap-1.5 overflow-hidden">
-        <ChevronRight size={14} className="shrink-0 text-gray-400" />
-        <span className="truncate font-mono text-sm text-gray-800">{service.name}</span>
-      </div>
-      {columns.map((target) => {
+    <div style={gridCols(targets.length)} className={ROW_CLS} onClick={() => open(defaultTarget)}>
+      <ServiceCell label={service.name} />
+      {targets.map((target) => {
         const { state, merged, total } = service.targets[target.id];
         const notConnected = !target.live && state === "not_generated";
         const label = notConnected ? t("gen.target.notConnected") : t(genStateKey(state));
@@ -80,17 +87,15 @@ function ServiceRow({ service, targets, query }: { service: GenService; targets:
   );
 }
 
-/** Generation list: services by target; the filter chip round-trips through the URL. */
-export function GenerationListPage() {
+/** The list as the prototype has it, on the in-memory mock: services by target;
+ *  the filter chip round-trips through the URL. */
+function StateList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useI18n();
-  /* Back from a card, the list gets the card's FromList and takes up its search text again. */
-  const fromCard: Partial<FromList> | null = useLocation().state;
-  const [query, setQuery] = useState(fromCard?.listQuery ?? "");
+  const { q: query, input, setInput } = useUrlSearch();
   const { data: targets } = useGenerationTargets();
   const { data: services } = useGenerationServices();
-  const filter: GenFilter = SHOW_GEN_STATE ? ((searchParams.get("filter") as GenFilter) ?? "all") : "all";
-  const columns = SHOW_GEN_STATE ? (targets ?? []) : [];
+  const filter = (searchParams.get("filter") as GenFilter) ?? "all";
 
   const setFilter = (next: GenFilter) =>
     setSearchParams(
@@ -122,32 +127,20 @@ export function GenerationListPage() {
         {t("gen.list.eligible")} {targets && t("gen.list.editions", { n: targets.length })}
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {SHOW_GEN_STATE &&
-          CHIPS.map((k) => (
-            <button type="button" key={k} onClick={() => setFilter(k)} className={chipCls(filter === k)}>
-              {k === "all" ? t("filter.all") : t(genStateKey(k))}{" "}
-              <span className="font-mono tabular-nums opacity-70">{count(k)}</span>
-            </button>
-          ))}
-        <div className="relative ml-auto">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("registry.search")}
-            className="w-48 rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm outline-none transition focus:border-gray-500"
-          />
-        </div>
+        {CHIPS.map((k) => (
+          <button type="button" key={k} onClick={() => setFilter(k)} className={chipCls(filter === k)}>
+            {k === "all" ? t("filter.all") : t(genStateKey(k))}{" "}
+            <span className="font-mono tabular-nums opacity-70">{count(k)}</span>
+          </button>
+        ))}
+        <SearchInput value={input} onChange={setInput} />
       </div>
 
       {targets && services && (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div
-            style={gridCols(columns.length)}
-            className="grid gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500"
-          >
+          <div style={gridCols(targets.length)} className={HEAD_CLS}>
             <div>{t("registry.col.service")}</div>
-            {columns.map((target) => (
+            {targets.map((target) => (
               <div key={target.id}>
                 {target.label}
                 {!target.live && ` · ${t("gen.col.tbd")}`}
@@ -155,11 +148,63 @@ export function GenerationListPage() {
             ))}
           </div>
           {rows.map((s) => (
-            <ServiceRow key={s.name} service={s} targets={targets} query={query} />
+            <ServiceRow key={s.name} service={s} targets={targets} />
           ))}
           {rows.length === 0 && <div className="px-4 py-10 text-center text-sm text-gray-400">{t("registry.empty")}</div>}
         </div>
       )}
     </div>
   );
+}
+
+/** The list as the backend serves it: the services it selected from Scan data,
+ *  by name only (ADR-0045, ADR-0049). */
+function ServiceList() {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const { search } = useLocation();
+  const { q, input, setInput } = useUrlSearch();
+  const { data: targets } = useGenerationTargets();
+  const { data: services } = useGenerationList({ q });
+
+  return (
+    <div className="mx-auto max-w-6xl px-6 py-5">
+      <div className="mb-3 text-xs text-gray-400">
+        {t("gen.list.eligible")} {targets && t("gen.list.editions", { n: targets.length })}
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <SearchInput value={input} onChange={setInput} />
+      </div>
+
+      {services && (
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div style={gridCols(0)} className={HEAD_CLS}>
+            <div>{t("registry.col.service")}</div>
+          </div>
+          {services.map((s) => (
+            <div
+              key={s.name}
+              style={gridCols(0)}
+              className={ROW_CLS}
+              onClick={() =>
+                navigate(`/generation/${encodeURIComponent(s.name)}`, {
+                  state: { listSearch: search } satisfies FromList,
+                })
+              }
+            >
+              <ServiceCell label={s.label} />
+            </div>
+          ))}
+          {services.length === 0 && (
+            <div className="px-4 py-10 text-center text-sm text-gray-400">{t("registry.empty")}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Generation list: from the backend, or the prototype's per-target state on the mock while `SHOW_GEN_STATE` is on. */
+export function GenerationListPage() {
+  return SHOW_GEN_STATE ? <StateList /> : <ServiceList />;
 }
