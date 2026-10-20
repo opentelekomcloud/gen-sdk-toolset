@@ -87,7 +87,6 @@ function ServiceRow({ service, targets }: { service: GenService; targets: GenTar
   );
 }
 
-/** The prototype's list on the mock, behind SHOW_GEN_STATE. */
 function StateList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useI18n();
@@ -156,7 +155,6 @@ function StateList() {
   );
 }
 
-/** The list from the backend: names only (ADR-0045, ADR-0049). */
 function ServiceList() {
   const { t } = useI18n();
   const navigate = useNavigate();
