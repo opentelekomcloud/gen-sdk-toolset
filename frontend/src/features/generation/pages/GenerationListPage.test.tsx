@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import { useLocation } from "react-router";
 import { renderPage } from "../../../test/render";
@@ -24,6 +24,21 @@ function listPage(path = "/generation", seed?: [readonly unknown[], unknown][]) 
 }
 
 const location = () => screen.getByTestId("location").textContent;
+
+/* The per-target state is built but switched off until generation data is
+   connected; most of this file drives it switched on, so it does not rot while
+   hidden. Mocked through a getter, so a test can flip it before rendering. */
+const flags = vi.hoisted(() => ({ showGenState: true }));
+
+vi.mock("../flags", () => ({
+  get SHOW_GEN_STATE() {
+    return flags.showGenState;
+  },
+}));
+
+afterEach(() => {
+  flags.showGenState = true;
+});
 
 describe("the Generation list on the in-memory mock", () => {
   it("lists the services scanned in full or in part, with a column per target", async () => {
@@ -206,5 +221,67 @@ describe("states the mock does not hold today", () => {
     expect(await screen.findByText("running-svc")).toBeInTheDocument();
     expect(screen.queryByText("merged-svc")).toBeNull();
     expect(screen.getByRole("button", { name: "All 1" })).toBeInTheDocument();
+  });
+});
+
+describe("with the per-target state switched off", () => {
+  beforeEach(() => {
+    flags.showGenState = false;
+  });
+
+  it("lists the services by name only, under a single service column", async () => {
+    listPage();
+
+    expect(await screen.findByText("billing-api")).toBeInTheDocument();
+    for (const name of ["customer-core", "device-mgmt", "notifications-hub", "tariff-catalog"]) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+    expect(screen.getByText("Service")).toBeInTheDocument();
+    expect(screen.queryByText("Python SDK")).toBeNull();
+    expect(screen.queryByText("Ansible modules · TBD")).toBeNull();
+  });
+
+  it("shows nothing about generation in a row", async () => {
+    listPage();
+
+    await screen.findByText("billing-api");
+    for (const state of ["Not generated", "In progress", "Failed", "Waiting for review", "Partial", "not connected"]) {
+      expect(screen.queryByText(state)).toBeNull();
+    }
+    expect(screen.queryByTitle(/resources merged/)).toBeNull();
+    expect(screen.queryByText(/^\d+\/\d+$/)).toBeNull();
+  });
+
+  it("has no state chips", async () => {
+    listPage();
+
+    await screen.findByText("billing-api");
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("does not apply a filter from the address", async () => {
+    listPage("/generation?filter=review");
+
+    expect(await screen.findByText("billing-api")).toBeInTheDocument();
+    for (const name of ["customer-core", "device-mgmt", "notifications-hub", "tariff-catalog"]) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+  });
+
+  it("still narrows the rows by search", async () => {
+    listPage();
+
+    fireEvent.change(await screen.findByPlaceholderText("Filter services…"), { target: { value: "core" } });
+
+    expect(screen.getByText("customer-core")).toBeInTheDocument();
+    expect(screen.queryByText("billing-api")).toBeNull();
+  });
+
+  it("still opens a service card on the default target from the row", async () => {
+    listPage();
+
+    fireEvent.click(await screen.findByText("billing-api"));
+
+    expect(location()).toBe("/generation/billing-api");
   });
 });

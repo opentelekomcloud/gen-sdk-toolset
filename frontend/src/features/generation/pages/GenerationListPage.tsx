@@ -5,6 +5,7 @@ import { useGenerationServices, useGenerationTargets } from "../data/queries";
 import type { GenFilter, GenService, GenTarget } from "../data/types";
 import { servicePath, type FromList } from "../lib/paths";
 import { GEN_STATE_CLS, genStateKey } from "../styles";
+import { SHOW_GEN_STATE } from "../flags";
 import { StatusPill } from "../../scan/components/StatusPill";
 import { chipCls } from "../../scan/styles";
 import { useI18n } from "../../../shared/i18n";
@@ -22,6 +23,7 @@ function ServiceRow({ service, targets, query }: { service: GenService; targets:
   const { search } = useLocation();
   const { t } = useI18n();
   const [defaultTarget] = targets;
+  const columns = SHOW_GEN_STATE ? targets : [];
   const open = (target: GenTarget) =>
     navigate(servicePath(service.name, target, defaultTarget), {
       state: { listSearch: search, listQuery: query } satisfies FromList,
@@ -29,7 +31,7 @@ function ServiceRow({ service, targets, query }: { service: GenService; targets:
 
   return (
     <div
-      style={gridCols(targets.length)}
+      style={gridCols(columns.length)}
       className="grid cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-2.5 transition last:border-0 hover:bg-gray-50"
       onClick={() => open(defaultTarget)}
     >
@@ -37,7 +39,7 @@ function ServiceRow({ service, targets, query }: { service: GenService; targets:
         <ChevronRight size={14} className="shrink-0 text-gray-400" />
         <span className="truncate font-mono text-sm text-gray-800">{service.name}</span>
       </div>
-      {targets.map((target) => {
+      {columns.map((target) => {
         const { state, merged, total } = service.targets[target.id];
         const notConnected = !target.live && state === "not_generated";
         const label = notConnected ? t("gen.target.notConnected") : t(genStateKey(state));
@@ -78,7 +80,8 @@ function ServiceRow({ service, targets, query }: { service: GenService; targets:
   );
 }
 
-/** Generation list: services by target; the filter chip round-trips through the URL. */
+/** Generation list: services by target; the filter chip round-trips through the URL.
+ *  With `SHOW_GEN_STATE` off it lists names only, and `?filter` is not applied. */
 export function GenerationListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useI18n();
@@ -87,7 +90,8 @@ export function GenerationListPage() {
   const [query, setQuery] = useState(fromCard?.listQuery ?? "");
   const { data: targets } = useGenerationTargets();
   const { data: services } = useGenerationServices();
-  const filter = (searchParams.get("filter") as GenFilter) ?? "all";
+  const filter: GenFilter = SHOW_GEN_STATE ? ((searchParams.get("filter") as GenFilter) ?? "all") : "all";
+  const columns = SHOW_GEN_STATE ? (targets ?? []) : [];
 
   const setFilter = (next: GenFilter) =>
     setSearchParams(
@@ -119,12 +123,13 @@ export function GenerationListPage() {
         {t("gen.list.eligible")} {targets && t("gen.list.editions", { n: targets.length })}
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {CHIPS.map((k) => (
-          <button type="button" key={k} onClick={() => setFilter(k)} className={chipCls(filter === k)}>
-            {k === "all" ? t("filter.all") : t(genStateKey(k))}{" "}
-            <span className="font-mono tabular-nums opacity-70">{count(k)}</span>
-          </button>
-        ))}
+        {SHOW_GEN_STATE &&
+          CHIPS.map((k) => (
+            <button type="button" key={k} onClick={() => setFilter(k)} className={chipCls(filter === k)}>
+              {k === "all" ? t("filter.all") : t(genStateKey(k))}{" "}
+              <span className="font-mono tabular-nums opacity-70">{count(k)}</span>
+            </button>
+          ))}
         <div className="relative ml-auto">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
@@ -139,11 +144,11 @@ export function GenerationListPage() {
       {targets && services && (
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <div
-            style={gridCols(targets.length)}
+            style={gridCols(columns.length)}
             className="grid gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500"
           >
             <div>{t("registry.col.service")}</div>
-            {targets.map((target) => (
+            {columns.map((target) => (
               <div key={target.id}>
                 {target.label}
                 {!target.live && ` · ${t("gen.col.tbd")}`}
