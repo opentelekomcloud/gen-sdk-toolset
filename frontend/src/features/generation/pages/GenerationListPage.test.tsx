@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { useLocation } from "react-router";
 import { renderPage } from "../../../test/render";
 import { keys } from "../../scan/api/queries";
@@ -151,6 +151,7 @@ describe("search", () => {
 
     fireEvent.change(await screen.findByPlaceholderText("Filter services…"), { target: { value: "core" } });
 
+    await waitFor(() => expect(location()).toBe("/generation?q=core"));
     expect(screen.getByText("customer-core")).toBeInTheDocument();
     expect(screen.queryByText("billing-api")).toBeNull();
     expect(screen.getByRole("button", { name: "All 1" })).toBeInTheDocument();
@@ -222,27 +223,45 @@ describe("states the mock does not hold today", () => {
   });
 });
 
-describe("with the per-target state switched off", () => {
+describe("with the per-target state switched off: the list the backend serves", () => {
+  const ECS = { name: "opentelekomcloud-docs/ecs", label: "ecs" };
+  const VPC = { name: "opentelekomcloud-docs/vpc", label: "vpc" };
+  const BACKEND: [readonly unknown[], unknown][] = [[keys.genList({ q: "" }), [ECS, VPC]]];
+
   beforeEach(() => {
     flags.showGenState = false;
   });
 
-  it("lists the services by name only, under a single service column", async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("lists every service the backend returned, by label only, under a single service column", async () => {
+    listPage("/generation", BACKEND);
+
+    expect(await screen.findByText("ecs")).toBeInTheDocument();
+    expect(screen.getByText("vpc")).toBeInTheDocument();
+    expect(screen.getByText("Service")).toBeInTheDocument();
+    expect(screen.queryByText("opentelekomcloud-docs/ecs")).toBeNull();
+    expect(screen.queryByText("Python SDK")).toBeNull();
+    expect(screen.queryByText("billing-api")).toBeNull();
+  });
+
+  it("asks the backend for the list", async () => {
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify([ECS]), { headers: { "Content-Type": "application/json" } }));
+
     listPage();
 
-    expect(await screen.findByText("billing-api")).toBeInTheDocument();
-    for (const name of ["customer-core", "device-mgmt", "notifications-hub", "tariff-catalog"]) {
-      expect(screen.getByText(name)).toBeInTheDocument();
-    }
-    expect(screen.getByText("Service")).toBeInTheDocument();
-    expect(screen.queryByText("Python SDK")).toBeNull();
-    expect(screen.queryByText("Ansible modules · TBD")).toBeNull();
+    expect(await screen.findByText("ecs")).toBeInTheDocument();
+    expect(fetch.mock.calls[0][0]).toBe("/api/generation/services");
   });
 
   it("shows nothing about generation in a row", async () => {
-    listPage();
+    listPage("/generation", BACKEND);
 
-    await screen.findByText("billing-api");
+    await screen.findByText("ecs");
     for (const state of ["Not generated", "In progress", "Failed", "Waiting for review", "Partial", "not connected"]) {
       expect(screen.queryByText(state)).toBeNull();
     }
@@ -251,35 +270,47 @@ describe("with the per-target state switched off", () => {
   });
 
   it("has no state chips", async () => {
-    listPage();
+    listPage("/generation", BACKEND);
 
-    await screen.findByText("billing-api");
+    await screen.findByText("ecs");
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
 
   it("does not apply a filter from the address", async () => {
-    listPage("/generation?filter=review");
+    listPage("/generation?filter=review", BACKEND);
 
-    expect(await screen.findByText("billing-api")).toBeInTheDocument();
-    for (const name of ["customer-core", "device-mgmt", "notifications-hub", "tariff-catalog"]) {
-      expect(screen.getByText(name)).toBeInTheDocument();
-    }
+    expect(await screen.findByText("ecs")).toBeInTheDocument();
+    expect(screen.getByText("vpc")).toBeInTheDocument();
   });
 
-  it("still narrows the rows by search", async () => {
-    listPage();
+  it("says so when the backend returns no services", async () => {
+    listPage("/generation", [[keys.genList({ q: "" }), []]]);
 
-    fireEvent.change(await screen.findByPlaceholderText("Filter services…"), { target: { value: "core" } });
-
-    expect(screen.getByText("customer-core")).toBeInTheDocument();
-    expect(screen.queryByText("billing-api")).toBeNull();
+    expect(await screen.findByText("No services match the current filter.")).toBeInTheDocument();
   });
 
-  it("still opens a service card on the default target from the row", async () => {
-    listPage();
+  it("searches through the backend, the text kept in the address", async () => {
+    listPage("/generation", [...BACKEND, [keys.genList({ q: "vp" }), [VPC]]]);
 
-    fireEvent.click(await screen.findByText("billing-api"));
+    fireEvent.change(await screen.findByPlaceholderText("Filter services…"), { target: { value: "vp" } });
 
-    expect(location()).toBe("/generation/billing-api");
+    await waitFor(() => expect(location()).toBe("/generation?q=vp"));
+    expect(await screen.findByText("vpc")).toBeInTheDocument();
+    expect(screen.queryByText("ecs")).toBeNull();
+  });
+
+  it("opens with the search the address holds", async () => {
+    listPage("/generation?q=vp", [[keys.genList({ q: "vp" }), [VPC]]]);
+
+    expect(await screen.findByText("vpc")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Filter services…")).toHaveValue("vp");
+  });
+
+  it("opens a service card from the row", async () => {
+    listPage("/generation", BACKEND);
+
+    fireEvent.click(await screen.findByText("ecs"));
+
+    expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs");
   });
 });

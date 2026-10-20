@@ -39,6 +39,13 @@ From the repo root:
 docker compose up --build
 ```
 
+Without access to Artifactory, use the dev file - the same stack, with the
+backend built on the public Python image:
+
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
 Starts both services:
 
 - Backend (FastAPI) on `http://localhost:8000`

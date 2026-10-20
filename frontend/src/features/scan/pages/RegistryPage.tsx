@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, ChevronRight, Search } from "lucide-react";
+import { useCallback } from "react";
+import { AlertTriangle, ChevronRight } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useRescan } from "../api/mutations";
 import { useServices, useSummary, type ServicesParams } from "../api/queries";
@@ -16,6 +16,8 @@ import { IneligibleSection } from "../ineligible/IneligibleSection";
 import { shortError } from "../lib/errors";
 import { chipCls, structOkCls } from "../styles";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
+import { SearchInput } from "../../../shared/search/SearchInput";
+import { useUrlSearch } from "../../../shared/search/useUrlSearch";
 
 const CHIPS: [ServiceFilter, MessageKey][] = [
   ["all", "filter.all"],
@@ -104,9 +106,10 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
 export function RegistryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { t } = useI18n();
+  const { q, input, setInput } = useUrlSearch();
   const params: ServicesParams = {
     status: (searchParams.get("status") as ServiceFilter) ?? "all",
-    q: searchParams.get("q") ?? "",
+    q,
     sort: (searchParams.get("sort") as ServiceSort) ?? "quality",
     rule: (searchParams.get("rule") as AttentionRuleCode) ?? undefined,
   };
@@ -127,14 +130,6 @@ export function RegistryPage() {
       ),
     [setSearchParams],
   );
-
-  /* Debounced search: keystrokes land in local state; the URL (and the API
-     request behind it) updates 300 ms after typing stops. */
-  const [qInput, setQInput] = useState(params.q ?? "");
-  useEffect(() => {
-    const t = setTimeout(() => setParam("q", qInput), 300);
-    return () => clearTimeout(t);
-  }, [qInput, setParam]);
 
   const { data } = useServices(params);
   const { data: summary } = useSummary();
@@ -158,15 +153,7 @@ export function RegistryPage() {
               {t(labelKey)} <span className="font-mono tabular-nums opacity-70">{data?.counts[k] ?? 0}</span>
             </button>
           ))}
-          <div className="relative ml-auto">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              value={qInput}
-              onChange={(e) => setQInput(e.target.value)}
-              placeholder={t("registry.search")}
-              className="w-48 rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm outline-none transition focus:border-gray-500"
-            />
-          </div>
+          <SearchInput value={input} onChange={setInput} />
           <select
             value={params.sort}
             onChange={(e) => setParam("sort", e.target.value)}

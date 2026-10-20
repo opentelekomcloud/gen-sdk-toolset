@@ -1,0 +1,72 @@
+# Local development without Artifactory: docker compose -f docker-compose.dev.yml up --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-panel}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-panel}
+      - POSTGRES_DB=${POSTGRES_DB:-panel}
+    # Exposed for local tooling (psql, IDE) only — do not publish in
+    # production; backend reaches the db over the compose network.
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-panel} -d ${POSTGRES_DB:-panel}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend.dev
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app/src
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - DATABASE__URL=postgresql+psycopg://${POSTGRES_USER:-panel}:${POSTGRES_PASSWORD:-panel}@db:5432/${POSTGRES_DB:-panel}
+      - PANEL__FRONTEND_ORIGIN=http://localhost:5173
+      # Without these the API answers 500: it cannot validate a token it has no
+      # issuer for. Set them in .env - see .env.example.
+      - AUTH__ISSUER=${AUTH__ISSUER:-}
+      - AUTH__AUDIENCE=${AUTH__AUDIENCE:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - BACKEND_URL=http://backend:8000
+      # The Vite dev server reads these at start; the panel shows a
+      # "sign-in is not configured" notice while they are empty.
+      - VITE_ZITADEL_ISSUER=${VITE_ZITADEL_ISSUER:-}
+      - VITE_ZITADEL_CLIENT_ID=${VITE_ZITADEL_CLIENT_ID:-}
+      - VITE_ZITADEL_SCOPE=${VITE_ZITADEL_SCOPE:-}
+      # The backend serves /api/scan/* itself now; set MOCK_API=1 to go back to
+      # the frontend/mock/scanApi.ts fixtures (UI work without a database).
+      - MOCK_API=${MOCK_API:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:

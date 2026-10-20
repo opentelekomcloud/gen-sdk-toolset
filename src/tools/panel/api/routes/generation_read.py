@@ -8,11 +8,11 @@ never call GitHub.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from tools.panel.api.deps import get_db
-from tools.panel.api.routes.scan_read import all_services
+from tools.panel.api.routes.scan_read import all_services, matches_search
 from tools.panel.api.schemas import GenerationServiceItem
 from tools.panel.core.service_state import in_generation_list
 
@@ -22,6 +22,7 @@ router = APIRouter()
 @router.get("/generation/services", response_model=list[GenerationServiceItem])
 def list_generation_services(
     db: Session = Depends(get_db),
+    q: str = Query(default=""),
 ) -> list[GenerationServiceItem]:
     """Services with something to generate, in the Scan registry's order.
 
@@ -32,5 +33,5 @@ def list_generation_services(
     return [
         GenerationServiceItem.from_service(service)
         for service, state in all_services(db)
-        if in_generation_list(state)
+        if in_generation_list(state) and matches_search(service, q)
     ]
