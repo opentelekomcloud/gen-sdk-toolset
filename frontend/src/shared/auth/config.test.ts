@@ -55,6 +55,7 @@ describe("OIDC configuration", () => {
   it("is not configured when neither source names an issuer and a client id", async () => {
     vi.stubEnv("VITE_ZITADEL_ISSUER", "");
     vi.stubEnv("VITE_ZITADEL_CLIENT_ID", "");
+    vi.stubEnv("VITE_ZITADEL_SCOPE", "");
     const { OIDC, isConfigured } = await load();
     expect(isConfigured()).toBe(false);
     expect(OIDC.scope).toBe("openid profile email");
