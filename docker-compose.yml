@@ -53,7 +53,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       secrets:
-        - ods_npmrc
+        - ods_npm_token
     ports:
       - "5173:5173"
     volumes:
@@ -77,7 +77,6 @@ volumes:
   pgdata:
 
 secrets:
-  # Your user-level npm config, which holds the ODS registry token
-  # (frontend/README.md, "ODS packages"); used only while the image builds.
-  ods_npmrc:
-    file: ${HOME}/.npmrc
+  # frontend/README.md, "ODS packages"
+  ods_npm_token:
+    environment: ODS_NPM_TOKEN

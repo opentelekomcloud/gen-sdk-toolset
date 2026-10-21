@@ -4,13 +4,10 @@
 # for the dev-server image, which this is not):
 #
 #   docker build -f Dockerfile.frontend --build-arg ARTIFACTORY_URL=... \
-#     --secret id=ods_npmrc,src=$HOME/.npmrc -t panel-frontend ./frontend
+#     --secret id=ods_npm_token,env=ODS_NPM_TOKEN -t panel-frontend ./frontend
 #
-# The ODS design-system packages come from the Telekom Artifactory npm
-# registry (issue #135). frontend/.npmrc names the registry; the credential is
-# the BuildKit secret `ods_npmrc` - an npmrc file holding the registry's
-# credential line (`_auth` in CI, your `_authToken` locally). It is mounted for
-# `npm ci` only, so no layer keeps it.
+# The ODS packages (issue #135) need the token as the BuildKit secret
+# `ods_npm_token`; frontend/.npmrc reads it as ODS_NPM_TOKEN.
 #
 # Both stages come from the organization's Artifactory mirror of Docker
 # Hardened Images (DEPLOYMENT.md, "Building the images"). The hardened nginx
@@ -28,8 +25,8 @@ ARG ARTIFACTORY_URL
 FROM ${ARTIFACTORY_URL}/dhi.io/node:24-alpine-dev AS build
 WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
-RUN --mount=type=secret,id=ods_npmrc,required=true \
-    NPM_CONFIG_USERCONFIG=/run/secrets/ods_npmrc npm ci
+RUN --mount=type=secret,id=ods_npm_token,required=true \
+    ODS_NPM_TOKEN="$(cat /run/secrets/ods_npm_token)" npm ci
 COPY . .
 RUN npm run build
 

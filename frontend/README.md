@@ -23,27 +23,25 @@ The UI is built on ODS, the OneExperience Design System (issue #135):
 `@telekom-ods/react-icons`. They live in the Telekom Artifactory npm registry,
 which needs a token.
 
-`.npmrc` in this directory names the registry and holds no secret. The token
-goes into your **user-level** npm config, once:
+`.npmrc` in this directory names the registry and reads the token from the
+`ODS_NPM_TOKEN` environment variable. Never put the token itself there - the
+file is committed, and this repository is public.
 
-1. Log in at <https://artifactory.devops.telekom.de/ui/login/>, open your
-   profile and generate an identity token.
-2. Store it - the prompt hides what you paste:
+Get a token once: log in at <https://artifactory.devops.telekom.de/ui/login/>,
+open your profile and generate an identity token, then put it into the root
+`.env` as `ODS_NPM_TOKEN=<token>`. Docker Compose hands it to the frontend
+image build as a secret; the image keeps no copy.
 
-   ```bash
-   read -s "T?Paste token: " && npm config set --location=user "//artifactory.devops.telekom.de/artifactory/api/npm/one-design-system-npm/:_authToken" "$T"; unset T
-   chmod 600 ~/.npmrc
-   ```
+npm itself does not read `.env`, so an install on the host needs
+`ODS_NPM_TOKEN` in the environment of that `npm install` / `npm ci`. Only
+installing needs it: `lint`, `build`, `test` and `dev` work from
+`node_modules` and never contact the registry. The checks also run in the dev
+container, with nothing installed on the host - see "Checks".
 
-After that `npm install` and `npm ci` work as usual, and `docker compose`
-passes the same `~/.npmrc` into the image build as a secret. Never put the
-token into `frontend/.npmrc` - it is committed, and this repository is public.
-
-CI needs no token of its own: the workflows log in with the organization's
-JFrog service account (`ARTIFACTORY_AUTH_USERNAME` / `ARTIFACTORY_AUTH_PASSWORD`,
-the secrets the Docker builds already use), which can read the ODS registry like
-any signed-in JFrog user. Pull requests from forks get no secrets, so their
-frontend jobs cannot install the packages.
+CI needs no token of its own: the workflows pass the organization's JFrog
+service account secret `ARTIFACTORY_AUTH_PASSWORD` - an identity token, the one
+the Docker builds already log in with - as `ODS_NPM_TOKEN`. Pull requests from
+forks get no secrets, so their frontend jobs cannot install the packages.
 
 **How the UI uses ODS.** `src/main.tsx` loads the fonts, tokens and component
 styles; `data-scheme` and `data-mode` on `<body>` drive the colours, and the
@@ -87,6 +85,32 @@ Two roles are granted in Zitadel and read from the token: `worker` may launch an
 cancel scans, activate snapshots and exclude services; `viewer` may read. The UI
 hides what a viewer cannot use, and the backend refuses it independently - the
 hiding is a courtesy, the `403` is the boundary.
+
+## Checks
+
+Lint, typecheck with build, and the tests with their coverage gate - the three
+the `frontend` CI job runs and the Definition of Done in `../AGENTS.md` asks
+for. Either place works.
+
+**In the dev container**, from the repository root. It needs only
+`ODS_NPM_TOKEN` in the root `.env`; nothing is installed on the host:
+
+```bash
+docker compose -f docker-compose.dev.yml run --rm --no-deps frontend sh -c "npm run lint && npm run build && npm run test:coverage"
+```
+
+The first run builds the image. After `package.json` or `package-lock.json`
+changes, rebuild it with
+`docker compose -f docker-compose.dev.yml build frontend` - the container's
+`node_modules` comes from the image, not from your checkout. `dist/` and
+`coverage/` land in this directory as usual.
+
+**On the host**, from this `frontend/` directory, once `node_modules` is
+installed (see "ODS packages"):
+
+```bash
+npm run lint && npm run build && npm run test:coverage
+```
 
 ## Tests
 

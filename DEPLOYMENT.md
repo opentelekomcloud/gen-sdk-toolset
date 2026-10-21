@@ -34,13 +34,12 @@ organization secrets `ARTIFACTORY_URL`, `ARTIFACTORY_AUTH_USERNAME`,
 the login is done once by hand.
 
 The frontend image also installs the ODS design-system packages from the
-Artifactory **npm** registry (issue #135). That credential is a BuildKit secret
-named `ods_npmrc` - an npmrc file with the registry's credential line - mounted
-for `npm ci` only, so the image keeps no copy. CI builds it from the same
-`ARTIFACTORY_AUTH_USERNAME` / `ARTIFACTORY_AUTH_PASSWORD` service account, as
-npm basic auth; locally, pass your `~/.npmrc`
-(`--secret id=ods_npmrc,src=$HOME/.npmrc`, which `docker compose` does for
-you). See `frontend/README.md`, "ODS packages".
+Artifactory **npm** registry (issue #135). The token is a BuildKit secret named
+`ods_npm_token`, used for `npm ci` only, so the image keeps no copy. CI passes
+the `ARTIFACTORY_AUTH_PASSWORD` service-account secret, which is an identity
+token; locally `docker compose` passes `ODS_NPM_TOKEN` from `.env` (by hand:
+`--secret id=ods_npm_token,env=ODS_NPM_TOKEN`). See `frontend/README.md`,
+"ODS packages".
 
 ## Components
 

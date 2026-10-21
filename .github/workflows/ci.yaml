@@ -108,22 +108,12 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # ODS packages come from the Telekom Artifactory npm registry. the credential is the
-      # organization's JFrog service account (ARTIFACTORY_AUTH_*), written as
-      # npm basic auth into the runner's user-level npm config so it never
-      # touches the checkout. GitHub masks the secrets but not a value derived
-      # from them, hence the explicit mask on the base64 form.
-      - name: Authenticate to the ODS npm registry
-        env:
-          ARTIFACTORY_AUTH_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USERNAME }}
-          ARTIFACTORY_AUTH_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_PASSWORD }}
-        run: |
-          auth=$(printf '%s:%s' "$ARTIFACTORY_AUTH_USERNAME" "$ARTIFACTORY_AUTH_PASSWORD" | base64 -w0)
-          echo "::add-mask::$auth"
-          npm config set --location=user "//artifactory.devops.telekom.de/artifactory/api/npm/one-design-system-npm/:_auth" "$auth"
-
+      # ARTIFACTORY_AUTH_PASSWORD is an identity token; frontend/.npmrc reads
+      # it as ODS_NPM_TOKEN (issue #135).
       - name: Install dependencies
         run: npm ci
+        env:
+          ODS_NPM_TOKEN: ${{ secrets.ARTIFACTORY_AUTH_PASSWORD }}
 
       - name: Run ESLint
         run: npm run lint
@@ -162,14 +152,6 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Authenticate to the ODS npm registry
-        env:
-          ARTIFACTORY_AUTH_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USERNAME }}
-          ARTIFACTORY_AUTH_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_PASSWORD }}
-        run: |
-          auth=$(printf '%s:%s' "$ARTIFACTORY_AUTH_USERNAME" "$ARTIFACTORY_AUTH_PASSWORD" | base64 -w0)
-          echo "::add-mask::$auth"
-          npm config set --location=user "//artifactory.devops.telekom.de/artifactory/api/npm/one-design-system-npm/:_auth" "$auth"
 
       # The install the setup docs prescribe, from both lockfiles: the artifacts
       # are only reproducible against the dependency set that produced them, and
@@ -179,6 +161,8 @@ jobs:
         run: |
           uv sync --extra dev --extra panel --frozen
           npm --prefix frontend ci
+        env:
+          ODS_NPM_TOKEN: ${{ secrets.ARTIFACTORY_AUTH_PASSWORD }}
 
       # The schema is built from the app object, not from a running server, so
       # this job needs neither the database nor a GitHub token.
