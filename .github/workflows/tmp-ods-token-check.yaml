@@ -1,0 +1,26 @@
+# TEMPORARY (issue #135): does ARTIFACTORY_AUTH_PASSWORD work as an npm
+# _authToken (Bearer) against the ODS registry? Prints only the secret's kind
+# and the HTTP status, never the value. Delete with its branch once read.
+name: tmp-ods-token-check
+on: pull_request
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Classify the secret and try it as a Bearer token
+        env:
+          P: ${{ secrets.ARTIFACTORY_AUTH_PASSWORD }}
+        run: |
+          case "$P" in
+            cmVmdGtu*) echo "kind: reference/identity token" ;;
+            eyJ*)      echo "kind: access token (JWT)" ;;
+            AKCp*)     echo "kind: API key - will not work as _authToken" ;;
+            "")        echo "kind: secret is empty or not available" ;;
+            *)         echo "kind: no token prefix - likely a password" ;;
+          esac
+          url="https://artifactory.devops.telekom.de/artifactory/api/npm/one-design-system-npm/@telekom-ods%2freact-icons"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $P" "$url")
+          echo "Bearer: HTTP $code"
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+          echo "No auth (baseline): HTTP $code"
