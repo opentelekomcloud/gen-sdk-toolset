@@ -314,3 +314,199 @@ describe("with the per-target state switched off: the list the backend serves", 
     expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs");
   });
 });
+
+describe("a scan that ends while the list is open", () => {
+  const ECS = { name: "opentelekomcloud-docs/ecs", label: "ecs" };
+  const VPC = { name: "opentelekomcloud-docs/vpc", label: "vpc" };
+  const DNS = { name: "opentelekomcloud-docs/dns", label: "dns" };
+  const scanningItem = (service: { name: string }, job_id: number) => ({ name: service.name, scan_status: "scanning", job_id });
+  /** The header's summary as it reads while scans are running. */
+  const SCANNING: [readonly unknown[], unknown][] = [
+    [keys.summary, { scanner_version: "0.1.0", services_total: 3, scans_running: 1 }],
+  ];
+
+  interface Backend {
+    /** One answer per request to the scanning services, the last repeated; a number is an error status. */
+    scanning: (unknown[] | number)[];
+    /** Per job, its status on each poll, the last repeated. */
+    jobs: Record<number, string[]>;
+    /** The Generation list on each request, the last repeated. */
+    lists: unknown[][];
+    /** `scans_running` on each summary refetch, the last repeated. */
+    running?: number[];
+  }
+
+  function stubBackend(backend: Backend) {
+    const seen: Record<string, number> = {};
+    const nth = <T,>(answers: T[], key: string) => {
+      seen[key] = (seen[key] ?? 0) + 1;
+      return answers[Math.min(seen[key], answers.length) - 1];
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://panel.test");
+      const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
+      if (url.pathname === "/api/scan/services") {
+        const answer = nth(backend.scanning, "scanning");
+        return typeof answer === "number"
+          ? json({ error: { code: "internal_error", message: "boom" } }, answer)
+          : json({ items: answer, counts: {} });
+      }
+      if (url.pathname === "/api/scan/summary") {
+        const scans_running = nth(backend.running ?? [0], "summary");
+        return json({ scanner_version: "0.1.0", services_total: 3, scans_running });
+      }
+      const job = /^\/api\/jobs\/(\d+)$/.exec(url.pathname);
+      if (job) {
+        const id = Number(job[1]);
+        return json({ id, kind: "scan", status: nth(backend.jobs[id], `job ${id}`) });
+      }
+      if (url.pathname === "/api/generation/services") return json(nth(backend.lists, "list"));
+      return json([]);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const calls = (path: string) => fetchMock.mock.calls.filter(([input]) => String(input).startsWith(path)).length;
+    return { calls };
+  }
+
+  /** A job poll comes every 1.5s, so a second terminal edge takes longer than findBy's default. */
+  const SLOW = { timeout: 5000 };
+
+  beforeEach(() => {
+    flags.showGenState = false;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("asks the backend for the list again, and shows what it answers", async () => {
+    const { calls } = stubBackend({
+      scanning: [[scanningItem(VPC, 7)]],
+      jobs: { 7: ["done"] },
+      lists: [[ECS], [ECS, VPC]],
+    });
+
+    listPage("/generation", SCANNING);
+
+    expect(await screen.findByText("ecs")).toBeInTheDocument();
+    expect(await screen.findByText("vpc")).toBeInTheDocument();
+    expect(calls("/api/generation/services")).toBe(2);
+    // the job reached its terminal state, so it is not polled again
+    expect(calls("/api/jobs/7")).toBe(1);
+  });
+
+  it("leaves the list alone when the scan failed", async () => {
+    const { calls } = stubBackend({
+      scanning: [[scanningItem(VPC, 7)]],
+      jobs: { 7: ["failed"] },
+      lists: [[ECS], [ECS, VPC]],
+    });
+
+    listPage("/generation", SCANNING);
+
+    expect(await screen.findByText("ecs")).toBeInTheDocument();
+    // the failure refreshed the scan state - the summary - and nothing more
+    await waitFor(() => expect(calls("/api/scan/summary")).toBe(1));
+    expect(calls("/api/jobs/7")).toBe(1);
+    expect(calls("/api/generation/services")).toBe(1);
+    expect(screen.queryByText("vpc")).toBeNull();
+  });
+
+  it("asks nothing about scans while none is running", async () => {
+    const { calls } = stubBackend({ scanning: [[]], jobs: {}, lists: [[ECS]] });
+
+    listPage();
+
+    expect(await screen.findByText("ecs")).toBeInTheDocument();
+    expect(calls("/api/scan/services")).toBe(0);
+    expect(calls("/api/jobs/")).toBe(0);
+  });
+
+  it("does not replay a scan the cache remembers from an earlier visit", async () => {
+    // The scanning services as a visit some minutes ago read them: job 7 has
+    // long ended, and watching it again would refresh vpc's views for nothing.
+    const { calls } = stubBackend({ scanning: [[]], jobs: { 7: ["done"] }, lists: [[ECS]] });
+
+    listPage("/generation", [[keys.services({ status: "scanning" }), { items: [scanningItem(VPC, 7)], counts: {} }]]);
+
+    expect(await screen.findByText("ecs")).toBeInTheDocument();
+    expect(calls("/api/jobs/7")).toBe(0);
+    expect(calls("/api/generation/services")).toBe(1);
+  });
+
+  it("asks again on a quick return, however fresh the cached answer is", async () => {
+    // A visit seconds ago read job 7 as running and the cache still holds that
+    // answer; it is not watched, so this visit must read its own.
+    stubBackend({
+      scanning: [[scanningItem(VPC, 7)]],
+      jobs: { 7: ["done"] },
+      lists: [[ECS], [ECS, VPC]],
+    });
+
+    listPage("/generation", [
+      ...SCANNING,
+      [keys.services({ status: "scanning" }), { items: [scanningItem(VPC, 7)], counts: {} }],
+    ]);
+
+    expect(await screen.findByText("vpc")).toBeInTheDocument();
+  });
+
+  it("keeps watching the scans it read when a later refresh of them fails", async () => {
+    // Job 7 ends first, and the refetch that follows it fails. Job 9 was read
+    // before that, so its end still refreshes the list; once no scan is left,
+    // the notice goes too - there is nothing more the list could miss.
+    stubBackend({
+      scanning: [[scanningItem(VPC, 7), scanningItem(DNS, 9)], 500],
+      jobs: { 7: ["done"], 9: ["running", "done"] },
+      lists: [[ECS], [ECS, VPC], [ECS, VPC, DNS]],
+      running: [1, 0],
+    });
+
+    listPage("/generation", SCANNING);
+
+    expect(await screen.findByText(/Running scans could not be checked/)).toBeInTheDocument();
+    expect(await screen.findByText("vpc")).toBeInTheDocument();
+    expect(await screen.findByText("dns", {}, SLOW)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/Running scans could not be checked/)).toBeNull());
+  });
+
+  it("keeps watching a scan that ended before its watcher saw it, when the next answer leaves it out", async () => {
+    // Job 7 ends and its refetch arrives after job 9 ended too: the backend no
+    // longer lists 9 as scanning, but its watcher has not polled it to the end
+    // yet. Dropping the watcher with the row would leave dns off the list.
+    stubBackend({
+      scanning: [[scanningItem(VPC, 7), scanningItem(DNS, 9)], []],
+      jobs: { 7: ["done"], 9: ["running", "done"] },
+      lists: [[ECS], [ECS, VPC], [ECS, VPC, DNS]],
+      running: [0],
+    });
+
+    listPage("/generation", SCANNING);
+
+    expect(await screen.findByText("vpc")).toBeInTheDocument();
+    expect(await screen.findByText("dns", {}, SLOW)).toBeInTheDocument();
+  });
+
+  it("says it stopped following the scans when they cannot be read, and recovers on Retry", async () => {
+    // Another scan still counts as running throughout, so the notice can only
+    // go because the retried request succeeded - not because nothing is left to watch.
+    stubBackend({
+      scanning: [500, [scanningItem(VPC, 7)]],
+      jobs: { 7: ["done"] },
+      lists: [[ECS], [ECS, VPC]],
+      running: [1],
+    });
+
+    listPage("/generation", SCANNING);
+
+    expect(await screen.findByText(/Running scans could not be checked/)).toBeInTheDocument();
+    // the list itself still loaded: the notice is about the watching, not the services
+    expect(screen.getByText("ecs")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    // the retried answer is watched: its job's end brings vpc in, and the notice is gone
+    expect(await screen.findByText("vpc")).toBeInTheDocument();
+    expect(screen.queryByText(/Running scans could not be checked/)).toBeNull();
+  });
+});
