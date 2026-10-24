@@ -4,7 +4,8 @@ React + TypeScript + Vite frontend for the scan panel.
 
 ## Local development
 
-Requires Node 22+. Run from this `frontend/` directory:
+Requires Node 22+ and a token for the ODS packages (next section). Run from
+this `frontend/` directory:
 
 ```bash
 npm install
@@ -14,6 +15,43 @@ npm run dev
 The dev server starts on `http://localhost:5173` and proxies API requests
 to the backend at `http://127.0.0.1:8000` (start the backend separately —
 see the root README).
+
+## ODS packages
+
+The UI is built on ODS, the OneExperience Design System (issue #135):
+`@telekom-ods/react-ui-kit`, `@telekom-ods/design-tokens` and
+`@telekom-ods/react-icons`. They live in the Telekom Artifactory npm registry,
+which needs a token.
+
+`.npmrc` in this directory names the registry and reads the token from the
+`ODS_NPM_TOKEN` environment variable. Never put the token itself there - the
+file is committed, and this repository is public.
+
+Get a token once: log in at <https://artifactory.devops.telekom.de/ui/login/>,
+open your profile and generate an identity token, then put it into the root
+`.env` as `ODS_NPM_TOKEN=<token>`. Docker Compose hands it to the frontend
+image build as a secret; the image keeps no copy.
+
+npm itself does not read `.env`, so an install on the host needs
+`ODS_NPM_TOKEN` in the environment of that `npm install` / `npm ci`. Only
+installing needs it: `lint`, `build`, `test` and `dev` work from
+`node_modules` and never contact the registry. The checks also run in the dev
+container, with nothing installed on the host - see "Checks".
+
+CI needs no token of its own: the workflows pass the organization's JFrog
+service account secret `ARTIFACTORY_AUTH_PASSWORD` - an identity token, the one
+the Docker builds already log in with - as `ODS_NPM_TOKEN`. Pull requests from
+forks get no secrets, so their frontend jobs cannot install the packages.
+
+**How the UI uses ODS.** `src/main.tsx` loads the fonts, tokens and component
+styles; `data-scheme` and `data-mode` on `<body>` drive the colours, and the
+header's light/dark switch sets `data-mode`. `src/index.css` maps Tailwind's
+colours onto the ODS tokens - use `bg-surface`, `text-ink`, `text-success`,
+`neutral-*` and so on; the Tailwind palette (`gray-*`, `red-*`, …) is switched
+off and `src/theme.test.ts` fails on it. Use the ODS component where one fits
+(`ODSButton`, `ODSInlineNotification`, `ODSDialog`, …) and its icons from
+`@telekom-ods/react-icons`; `src/shared/ui/` holds the few helpers for what
+ODS 3.0.1 does not cover (text fields, router links drawn as buttons).
 
 ## Signing in
 
@@ -47,6 +85,32 @@ Two roles are granted in Zitadel and read from the token: `worker` may launch an
 cancel scans, activate snapshots and exclude services; `viewer` may read. The UI
 hides what a viewer cannot use, and the backend refuses it independently - the
 hiding is a courtesy, the `403` is the boundary.
+
+## Checks
+
+Lint, typecheck with build, and the tests with their coverage gate - the three
+the `frontend` CI job runs and the Definition of Done in `../AGENTS.md` asks
+for. Either place works.
+
+**In the dev container**, from the repository root. It needs only
+`ODS_NPM_TOKEN` in the root `.env`; nothing is installed on the host:
+
+```bash
+docker compose -f docker-compose.dev.yml run --rm --no-deps frontend sh -c "npm run lint && npm run build && npm run test:coverage"
+```
+
+The first run builds the image. After `package.json` or `package-lock.json`
+changes, rebuild it with
+`docker compose -f docker-compose.dev.yml build frontend` - the container's
+`node_modules` comes from the image, not from your checkout. `dist/` and
+`coverage/` land in this directory as usual.
+
+**On the host**, from this `frontend/` directory, once `node_modules` is
+installed (see "ODS packages"):
+
+```bash
+npm run lint && npm run build && npm run test:coverage
+```
 
 ## Tests
 

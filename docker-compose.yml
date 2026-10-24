@@ -52,6 +52,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      secrets:
+        - ods_npm_token
     ports:
       - "5173:5173"
     volumes:
@@ -73,3 +75,8 @@ services:
 
 volumes:
   pgdata:
+
+secrets:
+  # frontend/README.md, "ODS packages"
+  ods_npm_token:
+    environment: ODS_NPM_TOKEN

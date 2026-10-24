@@ -26,8 +26,11 @@ either one.
 ```bash
 uv sync --extra dev --extra panel      # Python 3.13
 cp .env.example .env                   # then set GITHUB_TOKEN=ghp_...
-cd frontend && npm ci                  # frontend deps
+cd frontend && npm ci                  # frontend deps - needs the ODS token
 ```
+
+The frontend's ODS packages come from a private registry: set up the token
+once as `frontend/README.md`, "ODS packages", describes.
 
 `GITHUB_TOKEN` is deliberately kept out of the TOML config: it lives in `.env`
 or the environment only.

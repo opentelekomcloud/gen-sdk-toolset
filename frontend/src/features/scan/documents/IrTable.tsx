@@ -13,22 +13,22 @@ function ParamRows({ params, depth = 0 }: { params: Parameter[]; depth?: number 
         return (
           <Fragment key={`${depth}-${i}-${p.name}`}>
             <div
-              className={`grid grid-cols-12 gap-2 border-b border-gray-100 px-3 py-1.5 font-mono text-[11px] last:border-0 ${
-                unknown ? "bg-amber-50" : "bg-white"
+              className={`grid grid-cols-12 gap-2 border-b border-neutral-100 px-3 py-1.5 font-mono text-[11px] last:border-0 ${
+                unknown ? "bg-warning-subtle" : "bg-surface"
               }`}
             >
-              <div className="col-span-3 truncate text-gray-800" style={{ paddingLeft: depth * 14 }} title={p.name}>
-                {depth > 0 && <span className="text-gray-300">└ </span>}
+              <div className="col-span-3 truncate text-ink" style={{ paddingLeft: depth * 14 }} title={p.name}>
+                {depth > 0 && <span className="text-neutral-400">└ </span>}
                 {p.name}
               </div>
               <div
-                className={`col-span-3 truncate ${unknown ? "font-semibold text-amber-700" : "text-gray-600"}`}
+                className={`col-span-3 truncate ${unknown ? "font-semibold text-warning" : "text-ink-recessive"}`}
                 title={label}
               >
                 {unknown ? t("ir.unknown") : label}
               </div>
-              <div className="col-span-1 text-gray-500">{p.mandatory ? t("ir.yes") : "—"}</div>
-              <div className="col-span-5 truncate text-gray-400" title={p.description}>
+              <div className="col-span-1 text-neutral-700">{p.mandatory ? t("ir.yes") : "—"}</div>
+              <div className="col-span-5 truncate text-neutral-600" title={p.description}>
                 {p.description || "—"}
               </div>
             </div>
@@ -44,11 +44,11 @@ function ParamRows({ params, depth = 0 }: { params: Parameter[]; depth?: number 
 export function IrTable({ section }: { section: SectionDetail }) {
   const { t } = useI18n();
   if (!section.parameters) {
-    return <div className="px-3 py-2 text-xs text-gray-400">{t("ir.noTable")}</div>;
+    return <div className="px-3 py-2 text-xs text-neutral-600">{t("ir.noTable")}</div>;
   }
   return (
-    <div className="overflow-hidden rounded border border-gray-200">
-      <div className="grid grid-cols-12 gap-2 border-b border-gray-200 bg-gray-100 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+    <div className="overflow-hidden rounded border border-neutral-200">
+      <div className="grid grid-cols-12 gap-2 border-b border-neutral-200 bg-neutral-100 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-700">
         <div className="col-span-3">{t("ir.field")}</div>
         <div className="col-span-3">{t("ir.type")}</div>
         <div className="col-span-1">{t("ir.req")}</div>

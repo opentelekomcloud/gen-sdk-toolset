@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ODSCollapseDown, ODSNavigationRight } from "@telekom-ods/react-icons";
 import type { SectionDetail } from "../../../shared/api/types";
 import { sectionLabelKey } from "../constants";
 import { SECTION_STATUS_CLS } from "../styles";
@@ -17,13 +17,13 @@ export function DocSectionRow({ section }: { section: SectionDetail }) {
         }`
       : "";
   return (
-    <div className="rounded border border-gray-200 bg-white">
+    <div className="rounded border border-neutral-200 bg-surface">
       <div
-        className="flex cursor-pointer items-center justify-between px-2.5 py-1.5 hover:bg-gray-50"
+        className="flex cursor-pointer items-center justify-between px-2.5 py-1.5 hover:bg-neutral-50"
         onClick={() => setOpen(!open)}
       >
-        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-          {open ? <ChevronDown size={12} className="text-gray-400" /> : <ChevronRight size={12} className="text-gray-400" />}
+        <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-700">
+          {open ? <ODSCollapseDown decorative size={12} className="text-neutral-600" /> : <ODSNavigationRight decorative size={12} className="text-neutral-600" />}
           {t(sectionLabelKey(section.name))}
         </span>
         <span className={`font-mono text-[11px] font-medium ${SECTION_STATUS_CLS[section.status]}`}>
@@ -34,25 +34,25 @@ export function DocSectionRow({ section }: { section: SectionDetail }) {
       {section.issues.map((i, idx) => (
         <div
           key={idx}
-          className="truncate px-2.5 pb-1 font-mono text-[10px] text-gray-500"
+          className="truncate px-2.5 pb-1 font-mono text-[10px] text-neutral-700"
           title={`${i.code} ${i.location ?? ""} ${i.details ?? ""}`}
         >
-          <span className="text-amber-700">{i.code}</span>
+          <span className="text-warning">{i.code}</span>
           {i.location ? ` @ ${i.location}` : ""}
           {i.details ? ` — ${i.details}` : ""}
         </div>
       ))}
       {open && (
-        <div className="space-y-2 border-t border-gray-100 p-2">
+        <div className="space-y-2 border-t border-neutral-100 p-2">
           {/* `?? []` guards a detail cached before examples existed: the query
               keeps document details forever (staleTime: Infinity). */}
           {(section.examples ?? []).map((example, idx) => (
-            <figure key={idx} className="overflow-hidden rounded border border-gray-200">
-              <figcaption className="flex items-center justify-between gap-2 border-b border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-500">
+            <figure key={idx} className="overflow-hidden rounded border border-neutral-200">
+              <figcaption className="flex items-center justify-between gap-2 border-b border-neutral-200 bg-surface px-2 py-1 text-[10px] text-neutral-700">
                 <span className="truncate">{example.label || t("doc.example")}</span>
                 {example.language && <span className="font-mono">{example.language}</span>}
               </figcaption>
-              <pre className="max-h-72 overflow-auto bg-gray-900 px-3 py-2 text-[11px] leading-relaxed text-gray-100">
+              <pre className="max-h-72 overflow-auto bg-neutral-900 px-3 py-2 text-[11px] leading-relaxed text-neutral-100">
                 <code>{example.raw}</code>
               </pre>
             </figure>

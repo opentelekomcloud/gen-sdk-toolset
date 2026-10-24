@@ -18,10 +18,10 @@ export function SectionCard({ name, stats, onPick, active }: Props) {
   const { t } = useI18n();
   const tone = sectionTone(stats);
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3">
+    <div className="rounded-lg border border-neutral-200 bg-surface p-3">
       <div className="mb-1.5 flex items-center gap-2">
         <span className={`h-2.5 w-2.5 rounded-sm ${TONE_BG[tone]}`} />
-        <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">{t(sectionLabelKey(name))}</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-ink-recessive">{t(sectionLabelKey(name))}</span>
       </div>
       {stats ? (
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs tabular-nums">
@@ -33,7 +33,7 @@ export function SectionCard({ name, stats, onPick, active }: Props) {
                 onClick={() => onPick(k)}
                 title={t("section.filterHint")}
                 className={`${SECTION_STATUS_CLS[k]} rounded px-1 underline-offset-2 transition hover:underline ${
-                  active === k ? "bg-gray-900 text-white" : ""
+                  active === k ? "bg-contrast text-on-contrast" : ""
                 }`}
               >
                 {k} {stats[k]}
@@ -46,7 +46,7 @@ export function SectionCard({ name, stats, onPick, active }: Props) {
           )}
         </div>
       ) : (
-        <span className="text-xs text-gray-400">{t("section.noData")}</span>
+        <span className="text-xs text-neutral-600">{t("section.noData")}</span>
       )}
     </div>
   );

@@ -20,6 +20,10 @@ export default defineConfig({
        them, and a DOM for the handful of logic suites costs nothing. */
     environment: 'jsdom',
     setupFiles: ['src/test/setup.ts'],
+    /* ODS components import their own CSS from inside the package. Left
+       external, Node would load that file and fail on the `.css` extension;
+       inlined, Vite handles it the same way the app build does. */
+    server: { deps: { inline: [/@telekom-ods\//] } },
     include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',

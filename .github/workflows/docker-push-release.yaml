@@ -78,6 +78,10 @@ jobs:
           sbom: false
           build-args: |
             ARTIFACTORY_URL=${{ secrets.ARTIFACTORY_URL }}
+          # ODS registry (issue #135): this "password" is an identity token.
+          # The backend build ignores it.
+          secrets: |
+            ods_npm_token=${{ secrets.ARTIFACTORY_AUTH_PASSWORD }}
 
       - name: Choose image ref and version for the SBOM
         id: ref

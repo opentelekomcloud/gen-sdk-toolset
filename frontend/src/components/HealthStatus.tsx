@@ -14,6 +14,6 @@ export function HealthStatus() {
   })
 
   if (isLoading) return <p>Checking backend…</p>
-  if (isError) return <p className="text-red-600">Backend unreachable</p>
-  return <p>Backend status: <span className="font-medium text-brand">{data?.status}</span></p>
+  if (isError) return <p className="text-danger">Backend unreachable</p>
+  return <p>Backend status: <span className="font-medium text-brand-text">{data?.status}</span></p>
 }

@@ -24,6 +24,11 @@ export const de: Record<keyof typeof en, string> = {
   "header.subtitle": "Service-Scan-Registry · T Cloud Public",
   "header.scansRunning": "laufende Scans: {n}",
   "header.scanner": "Scanner v{v}",
+  "header.mainMenu": "Bereiche",
+  "header.secondaryMenu": "Konto und Anzeige",
+  "header.switchLang": "English",
+  "theme.toDark": "Dunkelmodus",
+  "theme.toLight": "Hellmodus",
 
   "tab.scan": "Scan",
   "tab.generation": "Generierung",
@@ -61,6 +66,7 @@ export const de: Record<keyof typeof en, string> = {
   "sort.docs": "Meiste Doks zuerst",
   "sort.name": "Nach Name",
 
+  "registry.sort": "Sortierung",
   "registry.search": "Services filtern…",
   "registry.col.service": "Service",
   "registry.col.status": "Scan-Status",

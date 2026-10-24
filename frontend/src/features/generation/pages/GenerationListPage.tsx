@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { ODSNavigationRight } from "@telekom-ods/react-icons";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { useGenerationList, useGenerationServices, useGenerationTargets } from "../data/queries";
 import type { GenFilter, GenService, GenTarget } from "../data/types";
@@ -14,21 +14,21 @@ import { useUrlSearch } from "../../../shared/search/useUrlSearch";
 const CHIPS: GenFilter[] = ["all", "not_generated", "in_progress", "failed", "review", "partial"];
 
 /** A target that is not connected and has nothing generated. */
-const NOT_CONNECTED_CLS = "bg-white text-gray-400 border-gray-200";
+const NOT_CONNECTED_CLS = "bg-surface text-neutral-600 border-neutral-200";
 
 /** The service takes half the row and the targets share the rest, however many there are. */
 const gridCols = (targets: number) => ({ gridTemplateColumns: `minmax(0,2fr) repeat(${targets}, minmax(0,1fr))` });
 
 const ROW_CLS =
-  "grid cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-2.5 transition last:border-0 hover:bg-gray-50";
+  "grid cursor-pointer items-center gap-3 border-b border-neutral-100 px-4 py-2.5 transition last:border-0 hover:bg-neutral-50";
 const HEAD_CLS =
-  "grid gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500";
+  "grid gap-3 border-b border-neutral-200 bg-neutral-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-700";
 
 function ServiceCell({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-1.5 overflow-hidden">
-      <ChevronRight size={14} className="shrink-0 text-gray-400" />
-      <span className="truncate font-mono text-sm text-gray-800">{label}</span>
+      <ODSNavigationRight decorative size={14} className="shrink-0 text-neutral-600" />
+      <span className="truncate font-mono text-sm text-ink">{label}</span>
     </div>
   );
 }
@@ -76,7 +76,7 @@ function ServiceRow({ service, targets }: { service: GenService; targets: GenTar
               />
             </button>
             {total > 0 && (
-              <span className="font-mono text-[11px] text-gray-400">
+              <span className="font-mono text-[11px] text-neutral-600">
                 {merged}/{total}
               </span>
             )}
@@ -121,7 +121,7 @@ function StateList() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
-      <div className="mb-3 text-xs text-gray-400">
+      <div className="mb-3 text-xs text-neutral-600">
         {t("gen.list.eligible")} {targets && t("gen.list.editions", { n: targets.length })}
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -135,7 +135,7 @@ function StateList() {
       </div>
 
       {targets && services && (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-surface shadow-sm">
           <div style={gridCols(targets.length)} className={HEAD_CLS}>
             <div>{t("registry.col.service")}</div>
             {targets.map((target) => (
@@ -148,7 +148,7 @@ function StateList() {
           {rows.map((s) => (
             <ServiceRow key={s.name} service={s} targets={targets} />
           ))}
-          {rows.length === 0 && <div className="px-4 py-10 text-center text-sm text-gray-400">{t("registry.empty")}</div>}
+          {rows.length === 0 && <div className="px-4 py-10 text-center text-sm text-neutral-600">{t("registry.empty")}</div>}
         </div>
       )}
     </div>
@@ -165,7 +165,7 @@ function ServiceList() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
-      <div className="mb-3 text-xs text-gray-400">
+      <div className="mb-3 text-xs text-neutral-600">
         {t("gen.list.eligible")} {targets && t("gen.list.editions", { n: targets.length })}
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -173,7 +173,7 @@ function ServiceList() {
       </div>
 
       {services && (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-surface shadow-sm">
           <div style={gridCols(0)} className={HEAD_CLS}>
             <div>{t("registry.col.service")}</div>
           </div>
@@ -192,7 +192,7 @@ function ServiceList() {
             </div>
           ))}
           {services.length === 0 && (
-            <div className="px-4 py-10 text-center text-sm text-gray-400">{t("registry.empty")}</div>
+            <div className="px-4 py-10 text-center text-sm text-neutral-600">{t("registry.empty")}</div>
           )}
         </div>
       )}

@@ -33,6 +33,14 @@ organization secrets `ARTIFACTORY_URL`, `ARTIFACTORY_AUTH_USERNAME`,
 `ARTIFACTORY_AUTH_PASSWORD`; locally, `ARTIFACTORY_URL` goes into `.env` and
 the login is done once by hand.
 
+The frontend image also installs the ODS design-system packages from the
+Artifactory **npm** registry (issue #135). The token is a BuildKit secret named
+`ods_npm_token`, used for `npm ci` only, so the image keeps no copy. CI passes
+the `ARTIFACTORY_AUTH_PASSWORD` service-account secret, which is an identity
+token; locally `docker compose` passes `ODS_NPM_TOKEN` from `.env` (by hand:
+`--secret id=ods_npm_token,env=ODS_NPM_TOKEN`). See `frontend/README.md`,
+"ODS packages".
+
 ## Components
 
 | Component | Image | Command | Replicas |

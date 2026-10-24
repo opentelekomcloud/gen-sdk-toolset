@@ -1,4 +1,5 @@
-import { History } from "lucide-react";
+import { ODSHistory } from "@telekom-ods/react-icons";
+import { ODSInlineNotification } from "@telekom-ods/react-ui-kit/ODSInlineNotification";
 import type { ServiceDetail } from "../../../shared/api/types";
 import { fmtSnapshotAt } from "../lib/snapshot";
 import { useI18n } from "../../../shared/i18n";
@@ -17,26 +18,21 @@ export function SnapshotBanner({ service, onActivateLatest, canActivate }: Props
   const latest = service.latest_snapshot;
   if (!active || !latest || active.id === latest.id) return null;
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-      <span className="flex items-center gap-2">
-        <History size={14} />
-        {t("snapBanner.text", {
-          activeId: active.id,
-          at: fmtSnapshotAt(active.created_at, locale),
-          ver: active.scanner_version,
-          latestId: latest.id,
-          latestAt: fmtSnapshotAt(latest.last_scanned_at, locale),
-        })}
-      </span>
-      {canActivate && (
-        <button
-          type="button"
-          onClick={onActivateLatest}
-          className="rounded border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-800 transition hover:border-amber-500"
-        >
-          {t("snapBanner.activateLatest")}
-        </button>
-      )}
-    </div>
+    <ODSInlineNotification
+      className="mb-4"
+      mode="warning"
+      warningIcon={<ODSHistory decorative />}
+      showCloseButton={false}
+      text={t("snapBanner.text", {
+        activeId: active.id,
+        at: fmtSnapshotAt(active.created_at, locale),
+        ver: active.scanner_version,
+        latestId: latest.id,
+        latestAt: fmtSnapshotAt(latest.last_scanned_at, locale),
+      })}
+      link1Props={
+        canActivate ? { label: t("snapBanner.activateLatest"), linkType: "button", onClick: onActivateLatest } : undefined
+      }
+    />
   );
 }

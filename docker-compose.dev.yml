@@ -1,4 +1,6 @@
-# Local development without Artifactory: docker compose -f docker-compose.dev.yml up --build
+# Local development without the Artifactory image mirror; the frontend build
+# still needs ODS_NPM_TOKEN in .env:
+#   docker compose -f docker-compose.dev.yml up --build
 services:
   db:
     image: postgres:16-alpine
@@ -49,6 +51,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      secrets:
+        - ods_npm_token
     ports:
       - "5173:5173"
     volumes:
@@ -70,3 +74,8 @@ services:
 
 volumes:
   pgdata:
+
+secrets:
+  # frontend/README.md, "ODS packages"
+  ods_npm_token:
+    environment: ODS_NPM_TOKEN

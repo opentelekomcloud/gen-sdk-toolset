@@ -1,100 +1,129 @@
-import { Activity, Eye, LogOut, Settings } from "lucide-react";
-import { NavLink } from "react-router";
+import type { MouseEvent } from "react";
+import { useLocation, useNavigate } from "react-router";
+import { ODSSlimGlobalHeader } from "@telekom-ods/react-ui-kit/ODSSlimGlobalHeader";
+import { ODSGlobalHeaderMenu } from "@telekom-ods/react-ui-kit/ODSGlobalHeaderMenu";
+import { ODSGlobalHeaderMenuLabel } from "@telekom-ods/react-ui-kit/ODSGlobalHeaderMenuLabel";
+import { ODSGlobalHeaderSecondaryMenu } from "@telekom-ods/react-ui-kit/ODSGlobalHeaderSecondaryMenu";
+import { ODSGlobalHeaderMenuButton } from "@telekom-ods/react-ui-kit/ODSGlobalHeaderMenuButton";
+import { ODSLanguage, ODSLightDarkMode, ODSLogout, ODSSettings, ODSVisibilityOn } from "@telekom-ods/react-icons";
 import { useSummary } from "../features/scan/api/queries";
 import { useSession } from "../shared/auth/useSession";
-import { useI18n, type Lang } from "../shared/i18n";
+import { useI18n } from "../shared/i18n";
+import { useTheme } from "../shared/theme";
+import { Spinner } from "../shared/ui/Spinner";
+import { inPanel, NAV } from "./nav";
 
-const LANGS: Lang[] = ["en", "de"];
+/** The ODS application header: logo, app name, the panels, and the account/display controls. */
+function ShellHeader() {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { lang, setLang, t } = useI18n();
+  const { mode, setMode } = useTheme();
+  const { signOut } = useSession();
 
-function LangToggle() {
-  const { lang, setLang } = useI18n();
+  /* Menu items stay real links - middle-click and "copy link" keep working -
+     and a plain click routes inside the app instead of reloading it. */
+  const go = (path: string) => (e: MouseEvent) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    navigate(path);
+  };
+
   return (
-    <div className="flex overflow-hidden rounded-full bg-white/15 text-xs">
-      {LANGS.map((l) => (
-        <button
-          key={l}
-          onClick={() => setLang(l)}
-          aria-pressed={lang === l}
-          className={`px-2.5 py-1 font-medium uppercase transition ${
-            lang === l ? "bg-white text-brand" : "text-white/80 hover:text-white"
-          }`}
-        >
-          {l}
-        </button>
-      ))}
-    </div>
+    <ODSSlimGlobalHeader
+      position="sticky"
+      applicationName="gen-sdk-tooling"
+      logoProps={{ href: "/scan", onClick: go("/scan"), "aria-label": "gen-sdk-tooling" }}
+      menuSlot={
+        /* aria-label, not the declared menuAriaLabel: this version passes the
+           latter through to the <nav> as an unknown DOM attribute */
+        <ODSGlobalHeaderMenu aria-label={t("header.mainMenu")}>
+          {NAV.map((item) =>
+            item.enabled ? (
+              <ODSGlobalHeaderMenuLabel
+                key={item.key}
+                label={t(item.key)}
+                href={item.path}
+                onClick={go(item.path)}
+                selected={inPanel(pathname, item.path)}
+              />
+            ) : (
+              <ODSGlobalHeaderMenuLabel
+                key={item.key}
+                label={`${t(item.key)} · ${t("tab.soon")}`}
+                title={t("tab.comingSoon")}
+                aria-disabled="true"
+                className="cursor-not-allowed opacity-50"
+              />
+            ),
+          )}
+        </ODSGlobalHeaderMenu>
+      }
+      secondaryMenuSlot={
+        <ODSGlobalHeaderSecondaryMenu aria-label={t("header.secondaryMenu")}>
+          {/* a link, lit while the settings are open - as in the prototype */}
+          <ODSGlobalHeaderMenuButton
+            as="a"
+            href="/settings"
+            onClick={go("/settings")}
+            icon={<ODSSettings />}
+            label={t("settings.title")}
+            title={t("settings.title")}
+            selected={inPanel(pathname, "/settings")}
+            aria-current={inPanel(pathname, "/settings") ? "page" : undefined}
+          />
+          <ODSGlobalHeaderMenuButton
+            icon={<ODSLightDarkMode />}
+            label={mode === "dark" ? t("theme.toLight") : t("theme.toDark")}
+            onClick={() => setMode(mode === "dark" ? "light" : "dark")}
+          />
+          <ODSGlobalHeaderMenuButton
+            icon={<ODSLanguage />}
+            label={t("header.switchLang")}
+            onClick={() => setLang(lang === "en" ? "de" : "en")}
+          />
+          <ODSGlobalHeaderMenuButton icon={<ODSLogout />} label={t("auth.signOut")} onClick={signOut} />
+        </ODSGlobalHeaderSecondaryMenu>
+      }
+    />
   );
 }
 
-/** Who is signed in, and the one control that ends it. The viewer badge is
- *  here rather than on each disabled control: it answers "why can I not do
- *  anything" once, instead of at every button. */
-function Session() {
-  const { name, canWrite, signOut } = useSession();
+/** What the old header said beside the app name and in its pills: what this
+ *  panel covers, the scanner's state and who is signed in. Read-only facts, so
+ *  a plain strip - the ODS header has room for the app name only. */
+function StatusStrip() {
+  const { data: summary } = useSummary();
+  const { name, canWrite } = useSession();
   const { t } = useI18n();
   return (
-    <div className="flex items-center gap-2 text-xs text-white">
-      {!canWrite && (
-        <span
-          title={t("auth.viewerHint")}
-          className="flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1"
-        >
-          <Eye size={12} /> {t("auth.viewer")}
+    <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 border-b border-neutral-200 bg-surface-subtle px-6 py-1.5 text-xs text-ink-recessive">
+      <span className="mr-auto">{t("header.subtitle")}</span>
+      {summary && summary.scans_running > 0 && (
+        <span className="flex items-center gap-1.5 text-info">
+          <Spinner />
+          {t("header.scansRunning", { n: summary.scans_running })}
         </span>
       )}
-      <span className="font-mono opacity-80">{name}</span>
-      <button
-        type="button"
-        onClick={signOut}
-        title={t("auth.signOut")}
-        aria-label={t("auth.signOut")}
-        className="rounded-full bg-white/15 p-1.5 transition hover:bg-white/25"
-      >
-        <LogOut size={13} />
-      </button>
+      {summary && <span className="font-mono">{t("header.scanner", { v: summary.scanner_version })}</span>}
+      {/* The viewer badge is here rather than on each disabled control: it
+          answers "why can I not do anything" once, instead of at every button. */}
+      {!canWrite && (
+        <span title={t("auth.viewerHint")} className="flex items-center gap-1 font-semibold">
+          <ODSVisibilityOn size={14} aria-hidden="true" /> {t("auth.viewer")}
+        </span>
+      )}
+      <span className="font-mono">{name}</span>
     </div>
   );
 }
 
-/** Logo + pills from summary; no bulk actions here by design (PS9). */
+/** The app header: the ODS shell bar, then the status strip. No bulk actions here by design (PS9). */
 export function Header() {
-  const { data: summary } = useSummary();
-  const { t } = useI18n();
   return (
-    <header className="flex items-center justify-between bg-brand px-6 py-3">
-      <div className="flex items-center gap-3">
-        {/* public/ assets are served from the root — a relative ../../public path breaks in the production build */}
-        <img src="/favicon.svg" alt="" className="h-11 w-11 rounded-sm" />
-        <div className="text-white">
-          <div className="text-sm font-semibold leading-tight">gen-sdk-tooling</div>
-          <div className="text-xs leading-tight opacity-80">{t("header.subtitle")}</div>
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        {summary && summary.scans_running > 0 && (
-          <span className="flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs text-white">
-            <Activity size={12} className="animate-pulse" /> {t("header.scansRunning", { n: summary.scans_running })}
-          </span>
-        )}
-        {summary && (
-          <span className="rounded-full bg-white/15 px-2.5 py-1 font-mono text-xs text-white">
-            {t("header.scanner", { v: summary.scanner_version })}
-          </span>
-        )}
-        {/* the way to the settings page, lit while it is open - as in the prototype */}
-        <NavLink
-          to="/settings"
-          title={t("settings.title")}
-          aria-label={t("settings.title")}
-          className={({ isActive }) =>
-            `inline-flex items-center justify-center rounded-full p-1.5 transition ${isActive ? "bg-white text-brand" : "bg-white/15 text-white hover:bg-white/25"}`
-          }
-        >
-          <Settings size={16} />
-        </NavLink>
-        <LangToggle />
-        <Session />
-      </div>
-    </header>
+    <>
+      <ShellHeader />
+      <StatusStrip />
+    </>
   );
 }

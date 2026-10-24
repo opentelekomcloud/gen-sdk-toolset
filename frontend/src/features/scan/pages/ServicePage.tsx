@@ -1,6 +1,10 @@
 import { useState } from "react";
 import type { DocFilter, DocStatus, RepositoryInterruption } from "../types";
-import { AlertTriangle, Ban, CheckCircle2, Download, FolderOpen, Loader2 } from "lucide-react";
+import { ODSDownload, ODSFolder, ODSStatusInactive, ODSSuccess, ODSWarning } from "@telekom-ods/react-icons";
+import { Spinner } from "../../../shared/ui/Spinner";
+import { ODSButton } from "@telekom-ods/react-ui-kit/ODSButton";
+import { ODSInlineNotification } from "@telekom-ods/react-ui-kit/ODSInlineNotification";
+import { ODSLink } from "@telekom-ods/react-ui-kit/ODSLink";
 import { useNavigate, useParams } from "react-router";
 import { ApiError } from "../api/client";
 import { useActivateSnapshot, useExclude, useRescan } from "../api/mutations";
@@ -80,7 +84,7 @@ export function ServicePage() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-mono text-xl font-semibold text-gray-900">{service.label}</h1>
+            <h1 className="font-mono text-xl font-semibold text-ink">{service.label}</h1>
             <StatusPill kind={service.scan_status} />
           </div>
           {/* G1: replaces the static "scanned with …" line; RollbackButton is gone — the selector covers it */}
@@ -105,16 +109,16 @@ export function ServicePage() {
               size="lg"
             />
           ) : (
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <CheckCircle2 size={15} className="text-emerald-500" /> {t("service.upToDate")}
-              <button type="button"
+            <div className="flex items-center gap-2 text-sm text-neutral-600">
+              <ODSSuccess decorative size={15} className="text-success" /> {t("service.upToDate")}
+              <ODSButton
+                size="small"
+                variant="ghost"
+                label={t("service.forceRescan")}
                 onClick={() => {
                   if (!rescan.isPending) rescan.mutate();
                 }}
-                className="text-xs underline decoration-dotted underline-offset-2 transition hover:text-gray-700"
-              >
-                {t("service.forceRescan")}
-              </button>
+              />
             </div>
           )}
         </div>
@@ -134,14 +138,17 @@ export function ServicePage() {
       )}
 
       {scanning && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs text-blue-800">
-          <Loader2 size={14} className="animate-spin" />
-          {t("service.scanningBanner", {
+        <ODSInlineNotification
+          className="mb-4"
+          mode="informative"
+          informationIcon={<Spinner />}
+          showCloseButton={false}
+          text={t("service.scanningBanner", {
             job: service.job_id ? `#${service.job_id}` : "",
             by: service.initiated_by ? t("service.scanningBy", { by: service.initiated_by }) : "",
             at: service.started_at ? t("service.scanningAt", { at: service.started_at }) : "",
           })}
-        </div>
+        />
       )}
 
       {!scanning && (
@@ -153,55 +160,56 @@ export function ServicePage() {
       )}
 
       {!scanning && jobFailed && service.active_snapshot != null && (
-        <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-800">
-          <AlertTriangle size={14} className="mt-px shrink-0 text-red-500" />
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-danger-line bg-danger-subtle px-4 py-2.5 text-xs text-danger">
+          <ODSWarning decorative size={14} className="mt-px shrink-0 text-danger" />
           <div className="min-w-0">
             <span className="font-semibold">
               {interruption ? t(`interruption.${interruption.kind}` as MessageKey) : t("service.failedBannerTitle")}
             </span>
             {" — "}
             <span className="font-mono">{interruption?.message ?? service.error}</span>
-            {service.error_at != null && <span className="font-mono text-red-500"> · {fmtSnapshotAt(service.error_at)}</span>}
+            {service.error_at != null && <span className="font-mono text-danger"> · {fmtSnapshotAt(service.error_at)}</span>}
             {interruption?.kind === "rate_limit" && interruption.reset_time != null && (
-              <span className="font-mono text-red-500">
+              <span className="font-mono text-danger">
                 {" · "}
                 {t("service.rateLimitReset", { time: new Date(interruption.reset_time * 1000).toLocaleTimeString() })}
               </span>
             )}
-            <div className="mt-0.5 text-red-600/80">
+            <div className="mt-0.5 text-danger/80">
               {t("service.failedKeptData", { gen: service.active_snapshot.id, at: fmtSnapshotAt(service.active_snapshot.last_scanned_at) })}
             </div>
           </div>
           {canWrite && (
-            <button type="button"
+            <ODSButton
+              className="ml-auto shrink-0"
+              size="small"
+              variant="outline"
+              label={t("service.retry")}
               onClick={() => rescan.mutate()}
-              className="ml-auto shrink-0 rounded border border-red-300 px-2 py-1 font-medium text-red-700 transition hover:border-red-500 hover:bg-white"
-            >
-              {t("service.retry")}
-            </button>
+            />
           )}
         </div>
       )}
 
       {jobFailed && service.active_snapshot == null ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center">
-          <AlertTriangle size={22} className="mx-auto mb-2 text-red-500" />
-          <div className="mb-1 text-sm font-semibold text-red-800">
+        <div className="rounded-xl border border-danger-line bg-danger-subtle p-8 text-center">
+          <ODSWarning decorative size={24} className="mx-auto mb-2 block text-danger" />
+          <div className="mb-1 text-sm font-semibold text-danger">
             {interruption ? t(`interruption.${interruption.kind}` as MessageKey) : t("service.failedTitle")}
           </div>
-          <div className="font-mono text-xs text-red-600">{interruption?.message ?? service.error}</div>
+          <div className="font-mono text-xs text-danger">{interruption?.message ?? service.error}</div>
           {interruption?.kind === "rate_limit" && interruption.reset_time != null && (
-            <div className="mt-1 font-mono text-xs text-red-500">
+            <div className="mt-1 font-mono text-xs text-danger">
               {t("service.rateLimitReset", { time: new Date(interruption.reset_time * 1000).toLocaleTimeString() })}
             </div>
           )}
-          <div className="mt-2 text-xs text-gray-500">{t("service.failedHint")}</div>
+          <div className="mt-2 text-xs text-neutral-700">{t("service.failedHint")}</div>
         </div>
       ) : service.documents === 0 && !scanning ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
-          <FolderOpen size={22} className="mx-auto mb-2 text-gray-400" />
-          <div className="mb-1 text-sm font-semibold text-gray-700">{t("service.noEndpointTitle")}</div>
-          <div className="mx-auto max-w-md text-xs text-gray-500">
+        <div className="rounded-xl border border-neutral-200 bg-surface p-8 text-center">
+          <ODSFolder decorative size={24} className="mx-auto mb-2 block text-neutral-600" />
+          <div className="mb-1 text-sm font-semibold text-ink-recessive">{t("service.noEndpointTitle")}</div>
+          <div className="mx-auto max-w-md text-xs text-neutral-700">
             {t("service.noEndpointBody", {
               pages: service.non_endpoint_documents
                 ? t("service.noEndpointPages", { n: service.non_endpoint_documents })
@@ -213,10 +221,10 @@ export function ServicePage() {
         /* G1: while an activation is in flight everything below refetches — shimmer, no interaction */
         <div className={switching ? "pointer-events-none animate-pulse opacity-40" : ""}>
           <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-lg border border-gray-200 bg-white p-3.5">
-              <div className="text-xs text-gray-500">{t("service.metricDocs")}</div>
-              <div className="mt-0.5 font-mono text-2xl font-semibold tabular-nums text-gray-900">{service.documents}</div>
-              <div className="mt-0.5 font-mono text-[11px] tabular-nums text-gray-400">
+            <div className="rounded-lg border border-neutral-200 bg-surface p-3.5">
+              <div className="text-xs text-neutral-700">{t("service.metricDocs")}</div>
+              <div className="mt-0.5 font-mono text-2xl font-semibold tabular-nums text-ink">{service.documents}</div>
+              <div className="mt-0.5 font-mono text-[11px] tabular-nums text-neutral-600">
                 {t("service.readSplit", {
                   read: service.read_in_full ?? 0,
                   rows: service.rows_unrecognized,
@@ -224,8 +232,8 @@ export function ServicePage() {
                 })}
               </div>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-white p-3.5">
-              <div className="text-xs text-gray-500">{t("service.metricQuality")}</div>
+            <div className="rounded-lg border border-neutral-200 bg-surface p-3.5">
+              <div className="text-xs text-neutral-700">{t("service.metricQuality")}</div>
               <div
                 className={`mt-0.5 font-mono text-2xl font-semibold tabular-nums ${structOkCls(service.docs_ok)}`}
                 title={service.unread_documents ? t("registry.docsOkBound", { n: service.unread_documents }) : undefined}
@@ -233,8 +241,8 @@ export function ServicePage() {
                 {service.docs_ok == null ? "—" : `${service.unread_documents ? "≤ " : ""}${service.docs_ok}%`}
               </div>
             </div>
-            <div className="col-span-2 rounded-lg border border-gray-200 bg-white p-3.5">
-              <div className="mb-1.5 text-xs text-gray-500">{t("service.metricStatuses")}</div>
+            <div className="col-span-2 rounded-lg border border-neutral-200 bg-surface p-3.5">
+              <div className="mb-1.5 text-xs text-neutral-700">{t("service.metricStatuses")}</div>
               <OverallBar overall={service.overall_breakdown} docs={service.documents} unread={service.unread_breakdown} />
               <div className="mt-1.5 flex flex-wrap gap-x-3 font-mono text-xs tabular-nums">
                 {OVERALL_ORDER.map((k) =>
@@ -267,20 +275,19 @@ export function ServicePage() {
           </div>
 
           {service.active_snapshot && (
-            <div className="mb-4 text-xs">
-              <a
+            <div className="mb-4">
+              <ODSLink
                 href={`/api/scan/services/${encodeURIComponent(service.name)}/export`}
-                className="inline-flex items-center gap-1.5 rounded border border-gray-300 px-2.5 py-1 font-medium text-gray-600 transition hover:border-gray-500 hover:text-gray-900"
                 title={t("service.exportHint")}
-              >
-                <Download size={12} /> {t("service.export")}
-              </a>
+                label={t("service.export")}
+                leftIcon={<ODSDownload decorative small />}
+              />
             </div>
           )}
 
           {service.top_issues.length > 0 && (
             <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
-              <span className="font-semibold uppercase tracking-wide text-gray-500">{t("service.topIssues")}</span>
+              <span className="font-semibold uppercase tracking-wide text-neutral-700">{t("service.topIssues")}</span>
               {service.top_issues.map((i) => (
                 <button
                   key={i.code}
@@ -293,8 +300,8 @@ export function ServicePage() {
                   }
                   className={`rounded px-2 py-1 font-mono tabular-nums ring-1 transition ${
                     filter?.kind === "issue" && filter.code === i.code
-                      ? "bg-gray-900 text-white ring-gray-900"
-                      : "bg-white text-gray-600 ring-gray-200 hover:ring-gray-400"
+                      ? "bg-contrast text-on-contrast ring-contrast"
+                      : "bg-surface text-ink-recessive ring-neutral-200 hover:ring-neutral-500"
                   }`}
                 >
                   {i.code} ×{i.count}
@@ -314,18 +321,20 @@ export function ServicePage() {
         </div>
       )}
 
-      <div className="mt-10 flex items-center justify-between border-t border-gray-100 pt-3">
-        <span className="text-[11px] uppercase tracking-wide text-gray-300">{t("service.admin")}</span>
-        {canWrite && <button type="button"
-          onClick={() => setShowExclude(true)}
-          disabled={scanning}
-          title={scanning ? t("service.notWhileScanning") : undefined}
-          className={`flex items-center gap-1.5 text-xs transition ${
-            scanning ? "cursor-not-allowed text-gray-300" : "text-gray-400 hover:text-red-600"
-          }`}
-        >
-          <Ban size={12} /> {t("service.exclude")}
-        </button>}
+      <div className="mt-10 flex items-center justify-between border-t border-neutral-100 pt-3">
+        <span className="text-[11px] uppercase tracking-wide text-neutral-400">{t("service.admin")}</span>
+        {canWrite && (
+          <ODSButton
+            size="small"
+            variant="ghost"
+            label={t("service.exclude")}
+            buttonIcon={<ODSStatusInactive decorative />}
+            leftIcon
+            onClick={() => setShowExclude(true)}
+            disabled={scanning}
+            title={scanning ? t("service.notWhileScanning") : undefined}
+          />
+        )}
       </div>
       {showExclude && (
         <ExcludeModal

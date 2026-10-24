@@ -4,10 +4,10 @@ import { useI18n, type MessageKey } from "../../../shared/i18n";
 
 /** A job is drawn as a tag - uppercase and smaller than the state pill, as in the prototype. */
 const JOB_CLS: Record<GenJobStatus, string> = {
-  running: "border-blue-200 bg-blue-50 text-blue-700",
-  done: "border-amber-200 bg-amber-50 text-amber-800",
-  merged: "border-violet-200 bg-violet-50 text-violet-700",
-  failed: "border-red-300 bg-red-50 text-red-700",
+  running: "border-info-line bg-info-subtle text-info",
+  done: "border-warning-line bg-warning-subtle text-warning",
+  merged: "border-brand-line bg-brand-subtle text-on-brand-subtle",
+  failed: "border-danger-line bg-danger-subtle text-danger",
 };
 
 /** A resource's generation job on a target, with its pull request once it has one; it leads to the job's result. */

@@ -12,18 +12,18 @@ import { useI18n } from "../../../shared/i18n";
 export function StatusCodeTable({ section }: { section: SectionDetail }) {
   const { t } = useI18n();
   return (
-    <div className="overflow-hidden rounded border border-gray-200">
-      <div className="grid grid-cols-12 gap-2 border-b border-gray-200 bg-gray-100 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+    <div className="overflow-hidden rounded border border-neutral-200">
+      <div className="grid grid-cols-12 gap-2 border-b border-neutral-200 bg-neutral-100 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-700">
         <div className="col-span-2">{t("ir.code")}</div>
         <div className="col-span-10">{t("ir.description")}</div>
       </div>
       {section.status_codes.map((sc, i) => (
         <div
           key={`${i}-${sc.code}`}
-          className="grid grid-cols-12 gap-2 border-b border-gray-100 bg-white px-3 py-1.5 font-mono text-[11px] last:border-0"
+          className="grid grid-cols-12 gap-2 border-b border-neutral-100 bg-surface px-3 py-1.5 font-mono text-[11px] last:border-0"
         >
-          <div className="col-span-2 text-gray-800">{sc.code}</div>
-          <div className="col-span-10 truncate text-gray-400" title={sc.description}>
+          <div className="col-span-2 text-ink">{sc.code}</div>
+          <div className="col-span-10 truncate text-neutral-600" title={sc.description}>
             {sc.description || "—"}
           </div>
         </div>

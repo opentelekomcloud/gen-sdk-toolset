@@ -1,5 +1,6 @@
+import { ODSButton } from "@telekom-ods/react-ui-kit/ODSButton";
 import { useState } from "react";
-import { AlertTriangle, Check, ExternalLink, Play } from "lucide-react";
+import { ODSCheckmark, ODSNavigationExternalLink, ODSPlay, ODSWarning } from "@telekom-ods/react-icons";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import {
   useGenerationResources,
@@ -28,8 +29,8 @@ import { useSession } from "../../../shared/auth/useSession";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
 
 const KIND_CLS: Record<GenOperationKind, string> = {
-  base: "border-blue-200 bg-blue-50 text-blue-700",
-  custom: "border-purple-200 bg-purple-50 text-purple-700",
+  base: "border-info-line bg-info-subtle text-info",
+  custom: "border-brand-subtle bg-brand-subtle text-on-brand-subtle",
 };
 
 /**
@@ -54,29 +55,29 @@ function FieldRow({
   const choice = issue?.choice ?? null;
   const unknown = undecided(field) && issue?.problem === "unknown_type";
   const type = choice?.type ?? field.type;
-  const tone = choice ? "text-emerald-700" : "text-amber-800";
+  const tone = choice ? "text-success" : "text-warning";
 
   return (
     <div role="group" aria-label={field.name}>
       <div
-        className={`grid grid-cols-12 gap-2 border-b border-gray-100 px-4 py-1.5 font-mono text-[11px] ${
-          undecided(field) ? "bg-amber-50" : "bg-white"
+        className={`grid grid-cols-12 gap-2 border-b border-neutral-100 px-4 py-1.5 font-mono text-[11px] ${
+          undecided(field) ? "bg-warning-subtle" : "bg-surface"
         }`}
       >
-        <div className="col-span-3 truncate text-gray-800" title={field.name}>
+        <div className="col-span-3 truncate text-ink" title={field.name}>
           {field.name}
         </div>
         <div
           className={`col-span-3 truncate ${
-            unknown ? "font-semibold text-amber-700" : choice ? "font-semibold text-emerald-700" : "text-gray-600"
+            unknown ? "font-semibold text-warning" : choice ? "font-semibold text-success" : "text-ink-recessive"
           }`}
           title={type}
         >
           {unknown ? `⚠ ${type}` : type}
         </div>
-        <div className="col-span-1 text-gray-500">{field.required ? t("gen.spec.required") : "—"}</div>
+        <div className="col-span-1 text-neutral-700">{field.required ? t("gen.spec.required") : "—"}</div>
         <div className="col-span-5 flex min-w-0 items-center gap-1.5">
-          <span className="truncate text-gray-400" title={field.description}>
+          <span className="truncate text-neutral-600" title={field.description}>
             {field.description}
           </span>
           {issue && (
@@ -85,11 +86,11 @@ function FieldRow({
               onClick={onToggle}
               aria-expanded={open}
               title={issue.text}
-              className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded border bg-white px-1.5 py-px font-sans text-[10px] font-semibold ${
-                choice ? "border-emerald-200" : "border-amber-200"
+              className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded border bg-surface px-1.5 py-px font-sans text-[10px] font-semibold ${
+                choice ? "border-success-line" : "border-warning-line"
               } ${tone}`}
             >
-              {choice ? <Check size={11} /> : <AlertTriangle size={11} />}
+              {choice ? <ODSCheckmark decorative size={11} /> : <ODSWarning decorative size={11} />}
               {choice ? t("gen.spec.resolved") : t(`gen.spec.problem.${issue.problem}` as MessageKey)}
             </button>
           )}
@@ -99,7 +100,7 @@ function FieldRow({
       {issue && open && (
         <div
           className={`border-b py-2.5 pl-7 pr-4 ${
-            choice ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
+            choice ? "border-success-line bg-success-subtle" : "border-warning-line bg-warning-subtle"
           }`}
         >
           <div className="flex flex-wrap items-center gap-2.5">
@@ -113,24 +114,24 @@ function FieldRow({
                   rel="noreferrer"
                   className={`inline-flex items-center gap-1 text-[11px] font-medium ${tone}`}
                 >
-                  <ExternalLink size={11} /> {doc.label}
+                  <ODSNavigationExternalLink decorative size={11} /> {doc.label}
                 </a>
               ))}
             </span>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{t("gen.spec.useType")}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-600">{t("gen.spec.useType")}</span>
             {issue.options.map((option) => {
               const on = choice?.type === option.type;
-              const cls = `flex flex-col items-start gap-px rounded-md border bg-white px-2.5 py-[5px] text-left ${
-                on ? "border-emerald-700 ring-1 ring-emerald-700" : "border-gray-200"
+              const cls = `flex flex-col items-start gap-px rounded-md border bg-surface px-2.5 py-[5px] text-left ${
+                on ? "border-success ring-1 ring-success" : "border-neutral-200"
               }`;
               const body = (
                 <>
-                  <span className={`font-mono text-[11px] font-semibold ${on ? "text-emerald-700" : "text-gray-800"}`}>
+                  <span className={`font-mono text-[11px] font-semibold ${on ? "text-success" : "text-ink"}`}>
                     {option.type}
                   </span>
-                  <span className="text-[10px] text-gray-400">{option.note}</span>
+                  <span className="text-[10px] text-neutral-600">{option.note}</span>
                 </>
               );
               /* choosing the chosen type again takes the choice back, as in the prototype */
@@ -140,7 +141,7 @@ function FieldRow({
                   type="button"
                   aria-pressed={on}
                   onClick={() => choose(on ? null : option.type)}
-                  className={`${cls} transition ${on ? "" : "hover:border-gray-400"}`}
+                  className={`${cls} transition ${on ? "" : "hover:border-neutral-500"}`}
                 >
                   {body}
                 </button>
@@ -151,7 +152,7 @@ function FieldRow({
               );
             })}
             {choice && (
-              <span className="text-[10px] text-gray-500">
+              <span className="text-[10px] text-neutral-700">
                 {t("gen.spec.chosenBy", { by: choice.by, at: fmtSnapshotAt(choice.at, locale) })}
               </span>
             )}
@@ -159,7 +160,7 @@ function FieldRow({
               <button
                 type="button"
                 onClick={() => choose(null)}
-                className="ml-auto text-[11px] text-gray-500 underline decoration-dotted"
+                className="ml-auto text-[11px] text-neutral-700 underline decoration-dotted"
               >
                 {t("gen.spec.clear")}
               </button>
@@ -249,12 +250,12 @@ export function GenerationSpecPage() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-mono text-xl font-semibold text-gray-900">
+            <h1 className="font-mono text-xl font-semibold text-ink">
               {name.replaceAll("-", "_")}.{resource.name}
             </h1>
             <LayoutBadge resource={resource} />
           </div>
-          <div className="mt-1 text-xs text-gray-400">{summary}</div>
+          <div className="mt-1 text-xs text-neutral-600">{summary}</div>
         </div>
         {job ? (
           <JobTag job={job} to={resultTo} state={toResult} />
@@ -262,14 +263,14 @@ export function GenerationSpecPage() {
           <div className="flex flex-wrap items-center gap-3">
             <HoldReason hold={hold} open={open} target={target} layoutTo={pathTo(["layout"])} state={fromList} />
             {canWrite && (
-              <button
-                type="button"
+              <ODSButton
+                size="small"
+                label={t("gen.spec.generate", { target: target.label })}
+                buttonIcon={<ODSPlay decorative />}
+                leftIcon
                 disabled={hold != null || open > 0 || generate.isPending}
                 onClick={() => generate.mutate(target.id, { onSuccess: () => navigate(resultTo, { state: toResult }) })}
-                className="inline-flex items-center gap-1.5 rounded border border-transparent bg-brand px-3.5 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-300 disabled:hover:opacity-100"
-              >
-                <Play size={14} /> {t("gen.spec.generate", { target: target.label })}
-              </button>
+              />
             )}
           </div>
         )}
@@ -284,11 +285,11 @@ export function GenerationSpecPage() {
       )}
 
       <div className="mb-2 flex items-baseline gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t("gen.spec.ops")}</span>
-        <span className="text-[10px] text-gray-400">{t("gen.spec.ops.hint")}</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-neutral-700">{t("gen.spec.ops")}</span>
+        <span className="text-[10px] text-neutral-600">{t("gen.spec.ops.hint")}</span>
       </div>
-      <div className="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="grid grid-cols-12 gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+      <div className="mb-6 overflow-hidden rounded-xl border border-neutral-200 bg-surface shadow-sm">
+        <div className="grid grid-cols-12 gap-3 border-b border-neutral-200 bg-neutral-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-700">
           <div className="col-span-3">{t("gen.spec.ops.col.operation")}</div>
           <div className="col-span-2">{t("gen.spec.ops.col.kind")}</div>
           <div className="col-span-4">{t("gen.spec.ops.col.endpoint")}</div>
@@ -299,9 +300,9 @@ export function GenerationSpecPage() {
             key={endpoint.id}
             role="group"
             aria-label={endpoint.title}
-            className="grid grid-cols-12 items-center gap-3 border-b border-gray-100 px-4 py-2 last:border-0"
+            className="grid grid-cols-12 items-center gap-3 border-b border-neutral-100 px-4 py-2 last:border-0"
           >
-            <div className="col-span-3 truncate text-xs text-gray-600" title={endpoint.title}>
+            <div className="col-span-3 truncate text-xs text-ink-recessive" title={endpoint.title}>
               {endpoint.title}
             </div>
             <div className="col-span-2">
@@ -317,12 +318,12 @@ export function GenerationSpecPage() {
               >
                 {endpoint.method}
               </span>
-              <span className="truncate font-mono text-[11px] text-gray-500" title={endpoint.uri}>
+              <span className="truncate font-mono text-[11px] text-neutral-700" title={endpoint.uri}>
                 {endpoint.uri}
               </span>
             </div>
             <div className="col-span-3 flex min-w-0 items-center gap-2">
-              <span className="truncate font-mono text-[11px] text-gray-800">
+              <span className="truncate font-mono text-[11px] text-ink">
                 {resource.name}.{sdkMethod}()
               </span>
               <a
@@ -330,9 +331,9 @@ export function GenerationSpecPage() {
                 target="_blank"
                 rel="noreferrer"
                 title={t("doc.openSourceHint")}
-                className="ml-auto flex items-center text-gray-400 transition hover:text-gray-700"
+                className="ml-auto flex items-center text-neutral-600 transition hover:text-ink-recessive"
               >
-                <ExternalLink size={13} />
+                <ODSNavigationExternalLink decorative size={13} />
               </a>
             </div>
           </div>
@@ -340,8 +341,8 @@ export function GenerationSpecPage() {
       </div>
 
       <div className="mb-2 flex items-baseline gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t("gen.spec.entities")}</span>
-        <span className="text-[10px] text-gray-400">{t("gen.spec.entities.hint")}</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-neutral-700">{t("gen.spec.entities")}</span>
+        <span className="text-[10px] text-neutral-600">{t("gen.spec.entities.hint")}</span>
       </div>
       {classes.map((c) => {
         const toDecide = c.fields.filter(undecided).length;
@@ -349,18 +350,18 @@ export function GenerationSpecPage() {
           <section
             key={c.name}
             aria-label={c.name}
-            className="mb-3 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+            className="mb-3 overflow-hidden rounded-xl border border-neutral-200 bg-surface shadow-sm"
           >
-            <div className="flex items-center gap-2.5 border-b border-gray-200 bg-gray-50 px-4 py-2.5">
-              <span className="font-mono text-sm font-semibold text-gray-900">{c.name}</span>
-              <span className="font-mono text-xs text-gray-400">{t("gen.spec.fields", { n: c.fields.length })}</span>
+            <div className="flex items-center gap-2.5 border-b border-neutral-200 bg-neutral-50 px-4 py-2.5">
+              <span className="font-mono text-sm font-semibold text-ink">{c.name}</span>
+              <span className="font-mono text-xs text-neutral-600">{t("gen.spec.fields", { n: c.fields.length })}</span>
               {toDecide > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-px text-[10px] font-semibold text-amber-800">
-                  <AlertTriangle size={11} /> {t("gen.spec.toDecide", { n: toDecide })}
+                <span className="inline-flex items-center gap-1 rounded-full border border-warning-line bg-warning-subtle px-2 py-px text-[10px] font-semibold text-warning">
+                  <ODSWarning decorative size={11} /> {t("gen.spec.toDecide", { n: toDecide })}
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-12 gap-2 border-b border-gray-200 bg-gray-100 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            <div className="grid grid-cols-12 gap-2 border-b border-neutral-200 bg-neutral-100 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-700">
               <div className="col-span-3">{t("gen.spec.col.field")}</div>
               <div className="col-span-3">{t("gen.spec.col.type")}</div>
               <div className="col-span-1">{t("gen.spec.col.req")}</div>

@@ -1,4 +1,5 @@
-import { Loader2 } from "lucide-react";
+import { ODSButton } from "@telekom-ods/react-ui-kit/ODSButton";
+import { Spinner } from "../../../shared/ui/Spinner";
 import type { RescanReason } from "../../../shared/api/types";
 import { RESCAN_META } from "../lib/rescan";
 import { useI18n } from "../../../shared/i18n";
@@ -14,13 +15,17 @@ interface Props {
 /**
  * Three modes (PS10): scanning → job indicator; reason → button with icon by
  * kind; no reason → renders nothing. Parent stops row-click propagation.
+ *
+ * ODS has no red button, so a retry after a failure (`destructiveTone`) takes
+ * the filled secondary variant: it still stands out from the outlined rescans
+ * in the same column, by weight rather than by colour.
  */
 export function RescanButton({ reason, scanning, scannerVersion, onClick, size = "sm" }: Props) {
   const { t } = useI18n();
   if (scanning) {
     return (
-      <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-blue-600">
-        <Loader2 size={12} className="animate-spin" />{" "}
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs text-info">
+        <Spinner />{" "}
         {scanning.jobId ? t("rescan.job", { id: scanning.jobId }) : t("rescan.queueing")}
         {scanning.startedBy ? ` · ${scanning.startedBy}` : ""}
       </span>
@@ -29,26 +34,14 @@ export function RescanButton({ reason, scanning, scannerVersion, onClick, size =
   if (!reason) return null;
   const meta = RESCAN_META[reason];
   const Icon = meta.icon;
-  const label = t(meta.labelKey, { v: scannerVersion });
-  if (size === "lg") {
-    return (
-      <button type="button"
-        onClick={onClick}
-        className="flex items-center gap-1.5 rounded bg-brand px-3.5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
-      >
-        <Icon size={14} /> {label}
-      </button>
-    );
-  }
-  const tone = meta.destructiveTone
-    ? "border-red-300 text-red-700 hover:border-red-500"
-    : "border-gray-300 text-gray-600 hover:border-gray-500 hover:text-gray-900";
   return (
-    <button type="button"
+    <ODSButton
+      size="small"
+      variant={size === "lg" ? "primary" : meta.destructiveTone ? "secondary" : "outline"}
+      label={t(meta.labelKey, { v: scannerVersion })}
+      buttonIcon={<Icon decorative />}
+      leftIcon
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded border px-2.5 py-1 text-xs font-medium transition ${tone}`}
-    >
-      <Icon size={12} /> {label}
-    </button>
+    />
   );
 }

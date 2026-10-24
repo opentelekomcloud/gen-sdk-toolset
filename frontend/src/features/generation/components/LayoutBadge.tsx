@@ -5,9 +5,9 @@ import { useI18n, type MessageKey } from "../../../shared/i18n";
 type Badge = GenOrigin | "confirmed";
 
 const BADGE_CLS: Record<Badge, string> = {
-  auto: "border-gray-200 bg-gray-100 text-gray-500",
-  confirmed: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  new: "border-blue-200 bg-blue-50 text-blue-700",
+  auto: "border-neutral-200 bg-neutral-100 text-neutral-700",
+  confirmed: "border-success-line bg-success-subtle text-success",
+  new: "border-info-line bg-info-subtle text-info",
 };
 
 /** A resource's layout badge: `confirmed` once someone has confirmed it, its origin until then. */

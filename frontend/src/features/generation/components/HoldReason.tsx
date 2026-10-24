@@ -32,14 +32,14 @@ export function HoldReason({
     if (open === 0) return null;
     const decide = t("gen.spec.decideFirst", { n: open });
     return specTo ? (
-      <span className="inline-flex shrink-0 items-center gap-2 text-[11px] text-gray-400">
+      <span className="inline-flex shrink-0 items-center gap-2 text-[11px] text-neutral-600">
         {decide}
-        <Link to={specTo} state={state} className="font-semibold text-brand underline">
+        <Link to={specTo} state={state} className="font-semibold text-brand-text underline">
           {t("gen.result.openSpec")}
         </Link>
       </span>
     ) : (
-      <span className="text-[11px] text-gray-400">{decide}</span>
+      <span className="text-[11px] text-neutral-600">{decide}</span>
     );
   }
   const text = (() => {
@@ -57,10 +57,10 @@ export function HoldReason({
     }
   })();
   return (
-    <span className="inline-flex shrink-0 items-center gap-2 text-[11px] text-gray-400">
+    <span className="inline-flex shrink-0 items-center gap-2 text-[11px] text-neutral-600">
       {text}
       {hold.reason === "confirm" && (
-        <Link to={layoutTo} state={state} className="font-semibold text-brand underline">
+        <Link to={layoutTo} state={state} className="font-semibold text-brand-text underline">
           {t("gen.card.fixLayout")}
         </Link>
       )}

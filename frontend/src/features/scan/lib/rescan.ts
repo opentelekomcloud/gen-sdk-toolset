@@ -1,4 +1,5 @@
-import { RefreshCw, ArrowUpCircle, GitCommit, type LucideIcon } from "lucide-react";
+import { ODSCircleArrowUp, ODSEdit, ODSRefresh } from "@telekom-ods/react-icons";
+import type { IconComponent } from "../../../shared/ui/icon";
 import type { RescanReason } from "../../../shared/api/types";
 import type { MessageKey } from "../../../shared/i18n";
 
@@ -8,8 +9,8 @@ import type { MessageKey } from "../../../shared/i18n";
  * `rescan.version` interpolates {v}). Keyed by the generated union, so a reason
  * the backend adds or drops breaks this map rather than passing unnoticed.
  */
-export const RESCAN_META: Record<RescanReason, { icon: LucideIcon; labelKey: MessageKey; destructiveTone: boolean }> = {
-  retry: { icon: RefreshCw, labelKey: "rescan.retry", destructiveTone: true },
-  version: { icon: ArrowUpCircle, labelKey: "rescan.version", destructiveTone: false },
-  drift: { icon: GitCommit, labelKey: "rescan.drift", destructiveTone: false },
+export const RESCAN_META: Record<RescanReason, { icon: IconComponent; labelKey: MessageKey; destructiveTone: boolean }> = {
+  retry: { icon: ODSRefresh, labelKey: "rescan.retry", destructiveTone: true },
+  version: { icon: ODSCircleArrowUp, labelKey: "rescan.version", destructiveTone: false },
+  drift: { icon: ODSEdit, labelKey: "rescan.drift", destructiveTone: false },
 };

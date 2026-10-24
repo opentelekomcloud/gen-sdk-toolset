@@ -321,7 +321,7 @@ describe("the spec of payments v1 on the in-memory mock", () => {
     expect(within(cls("Payment")).getByText("1 to decide")).toBeInTheDocument();
 
     const method = field("Payment", "method");
-    expect(within(method).getByText("⚠ Unknown")).toHaveClass("text-amber-700");
+    expect(within(method).getByText("⚠ Unknown")).toHaveClass("text-warning");
     expect(within(method).getByText("yes")).toBeInTheDocument();
     expect(within(method).getByText("Payment method")).toBeInTheDocument();
     expect(within(method).getByRole("button", { name: "unknown type" })).toHaveAttribute(
@@ -329,8 +329,8 @@ describe("the spec of payments v1 on the in-memory mock", () => {
       "Type not recognized — the table cell reads “enum (see below)” and the values are only in prose. Choose an enum or a plain string.",
     );
     // only the field left to decide is highlighted
-    expect(method.firstElementChild).toHaveClass("bg-amber-50");
-    expect(field("Payment", "invoice_id").firstElementChild).toHaveClass("bg-white");
+    expect(method.firstElementChild).toHaveClass("bg-warning-subtle");
+    expect(field("Payment", "invoice_id").firstElementChild).toHaveClass("bg-surface");
     expect(within(field("Payment", "invoice_id")).getByTitle("String")).toBeInTheDocument();
     expect(within(field("Payment", "paid_at")).queryByRole("button")).toBeNull();
 
@@ -434,7 +434,7 @@ describe("the spec of invoices v2 on the in-memory mock", () => {
     expect(within(createdAt).getByTitle("DateTime")).toBeInTheDocument();
     expect(within(createdAt).getByText("Creation timestamp")).toBeInTheDocument();
     for (const f of [id, name, createdAt]) {
-      expect(f.firstElementChild).toHaveClass("bg-white");
+      expect(f.firstElementChild).toHaveClass("bg-surface");
       expect(within(f).queryByRole("button")).toBeNull();
     }
 
@@ -500,7 +500,7 @@ describe("the spec of addresses in customer-core on the in-memory mock", () => {
     // a PATCH on an item is an update, as a PUT is
     const update = operation("Update an address");
     expect(within(update).getByText("base")).toBeInTheDocument();
-    expect(within(update).getByText("PATCH")).toHaveClass("text-amber-700");
+    expect(within(update).getByText("PATCH")).toHaveClass("text-warning");
     expect(within(update).getByText("/v1/customers/{customer_id}/addresses/{address_id}")).toBeInTheDocument();
     expect(within(update).getByText("addresses.update()")).toBeInTheDocument();
     expect(within(update).getByTitle("Open this document in the repository at the scanned commit")).toHaveAttribute(
@@ -519,7 +519,7 @@ describe("the spec of addresses in customer-core on the in-memory mock", () => {
     ] as const) {
       const f = field("Address", name);
       expect(within(f).getByTitle(type)).toBeInTheDocument();
-      expect(f.firstElementChild).toHaveClass("bg-white");
+      expect(f.firstElementChild).toHaveClass("bg-surface");
       expect(within(f).queryByRole("button")).toBeNull();
     }
 
@@ -612,7 +612,7 @@ describe("the spec of subscriptions in notifications-hub on the in-memory mock",
       expect(within(f).getByTitle(type)).toBeInTheDocument();
       expect(within(f).getByText(req)).toBeInTheDocument();
       expect(within(f).getByText(description)).toBeInTheDocument();
-      expect(f.firstElementChild).toHaveClass("bg-white");
+      expect(f.firstElementChild).toHaveClass("bg-surface");
       expect(within(f).queryByRole("button")).toBeNull();
     }
 
