@@ -13,9 +13,10 @@ interface Props {
  * invalidation: a done job refreshes the full snapshot set, a failed one
  * only the service state and the aggregates that surface the error.
  *
- * Mounted by whichever page shows the scan - the service page and every
- * scanning row of the registry - and keyed by job_id, so the same job is
- * polled by one query however many rows or pages are watching it.
+ * Mounted by whichever page shows the scan - the service page, every scanning
+ * row of the registry, and the Generation list, whose contents a scan can
+ * change - and keyed by job_id, so the same job is polled by one query however
+ * many rows or pages are watching it.
  */
 export function ScanJobWatcher({ serviceName, jobId }: Props) {
   const qc = useQueryClient();

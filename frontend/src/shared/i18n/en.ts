@@ -225,6 +225,7 @@ export const en = {
     "Every discovered repository has an API reference. Repos land here when discovery finds no api-ref path; they leave again by themselves once one appears.",
 
   "gen.list.eligible": "Services eligible for generation — scanned or partially scanned by the scanner.",
+  "gen.list.scanWatchFailed": "Running scans could not be checked — scans started since may not refresh this list.",
   "gen.list.editions": "One structure per service; {n} edition built from it.|One structure per service; {n} editions built from it.",
   "gen.col.tbd": "TBD",
   "gen.state.not_generated": "Not generated",
