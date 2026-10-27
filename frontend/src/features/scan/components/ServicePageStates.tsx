@@ -49,11 +49,15 @@ export function BlockLoading({ label }: { label: string }) {
   );
 }
 
-/** A block inside a page whose own data did not load: what failed, and a retry. */
+/**
+ * A block inside a page whose own data did not load: what failed, and a retry.
+ * An alert, so a screen reader announces it: the block replaces content that
+ * would otherwise just be missing, and silence would read as "nothing here".
+ */
 export function BlockLoadFailed({ label, onRetry }: { label: string; onRetry: () => void }) {
   const { t } = useI18n();
   return (
-    <div className="flex items-center justify-between rounded border border-red-200 bg-red-50 px-3 py-2">
+    <div role="alert" className="flex items-center justify-between rounded border border-red-200 bg-red-50 px-3 py-2">
       <span className="flex items-center gap-2 text-xs text-red-700">
         <AlertTriangle size={13} /> {label}
       </span>

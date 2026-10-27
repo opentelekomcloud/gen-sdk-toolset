@@ -5,6 +5,7 @@ import type { GenFilter, GenService, GenTarget } from "../data/types";
 import { servicePath, type FromList } from "../lib/paths";
 import { GEN_STATE_CLS, genStateKey } from "../styles";
 import { SHOW_GEN_STATE } from "../flags";
+import { BlockLoadFailed, BlockLoading } from "../../scan/components/ServicePageStates";
 import { StatusPill } from "../../scan/components/StatusPill";
 import { chipCls } from "../../scan/styles";
 import { useI18n } from "../../../shared/i18n";
@@ -161,7 +162,8 @@ function ServiceList() {
   const { search } = useLocation();
   const { q, input, setInput } = useUrlSearch();
   const { data: targets } = useGenerationTargets();
-  const { data: services } = useGenerationList({ q });
+  const list = useGenerationList({ q });
+  const loading = <BlockLoading label={t("gen.list.loading")} />;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
@@ -172,12 +174,31 @@ function ServiceList() {
         <SearchInput value={input} onChange={setInput} />
       </div>
 
-      {services && (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      {/* A failed request is never shown as a table (ADR-0051): no rows would
+          read as "no service qualifies", and an earlier answer still in the
+          cache would read as current. While a Retry runs, the page says it is
+          loading, so the click visibly did something and cannot be repeated. */}
+      {list.isError ? (
+        list.isFetching ? (
+          loading
+        ) : (
+          <BlockLoadFailed label={t("gen.list.loadFailed")} onRetry={() => void list.refetch()} />
+        )
+      ) : list.isPending ? (
+        loading
+      ) : (
+        /* Rows kept from the previous search are dimmed until the new answer
+           replaces them, so they are not read as this search's results. */
+        <div
+          aria-busy={list.isPlaceholderData}
+          className={`overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition ${
+            list.isPlaceholderData ? "opacity-50" : ""
+          }`}
+        >
           <div style={gridCols(0)} className={HEAD_CLS}>
             <div>{t("registry.col.service")}</div>
           </div>
-          {services.map((s) => (
+          {list.data.map((s) => (
             <div
               key={s.name}
               style={gridCols(0)}
@@ -191,7 +212,7 @@ function ServiceList() {
               <ServiceCell label={s.label} />
             </div>
           ))}
-          {services.length === 0 && (
+          {list.data.length === 0 && (
             <div className="px-4 py-10 text-center text-sm text-gray-400">{t("registry.empty")}</div>
           )}
         </div>

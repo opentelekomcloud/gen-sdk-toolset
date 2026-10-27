@@ -29,7 +29,9 @@ export function renderPage(
   for (const [key, value] of options.seed ?? []) client.setQueryData(key, value);
 
   const { path = "/", route = "/" } = options;
-  return render(
+  /* `client` goes back too, for a test that has to move the cache after the
+     first render - a refresh failing over data it already shows, say. */
+  const rendered = render(
     <QueryClientProvider client={client}>
       <I18nProvider>
         <MemoryRouter initialEntries={[path]}>
@@ -40,6 +42,7 @@ export function renderPage(
       </I18nProvider>
     </QueryClientProvider>,
   );
+  return { ...rendered, client };
 }
 
 /** Anything the page fetches beyond what the test seeded answers empty. */

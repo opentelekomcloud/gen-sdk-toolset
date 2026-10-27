@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { useLocation } from "react-router";
 import { renderPage } from "../../../test/render";
 import { keys } from "../../scan/api/queries";
@@ -312,5 +312,171 @@ describe("with the per-target state switched off: the list the backend serves", 
     fireEvent.click(await screen.findByText("ecs"));
 
     expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs");
+  });
+});
+
+describe("when the list cannot be loaded", () => {
+  const ECS = { name: "opentelekomcloud-docs/ecs", label: "ecs" };
+
+  /** The backend answers the list with these, one per request, the last repeated. */
+  function stubList(...answers: (unknown[] | number)[]) {
+    let n = 0;
+    const fetchMock = vi.fn(async () => {
+      const answer = answers[Math.min(n++, answers.length - 1)];
+      return typeof answer === "number"
+        ? new Response(JSON.stringify({ error: { code: "internal_error", message: "Internal server error" } }), {
+            status: answer,
+          })
+        : new Response(JSON.stringify(answer), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  beforeEach(() => {
+    flags.showGenState = false;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("says so on first load, with a Retry, and shows no table", async () => {
+    stubList(500);
+
+    listPage();
+
+    expect(await screen.findByText("Failed to load the service list")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByText("Service")).toBeNull();
+    expect(screen.queryByText("No services match the current filter.")).toBeNull();
+  });
+
+  it("looks different from an empty list the backend returned", async () => {
+    stubList([]);
+
+    listPage();
+
+    expect(await screen.findByText("No services match the current filter.")).toBeInTheDocument();
+    expect(screen.getByText("Service")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to load the service list")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("asks again on Retry, and shows the table once the backend answers", async () => {
+    const fetchMock = stubList(500, [ECS]);
+
+    listPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("ecs")).toBeInTheDocument();
+    expect(screen.getByText("Service")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to load the service list")).toBeNull();
+    // the page itself stayed: the Retry was a second request, not a reload
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(location()).toBe("/generation");
+  });
+
+  it("keeps the message when Retry fails again", async () => {
+    const fetchMock = stubList(500);
+
+    listPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("Failed to load the service list")).toBeInTheDocument();
+    expect(screen.queryByText("Service")).toBeNull();
+  });
+
+  it("shows the failure, not the list it showed before, when a refresh fails", async () => {
+    stubList(500);
+    const { client } = listPage("/generation", [[keys.genList({ q: "" }), [ECS]]]);
+
+    expect(await screen.findByText("ecs")).toBeInTheDocument();
+
+    await act(() => client.invalidateQueries({ queryKey: keys.genList() }));
+
+    expect(await screen.findByText("Failed to load the service list")).toBeInTheDocument();
+    expect(screen.queryByText("ecs")).toBeNull();
+  });
+
+  it("says it is loading while Retry runs, and offers no second Retry meanwhile", async () => {
+    // A refresh fails over a list that loaded before, so the query keeps its
+    // error while the Retry runs - the case where the page must say so itself.
+    let answer: (response: Response) => void = () => {};
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: "internal_error", message: "x" } }), { status: 500 }))
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => (answer = resolve)));
+    vi.stubGlobal("fetch", fetchMock);
+    const { client } = listPage("/generation", [[keys.genList({ q: "" }), [ECS]]]);
+
+    await act(() => client.invalidateQueries({ queryKey: keys.genList() }));
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Loading services…")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+
+    answer(new Response(JSON.stringify([ECS, { name: "opentelekomcloud-docs/vpc", label: "vpc" }]), { status: 200 }));
+
+    expect(await screen.findByText("vpc")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("announces the failure to assistive technology", async () => {
+    stubList(500);
+
+    listPage();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to load the service list");
+  });
+
+  it("keeps the rows on screen while a new search loads", async () => {
+    // The answer for the new search never arrives in this test: what matters is
+    // what the page shows meanwhile.
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    listPage("/generation", [[keys.genList({ q: "" }), [ECS]]]);
+
+    fireEvent.change(await screen.findByPlaceholderText("Filter services…"), { target: { value: "vp" } });
+
+    await waitFor(() => expect(location()).toBe("/generation?q=vp"));
+    expect(screen.getByText("ecs")).toBeInTheDocument();
+    expect(screen.queryByText("Loading services…")).toBeNull();
+    // ... marked as on their way out, not as this search's results
+    expect(screen.getByText("ecs").closest("[aria-busy]")).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("does not bring a list back through a new search after a refresh failed", async () => {
+    // The refresh fails, then the new search never answers: what the page shows
+    // meanwhile must not be the list the error block replaced.
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: "internal_error", message: "x" } }), { status: 500 }))
+        .mockImplementation(() => new Promise<Response>(() => {})),
+    );
+    const { client } = listPage("/generation", [[keys.genList({ q: "" }), [ECS]]]);
+
+    await act(() => client.invalidateQueries({ queryKey: keys.genList() }));
+    expect(await screen.findByText("Failed to load the service list")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("Filter services…"), { target: { value: "vp" } });
+
+    await waitFor(() => expect(location()).toBe("/generation?q=vp"));
+    expect(await screen.findByText("Loading services…")).toBeInTheDocument();
+    expect(screen.queryByText("ecs")).toBeNull();
+  });
+
+  it("says it is loading while the backend has not answered, rather than showing an empty list", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+
+    listPage();
+
+    expect(await screen.findByText("Loading services…")).toBeInTheDocument();
+    expect(screen.queryByText("No services match the current filter.")).toBeNull();
+    expect(screen.queryByText("Service")).toBeNull();
   });
 });
