@@ -26,6 +26,9 @@ export function useGenerationList(params: { q: string }) {
   return useQuery({
     queryKey: keys.genList(params),
     queryFn: () => apiFetch<GenerationServiceItem[]>(`/generation/services${qs({ ...params })}`),
+    /* Keep the table while a new search loads - but never from a request that
+       failed: its rows are the stale list the error block is standing in for. */
+    placeholderData: (prev, prevQuery) => (prevQuery?.state.status === "error" ? undefined : prev),
   });
 }
 

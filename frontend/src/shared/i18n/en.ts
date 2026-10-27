@@ -225,6 +225,8 @@ export const en = {
     "Every discovered repository has an API reference. Repos land here when discovery finds no api-ref path; they leave again by themselves once one appears.",
 
   "gen.list.eligible": "Services whose active Scan snapshot has at least one endpoint document.",
+  "gen.list.loading": "Loading services…",
+  "gen.list.loadFailed": "Failed to load the service list",
   "gen.col.tbd": "TBD",
   "gen.state.not_generated": "Not generated",
   "gen.state.in_progress": "In progress",
