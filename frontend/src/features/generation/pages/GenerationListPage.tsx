@@ -121,8 +121,11 @@ function StateList() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
+      {/* The caption states the backend's rule (ADR-0041). The mock picks its
+          rows by scan status and generation state instead; TODO(#150): the
+          rows follow the caption once this list reads real generation data. */}
       <div className="mb-3 text-xs text-gray-400">
-        {t("gen.list.eligible")} {targets && t("gen.list.editions", { n: targets.length })}
+        {t("gen.list.eligible")}
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {CHIPS.map((k) => (
@@ -160,13 +163,12 @@ function ServiceList() {
   const navigate = useNavigate();
   const { search } = useLocation();
   const { q, input, setInput } = useUrlSearch();
-  const { data: targets } = useGenerationTargets();
   const { data: services } = useGenerationList({ q });
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
       <div className="mb-3 text-xs text-gray-400">
-        {t("gen.list.eligible")} {targets && t("gen.list.editions", { n: targets.length })}
+        {t("gen.list.eligible")}
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchInput value={input} onChange={setInput} />

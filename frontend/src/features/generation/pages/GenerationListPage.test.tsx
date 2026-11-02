@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 describe("the Generation list on the in-memory mock", () => {
-  it("lists the services scanned in full or in part, with a column per target", async () => {
+  it("lists the services the mock puts in Generation, with a column per target", async () => {
     listPage();
 
     expect(await screen.findByText("billing-api")).toBeInTheDocument();
@@ -312,5 +312,32 @@ describe("with the per-target state switched off: the list the backend serves", 
     fireEvent.click(await screen.findByText("ecs"));
 
     expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs");
+  });
+});
+
+describe("the caption above the list", () => {
+  const CAPTION = {
+    en: "Services whose active Scan snapshot has at least one endpoint document.",
+    de: "Services, deren aktiver Scan-Snapshot mindestens ein Endpoint-Dokument enthält.",
+  };
+  const BACKEND: [readonly unknown[], unknown][] = [[keys.genList({ q: "" }), []]];
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  /* The match is exact on the caption's own element, so a leftover of the old
+     caption - the editions count, "scanned or partially scanned" - fails it. */
+  describe.each([
+    ["the list the backend serves", false],
+    ["the per-target list", true],
+  ])("over %s", (_, showGenState) => {
+    it.each(["en", "de"] as const)("states the selection condition and nothing else, in %s", async (lang) => {
+      localStorage.setItem("panel.lang", lang);
+      flags.showGenState = showGenState;
+      listPage("/generation", showGenState ? undefined : BACKEND);
+
+      expect(await screen.findByText(CAPTION[lang])).toBeInTheDocument();
+    });
   });
 });

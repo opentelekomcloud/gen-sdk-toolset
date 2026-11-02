@@ -31,7 +31,11 @@ export interface GenTargetSummary {
   total: number;
 }
 
-/** A service in Generation: scan status `scanned` or `partial`. */
+/**
+ * A service in the mock's Generation list, picked there by scan status `scanned`
+ * or `partial`. The backend's rule is the active snapshot's `endpoints_total`
+ * above zero (ADR-0041); TODO(#150): this follows it with real generation data.
+ */
 export interface GenService {
   name: string;
   /** Keyed by `GenTarget.id`. */

@@ -226,9 +226,7 @@ export const de: Record<keyof typeof en, string> = {
   "ineligible.empty":
     "Jedes gefundene Repository hat eine API-Referenz. Repos landen hier, wenn die Discovery keinen api-ref-Pfad findet; sie verschwinden von selbst wieder, sobald einer auftaucht.",
 
-  "gen.list.eligible": "Für die Generierung zugelassene Services — vom Scanner vollständig oder teilweise gescannt.",
-  "gen.list.editions":
-    "Eine Struktur pro Service; {n} Ausgabe wird daraus gebaut.|Eine Struktur pro Service; {n} Ausgaben werden daraus gebaut.",
+  "gen.list.eligible": "Services, deren aktiver Scan-Snapshot mindestens ein Endpoint-Dokument enthält.",
   "gen.col.tbd": "noch offen",
   "gen.state.not_generated": "Nicht generiert",
   "gen.state.in_progress": "In Arbeit",
