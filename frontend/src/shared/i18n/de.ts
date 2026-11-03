@@ -227,6 +227,8 @@ export const de: Record<keyof typeof en, string> = {
     "Jedes gefundene Repository hat eine API-Referenz. Repos landen hier, wenn die Discovery keinen api-ref-Pfad findet; sie verschwinden von selbst wieder, sobald einer auftaucht.",
 
   "gen.list.eligible": "Services, deren aktiver Scan-Snapshot mindestens ein Endpoint-Dokument enthält.",
+  "gen.list.loading": "Services werden geladen…",
+  "gen.list.loadFailed": "Die Service-Liste konnte nicht geladen werden",
   "gen.col.tbd": "noch offen",
   "gen.state.not_generated": "Nicht generiert",
   "gen.state.in_progress": "In Arbeit",
