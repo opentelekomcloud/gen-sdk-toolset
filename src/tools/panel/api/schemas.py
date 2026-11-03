@@ -22,6 +22,7 @@ from tools.panel.core.db.models import (
     Service,
     Snapshot,
 )
+from tools.panel.core.layout import LayoutVersion, PlacedResource, ServiceLayout
 from tools.panel.core.service_state import (
     RescanReason,
     ScanStatus,
@@ -546,6 +547,67 @@ class GenerationServiceItem(BaseModel):
     @classmethod
     def from_service(cls, service: Service) -> GenerationServiceItem:
         return cls(name=service.repo, label=service.name)
+
+
+class LayoutResourceItem(BaseModel):
+    """One resource of the layout, with its confirmation and its endpoints."""
+
+    id: int
+    name: str
+    confirmed_by: str | None
+    confirmed_at: datetime | None
+    endpoints: list[DocumentListItem]
+
+    @classmethod
+    def from_placed(cls, placed: PlacedResource) -> LayoutResourceItem:
+        resource = placed.resource
+        return cls(
+            id=resource.id,
+            name=resource.name,
+            confirmed_by=resource.confirmed_by,
+            confirmed_at=resource.confirmed_at,
+            endpoints=[DocumentListItem.from_record(row) for row in placed.endpoints],
+        )
+
+
+class LayoutVersionItem(BaseModel):
+    """One API version of the layout: its resources and its unassigned endpoints."""
+
+    api_version: str
+    resources: list[LayoutResourceItem]
+    unassigned: list[DocumentListItem]
+
+    @classmethod
+    def from_version(cls, version: LayoutVersion) -> LayoutVersionItem:
+        return cls(
+            api_version=version.api_version,
+            resources=[
+                LayoutResourceItem.from_placed(row) for row in version.resources
+            ],
+            unassigned=[
+                DocumentListItem.from_record(row) for row in version.unassigned
+            ],
+        )
+
+
+class LayoutResponse(BaseModel):
+    """The layout of one service from the Generation list.
+
+    ``has_layout`` is false until the service has a resource; the versions and
+    the "no version" list are empty then.
+    """
+
+    has_layout: bool
+    versions: list[LayoutVersionItem]
+    no_version: list[DocumentListItem]
+
+    @classmethod
+    def from_layout(cls, layout: ServiceLayout) -> LayoutResponse:
+        return cls(
+            has_layout=layout.has_layout,
+            versions=[LayoutVersionItem.from_version(row) for row in layout.versions],
+            no_version=[DocumentListItem.from_record(row) for row in layout.no_version],
+        )
 
 
 # ---------------------------------------------------------------------------

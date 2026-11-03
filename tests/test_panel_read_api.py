@@ -43,11 +43,13 @@ from tools.panel.core.db.models import (  # noqa: E402
     JobKind,
     JobStatus,
     RepositoryScanJob,
+    Resource,
+    ResourceEndpoint,
     Service,
     Snapshot,
 )
 from tools.panel.core.ingest import ingest_service_result  # noqa: E402
-from tools.shared.ir import Document  # noqa: E402
+from tools.shared.ir import Document, HttpMethod  # noqa: E402
 from tools.shared.ir import Service as IrService  # noqa: E402
 from tools.shared.scan import DocumentScanResult, RepositoryScanResult  # noqa: E402
 
@@ -1302,3 +1304,210 @@ def test_generation_list_is_ordered_by_repository(client, session_factory):
         _run_scan(session_factory, repo)
 
     assert _generation_names(client) == [REPO, "opentelekomcloud-docs/vpc"]
+
+
+# ---------------------------------------------------------------------------
+# Generation layout
+# ---------------------------------------------------------------------------
+
+LAYOUT = f"/api/generation/services/{REPO}/layout"
+
+
+def _endpoint(path: str, method: str, uri: str, api_version: str | None):
+    return make_endpoint().model_copy(
+        update={
+            "path": f"api-ref/source/{path}",
+            "title": path,
+            "method": HttpMethod(method),
+            "uri": uri,
+            "api_version": api_version,
+        }
+    )
+
+
+#: One service's endpoints: two that will form a resource, one left unassigned
+#: in v1, one in v2 and one the scanner found no version for.
+CREATE_SERVER = _endpoint("create_server.rst", "POST", "/v1/{project_id}/servers", "v1")
+LIST_SERVERS = _endpoint("list_servers.rst", "GET", "/v1/{project_id}/servers", "v1")
+PROJECT_INFO = _endpoint("project.rst", "GET", "/v1/{project_id}", "v1")
+LIST_TAGS = _endpoint("list_tags.rst", "GET", "/v2/{project_id}/tags", "v2")
+QUOTAS = _endpoint("quotas.rst", "GET", "/{project_id}/quotas", None)
+LAYOUT_ENDPOINTS = [CREATE_SERVER, LIST_SERVERS, PROJECT_INFO, LIST_TAGS, QUOTAS]
+
+
+def _place(
+    session_factory,
+    name: str,
+    endpoints,
+    *,
+    api_version: str = "v1",
+    confirmed_by: str | None = None,
+) -> int:
+    """Store one resource of REPO's layout holding ``endpoints``."""
+    with session_factory() as session:
+        service_id = session.scalar(select(Service.id).where(Service.repo == REPO))
+        resource = Resource(
+            service_id=service_id,
+            api_version=api_version,
+            name=name,
+            confirmed_by=confirmed_by,
+            confirmed_at=datetime(2026, 11, 3, tzinfo=UTC) if confirmed_by else None,
+        )
+        resource.endpoints = [
+            ResourceEndpoint(service_id=service_id, path=endpoint.path)
+            for endpoint in endpoints
+        ]
+        session.add(resource)
+        session.commit()
+        return resource.id
+
+
+@pytest.fixture
+def laid_out(client, session_factory):
+    """REPO scanned with LAYOUT_ENDPOINTS and still without a layout."""
+    _register(session_factory)
+    _run_scan(session_factory, documents=LAYOUT_ENDPOINTS)
+    return client
+
+
+def _paths(items) -> list[str]:
+    return [item["path"].removeprefix("api-ref/source/") for item in items]
+
+
+def test_a_service_without_a_resource_has_no_layout(laid_out):
+    """Without a resource every endpoint would read as unassigned, though
+    nobody has grouped anything yet - so the lists stay empty too."""
+    assert laid_out.get(LAYOUT).json() == {
+        "has_layout": False,
+        "versions": [],
+        "no_version": [],
+    }
+
+
+def test_layout_serves_resources_and_derives_both_lists(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [LIST_SERVERS, CREATE_SERVER])
+
+    body = laid_out.get(LAYOUT).json()
+
+    assert body["has_layout"] is True
+    v1, v2 = body["versions"]
+    assert v1["api_version"] == "v1"
+    (resource,) = v1["resources"]
+    assert resource["id"] == servers
+    assert resource["name"] == "servers"
+    assert resource["confirmed_by"] is None and resource["confirmed_at"] is None
+    # one URI for both: ordered by method then, GET before POST
+    assert _paths(resource["endpoints"]) == ["list_servers.rst", "create_server.rst"]
+    assert _paths(v1["unassigned"]) == ["project.rst"]
+    # a version with unassigned endpoints only is still listed
+    assert v2["api_version"] == "v2"
+    assert v2["resources"] == []
+    assert _paths(v2["unassigned"]) == ["list_tags.rst"]
+    assert _paths(body["no_version"]) == ["quotas.rst"]
+
+
+def test_a_layout_endpoint_is_served_as_the_scan_documents_list_serves_it(
+    laid_out, session_factory
+):
+    _place(session_factory, "servers", [CREATE_SERVER])
+
+    resource = laid_out.get(LAYOUT).json()["versions"][0]["resources"][0]
+    (endpoint,) = resource["endpoints"]
+    (row,) = laid_out.get(
+        f"/api/scan/services/{REPO}/documents?q=create_server"
+    ).json()["items"]
+
+    assert endpoint == row
+    assert endpoint["path"] == "api-ref/source/create_server.rst"
+
+
+def test_an_endpoint_from_no_version_stays_in_the_resource_it_was_moved_to(
+    laid_out, session_factory
+):
+    _place(session_factory, "quotas", [QUOTAS], api_version="v2")
+
+    body = laid_out.get(LAYOUT).json()
+
+    assert body["no_version"] == []
+    (_, v2) = body["versions"]
+    assert _paths(v2["resources"][0]["endpoints"]) == ["quotas.rst"]
+
+
+def test_a_confirmed_resource_says_who_confirmed_it_and_when(laid_out, session_factory):
+    _place(session_factory, "servers", [CREATE_SERVER], confirmed_by="valeriia")
+
+    (resource,) = laid_out.get(LAYOUT).json()["versions"][0]["resources"]
+
+    assert resource["confirmed_by"] == "valeriia"
+    assert resource["confirmed_at"].startswith("2026-11-03")
+
+
+def test_an_endpoint_the_active_snapshot_lacks_is_hidden_and_comes_back_with_it(
+    laid_out, session_factory
+):
+    """The link is kept, not dropped: activating the older snapshot again must
+    bring the endpoint back to its resource rather than into "unassigned"."""
+    _place(session_factory, "servers", [CREATE_SERVER, LIST_SERVERS])
+    _run_scan(
+        session_factory,
+        documents=[CREATE_SERVER, PROJECT_INFO],
+        commit_hash=NEXT_COMMIT,
+    )
+
+    (resource,) = laid_out.get(LAYOUT).json()["versions"][0]["resources"]
+    assert _paths(resource["endpoints"]) == ["create_server.rst"]
+
+    snapshots = laid_out.get(f"/api/scan/services/{REPO}/snapshots").json()["items"]
+    assert _activate(laid_out, snapshots[-1]["id"]).status_code == 200
+
+    (resource,) = laid_out.get(LAYOUT).json()["versions"][0]["resources"]
+    assert _paths(resource["endpoints"]) == ["list_servers.rst", "create_server.rst"]
+
+
+def test_a_resource_whose_endpoints_all_left_keeps_the_layout(
+    laid_out, session_factory
+):
+    _place(session_factory, "tags", [LIST_TAGS], api_version="v2")
+    _run_scan(session_factory, documents=[CREATE_SERVER], commit_hash=NEXT_COMMIT)
+
+    body = laid_out.get(LAYOUT).json()
+
+    assert body["has_layout"] is True
+    v1, v2 = body["versions"]
+    assert v2["resources"][0]["name"] == "tags"
+    assert v2["resources"][0]["endpoints"] == []
+    assert _paths(v1["unassigned"]) == ["create_server.rst"]
+
+
+def test_layout_of_a_repository_never_registered_is_not_found(client):
+    assert client.get(LAYOUT).status_code == 404
+
+
+def test_layout_of_an_excluded_service_is_not_found_until_restored(
+    laid_out, session_factory
+):
+    _place(session_factory, "servers", [CREATE_SERVER])
+    assert _exclude(laid_out).status_code == 204
+
+    assert laid_out.get(LAYOUT).status_code == 404
+
+    assert laid_out.post(f"/api/scan/services/{REPO}/include").status_code == 204
+    assert laid_out.get(LAYOUT).json()["has_layout"] is True
+
+
+def test_layout_of_a_service_without_endpoints_is_not_found(client, session_factory):
+    _register(session_factory)
+    _run_scan(session_factory, documents=[_page_without_endpoints()])
+
+    response = client.get(LAYOUT)
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {"code": "not_found", "message": "Service not found"}
+    }
+
+
+def test_layout_of_an_ineligible_repository_is_not_found(laid_out, session_factory):
+    _set_eligibility(session_factory, REPO, False)
+
+    assert laid_out.get(LAYOUT).status_code == 404

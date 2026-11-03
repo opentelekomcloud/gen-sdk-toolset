@@ -28,6 +28,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/generation/services/{repo}/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Service Layout
+         * @description The resource layout of a service on the Generation list.
+         *
+         *     A repository off that list - unknown, excluded, ineligible or without
+         *     endpoints in its active snapshot - answers 404, the same as its pages do.
+         */
+        get: operations["get_service_layout_api_generation_services__repo__layout_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -702,6 +725,49 @@ export interface components {
          */
         JobStatus: "queued" | "running" | "done" | "failed";
         /**
+         * LayoutResourceItem
+         * @description One resource of the layout, with its confirmation and its endpoints.
+         */
+        LayoutResourceItem: {
+            /** Confirmed At */
+            confirmed_at: string | null;
+            /** Confirmed By */
+            confirmed_by: string | null;
+            /** Endpoints */
+            endpoints: components["schemas"]["DocumentListItem"][];
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /**
+         * LayoutResponse
+         * @description The layout of one service from the Generation list.
+         *
+         *     ``has_layout`` is false until the service has a resource; the versions and
+         *     the "no version" list are empty then.
+         */
+        LayoutResponse: {
+            /** Has Layout */
+            has_layout: boolean;
+            /** No Version */
+            no_version: components["schemas"]["DocumentListItem"][];
+            /** Versions */
+            versions: components["schemas"]["LayoutVersionItem"][];
+        };
+        /**
+         * LayoutVersionItem
+         * @description One API version of the layout: its resources and its unassigned endpoints.
+         */
+        LayoutVersionItem: {
+            /** Api Version */
+            api_version: string;
+            /** Resources */
+            resources: components["schemas"]["LayoutResourceItem"][];
+            /** Unassigned */
+            unassigned: components["schemas"]["DocumentListItem"][];
+        };
+        /**
          * ParameterResponse
          * @description One parameter row, nested exactly as the scan recorded it.
          *
@@ -1060,6 +1126,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GenerationServiceItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_service_layout_api_generation_services__repo__layout_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutResponse"];
                 };
             };
             /** @description Validation Error */
