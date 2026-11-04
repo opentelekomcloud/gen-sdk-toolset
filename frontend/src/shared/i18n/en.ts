@@ -227,7 +227,6 @@ export const en = {
   "gen.list.eligible": "Services whose active Scan snapshot has at least one endpoint document.",
   "gen.list.loading": "Loading services…",
   "gen.list.loadFailed": "Failed to load the service list",
-  "gen.list.scanWatchFailed": "Running scans could not be checked — scans started since may not refresh this list.",
   "gen.col.tbd": "TBD",
   "gen.state.not_generated": "Not generated",
   "gen.state.in_progress": "In progress",

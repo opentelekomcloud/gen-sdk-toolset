@@ -1,4 +1,4 @@
-import { useQuery, type QueryClient, type UseQueryOptions } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { apiFetch, qs } from "./client";
 import type {
   AttentionRule,
@@ -57,7 +57,7 @@ export const keys = {
  * activation, or an exclusion changes the active snapshot or the working
  * set — service detail, documents, cached document details, snapshots list,
  * services list, summary, and attention are all stale together. So is the
- * Generation list (ADR-0048): the backend selects it by the active snapshot and
+ * Generation list (ADR-0077): the backend selects it by the active snapshot and
  * the exclusion, exactly what these events move, so it is fetched again rather
  * than patched here.
  * Lives here (next to `keys`) so both mutations.ts and useService can use it
@@ -124,14 +124,10 @@ export interface ServicesParams {
   rule?: AttentionRuleCode;
 }
 
-export function useServices(
-  params: ServicesParams,
-  options?: Pick<UseQueryOptions<ServicesResponse>, "enabled" | "refetchOnMount">,
-) {
+export function useServices(params: ServicesParams) {
   return useQuery({
     queryKey: keys.services(params),
     queryFn: () => apiFetch<ServicesResponse>(`/scan/services${qs({ ...params })}`),
-    ...options,
   });
 }
 

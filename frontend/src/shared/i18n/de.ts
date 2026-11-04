@@ -229,7 +229,6 @@ export const de: Record<keyof typeof en, string> = {
   "gen.list.eligible": "Services, deren aktiver Scan-Snapshot mindestens ein Endpoint-Dokument enthält.",
   "gen.list.loading": "Services werden geladen…",
   "gen.list.loadFailed": "Die Service-Liste konnte nicht geladen werden",
-  "gen.list.scanWatchFailed": "Laufende Scans konnten nicht geprüft werden — seither gestartete Scans aktualisieren diese Liste möglicherweise nicht.",
   "gen.col.tbd": "noch offen",
   "gen.state.not_generated": "Nicht generiert",
   "gen.state.in_progress": "In Arbeit",

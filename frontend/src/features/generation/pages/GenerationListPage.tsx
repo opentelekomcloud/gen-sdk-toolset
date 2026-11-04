@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { useGenerationList, useGenerationServices, useGenerationTargets } from "../data/queries";
@@ -6,8 +5,6 @@ import type { GenFilter, GenService, GenTarget } from "../data/types";
 import { servicePath, type FromList } from "../lib/paths";
 import { GEN_STATE_CLS, genStateKey } from "../styles";
 import { SHOW_GEN_STATE } from "../flags";
-import { useServices, useSummary } from "../../scan/api/queries";
-import { ScanJobWatcher } from "../../scan/components/ScanJobWatcher";
 import { BlockLoadFailed, BlockLoading } from "../../scan/components/ServicePageStates";
 import { StatusPill } from "../../scan/components/StatusPill";
 import { chipCls } from "../../scan/styles";
@@ -179,7 +176,7 @@ function ServiceList() {
         <SearchInput value={input} onChange={setInput} />
       </div>
 
-      {/* A failed request is never shown as a table (ADR-0051): no rows would
+      {/* A failed request is never shown as a table (ADR-0081): no rows would
           read as "no service qualifies", and an earlier answer still in the
           cache would read as current. While a Retry runs, the page says it is
           loading, so the click visibly did something and cannot be repeated. */}
@@ -226,57 +223,6 @@ function ServiceList() {
   );
 }
 
-/**
- * Watches the scans still running, so the list refreshes when one ends while
- * this page is open (ADR-0048). The same watcher the Scan pages mount, keyed by
- * job id - not a second way of noticing a finished scan.
- *
- * Asked only while the summary counts a running scan: with none, there is no
- * job to watch. Only an answer read during this visit is watched - a cached one
- * names jobs that may have ended long ago, and mounting a watcher for one would
- * replay its completion. A job read once stays watched until the page closes,
- * even when a later answer leaves it out, the query switches off or a refetch
- * fails: a job that ended between two answers drops out of the next one before
- * its watcher has seen it end, and dropping the watcher would lose that end. A
- * watcher whose job is over polls no more, so keeping it costs nothing.
- *
- * If the scanning services cannot be read while a scan runs, the page says so -
- * otherwise a list that has stopped following the scans would look current.
- */
-function ScanWatchers() {
-  const { t } = useI18n();
-  const { data: summary } = useSummary();
-  const running = (summary?.scans_running ?? 0) > 0;
-  // Asked again on every visit, however fresh the cache: the cached answer is
-  // not watched, so without a new one a scan still running would go unwatched.
-  const scanning = useServices({ status: "scanning" }, { enabled: running, refetchOnMount: "always" });
-  // What this visit has read: the answer cached at mount counts as read already.
-  const [seen, setSeen] = useState({ at: scanning.dataUpdatedAt, jobs: new Map<number, string>() });
-  if (scanning.data && scanning.dataUpdatedAt > seen.at) {
-    const jobs = new Map(seen.jobs);
-    for (const item of scanning.data.items) if (item.job_id != null) jobs.set(item.job_id, item.name);
-    setSeen({ at: scanning.dataUpdatedAt, jobs });
-  }
-
-  return (
-    <>
-      {running && scanning.isError && (
-        <div className="mx-auto max-w-6xl px-6 pt-5">
-          <BlockLoadFailed label={t("gen.list.scanWatchFailed")} onRetry={() => void scanning.refetch()} />
-        </div>
-      )}
-      {[...seen.jobs].map(([jobId, serviceName]) => (
-        <ScanJobWatcher key={jobId} serviceName={serviceName} jobId={jobId} />
-      ))}
-    </>
-  );
-}
-
 export function GenerationListPage() {
-  return (
-    <>
-      <ScanWatchers />
-      {SHOW_GEN_STATE ? <StateList /> : <ServiceList />}
-    </>
-  );
+  return SHOW_GEN_STATE ? <StateList /> : <ServiceList />;
 }
