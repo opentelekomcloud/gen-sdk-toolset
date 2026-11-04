@@ -39,7 +39,10 @@ from tools.panel.core.db.models import (  # noqa: E402
     ExcludedService,
     JobKind,
     JobStatus,
+    Layout,
     RepositoryScanJob,
+    Resource,
+    ResourceEndpoint,
     Service,
     Snapshot,
 )
@@ -326,9 +329,16 @@ def test_migration_upgrade_creates_schema_and_downgrade_removes_it(scratch_datab
 
     command.upgrade(config, "head")
     inspector = inspect(engine)
-    assert {"service", "excluded_service", "job", "snapshot", "document"} <= set(
-        inspector.get_table_names()
-    )
+    assert {
+        "service",
+        "excluded_service",
+        "job",
+        "snapshot",
+        "document",
+        "layout",
+        "resource",
+        "resource_endpoint",
+    } <= set(inspector.get_table_names())
     service_fks = {fk["name"] for fk in inspector.get_foreign_keys("service")}
     assert {"fk_service_active_snapshot", "fk_service_latest_snapshot"} <= (service_fks)
     document_columns = {column["name"] for column in inspector.get_columns("document")}
@@ -338,9 +348,16 @@ def test_migration_upgrade_creates_schema_and_downgrade_removes_it(scratch_datab
 
     command.downgrade(config, "base")
     inspector = inspect(engine)
-    assert not {"service", "excluded_service", "job", "snapshot", "document"} & set(
-        inspector.get_table_names()
-    )
+    assert not {
+        "service",
+        "excluded_service",
+        "job",
+        "snapshot",
+        "document",
+        "layout",
+        "resource",
+        "resource_endpoint",
+    } & set(inspector.get_table_names())
     engine.dispose()
 
 
@@ -858,6 +875,141 @@ def test_document_overall_status_must_be_valid(db_session):
     )
     with pytest.raises(IntegrityError, match="ck_document_overall_status_valid"):
         db_session.flush()
+
+
+# ---------------------------------------------------------------------------
+# Layout tables
+# ---------------------------------------------------------------------------
+
+
+def _resource(session: Session, service: Service, name: str, version: str = "v1"):
+    """Add a resource to the service's layout, creating the layout if needed."""
+    if session.get(Layout, service.id) is None:
+        session.add(Layout(service_id=service.id, created_by="valeriia"))
+        session.flush()
+    resource = Resource(service_id=service.id, api_version=version, name=name)
+    session.add(resource)
+    session.flush()
+    return resource
+
+
+def test_a_resource_needs_its_service_layout(db_session):
+    service, _, _ = make_snapshot(db_session)
+    db_session.add(Resource(service_id=service.id, api_version="v1", name="servers"))
+
+    with pytest.raises(IntegrityError, match="fk_resource_service_id_layout"):
+        db_session.flush()
+
+
+def test_a_service_has_one_layout(db_session):
+    service, _, _ = make_snapshot(db_session)
+    db_session.add(Layout(service_id=service.id, created_by="valeriia"))
+    db_session.flush()
+    db_session.expunge_all()
+
+    db_session.add(Layout(service_id=service.id, created_by="shushanik"))
+    with pytest.raises(IntegrityError, match="pk_layout"):
+        db_session.flush()
+
+
+def test_resource_name_is_unique_within_a_version_of_the_service(db_session):
+    service, _, _ = make_snapshot(db_session)
+    _resource(db_session, service, "servers", "v1")
+    _resource(db_session, service, "servers", "v2")
+
+    with pytest.raises(IntegrityError, match="uq_resource_service_version_name"):
+        _resource(db_session, service, "servers", "v1")
+
+
+def test_two_services_may_name_a_resource_alike(db_session):
+    ecs, _, _ = make_snapshot(db_session)
+    vpc, _, _ = make_snapshot(db_session, "opentelekomcloud-docs/vpc")
+    _resource(db_session, ecs, "servers")
+    _resource(db_session, vpc, "servers")
+
+    names = db_session.scalars(select(Resource.name)).all()
+    assert names == ["servers", "servers"]
+
+
+@pytest.mark.parametrize("name", ["Servers", "server-groups", "1servers", "_tags", ""])
+def test_resource_name_must_be_a_package_name(db_session, name):
+    service, _, _ = make_snapshot(db_session)
+
+    with pytest.raises(IntegrityError, match="ck_resource_name_is_package_name"):
+        _resource(db_session, service, name)
+
+
+def test_resource_confirmation_records_who_and_when_together(db_session):
+    service, _, _ = make_snapshot(db_session)
+    resource = _resource(db_session, service, "servers")
+    resource.confirmed_by = "valeriia"
+
+    with pytest.raises(
+        IntegrityError, match="ck_resource_confirmed_by_and_at_together"
+    ):
+        db_session.flush()
+
+
+def test_an_endpoint_sits_in_at_most_one_resource_of_its_service(db_session):
+    service, _, _ = make_snapshot(db_session)
+    servers = _resource(db_session, service, "servers")
+    flavors = _resource(db_session, service, "flavors")
+    path = "api-ref/source/create_server.rst"
+    db_session.add(
+        ResourceEndpoint(resource_id=servers.id, service_id=service.id, path=path)
+    )
+    db_session.flush()
+
+    db_session.add(
+        ResourceEndpoint(resource_id=flavors.id, service_id=service.id, path=path)
+    )
+    with pytest.raises(IntegrityError, match="pk_resource_endpoint"):
+        db_session.flush()
+
+
+def test_an_endpoint_cannot_join_a_resource_of_another_service(db_session):
+    """The composite key is what stops a row naming one service and pointing at
+    another service's resource, which would also slip past the one-resource rule."""
+    ecs, _, _ = make_snapshot(db_session)
+    vpc, _, _ = make_snapshot(db_session, "opentelekomcloud-docs/vpc")
+    vpc_resource = _resource(db_session, vpc, "vpcs")
+
+    db_session.add(
+        ResourceEndpoint(
+            resource_id=vpc_resource.id, service_id=ecs.id, path="api-ref/source/x.rst"
+        )
+    )
+    with pytest.raises(IntegrityError, match="fk_resource_endpoint_resource"):
+        db_session.flush()
+
+
+def test_the_layout_goes_with_its_service_and_leaves_scan_data_alone(db_session):
+    service, _, snapshot = make_snapshot(db_session)
+    db_session.add(
+        DocumentRecord(
+            snapshot_id=snapshot.id, payload=make_endpoint().model_dump(mode="json")
+        )
+    )
+    resource = _resource(db_session, service, "servers")
+    db_session.add(
+        ResourceEndpoint(
+            resource_id=resource.id,
+            service_id=service.id,
+            path="api-ref/source/create_server.rst",
+        )
+    )
+    db_session.flush()
+
+    db_session.delete(resource)
+    db_session.flush()
+    assert db_session.scalars(select(ResourceEndpoint)).all() == []
+    assert len(db_session.scalars(select(DocumentRecord)).all()) == 1
+
+    _resource(db_session, service, "servers")
+    db_session.delete(service)
+    db_session.flush()
+    assert db_session.scalars(select(Resource)).all() == []
+    assert db_session.scalars(select(Layout)).all() == []
 
 
 def test_db_modules_import_without_database_or_github_token():

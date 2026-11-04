@@ -719,13 +719,152 @@ class DocumentRecord(Base):
     )
 
 
+class Layout(Base):
+    """A service's layout exists: who started its preliminary grouping, and when.
+
+    One row per service. A service has a layout from the moment the grouping
+    ran, whether or not it produced a resource - every endpoint may have gone to
+    "unassigned" or "no version". Resources reference this row, so none can
+    exist without it.
+    """
+
+    __tablename__ = "layout"
+
+    service_id: Mapped[int] = mapped_column(
+        sa.ForeignKey(
+            "service.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+    created_by: Mapped[str] = mapped_column(
+        sa.String(255),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    )
+
+
+class Resource(Base):
+    """One resource of a service's layout: a named group of its endpoints.
+
+    Hangs off the service's Layout, not a Snapshot, so it outlives a rescan or
+    an activation (ADR-0074). It becomes the Python SDK package
+    ``services/<service>/<api_version>/<name>``, hence the version on every row
+    and the package-name check on ``name`` (ADR-0065). ``id`` does not change on
+    rename.
+
+    ``(id, service_id)`` is unique only so ``resource_endpoint`` can reference
+    both: that keeps an endpoint's service and its resource's service the same.
+    """
+
+    __tablename__ = "resource"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+
+    service_id: Mapped[int] = mapped_column(
+        sa.ForeignKey(
+            "layout.service_id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+    )
+    api_version: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(
+        sa.Text,
+        nullable=False,
+    )
+    confirmed_by: Mapped[str | None] = mapped_column(
+        sa.String(255),
+        nullable=True,
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+    )
+
+    endpoints: Mapped[list[ResourceEndpoint]] = relationship(
+        back_populates="resource",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "service_id",
+            "api_version",
+            "name",
+            name="uq_resource_service_version_name",
+        ),
+        sa.UniqueConstraint(
+            "id",
+            "service_id",
+            name="uq_resource_id_service",
+        ),
+        sa.CheckConstraint(
+            "name ~ '^[a-z][a-z0-9_]*$'",
+            name="name_is_package_name",
+        ),
+        sa.CheckConstraint(
+            "(confirmed_by IS NULL) = (confirmed_at IS NULL)",
+            name="confirmed_by_and_at_together",
+        ),
+    )
+
+
+class ResourceEndpoint(Base):
+    """An endpoint placed in a resource of its service's layout.
+
+    Named by its document ``path``, not ``document.id``: document rows are
+    rewritten by every scan, the path is not. The primary key
+    ``(service_id, path)`` keeps an endpoint in at most one resource (ADR-0074).
+    Endpoints in no resource are not stored.
+    """
+
+    __tablename__ = "resource_endpoint"
+
+    service_id: Mapped[int] = mapped_column(
+        primary_key=True,
+    )
+    path: Mapped[str] = mapped_column(
+        sa.Text,
+        primary_key=True,
+    )
+    resource_id: Mapped[int] = mapped_column(
+        nullable=False,
+        index=True,
+    )
+
+    resource: Mapped[Resource] = relationship(
+        back_populates="endpoints",
+    )
+
+    __table_args__ = (
+        sa.ForeignKeyConstraint(
+            ["resource_id", "service_id"],
+            ["resource.id", "resource.service_id"],
+            name="fk_resource_endpoint_resource",
+            ondelete="CASCADE",
+        ),
+    )
+
+
 __all__ = [
     "TERMINAL_JOB_STATUSES",
     "DocumentRecord",
     "ExcludedService",
     "JobKind",
     "JobStatus",
+    "Layout",
     "RepositoryScanJob",
+    "Resource",
+    "ResourceEndpoint",
     "Service",
     "Snapshot",
 ]

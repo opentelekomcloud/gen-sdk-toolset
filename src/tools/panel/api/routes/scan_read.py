@@ -447,16 +447,28 @@ def all_services(db: Session) -> list[tuple[Service, ServiceState]]:
     excluded Service, or the UI could never load the page that restores it.
     """
     services = (
-        db.scalars(
-            _service_query().where(~Service.exclusion.has()).order_by(Service.repo)
-        )
-        .unique()
-        .all()
+        db.scalars(_counted_service_query().order_by(Service.repo)).unique().all()
     )
     return [
         (service, derive_service_state(service, scanner_version=SCANNER_VERSION))
         for service in services
     ]
+
+
+def counted_service(db: Session, repo: str) -> tuple[Service, ServiceState] | None:
+    """One Service from the set :func:`all_services` serves, or None if outside it."""
+    service = (
+        db.scalars(_counted_service_query().where(Service.repo == repo))
+        .unique()
+        .one_or_none()
+    )
+    if service is None:
+        return None
+    return service, derive_service_state(service, scanner_version=SCANNER_VERSION)
+
+
+def _counted_service_query():
+    return _service_query().where(~Service.exclusion.has())
 
 
 def matches_search(service: Service, q: str) -> bool:

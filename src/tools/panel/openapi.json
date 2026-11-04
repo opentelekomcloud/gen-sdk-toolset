@@ -585,6 +585,118 @@
         "title": "JobStatus",
         "type": "string"
       },
+      "LayoutResourceItem": {
+        "description": "One resource of the layout, with its confirmation and its endpoints.",
+        "properties": {
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By"
+          },
+          "endpoints": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentListItem"
+            },
+            "title": "Endpoints",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "confirmed_by",
+          "confirmed_at",
+          "endpoints"
+        ],
+        "title": "LayoutResourceItem",
+        "type": "object"
+      },
+      "LayoutResponse": {
+        "description": "The layout of one service from the Generation list.\n\n``has_layout`` is false until the service's preliminary grouping has run;\nthe versions and the \"no version\" list are empty then.",
+        "properties": {
+          "has_layout": {
+            "title": "Has Layout",
+            "type": "boolean"
+          },
+          "no_version": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentListItem"
+            },
+            "title": "No Version",
+            "type": "array"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutVersionItem"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "has_layout",
+          "versions",
+          "no_version"
+        ],
+        "title": "LayoutResponse",
+        "type": "object"
+      },
+      "LayoutVersionItem": {
+        "description": "One API version of the layout: its resources and its unassigned endpoints.",
+        "properties": {
+          "api_version": {
+            "title": "Api Version",
+            "type": "string"
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutResourceItem"
+            },
+            "title": "Resources",
+            "type": "array"
+          },
+          "unassigned": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentListItem"
+            },
+            "title": "Unassigned",
+            "type": "array"
+          }
+        },
+        "required": [
+          "api_version",
+          "resources",
+          "unassigned"
+        ],
+        "title": "LayoutVersionItem",
+        "type": "object"
+      },
       "ParameterResponse": {
         "description": "One parameter row, nested exactly as the scan recorded it.\n\n`param_type` is the kind and `element_type` what an array holds; the UI\njoins them back into `Array<String>`. Sending only the kind would show\nevery array as `Array` and lose what the documentation actually said.",
         "properties": {
@@ -1585,6 +1697,51 @@
           }
         ],
         "summary": "List Generation Services"
+      }
+    },
+    "/api/generation/services/{repo}/layout": {
+      "get": {
+        "description": "The resource layout of a service on the Generation list.\n\nA repository off that list - unknown, excluded, ineligible or without\nendpoints in its active snapshot - answers 404, the same as its pages do.",
+        "operationId": "get_service_layout_api_generation_services__repo__layout_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Service Layout"
       }
     },
     "/api/jobs/{job_id}": {
