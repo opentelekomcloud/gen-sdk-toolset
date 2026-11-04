@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload, undefer
 
-from tools.panel.core.db.models import DocumentRecord, Resource, Service
+from tools.panel.core.db.models import DocumentRecord, Layout, Resource, Service
 from tools.shared.ir import Endpoint
 
 _ENDPOINT_KIND = Endpoint.model_fields["kind"].default
@@ -40,28 +40,26 @@ class LayoutVersion:
 class ServiceLayout:
     """The layout of one service as the active Snapshot sees it.
 
-    A service has a layout once it has a resource; without one, the versions
-    and lists are empty.
+    A service has a layout once its ``Layout`` row exists, with or without a
+    resource; without one, the versions and lists are empty.
     """
 
+    has_layout: bool
     versions: list[LayoutVersion]
     no_version: list[DocumentRecord]
-
-    @property
-    def has_layout(self) -> bool:
-        return any(version.resources for version in self.versions)
 
 
 def service_layout(db: Session, service: Service) -> ServiceLayout:
     """Read the layout of ``service`` against its active Snapshot."""
+    if db.get(Layout, service.id) is None:
+        return ServiceLayout(has_layout=False, versions=[], no_version=[])
+
     resources = db.scalars(
         select(Resource)
         .where(Resource.service_id == service.id)
         .options(selectinload(Resource.endpoints))
         .order_by(Resource.api_version, Resource.name)
     ).all()
-    if not resources:
-        return ServiceLayout(versions=[], no_version=[])
 
     documents = db.scalars(
         select(DocumentRecord)
@@ -103,7 +101,9 @@ def service_layout(db: Session, service: Service) -> ServiceLayout:
             resources_by_version.keys() | unassigned_by_version.keys()
         )
     ]
-    return ServiceLayout(versions=versions, no_version=_ordered(no_version))
+    return ServiceLayout(
+        has_layout=True, versions=versions, no_version=_ordered(no_version)
+    )
 
 
 def _ordered(documents: Iterable[DocumentRecord]) -> list[DocumentRecord]:

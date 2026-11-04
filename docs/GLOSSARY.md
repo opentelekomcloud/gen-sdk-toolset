@@ -280,12 +280,13 @@ Tables in `src/tools/panel/core/db/models.py`, read in
 
 | Name | Meaning |
 |---|---|
-| **Layout** | Which endpoints of a service form which resource. Shared by every generation target. A service **has a layout** once it has a resource. |
-| `Resource` (table `resource`) | A named group of a service's endpoints within one API version; becomes the Python SDK package `services/<service>/<api_version>/<name>`. `id` survives a rename; `name` is unique within the version and matches `^[a-z][a-z0-9_]*$`. `confirmed_by` / `confirmed_at` are set together or not at all. |
+| **Layout** | Which endpoints of a service form which resource. Shared by every generation target. A service **has a layout** once its preliminary grouping has run, whether or not that produced a resource. |
+| `Layout` (table `layout`) | One row per service: the layout exists, with `created_by` / `created_at` of the grouping run that created it. Every `Resource` references it, so no resource exists without it. |
+| `Resource` (table `resource`) | A named group of a service's endpoints within one API version, under the service's `Layout`; becomes the Python SDK package `services/<service>/<api_version>/<name>`. `id` survives a rename; `name` is unique within the version and matches `^[a-z][a-z0-9_]*$`. `confirmed_by` / `confirmed_at` are set together or not at all. |
 | `ResourceEndpoint` (table `resource_endpoint`) | An endpoint placed in a resource, named by its document `path`, not by a `document.id`: document rows are rewritten by every scan, the path is not. The primary key `(service_id, path)` keeps an endpoint in at most one resource. A path the active Snapshot lacks is not shown, and comes back with a Snapshot that has it. |
 | **Unassigned** | Endpoints of the active Snapshot with an API version and no resource, listed under their version. Derived on read, never stored. |
 | **No version** | Endpoints of the active Snapshot whose `api_version` the scanner did not find, in no resource. Derived on read, never stored. |
-| **Layout read** | `GET /api/generation/services/{repo}/layout` → `has_layout`, `versions` (each with its `resources` and `unassigned`) and `no_version`; an endpoint is served as the Scan documents list serves a row (`DocumentListItem`). Without a resource all three are empty. `404` for a repository off the Generation list. |
+| **Layout read** | `GET /api/generation/services/{repo}/layout` → `has_layout`, `versions` (each with its `resources` and `unassigned`) and `no_version`; an endpoint is served as the Scan documents list serves a row (`DocumentListItem`). Before the grouping has run all three are empty. `404` for a repository off the Generation list. |
 
 ## Versions
 

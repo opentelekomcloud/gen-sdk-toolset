@@ -39,6 +39,7 @@ from tools.panel.core.db.models import (  # noqa: E402
     ExcludedService,
     JobKind,
     JobStatus,
+    Layout,
     RepositoryScanJob,
     Resource,
     ResourceEndpoint,
@@ -334,6 +335,7 @@ def test_migration_upgrade_creates_schema_and_downgrade_removes_it(scratch_datab
         "job",
         "snapshot",
         "document",
+        "layout",
         "resource",
         "resource_endpoint",
     } <= set(inspector.get_table_names())
@@ -352,6 +354,7 @@ def test_migration_upgrade_creates_schema_and_downgrade_removes_it(scratch_datab
         "job",
         "snapshot",
         "document",
+        "layout",
         "resource",
         "resource_endpoint",
     } & set(inspector.get_table_names())
@@ -880,10 +883,33 @@ def test_document_overall_status_must_be_valid(db_session):
 
 
 def _resource(session: Session, service: Service, name: str, version: str = "v1"):
+    """Add a resource to the service's layout, creating the layout if needed."""
+    if session.get(Layout, service.id) is None:
+        session.add(Layout(service_id=service.id, created_by="valeriia"))
+        session.flush()
     resource = Resource(service_id=service.id, api_version=version, name=name)
     session.add(resource)
     session.flush()
     return resource
+
+
+def test_a_resource_needs_its_service_layout(db_session):
+    service, _, _ = make_snapshot(db_session)
+    db_session.add(Resource(service_id=service.id, api_version="v1", name="servers"))
+
+    with pytest.raises(IntegrityError, match="fk_resource_service_id_layout"):
+        db_session.flush()
+
+
+def test_a_service_has_one_layout(db_session):
+    service, _, _ = make_snapshot(db_session)
+    db_session.add(Layout(service_id=service.id, created_by="valeriia"))
+    db_session.flush()
+    db_session.expunge_all()
+
+    db_session.add(Layout(service_id=service.id, created_by="shushanik"))
+    with pytest.raises(IntegrityError, match="pk_layout"):
+        db_session.flush()
 
 
 def test_resource_name_is_unique_within_a_version_of_the_service(db_session):
@@ -983,6 +1009,7 @@ def test_the_layout_goes_with_its_service_and_leaves_scan_data_alone(db_session)
     db_session.delete(service)
     db_session.flush()
     assert db_session.scalars(select(Resource)).all() == []
+    assert db_session.scalars(select(Layout)).all() == []
 
 
 def test_db_modules_import_without_database_or_github_token():

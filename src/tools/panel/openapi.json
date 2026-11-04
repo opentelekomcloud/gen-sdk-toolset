@@ -638,7 +638,7 @@
         "type": "object"
       },
       "LayoutResponse": {
-        "description": "The layout of one service from the Generation list.\n\n``has_layout`` is false until the service has a resource; the versions and\nthe \"no version\" list are empty then.",
+        "description": "The layout of one service from the Generation list.\n\n``has_layout`` is false until the service's preliminary grouping has run;\nthe versions and the \"no version\" list are empty then.",
         "properties": {
           "has_layout": {
             "title": "Has Layout",

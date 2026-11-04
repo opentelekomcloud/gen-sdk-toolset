@@ -719,11 +719,40 @@ class DocumentRecord(Base):
     )
 
 
+class Layout(Base):
+    """A service's layout exists: who started its preliminary grouping, and when.
+
+    One row per service. A service has a layout from the moment the grouping
+    ran, whether or not it produced a resource - every endpoint may have gone to
+    "unassigned" or "no version". Resources reference this row, so none can
+    exist without it.
+    """
+
+    __tablename__ = "layout"
+
+    service_id: Mapped[int] = mapped_column(
+        sa.ForeignKey(
+            "service.id",
+            ondelete="CASCADE",
+        ),
+        primary_key=True,
+    )
+    created_by: Mapped[str] = mapped_column(
+        sa.String(255),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    )
+
+
 class Resource(Base):
     """One resource of a service's layout: a named group of its endpoints.
 
-    Hangs off the Service, not a Snapshot, so it outlives a rescan or an
-    activation (ADR-0074). It becomes the Python SDK package
+    Hangs off the service's Layout, not a Snapshot, so it outlives a rescan or
+    an activation (ADR-0074). It becomes the Python SDK package
     ``services/<service>/<api_version>/<name>``, hence the version on every row
     and the package-name check on ``name`` (ADR-0065). ``id`` does not change on
     rename.
@@ -738,7 +767,7 @@ class Resource(Base):
 
     service_id: Mapped[int] = mapped_column(
         sa.ForeignKey(
-            "service.id",
+            "layout.service_id",
             ondelete="CASCADE",
         ),
         nullable=False,
@@ -832,6 +861,7 @@ __all__ = [
     "ExcludedService",
     "JobKind",
     "JobStatus",
+    "Layout",
     "RepositoryScanJob",
     "Resource",
     "ResourceEndpoint",

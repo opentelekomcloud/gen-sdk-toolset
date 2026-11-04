@@ -593,8 +593,8 @@ class LayoutVersionItem(BaseModel):
 class LayoutResponse(BaseModel):
     """The layout of one service from the Generation list.
 
-    ``has_layout`` is false until the service has a resource; the versions and
-    the "no version" list are empty then.
+    ``has_layout`` is false until the service's preliminary grouping has run;
+    the versions and the "no version" list are empty then.
     """
 
     has_layout: bool

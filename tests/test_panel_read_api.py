@@ -42,6 +42,7 @@ from tools.panel.core.db.models import (  # noqa: E402
     ExcludedService,
     JobKind,
     JobStatus,
+    Layout,
     RepositoryScanJob,
     Resource,
     ResourceEndpoint,
@@ -1344,6 +1345,7 @@ def _place(
     confirmed_by: str | None = None,
 ) -> int:
     """Store one resource of REPO's layout holding ``endpoints``."""
+    _start_layout(session_factory)
     with session_factory() as session:
         service_id = session.scalar(select(Service.id).where(Service.repo == REPO))
         resource = Resource(
@@ -1362,6 +1364,15 @@ def _place(
         return resource.id
 
 
+def _start_layout(session_factory) -> None:
+    """Record that REPO's preliminary grouping ran, as starting it will."""
+    with session_factory() as session:
+        service_id = session.scalar(select(Service.id).where(Service.repo == REPO))
+        if session.get(Layout, service_id) is None:
+            session.add(Layout(service_id=service_id, created_by="valeriia"))
+            session.commit()
+
+
 @pytest.fixture
 def laid_out(client, session_factory):
     """REPO scanned with LAYOUT_ENDPOINTS and still without a layout."""
@@ -1374,14 +1385,36 @@ def _paths(items) -> list[str]:
     return [item["path"].removeprefix("api-ref/source/") for item in items]
 
 
-def test_a_service_without_a_resource_has_no_layout(laid_out):
-    """Without a resource every endpoint would read as unassigned, though
+def test_a_service_whose_grouping_never_ran_has_no_layout(laid_out):
+    """Before the grouping runs every endpoint would read as unassigned, though
     nobody has grouped anything yet - so the lists stay empty too."""
     assert laid_out.get(LAYOUT).json() == {
         "has_layout": False,
         "versions": [],
         "no_version": [],
     }
+
+
+def test_a_grouping_that_made_no_resource_still_shows_both_lists(
+    laid_out, session_factory
+):
+    """Every endpoint may land in "unassigned" or "no version". The layout
+    exists all the same, or the user could neither see the endpoints nor start
+    placing them."""
+    _start_layout(session_factory)
+
+    body = laid_out.get(LAYOUT).json()
+
+    assert body["has_layout"] is True
+    v1, v2 = body["versions"]
+    assert v1["resources"] == [] and v2["resources"] == []
+    assert _paths(v1["unassigned"]) == [
+        "project.rst",
+        "list_servers.rst",
+        "create_server.rst",
+    ]
+    assert _paths(v2["unassigned"]) == ["list_tags.rst"]
+    assert _paths(body["no_version"]) == ["quotas.rst"]
 
 
 def test_layout_serves_resources_and_derives_both_lists(laid_out, session_factory):
