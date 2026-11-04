@@ -56,7 +56,10 @@ export const keys = {
  * The full invalidation set (PS11/PS14/G1): a completed scan, a snapshot
  * activation, or an exclusion changes the active snapshot or the working
  * set — service detail, documents, cached document details, snapshots list,
- * services list, summary, and attention are all stale together.
+ * services list, summary, and attention are all stale together. So is the
+ * Generation list (ADR-0077): the backend selects it by the active snapshot and
+ * the exclusion, exactly what these events move, so it is fetched again rather
+ * than patched here.
  * Lives here (next to `keys`) so both mutations.ts and useService can use it
  * without an import cycle.
  */
@@ -68,13 +71,16 @@ export function invalidateSnapshot(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.services() });
   void qc.invalidateQueries({ queryKey: keys.summary });
   void qc.invalidateQueries({ queryKey: keys.attention });
+  void qc.invalidateQueries({ queryKey: keys.genList() });
 }
 
 /**
  * A failed scan produces no new snapshot: only the service state (the error,
  * the cleared job) and the aggregates that surface it are stale. The documents,
  * document details and snapshots of the still-active snapshot are not —
- * invalidating them would refetch data that cannot have changed.
+ * invalidating them would refetch data that cannot have changed. Neither is the
+ * Generation list: it is selected by the active snapshot, which a failed scan
+ * leaves where it was (ADR-0042).
  */
 export function invalidateScanFailure(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.service(name) });
