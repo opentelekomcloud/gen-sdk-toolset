@@ -1,9 +1,15 @@
-import { MutationObserver, QueryClient } from "@tanstack/react-query";
+import { MutationObserver, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { renderHook } from "@testing-library/react";
+import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { rescanMutation } from "./mutations";
+import { rescanMutation, useActivateSnapshot, useExclude, useInclude } from "./mutations";
 import { keys } from "./queries";
 import { bindSession, resetSession } from "../../../shared/auth/session";
 import type { ServiceDetail } from "../../../shared/api/types";
+
+vi.mock("react-oidc-context", () => ({
+  useAuth: () => ({ user: { access_token: "", profile: { preferred_username: "ada@otc.test" } } }),
+}));
 
 const NAME = "opentelekomcloud-docs/ecs";
 
@@ -91,5 +97,48 @@ describe("rescanMutation: the optimistic flip and what undoes it", () => {
     const [, init] = (globalThis.fetch as unknown as { mock: { calls: [string, RequestInit][] } })
       .mock.calls[0];
     expect(JSON.parse(String(init.body))).toEqual({ initiated_by: "ada@otc.test" });
+  });
+});
+
+describe("the changes to Scan data the Generation list follows", () => {
+  /** Runs one of the hooks against a cache holding the Generation list. */
+  function hookWithList<T>(useHook: (name: string) => T) {
+    const qc = new QueryClient();
+    qc.setQueryData(keys.genList({ q: "" }), [{ name: "opentelekomcloud-docs/vpc", label: "vpc" }]);
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const { result } = renderHook(() => useHook(NAME), { wrapper });
+    const listInvalidated = () => qc.getQueryState(keys.genList({ q: "" }))?.isInvalidated;
+    return { qc, result, listInvalidated };
+  }
+
+  it("marks the list stale after a snapshot activation", async () => {
+    const { result, listInvalidated } = hookWithList(useActivateSnapshot);
+    respond(200, { items: [], active_id: 2, latest_id: 2 });
+
+    await result.current.mutateAsync(2);
+
+    expect(listInvalidated()).toBe(true);
+  });
+
+  it("marks the list stale after an exclusion", async () => {
+    const { result, listInvalidated } = hookWithList(useExclude);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+
+    await result.current.mutateAsync("retired");
+
+    expect(listInvalidated()).toBe(true);
+  });
+
+  it("marks the list stale after an exclusion is undone, without adding the service itself", async () => {
+    // Whether the restored service belongs on the list is the backend's answer
+    // (ADR-0043): the cache keeps what it had until that answer arrives.
+    const { qc, result, listInvalidated } = hookWithList(useInclude);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })));
+
+    await result.current.mutateAsync();
+
+    expect(listInvalidated()).toBe(true);
+    expect(qc.getQueryData(keys.genList({ q: "" }))).toEqual([{ name: "opentelekomcloud-docs/vpc", label: "vpc" }]);
   });
 });

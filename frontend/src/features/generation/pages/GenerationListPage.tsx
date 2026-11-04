@@ -176,7 +176,7 @@ function ServiceList() {
         <SearchInput value={input} onChange={setInput} />
       </div>
 
-      {/* A failed request is never shown as a table (ADR-0051): no rows would
+      {/* A failed request is never shown as a table (ADR-0081): no rows would
           read as "no service qualifies", and an earlier answer still in the
           cache would read as current. While a Retry runs, the page says it is
           loading, so the click visibly did something and cannot be repeated. */}

@@ -1,6 +1,7 @@
+import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import type { Job, JobStatus } from "../../../shared/api/types";
-import { JOB_TERMINAL, jobRefetchInterval } from "./queries";
+import { JOB_TERMINAL, invalidateScanFailure, invalidateSnapshot, jobRefetchInterval, keys } from "./queries";
 
 function makeJob(status: JobStatus): Job {
   return {
@@ -35,5 +36,36 @@ describe("jobRefetchInterval", () => {
 
   it("treats exactly done and failed as terminal", () => {
     expect([...JOB_TERMINAL].sort()).toEqual(["done", "failed"]);
+  });
+});
+
+describe("the Generation list in the invalidation sets", () => {
+  const NAME = "opentelekomcloud-docs/ecs";
+
+  /** A cache holding the Generation list unfiltered and under one search. */
+  function cacheWithList() {
+    const qc = new QueryClient();
+    qc.setQueryData(keys.genList({ q: "" }), [{ name: NAME, label: "ecs" }]);
+    qc.setQueryData(keys.genList({ q: "ec" }), [{ name: NAME, label: "ecs" }]);
+    return qc;
+  }
+  const invalidated = (qc: QueryClient, q: string) => qc.getQueryState(keys.genList({ q }))?.isInvalidated;
+
+  it("goes stale, under every search, when the active snapshot or the exclusion moves", () => {
+    const qc = cacheWithList();
+
+    invalidateSnapshot(qc, NAME);
+
+    expect(invalidated(qc, "")).toBe(true);
+    expect(invalidated(qc, "ec")).toBe(true);
+  });
+
+  it("stays as it is after a failed scan, which leaves the active snapshot in place", () => {
+    const qc = cacheWithList();
+
+    invalidateScanFailure(qc, NAME);
+
+    expect(invalidated(qc, "")).toBe(false);
+    expect(invalidated(qc, "ec")).toBe(false);
   });
 });
