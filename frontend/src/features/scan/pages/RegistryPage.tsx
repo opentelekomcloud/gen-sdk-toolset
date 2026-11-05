@@ -6,7 +6,6 @@ import { useServices, useSummary, type ServicesParams } from "../api/queries";
 import type { ServiceListItem } from "../../../shared/api/types";
 import type { AttentionRuleCode, ServiceFilter, ServiceSort } from "../types";
 import { RescanButton } from "../components/RescanButton";
-import { ScanJobWatcher } from "../components/ScanJobWatcher";
 import { useSession } from "../../../shared/auth/useSession";
 import { SectionStrip } from "../components/SectionStrip";
 import { StatusPill } from "../components/StatusPill";
@@ -44,12 +43,6 @@ function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVe
       }`}
       onClick={() => navigate(`/scan/services/${encodeURIComponent(item.name)}`)}
     >
-      {/* The row is the only thing on this page that knows a scan is running,
-          so it is what watches the job: without this, a scan started here (or
-          by someone else) would stay "scanning" until the next page load. */}
-      {scanning && item.job_id != null && (
-        <ScanJobWatcher key={item.job_id} serviceName={item.name} jobId={item.job_id} />
-      )}
       <div className="col-span-3 flex items-center gap-1.5 overflow-hidden">
         <ChevronRight size={14} className="shrink-0 text-gray-400" />
         <span className="truncate font-mono text-sm text-gray-800">{item.label}</span>

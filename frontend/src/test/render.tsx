@@ -17,14 +17,18 @@ import { keys } from "../features/scan/api/queries";
  *
  * Queries are seeded rather than fetched: `staleTime: Infinity` keeps the cache
  * still, so a page renders from the data the test names and nothing else.
+ * A test about refreshing passes `client` - the panel's own, from
+ * `createQueryClient` - because this default one never fetches again.
  */
 export function renderPage(
   ui: ReactElement,
-  options: { path?: string; route?: string; seed?: [readonly unknown[], unknown][] } = {},
+  options: { path?: string; route?: string; seed?: [readonly unknown[], unknown][]; client?: QueryClient } = {},
 ) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { staleTime: Infinity, retry: false } },
-  });
+  const client =
+    options.client ??
+    new QueryClient({
+      defaultOptions: { queries: { staleTime: Infinity, retry: false } },
+    });
   client.setQueryData(keys.summary, { scanner_version: "0.1.0", services_total: 1 });
   for (const [key, value] of options.seed ?? []) client.setQueryData(key, value);
 
