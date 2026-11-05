@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { useDocumentDetail, useServices, useSummary } from "../../features/scan/api/queries";
+import { useDocumentDetail, useServices, useSnapshots, useSummary } from "../../features/scan/api/queries";
 import { createQueryClient, REFETCH_INTERVAL_MS } from "./queryClient";
 
 const NAME = "opentelekomcloud-docs/vpc";
 const SUMMARY = "/api/scan/summary";
 const SERVICES = "/api/scan/services";
 const DOCUMENT = `/api/scan/services/${encodeURIComponent(NAME)}/documents/3`;
+const SNAPSHOTS = `/api/scan/services/${encodeURIComponent(NAME)}/snapshots`;
 /** The longest a visible tab may take to show a change saved on the server (ADR-0077). */
 const DEADLINE_MS = 15_000;
 
@@ -35,6 +36,13 @@ function RegistryProbe() {
 }
 function DocumentProbe() {
   return <Shown id="document" data={useDocumentDetail(NAME, 3, true).data} />;
+}
+/** A block that stays mounted while closed, the way DocRow and SnapshotSelector do. */
+function LazyDocumentProbe({ open }: { open: boolean }) {
+  return <Shown id="lazy" data={useDocumentDetail(NAME, 3, open).data} />;
+}
+function LazySnapshotsProbe({ open }: { open: boolean }) {
+  return <Shown id="lazy" data={useSnapshots(NAME, open).data} />;
 }
 
 /** The app's own query client, so the tests hold the settings the panel runs with. */
@@ -127,5 +135,29 @@ describe("the periodic refetch", () => {
     expect(shown("services")).toBe("");
     await elapse(0);
     expect(shown("services")).toBe('{"total":2}');
+  });
+});
+
+describe("a block opened again while its component stays mounted", () => {
+  it.each([
+    ["document details", DOCUMENT, LazyDocumentProbe],
+    ["the snapshot list", SNAPSHOTS, LazySnapshotsProbe],
+  ])("loads %s from the server, not from the previous opening", async (_name, path, Probe) => {
+    const state: Record<string, unknown> = { [path]: { v: 1 } };
+    serve(state);
+    const { rerender } = mount(<Probe open />);
+    await elapse(0);
+    expect(shown("lazy")).toBe('{"v":1}');
+
+    rerender(<Probe open={false} />);
+    state[path] = { v: 2 };
+    /* Inside the 15-second staleTime: a cache kept while closed would still
+       count as fresh here and be shown without asking the server. */
+    await elapse(DEADLINE_MS - 1_000);
+    rerender(<Probe open />);
+
+    expect(shown("lazy")).toBe("");
+    await elapse(0);
+    expect(shown("lazy")).toBe('{"v":2}');
   });
 });

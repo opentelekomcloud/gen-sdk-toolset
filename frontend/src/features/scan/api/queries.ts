@@ -120,12 +120,18 @@ export function useService(name: string) {
   });
 }
 
-/** G1: lazy — call with enabled: open (popover); trigger renders from ServiceDetail.active_snapshot. */
+/**
+ * G1: lazy — call with enabled: open (popover); trigger renders from ServiceDetail.active_snapshot.
+ * `subscribed: enabled` makes a closed popover count as not shown, so its cache
+ * is dropped like an unmounted page's and reopening loads from the server
+ * (ADR-0078) - the component itself stays mounted while closed.
+ */
 export function useSnapshots(name: string, enabled = true) {
   return useQuery({
     queryKey: keys.snapshots(name),
     queryFn: () => apiFetch<SnapshotsResponse>(`/scan/services/${encodeURIComponent(name)}/snapshots`),
     enabled,
+    subscribed: enabled,
   });
 }
 
@@ -156,12 +162,16 @@ export function useDocuments(name: string, params: DocumentsParams) {
   });
 }
 
-/** Lazy — call with enabled: open (PS13); loading/error/retry come from query state. */
+/**
+ * Lazy — call with enabled: open (PS13); loading/error/retry come from query state.
+ * `subscribed: enabled` drops the cache of a closed row, as for useSnapshots.
+ */
 export function useDocumentDetail(name: string, id: number, enabled: boolean) {
   return useQuery({
     queryKey: keys.document(name, id),
     queryFn: () => apiFetch<DocumentDetail>(`/scan/services/${encodeURIComponent(name)}/documents/${id}`),
     enabled,
+    subscribed: enabled,
   });
 }
 
