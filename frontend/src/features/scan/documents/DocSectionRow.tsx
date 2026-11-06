@@ -44,8 +44,7 @@ export function DocSectionRow({ section }: { section: SectionDetail }) {
       ))}
       {open && (
         <div className="space-y-2 border-t border-gray-100 p-2">
-          {/* `?? []` guards a detail cached before examples existed: the query
-              keeps document details forever (staleTime: Infinity). */}
+          {/* `?? []` guards a detail served without examples. */}
           {(section.examples ?? []).map((example, idx) => (
             <figure key={idx} className="overflow-hidden rounded border border-gray-200">
               <figcaption className="flex items-center justify-between gap-2 border-b border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-500">
@@ -59,8 +58,7 @@ export function DocSectionRow({ section }: { section: SectionDetail }) {
           ))}
           {/* Status codes are neither parameters nor examples, so they get
               their own table rather than being folded into either. `?? []`
-              guards a detail cached before they existed: the query keeps
-              document details forever (staleTime: Infinity). */}
+              guards a detail served without them. */}
           {(section.status_codes ?? []).length > 0 && <StatusCodeTable section={section} />}
           {(section.examples ?? []).length === 0 &&
             (section.status_codes ?? []).length === 0 && <IrTable section={section} />}

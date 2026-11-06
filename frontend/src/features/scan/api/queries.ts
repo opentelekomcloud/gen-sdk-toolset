@@ -7,8 +7,6 @@ import type {
   ExcludedService,
   Ineligible,
   SnapshotsResponse,
-  Job,
-  JobStatus,
   ServiceDetail,
   ServicesResponse,
   Summary,
@@ -32,7 +30,6 @@ export const keys = {
   document: (name: string, id: number) => ["document", name, id] as const,
   /** G1: snapshot history of a service. */
   snapshots: (name: string) => ["snapshots", name] as const,
-  job: (id: number) => ["job", id] as const,
   summary: ["summary"] as const,
   attention: ["attention"] as const,
   excluded: ["excluded"] as const,
@@ -53,15 +50,15 @@ export const keys = {
 };
 
 /**
- * The full invalidation set (PS11/PS14/G1): a completed scan, a snapshot
- * activation, or an exclusion changes the active snapshot or the working
+ * The full invalidation set (PS11/PS14/G1): a snapshot activation, an
+ * exclusion or its undo changes the active snapshot or the working
  * set — service detail, documents, cached document details, snapshots list,
  * services list, summary, and attention are all stale together. So is the
  * Generation list (ADR-0077): the backend selects it by the active snapshot and
  * the exclusion, exactly what these events move, so it is fetched again rather
  * than patched here.
- * Lives here (next to `keys`) so both mutations.ts and useService can use it
- * without an import cycle.
+ * It serves only the tab that did the action; every other change - a scan
+ * finishing included - arrives through the periodic refetch (ADR-0085).
  */
 export function invalidateSnapshot(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.service(name) });
@@ -72,21 +69,6 @@ export function invalidateSnapshot(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.summary });
   void qc.invalidateQueries({ queryKey: keys.attention });
   void qc.invalidateQueries({ queryKey: keys.genList() });
-}
-
-/**
- * A failed scan produces no new snapshot: only the service state (the error,
- * the cleared job) and the aggregates that surface it are stale. The documents,
- * document details and snapshots of the still-active snapshot are not —
- * invalidating them would refetch data that cannot have changed. Neither is the
- * Generation list: it is selected by the active snapshot, which a failed scan
- * leaves where it was (ADR-0042).
- */
-export function invalidateScanFailure(qc: QueryClient, name: string) {
-  void qc.invalidateQueries({ queryKey: keys.service(name) });
-  void qc.invalidateQueries({ queryKey: keys.services() });
-  void qc.invalidateQueries({ queryKey: keys.summary });
-  void qc.invalidateQueries({ queryKey: keys.attention });
 }
 
 /**
@@ -132,20 +114,24 @@ export function useServices(params: ServicesParams) {
 }
 
 export function useService(name: string) {
-  /* Scan-completion refresh is owned by ScanJobWatcher; this query just serves
-     the service detail. */
   return useQuery({
     queryKey: keys.service(name),
     queryFn: () => apiFetch<ServiceDetail>(`/scan/services/${encodeURIComponent(name)}`),
   });
 }
 
-/** G1: lazy — call with enabled: open (popover); trigger renders from ServiceDetail.active_snapshot. */
+/**
+ * G1: lazy — call with enabled: open (popover); trigger renders from ServiceDetail.active_snapshot.
+ * `subscribed: enabled` makes a closed popover count as not shown, so its cache
+ * is dropped like an unmounted page's and reopening loads from the server
+ * (ADR-0078) - the component itself stays mounted while closed.
+ */
 export function useSnapshots(name: string, enabled = true) {
   return useQuery({
     queryKey: keys.snapshots(name),
     queryFn: () => apiFetch<SnapshotsResponse>(`/scan/services/${encodeURIComponent(name)}/snapshots`),
     enabled,
+    subscribed: enabled,
   });
 }
 
@@ -176,13 +162,16 @@ export function useDocuments(name: string, params: DocumentsParams) {
   });
 }
 
-/** Lazy — call with enabled: open (PS13); loading/error/retry come from query state. */
+/**
+ * Lazy — call with enabled: open (PS13); loading/error/retry come from query state.
+ * `subscribed: enabled` drops the cache of a closed row, as for useSnapshots.
+ */
 export function useDocumentDetail(name: string, id: number, enabled: boolean) {
   return useQuery({
     queryKey: keys.document(name, id),
     queryFn: () => apiFetch<DocumentDetail>(`/scan/services/${encodeURIComponent(name)}/documents/${id}`),
     enabled,
-    staleTime: Infinity, // immutable within a snapshot; invalidated on rescan/activate
+    subscribed: enabled,
   });
 }
 
@@ -200,25 +189,4 @@ export function useExcluded() {
 
 export function useIneligible() {
   return useQuery({ queryKey: keys.ineligible, queryFn: () => apiFetch<Ineligible[]>("/scan/ineligible") });
-}
-
-/** Terminal job statuses — polling stops here. */
-export const JOB_TERMINAL: ReadonlySet<JobStatus> = new Set<JobStatus>(["done", "failed"]);
-
-/** Polling cadence for a job query: stop once terminal, else poll every 1.5s. */
-export function jobRefetchInterval(job: Job | undefined): number | false {
-  return job && JOB_TERMINAL.has(job.status) ? false : 1500;
-}
-
-/**
- * Poll GET /api/jobs/{id} while the job is non-terminal; stop once it reaches
- * done/failed. Pass undefined to disable (no active job).
- */
-export function useJob(jobId: number | undefined) {
-  return useQuery({
-    queryKey: keys.job(jobId ?? -1),
-    enabled: jobId != null,
-    queryFn: () => apiFetch<Job>(`/jobs/${jobId}`),
-    refetchInterval: (query) => jobRefetchInterval(query.state.data),
-  });
 }

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import { renderPage } from "../../../test/render";
+import { createQueryClient } from "../../../shared/api/queryClient";
 import { tokenWithRoles } from "../../../test/token";
 import type { ServiceListItem } from "../../../shared/api/types";
 import { RegistryPage } from "./RegistryPage";
@@ -20,6 +21,8 @@ vi.mock("react-oidc-context", () => ({
 
 const NAME = "opentelekomcloud-docs/ecs";
 const JOB_ID = 7;
+/** The longest a visible tab may take to show a change saved on the server (ADR-0077). */
+const DEADLINE_MS = 15_000;
 
 /** The same service as the registry lists it, before and after the job. */
 function listItem(scan_status: "scanning" | "scanned"): ServiceListItem {
@@ -61,9 +64,9 @@ const job = (status: "running" | "done") => ({
 });
 
 /**
- * A backend on which the job has already finished, but whose registry still
- * answered "scanning" the first time the page asked - exactly the moment the
- * page used to get stuck at until a reload.
+ * A backend on which the job finishes after the page has loaded: the registry
+ * answers "scanning" the first time and "scanned" from then on. The job route
+ * answers too, so a poll of it would succeed - the test checks none is made.
  */
 function stubFinishedScan() {
   let listCalls = 0;
@@ -85,26 +88,34 @@ function stubFinishedScan() {
   return fetchMock;
 }
 
+/** Lets the clock run - each refetch fires and its answer lands - without waiting it out. */
+const elapse = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+
 beforeEach(() => {
+  vi.useFakeTimers();
   session.token = tokenWithRoles("worker");
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("a scanning row on the registry", () => {
-  it("watches its job and refreshes the list once the job is done", async () => {
+  it("shows the scan finished within the deadline, without polling the job (ADR-0085)", async () => {
     const fetchMock = stubFinishedScan();
 
-    renderPage(<RegistryPage />, { path: "/scan", route: "/scan" });
+    renderPage(<RegistryPage />, { path: "/scan", route: "/scan", client: createQueryClient() });
+    await elapse(0);
+    expect(screen.getByText(/job #7/)).toBeInTheDocument();
 
-    // First answer: the row is scanning, and the row alone is what polls the job.
-    expect(await screen.findByText(/job #7/)).toBeInTheDocument();
-    await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith(`/api/jobs/${JOB_ID}`))).toBe(true),
-    );
-
-    // The terminal edge refetched the list: the row now shows the scanned state,
-    // with no page reload in between.
-    expect(await screen.findByText("Scanned")).toBeInTheDocument();
+    // The periodic refetch of the list is what brings the finish, with no page
+    // reload in between.
+    await elapse(DEADLINE_MS);
+    // The row's status pill, not the filter chip of the same name.
+    expect(screen.getByText("Scanned", { selector: "span" })).toBeInTheDocument();
     expect(screen.queryByText(/job #7/)).toBeNull();
+
+    // The tab never asks for the job itself.
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/api/jobs/"))).toBe(false);
   });
 });

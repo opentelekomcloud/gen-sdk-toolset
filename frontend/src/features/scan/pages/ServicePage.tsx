@@ -8,7 +8,6 @@ import { useService, useSummary } from "../api/queries";
 import { SnapshotBanner } from "../components/SnapshotBanner";
 import { SnapshotSelector } from "../components/SnapshotSelector";
 import { RescanButton } from "../components/RescanButton";
-import { ScanJobWatcher } from "../components/ScanJobWatcher";
 import { SectionCard } from "../components/SectionCard";
 import { RefusalBanner, ServiceBackLink, ServiceLoadFailed, ServiceLoading } from "../components/ServicePageStates";
 import { StatusPill } from "../components/StatusPill";
@@ -127,10 +126,6 @@ export function ServicePage() {
           - hiding the control is the courtesy, this is the answer. */}
       {refusal && (
         <RefusalBanner title={t(refusal.key)} message={refusal.error.message} onDismiss={refusal.dismiss} />
-      )}
-
-      {scanning && service.job_id != null && (
-        <ScanJobWatcher key={service.job_id} serviceName={service.name} jobId={service.job_id} />
       )}
 
       {scanning && (

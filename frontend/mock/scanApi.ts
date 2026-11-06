@@ -195,8 +195,8 @@ const INELIGIBLE = [
   { repo: "opentelekomcloud-docs/docs-starter", name: "Docs Starter", branch: "main", checked_at: null },
 ];
 
-/* mock-only: in-flight scan jobs for useJob polling. payments-gw's seeded job
-   never finishes, so the registry keeps one service mid-scan. */
+/* mock-only: in-flight scan jobs. payments-gw's seeded job never finishes, so
+   the registry keeps one service mid-scan. */
 const MOCK_JOBS: Record<number, { id: number; name: string; service_id: number; startedMs: number; created_at: string; completed: boolean }> = {
   1042: {
     id: 1042, name: "payments-gw", service_id: SERVICES.findIndex((s) => s.name === "payments-gw") + 1,
@@ -204,6 +204,30 @@ const MOCK_JOBS: Record<number, { id: number; name: string; service_id: number; 
   },
 };
 let mockJobSeq = 5000;
+
+const JOB_RUNTIME_MS = 4000;
+
+/* A job finishes JOB_RUNTIME_MS after it starts, whoever asks next: the panel
+   learns about it from its periodic refetch, not by polling the job (ADR-0085). */
+function settleJobs() {
+  for (const job of Object.values(MOCK_JOBS)) {
+    if (job.completed || Date.now() - job.startedMs < JOB_RUNTIME_MS) continue;
+    job.completed = true;
+    const svc = SERVICES.find((s) => s.name === job.name);
+    if (svc) {
+      svc.scan_status = "scanned";
+      svc.job_id = undefined;
+      svc.initiated_by = undefined;
+      svc.started_at = undefined;
+      svc.scanner_version = V;
+      svc.scanned_at = new Date().toISOString();
+      svc.rescan_reason = null;
+      svc.error = null;
+      svc.error_at = null;
+      svc.interruption = null;
+    }
+  }
+}
 
 export function mockScanApi(): Plugin {
   const json = (res: Parameters<Connect.NextHandleFunction>[1], body: unknown, status = 200) => {
@@ -217,29 +241,14 @@ export function mockScanApi(): Plugin {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = new URL(req.url ?? "/", "http://x");
+        settleJobs();
 
-        // mock GET /api/jobs/{id}: simulate the scan job lifecycle for useJob
+        // mock GET /api/jobs/{id}: the route stays on the backend, so the mock keeps it
         const jm = url.pathname.match(/^\/api\/jobs\/(\d+)$/);
         if (jm) {
           const job = MOCK_JOBS[Number(jm[1])];
           if (!job) return json(res, { error: { code: "not_found", message: `job ${jm[1]} not found` } }, 404);
-          const done = Date.now() - job.startedMs >= 4000;
-          if (done && !job.completed) {
-            job.completed = true;
-            const svc = SERVICES.find((s) => s.name === job.name);
-            if (svc) {
-              svc.scan_status = "scanned";
-              svc.job_id = undefined;
-              svc.initiated_by = undefined;
-              svc.started_at = undefined;
-              svc.scanner_version = V;
-              svc.scanned_at = new Date().toISOString();
-              svc.rescan_reason = null;
-              svc.error = null;
-              svc.error_at = null;
-              svc.interruption = null;
-            }
-          }
+          const done = job.completed;
           return json(res, {
             id: job.id, service_id: job.service_id, repository: job.name,
             kind: "scan", status: done ? "done" : "running",
