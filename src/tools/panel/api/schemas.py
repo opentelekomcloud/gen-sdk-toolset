@@ -590,6 +590,35 @@ class LayoutVersionItem(BaseModel):
         )
 
 
+class AddResourceRequest(BaseModel):
+    """Body for adding a resource to one version of a service's layout.
+
+    ``name`` is not checked here: the ``resource`` table's constraints decide
+    whether it is a package name and free in that version, and a refusal is a
+    ``409`` (ADR-0065), so no second copy of the rule can drift from them.
+    """
+
+    api_version: str
+    name: str
+
+
+class RenameResourceRequest(BaseModel):
+    """Body for renaming a resource; checked by the table, as on adding one."""
+
+    name: str
+
+
+class MoveEndpointRequest(BaseModel):
+    """Body for moving one endpoint into a resource of the layout.
+
+    The endpoint is named by its document ``path``, as the layout stores it: a
+    document id changes with every scan, the path does not.
+    """
+
+    path: str
+    resource_id: int
+
+
 class LayoutResponse(BaseModel):
     """The layout of one service from the Generation list.
 
