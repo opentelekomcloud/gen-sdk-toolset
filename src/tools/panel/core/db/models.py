@@ -748,6 +748,21 @@ class Layout(Base):
     )
 
 
+#: The two constraints a resource name must pass (ADR-0065): a package name,
+#: free in its version. Held as objects so a refusal can be told apart by the
+#: name the table gives them, never by spelling that name a second time.
+RESOURCE_NAME_IS_PACKAGE_NAME = sa.CheckConstraint(
+    "name ~ '^[a-z][a-z0-9_]*$'",
+    name="name_is_package_name",
+)
+RESOURCE_NAME_UNIQUE_IN_VERSION = sa.UniqueConstraint(
+    "service_id",
+    "api_version",
+    "name",
+    name="uq_resource_service_version_name",
+)
+
+
 class Resource(Base):
     """One resource of a service's layout: a named group of its endpoints.
 
@@ -796,21 +811,13 @@ class Resource(Base):
     )
 
     __table_args__ = (
-        sa.UniqueConstraint(
-            "service_id",
-            "api_version",
-            "name",
-            name="uq_resource_service_version_name",
-        ),
+        RESOURCE_NAME_UNIQUE_IN_VERSION,
         sa.UniqueConstraint(
             "id",
             "service_id",
             name="uq_resource_id_service",
         ),
-        sa.CheckConstraint(
-            "name ~ '^[a-z][a-z0-9_]*$'",
-            name="name_is_package_name",
-        ),
+        RESOURCE_NAME_IS_PACKAGE_NAME,
         sa.CheckConstraint(
             "(confirmed_by IS NULL) = (confirmed_at IS NULL)",
             name="confirmed_by_and_at_together",
@@ -856,6 +863,8 @@ class ResourceEndpoint(Base):
 
 
 __all__ = [
+    "RESOURCE_NAME_IS_PACKAGE_NAME",
+    "RESOURCE_NAME_UNIQUE_IN_VERSION",
     "TERMINAL_JOB_STATUSES",
     "DocumentRecord",
     "ExcludedService",

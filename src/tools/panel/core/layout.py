@@ -13,7 +13,13 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload, undefer
 
-from tools.panel.core.db.models import DocumentRecord, Layout, Resource, Service
+from tools.panel.core.db.models import (
+    DocumentRecord,
+    Layout,
+    Resource,
+    ResourceEndpoint,
+    Service,
+)
 from tools.shared.ir import Endpoint
 
 _ENDPOINT_KIND = Endpoint.model_fields["kind"].default
@@ -103,6 +109,44 @@ def service_layout(db: Session, service: Service) -> ServiceLayout:
     ]
     return ServiceLayout(
         has_layout=True, versions=versions, no_version=_ordered(no_version)
+    )
+
+
+def listed_versions(db: Session, service: Service) -> set[str]:
+    """The API versions :func:`service_layout` lists, read from columns alone.
+
+    The versions of the service's resources, and of the active Snapshot's
+    endpoints that are in no resource and have a version - the "unassigned"
+    ones. The same rule as the read, without loading a single payload, for an
+    edit that needs only the names.
+    """
+    resource_versions = select(Resource.api_version).where(
+        Resource.service_id == service.id
+    )
+    placed = select(ResourceEndpoint.path).where(
+        ResourceEndpoint.service_id == service.id
+    )
+    unassigned_versions = select(DocumentRecord.api_version).where(
+        DocumentRecord.snapshot_id == service.active_snapshot_id,
+        DocumentRecord.kind == _ENDPOINT_KIND,
+        DocumentRecord.api_version.is_not(None),
+        DocumentRecord.path.not_in(placed),
+    )
+    return set(db.scalars(resource_versions.union(unassigned_versions)))
+
+
+def active_endpoint(db: Session, service: Service, path: str) -> DocumentRecord | None:
+    """The endpoint document at ``path`` in the service's active Snapshot, if any.
+
+    What a layout edit may move: the same documents :func:`service_layout`
+    shows, so an endpoint the read does not list cannot be placed either.
+    """
+    return db.scalar(
+        select(DocumentRecord).where(
+            DocumentRecord.snapshot_id == service.active_snapshot_id,
+            DocumentRecord.kind == _ENDPOINT_KIND,
+            DocumentRecord.path == path,
+        )
     )
 
 

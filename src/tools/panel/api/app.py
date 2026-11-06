@@ -11,6 +11,7 @@ from tools.panel.api.auth import require_viewer
 from tools.panel.api.errors import register_error_handlers
 from tools.panel.api.routes.generation_read import router as generation_read_router
 from tools.panel.api.routes.health import router as health_router
+from tools.panel.api.routes.layout_edits import router as layout_edits_router
 from tools.panel.api.routes.scan_read import router as scan_read_router
 from tools.panel.api.routes.scans import router as scan_router
 from tools.panel.core.jobs import terminate_orphaned_jobs
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
     # decision - the mutations name `require_worker` themselves.
     authenticated = [Depends(require_viewer)]
     app.include_router(scan_router, prefix="/api", dependencies=authenticated)
+    app.include_router(layout_edits_router, prefix="/api", dependencies=authenticated)
     app.include_router(scan_read_router, prefix="/api", dependencies=authenticated)
     app.include_router(
         generation_read_router, prefix="/api", dependencies=authenticated

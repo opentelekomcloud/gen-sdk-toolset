@@ -79,6 +79,18 @@ MUTATIONS = [
     (f"/api/scan/services/{REPO}/exclude", {"reason": "r", "initiated_by": "body"}),
     (f"/api/scan/services/{REPO}/include", None),
     ("/api/jobs/1/cancel", None),
+    (
+        f"/api/generation/services/{REPO}/layout/resources",
+        {"api_version": "v1", "name": "servers"},
+    ),
+    (
+        f"/api/generation/services/{REPO}/layout/resources/1/rename",
+        {"name": "servers"},
+    ),
+    (
+        f"/api/generation/services/{REPO}/layout/endpoints/move",
+        {"path": "api-ref/source/a.rst", "resource_id": 1},
+    ),
 ]
 
 
