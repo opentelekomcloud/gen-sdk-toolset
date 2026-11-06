@@ -19,6 +19,7 @@ from tools.panel.core.grouping import (
     NotAnEndpointError,
     VersionGroup,
     group_endpoints,
+    has_api_version,
 )
 from tools.shared.ir import (
     ENDPOINT_KIND,
@@ -563,3 +564,13 @@ def test_an_endpoint_in_no_version_and_in_a_version_is_refused() -> None:
             versions=[VersionGroup(api_version="v1", unassigned=[_path("a")])],
             no_version=[_path("a")],
         )
+
+
+@pytest.mark.parametrize(
+    ("api_version", "named"), [(None, False), ("", False), ("v1", True)]
+)
+def test_an_empty_version_names_no_version_just_as_a_missing_one(
+    api_version: str | None, named: bool
+) -> None:
+    """The one rule the grouping, the layout read and the layout edits share."""
+    assert has_api_version(api_version) is named

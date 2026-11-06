@@ -22,6 +22,7 @@ from tools.panel.core.db.models import (
     Service,
     Snapshot,
 )
+from tools.panel.core.grouping import RESOURCE_NAME_PATTERN
 from tools.panel.core.layout import LayoutVersion, PlacedResource, ServiceLayout
 from tools.panel.core.service_state import (
     RescanReason,
@@ -589,6 +590,35 @@ class LayoutVersionItem(BaseModel):
                 DocumentListItem.from_record(row) for row in version.unassigned
             ],
         )
+
+
+class AddResourceRequest(BaseModel):
+    """Body for adding a resource to one version of a service's layout.
+
+    ``name`` must be a package name (ADR-0065), the pattern the grouping's
+    names follow, so a malformed one is a ``422``. Whether it is free in its
+    version is the ``resource`` table's to say - a taken one is a ``409``.
+    """
+
+    api_version: str
+    name: str = Field(pattern=RESOURCE_NAME_PATTERN)
+
+
+class RenameResourceRequest(BaseModel):
+    """Body for renaming a resource; the name is checked as on adding one."""
+
+    name: str = Field(pattern=RESOURCE_NAME_PATTERN)
+
+
+class MoveEndpointRequest(BaseModel):
+    """Body for moving one endpoint into a resource of the layout.
+
+    The endpoint is named by its document ``path``, as the layout stores it: a
+    document id changes with every scan, the path does not.
+    """
+
+    path: str
+    resource_id: int
 
 
 class LayoutResponse(BaseModel):

@@ -66,6 +66,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/generation/services/{repo}/layout/endpoints/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Endpoint
+         * @description Put one endpoint of the active Snapshot into a resource of the layout.
+         *
+         *     The endpoint never leaves its version (ADR-0064): one in a resource moves
+         *     only within that resource's version, one in "unassigned" only into its own
+         *     version, and one in "no version" into any version - the user sets the
+         *     version the scanner did not find. An empty version is no version, as in
+         *     the grouping and the read. Moving it into the resource it is in changes
+         *     nothing.
+         */
+        post: operations["move_endpoint_api_generation_services__repo__layout_endpoints_move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generation/services/{repo}/layout/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Resource
+         * @description Add an empty resource to a version the layout already lists.
+         *
+         *     Only such a version - the versions of its resources and of its
+         *     "unassigned" endpoints: adding a version is not among the edits.
+         */
+        post: operations["add_resource_api_generation_services__repo__layout_resources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generation/services/{repo}/layout/resources/{resource_id}/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename Resource
+         * @description Give a resource a new name; its ``id`` stays, so links to it do too.
+         *
+         *     Renaming to the name it already has changes nothing, so its confirmation
+         *     stays as well.
+         */
+        post: operations["rename_resource_api_generation_services__repo__layout_resources__resource_id__rename_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/generation/services/{repo}/spec/{version}/{resource_id}": {
         parameters: {
             query?: never;
@@ -525,6 +598,20 @@ export interface components {
             initiated_by: string;
         };
         /**
+         * AddResourceRequest
+         * @description Body for adding a resource to one version of a service's layout.
+         *
+         *     ``name`` must be a package name (ADR-0065), the pattern the grouping's
+         *     names follow, so a malformed one is a ``422``. Whether it is free in its
+         *     version is the ``resource`` table's to say - a taken one is a ``409``.
+         */
+        AddResourceRequest: {
+            /** Api Version */
+            api_version: string;
+            /** Name */
+            name: string;
+        };
+        /**
          * AttentionRule
          * @description One reason the panel is asking for attention, with how many services hit it.
          */
@@ -808,6 +895,19 @@ export interface components {
             unassigned: components["schemas"]["DocumentListItem"][];
         };
         /**
+         * MoveEndpointRequest
+         * @description Body for moving one endpoint into a resource of the layout.
+         *
+         *     The endpoint is named by its document ``path``, as the layout stores it: a
+         *     document id changes with every scan, the path does not.
+         */
+        MoveEndpointRequest: {
+            /** Path */
+            path: string;
+            /** Resource Id */
+            resource_id: number;
+        };
+        /**
          * ParameterResponse
          * @description One parameter row, nested exactly as the scan recorded it.
          *
@@ -830,6 +930,14 @@ export interface components {
             param_type: string;
             /** Type Name */
             type_name?: string | null;
+        };
+        /**
+         * RenameResourceRequest
+         * @description Body for renaming a resource; the name is checked as on adding one.
+         */
+        RenameResourceRequest: {
+            /** Name */
+            name: string;
         };
         /**
          * RescanReason
@@ -1246,6 +1354,112 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_endpoint_api_generation_services__repo__layout_endpoints_move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveEndpointRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_resource_api_generation_services__repo__layout_resources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddResourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_resource_api_generation_services__repo__layout_resources__resource_id__rename_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+                resource_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameResourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

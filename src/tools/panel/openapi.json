@@ -16,6 +16,26 @@
         "title": "ActivateSnapshotRequest",
         "type": "object"
       },
+      "AddResourceRequest": {
+        "description": "Body for adding a resource to one version of a service's layout.\n\n``name`` must be a package name (ADR-0065), the pattern the grouping's\nnames follow, so a malformed one is a ``422``. Whether it is free in its\nversion is the ``resource`` table's to say - a taken one is a ``409``.",
+        "properties": {
+          "api_version": {
+            "title": "Api Version",
+            "type": "string"
+          },
+          "name": {
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_version",
+          "name"
+        ],
+        "title": "AddResourceRequest",
+        "type": "object"
+      },
       "AttentionRule": {
         "description": "One reason the panel is asking for attention, with how many services hit it.",
         "properties": {
@@ -697,6 +717,25 @@
         "title": "LayoutVersionItem",
         "type": "object"
       },
+      "MoveEndpointRequest": {
+        "description": "Body for moving one endpoint into a resource of the layout.\n\nThe endpoint is named by its document ``path``, as the layout stores it: a\ndocument id changes with every scan, the path does not.",
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "resource_id"
+        ],
+        "title": "MoveEndpointRequest",
+        "type": "object"
+      },
       "ParameterResponse": {
         "description": "One parameter row, nested exactly as the scan recorded it.\n\n`param_type` is the kind and `element_type` what an array holds; the UI\njoins them back into `Array<String>`. Sending only the kind would show\nevery array as `Array` and lose what the documentation actually said.",
         "properties": {
@@ -760,6 +799,21 @@
           "description"
         ],
         "title": "ParameterResponse",
+        "type": "object"
+      },
+      "RenameResourceRequest": {
+        "description": "Body for renaming a resource; the name is checked as on adding one.",
+        "properties": {
+          "name": {
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "RenameResourceRequest",
         "type": "object"
       },
       "RescanReason": {
@@ -1822,6 +1876,180 @@
           }
         ],
         "summary": "Start Service Layout"
+      }
+    },
+    "/api/generation/services/{repo}/layout/endpoints/move": {
+      "post": {
+        "description": "Put one endpoint of the active Snapshot into a resource of the layout.\n\nThe endpoint never leaves its version (ADR-0064): one in a resource moves\nonly within that resource's version, one in \"unassigned\" only into its own\nversion, and one in \"no version\" into any version - the user sets the\nversion the scanner did not find. An empty version is no version, as in\nthe grouping and the read. Moving it into the resource it is in changes\nnothing.",
+        "operationId": "move_endpoint_api_generation_services__repo__layout_endpoints_move_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveEndpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Move Endpoint"
+      }
+    },
+    "/api/generation/services/{repo}/layout/resources": {
+      "post": {
+        "description": "Add an empty resource to a version the layout already lists.\n\nOnly such a version - the versions of its resources and of its\n\"unassigned\" endpoints: adding a version is not among the edits.",
+        "operationId": "add_resource_api_generation_services__repo__layout_resources_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddResourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Resource"
+      }
+    },
+    "/api/generation/services/{repo}/layout/resources/{resource_id}/rename": {
+      "post": {
+        "description": "Give a resource a new name; its ``id`` stays, so links to it do too.\n\nRenaming to the name it already has changes nothing, so its confirmation\nstays as well.",
+        "operationId": "rename_resource_api_generation_services__repo__layout_resources__resource_id__rename_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "title": "Resource Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameResourceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rename Resource"
       }
     },
     "/api/generation/services/{repo}/spec/{version}/{resource_id}": {

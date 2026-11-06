@@ -748,6 +748,17 @@ class Layout(Base):
     )
 
 
+#: A resource name is free in its version (ADR-0065). Held as an object so a
+#: layout edit tells a taken name by the name the table gives this constraint,
+#: never by spelling that name a second time.
+RESOURCE_NAME_UNIQUE_IN_VERSION = sa.UniqueConstraint(
+    "service_id",
+    "api_version",
+    "name",
+    name="uq_resource_service_version_name",
+)
+
+
 class Resource(Base):
     """One resource of a service's layout: a named group of its endpoints.
 
@@ -796,12 +807,7 @@ class Resource(Base):
     )
 
     __table_args__ = (
-        sa.UniqueConstraint(
-            "service_id",
-            "api_version",
-            "name",
-            name="uq_resource_service_version_name",
-        ),
+        RESOURCE_NAME_UNIQUE_IN_VERSION,
         sa.UniqueConstraint(
             "id",
             "service_id",
@@ -856,6 +862,7 @@ class ResourceEndpoint(Base):
 
 
 __all__ = [
+    "RESOURCE_NAME_UNIQUE_IN_VERSION",
     "TERMINAL_JOB_STATUSES",
     "DocumentRecord",
     "ExcludedService",
