@@ -1,9 +1,9 @@
 """Read endpoints of the Generation panel.
 
 Generation itself does not exist yet: what this panel can serve today is which
-services it would work on, selected from the stored Scan data, and the resource
-layout of each. Like the Scan read routes, these only read what is persisted -
-they never rescan and never call GitHub.
+services it would work on, selected from the stored Scan data, the resource
+layout of each and the specification of a resource. Like the Scan read routes,
+these only read what is persisted - they never rescan and never call GitHub.
 """
 
 from __future__ import annotations
@@ -17,9 +17,14 @@ from tools.panel.api.routes.scan_read import (
     counted_service,
     matches_search,
 )
-from tools.panel.api.schemas import GenerationServiceItem, LayoutResponse
+from tools.panel.api.schemas import (
+    GenerationServiceItem,
+    LayoutResponse,
+    ResourceSpecResponse,
+)
 from tools.panel.core.layout import service_layout
 from tools.panel.core.service_state import in_generation_list
+from tools.panel.core.spec import resource_spec
 
 router = APIRouter()
 
@@ -53,3 +58,29 @@ def get_service_layout(repo: str, db: Session = Depends(get_db)) -> LayoutRespon
     if found is None or not in_generation_list(found[1]):
         raise HTTPException(status_code=404, detail="Service not found")
     return LayoutResponse.from_layout(service_layout(db, found[0]))
+
+
+@router.get(
+    "/generation/services/{repo:path}/spec/{version}/{resource_id}",
+    response_model=ResourceSpecResponse,
+)
+def get_resource_spec(
+    repo: str,
+    version: str,
+    resource_id: int,
+    db: Session = Depends(get_db),
+) -> ResourceSpecResponse:
+    """The specification of one resource of a service on the Generation list.
+
+    Built on every request, so it follows the current layout and the active
+    Snapshot (ADR-0115). A repository off that list, or a resource its layout
+    lacks, answers 404. TODO(ISS-0081): ``version`` is not checked yet, nor is
+    whether the resource is confirmed.
+    """
+    found = counted_service(db, repo)
+    if found is None or not in_generation_list(found[1]):
+        raise HTTPException(status_code=404, detail="Service not found")
+    spec = resource_spec(db, found[0], resource_id)
+    if spec is None:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    return ResourceSpecResponse.from_spec(spec)

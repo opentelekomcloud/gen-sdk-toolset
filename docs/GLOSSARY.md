@@ -287,6 +287,7 @@ Tables in `src/tools/panel/core/db/models.py`, read in
 | **Unassigned** | Endpoints of the active Snapshot with an API version and no resource, listed under their version. Derived on read, never stored. |
 | **No version** | Endpoints of the active Snapshot whose `api_version` the scanner did not find, in no resource. Derived on read, never stored. |
 | **Layout read** | `GET /api/generation/services/{repo}/layout` → `has_layout`, `versions` (each with its `resources` and `unassigned`) and `no_version`; an endpoint is served as the Scan documents list serves a row (`DocumentListItem`). Before the grouping has run all three are empty. `404` for a repository off the Generation list. |
+| **Resource spec** | `GET /api/generation/services/{repo}/spec/{version}/{resource_id}` → `operations` and `classes`, the page's Operations and Entities sections (ADR-0088). Built on every request by `resource_spec()` in `src/tools/panel/core/spec.py`, never stored (ADR-0115); the generation job builds its model with the same function (ADR-0114). `404` for a repository off the Generation list or a resource its layout lacks. |
 
 ## Versions
 
