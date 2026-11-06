@@ -14,9 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload, undefer
 
 from tools.panel.core.db.models import DocumentRecord, Layout, Resource, Service
-from tools.shared.ir import Endpoint
-
-_ENDPOINT_KIND = Endpoint.model_fields["kind"].default
+from tools.shared.ir import ENDPOINT_KIND
 
 
 @dataclass(frozen=True)
@@ -65,7 +63,7 @@ def service_layout(db: Session, service: Service) -> ServiceLayout:
         select(DocumentRecord)
         .where(
             DocumentRecord.snapshot_id == service.active_snapshot_id,
-            DocumentRecord.kind == _ENDPOINT_KIND,
+            DocumentRecord.kind == ENDPOINT_KIND,
         )
         .options(undefer(DocumentRecord.payload))
     ).all()

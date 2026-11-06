@@ -24,3 +24,8 @@ class Endpoint(Document):
         if self.scan_result is not None and self.scan_result.failure_reason is not None:
             raise ValueError("a recognized endpoint cannot have a gating failure")
         return self
+
+
+#: The ``kind`` an endpoint document carries: its discriminator in JSON and in
+#: ``DocumentRecord.kind``. Read from the field so the two cannot drift.
+ENDPOINT_KIND: str = Endpoint.model_fields["kind"].default

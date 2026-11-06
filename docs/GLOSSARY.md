@@ -24,6 +24,7 @@ Defined in `src/tools/shared/ir/`. Serialized shape is versioned by
 | `Example` | `ir/example.py` | One request or response example. `raw` always; `parsed` only when it is valid JSON. |
 | `StatusCode` | `ir/status_code.py` | One row of a status-code table: `code` and `description`. Deliberately **not** a `Parameter` - a status code has no type, cannot be mandatory and holds no children, and `code` stays a string because the documentation writes `2xx` as readily as `200`. |
 | `kind` | all of the above | The polymorphic discriminator: `repository`, `service`, `document`, `endpoint`. It is how subclasses survive a round trip through JSON. |
+| `ENDPOINT_KIND` | `ir/endpoint.py` | `"endpoint"`, read from `Endpoint`'s `kind` default rather than re-declared. Compare a payload's or a `DocumentRecord`'s `kind` with it, not with the literal. |
 
 `SectionName` (`ir/section.py`) — the eight sections every `Endpoint` must have:
 `path_params`, `query_params`, `headers`, `body`, `response`, `example_request`,
@@ -287,6 +288,26 @@ Tables in `src/tools/panel/core/db/models.py`, read in
 | **Unassigned** | Endpoints of the active Snapshot with an API version and no resource, listed under their version. Derived on read, never stored. |
 | **No version** | Endpoints of the active Snapshot whose `api_version` the scanner did not find, in no resource. Derived on read, never stored. |
 | **Layout read** | `GET /api/generation/services/{repo}/layout` → `has_layout`, `versions` (each with its `resources` and `unassigned`) and `no_version`; an endpoint is served as the Scan documents list serves a row (`DocumentListItem`). Before the grouping has run all three are empty. `404` for a repository off the Generation list. |
+
+### Preliminary grouping (endpoints into resources)
+
+Defined in `src/tools/panel/core/grouping.py`. Pure: it writes nothing and
+serves no route. Outside `core/analytics` because it reads URIs with the
+scanner's own `API_VERSION_RE` and `URI_PLACEHOLDER_RE`, and the analytics may
+not import the scanner. It proposes the first **Layout** of a service; storing
+it in the layout tables above is a separate step.
+
+| Name | Meaning |
+|---|---|
+| `group_endpoints` | The rule (ADR-0057, ADR-0058, ADR-0059): every endpoint of the active snapshot, whatever its status, is placed exactly once, by its document `path`; a document that is not an endpoint is refused with `NotAnEndpointError`. An endpoint without `api_version` (or with an empty one) goes to `no_version`. Otherwise its resource is the first constant segment of the URI after the version segment (when the URI has one) and after path parameters and any further version segment - a parameter stays one segment even when its name holds a `/`, and a segment with a brace left in it (`{}`) counts as a parameter - with the query string ignored. Placeholders, the query string, the version segment and the `/` between segments are read as written; each segment's percent-encoding is undone only after that, so `%7Bid%7D` is a parameter too, while `%2F` and `%3F` stay inside their segment. With no such segment, or no URI, it goes to its version's `unassigned`. Versions are sorted by number (`v2` before `v10`), every other list by text, so the result does not depend on read order. |
+| `GroupableEndpoint` | What `group_endpoints` reads of an endpoint: `kind`, `path`, `uri`, `api_version`. The IR `Endpoint` and a `DocumentRecord` row both qualify, so rows are grouped from their projected columns without deserializing payloads. |
+| `NotAnEndpointError` | Raised by `group_endpoints` for a document whose `kind` is not `ENDPOINT_KIND` (`ir/endpoint.py`): a caller that did not filter its rows. A `GenSdkError`, not a `ValueError`, so it is told apart from the `ValidationError` a broken grouping invariant raises. |
+| `EndpointGrouping` | The result: `versions` (one `VersionGroup` per API version) and `no_version`, the shape of a **Layout read**. Its validator refuses an endpoint placed twice and a version grouped twice. |
+| `VersionGroup` | One non-empty API version's `resources` and its `unassigned` endpoints, at least one endpoint in all: the rule makes a group only for a version it saw an endpoint of. Resource names are unique within it; the same name in two versions is two resources. |
+| `GroupedResource` | `name` and the `endpoints` (document paths, at least one) the rule groups under it. A proposal, not the stored `Resource` row, hence the different name. |
+| `unassigned` | The rule's share of **Unassigned**: endpoints of a version whose URI has no constant segment after the version, or that have no URI. They get no invented name; the user places them (ADR-0064). |
+| `no_version` | **No version** as the rule fills it: endpoints the scanner found no API version for, or an empty one. Never put into a resource by the rule (ADR-0059). |
+| `RESOURCE_NAME_PATTERN` | `^[a-z][a-z0-9_]*$` (ADR-0065), the same pattern the `resource` table's `name_is_package_name` CHECK enforces: a resource becomes the Python package `services/<service>/<version>/<resource>/`. A segment becomes a name by lower case, every other character to `_`, and `RESOURCE_NAME_PREFIX` (`r_`) before a name that does not start with a letter - nothing else, so repeated `_` stay. |
 
 ## Versions
 

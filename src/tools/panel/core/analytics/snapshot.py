@@ -21,7 +21,7 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel, Field
 
-from tools.shared.ir import Document, Endpoint, SectionName
+from tools.shared.ir import ENDPOINT_KIND, Document, Endpoint, SectionName
 from tools.shared.scan import IssueCode, SectionStatus
 
 from .quality import (
@@ -135,7 +135,7 @@ def document_from_payload(payload: dict) -> Document:
 
     :param payload: The stored document payload.
     """
-    if payload.get("kind") == "endpoint":
+    if payload.get("kind") == ENDPOINT_KIND:
         return Endpoint.model_validate(payload)
     return Document.model_validate(payload)
 

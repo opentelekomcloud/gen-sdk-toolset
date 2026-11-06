@@ -3,7 +3,7 @@ from typing import Any, Literal
 from pydantic import Field, SerializeAsAny, field_validator
 
 from .document import Document
-from .endpoint import Endpoint
+from .endpoint import ENDPOINT_KIND, Endpoint
 from .repository import Repository
 
 
@@ -18,7 +18,7 @@ class Service(Repository):
             return documents
         return [
             Endpoint.model_validate(document)
-            if isinstance(document, dict) and document.get("kind") == "endpoint"
+            if isinstance(document, dict) and document.get("kind") == ENDPOINT_KIND
             else document
             for document in documents
         ]
