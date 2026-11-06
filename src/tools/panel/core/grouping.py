@@ -12,9 +12,7 @@ API version - fields the IR ``Endpoint`` has and ``DocumentRecord`` projects
 as columns - so a caller can group rows without deserializing their payloads.
 It reads the URI with the scanner's own patterns - its version and placeholder
 patterns - so it lives here rather than in :mod:`tools.panel.core.analytics`,
-which may not import the scanner. It skips every version segment, not only the
-one the scanner read the version from: in ``/v1/{project_id}/v2/servers`` the
-resource is ``servers``, not ``v2``. Placeholders are found before the URI is
+which may not import the scanner. Placeholders are found before the URI is
 split, and each segment's percent-encoding is undone only after it is split
 off, so ``%7Bid%7D`` is a parameter too and ``%2F`` never splits a segment.
 """
@@ -227,18 +225,9 @@ def _resource_segment(uri: str | None) -> str | None:
         if not raw or _PARAMETER in raw:
             continue
         segment = urllib.parse.unquote(raw)
-        if _BROKEN_PARAMETER.isdisjoint(segment) and not _is_version(segment):
+        if _BROKEN_PARAMETER.isdisjoint(segment):
             return segment
     return None
-
-
-def _is_version(segment: str) -> bool:
-    """A further version segment - ``/v1/{project_id}/v2/servers`` - is no name.
-
-    It is skipped like the first one, so the endpoint lands in ``servers``
-    rather than in a resource called ``v2``.
-    """
-    return API_VERSION_RE.fullmatch("/" + segment) is not None
 
 
 def _resource_name(segment: str) -> str:

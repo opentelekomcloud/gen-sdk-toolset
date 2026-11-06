@@ -232,12 +232,6 @@ def test_an_encoded_null_is_a_character_not_a_parameter() -> None:
     assert _name_of("/v1/a%00b/servers") == "a_b"
 
 
-def test_a_further_version_segment_is_skipped_too() -> None:
-    """`v2` here is a version, not a resource: skipped like the first one."""
-    assert _name_of("/v1/{project_id}/v2/servers") == "servers"
-    assert _name_of("/v1/{project_id}/V2.1/servers") == "servers"
-
-
 def test_a_version_segment_at_the_end_of_the_uri_leaves_no_segment() -> None:
     """The scanner read `v1` from this URI's last segment, so nothing follows it.
 
