@@ -51,6 +51,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/generation/services/{repo}/spec/{version}/{resource_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Resource Spec
+         * @description The specification of one resource of a service on the Generation list.
+         *
+         *     Built on every request, so it follows the current layout and the active
+         *     Snapshot (ADR-0115). A repository off that list, or a resource its layout
+         *     lacks, answers 404. TODO(ISS-0081): ``version`` is not checked yet, nor is
+         *     whether the resource is confirmed.
+         */
+        get: operations["get_resource_spec_api_generation_services__repo__spec__version___resource_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -803,6 +828,19 @@ export interface components {
          */
         RescanReason: "retry" | "version" | "drift";
         /**
+         * ResourceSpecResponse
+         * @description The specification of one resource: its Operations and Entities sections.
+         *
+         *     Built on every request (ADR-0115); there is no separate list of problem
+         *     fields - they are shown at the fields of ``classes`` (ADR-0088).
+         */
+        ResourceSpecResponse: {
+            /** Classes */
+            classes: components["schemas"]["SpecClassItem"][];
+            /** Operations */
+            operations: components["schemas"]["SpecOperationItem"][];
+        };
+        /**
          * ScanRequest
          * @description Body for launching a scan.
          *
@@ -1049,6 +1087,16 @@ export interface components {
             latest_id: number | null;
         };
         /**
+         * SpecClassItem
+         * @description One class of the resource. TODO(ISS-0077): its fields, names and types.
+         */
+        SpecClassItem: Record<string, never>;
+        /**
+         * SpecOperationItem
+         * @description One operation of the resource. TODO(ISS-0076): its kind, method and endpoint.
+         */
+        SpecOperationItem: Record<string, never>;
+        /**
          * StartScanResponse
          * @description Returned immediately when a scan Job is queued.
          */
@@ -1157,6 +1205,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LayoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_resource_spec_api_generation_services__repo__spec__version___resource_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+                version: string;
+                resource_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceSpecResponse"];
                 };
             };
             /** @description Validation Error */
