@@ -2419,15 +2419,26 @@ def test_the_reply_is_read_before_the_commit(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "edit", ["add", "rename", "move", "rename to its name", "move into its resource"]
+    "edit",
+    [
+        "start",
+        "add",
+        "rename",
+        "move",
+        "rename to its name",
+        "move into its resource",
+    ],
 )
 def test_every_reply_is_read_while_the_service_is_locked(
     laid_out, session_factory, monkeypatch, edit
 ):
     """Read after the lock is gone, the reply's several queries could each see
     a different edit of another worker. So the layout is read back while the
-    row is still held - proven by failing to take it from a second session."""
-    servers = _place(session_factory, "servers", [CREATE_SERVER])
+    row is still held - proven by failing to take it from a second session.
+    The layout start answers the same way."""
+    servers = (
+        None if edit == "start" else _place(session_factory, "servers", [CREATE_SERVER])
+    )
     locked_while_read: list[bool] = []
     read_layout = generation.service_layout
 
@@ -2447,6 +2458,7 @@ def test_every_reply_is_read_while_the_service_is_locked(
     monkeypatch.setattr(generation, "service_layout", reading)
 
     response = {
+        "start": lambda: laid_out.post(LAYOUT),
         "add": lambda: _add(laid_out, "projects"),
         "rename": lambda: _rename(laid_out, servers, "cloud_servers"),
         "move": lambda: _move(laid_out, PROJECT_INFO.path, servers),

@@ -16,10 +16,10 @@ A name must be a package name (ADR-0065): the request body checks it against
 read. Whether it is free in its version only the ``resource`` table can say
 without a race, so a taken name is the unique violation, answered ``409``.
 
-An edit's answer is read while the Service row is still locked and returned
-only once the edit has committed: built after the commit, its several queries could
-each see a different edit of another worker, and the reply would show a layout
-that never existed.
+Every answer - the start's and each edit's - is read while the Service row
+is still locked and returned only once the change has committed: built after
+the commit, its several queries could each see a different edit of another
+worker, and the reply would show a layout that never existed.
 
 Editing a confirmed resource removes its confirmation, and a move removes it
 from both resources it touches (ADR-0068); every other resource keeps its own.
@@ -102,8 +102,9 @@ def start_service_layout(
             status_code=409,
             detail=f"Service {repo} already has a layout",
         ) from exc
+    response = _layout(db, service)
     db.commit()
-    return LayoutResponse.from_layout(service_layout(db, service))
+    return response
 
 
 @router.post(
