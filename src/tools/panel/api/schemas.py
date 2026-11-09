@@ -32,6 +32,7 @@ from tools.panel.core.service_state import (
     read_in_full_share,
     status_documents,
 )
+from tools.panel.core.spec import ResourceSpec
 from tools.shared.ir import Endpoint, SectionName
 
 #: Every section name the UI renders, so a service scanned before a section
@@ -607,6 +608,32 @@ class LayoutResponse(BaseModel):
             has_layout=layout.has_layout,
             versions=[LayoutVersionItem.from_version(row) for row in layout.versions],
             no_version=[DocumentListItem.from_record(row) for row in layout.no_version],
+        )
+
+
+class SpecOperationItem(BaseModel):
+    """One operation of the resource. TODO(ISS-0076): its kind, method and endpoint."""
+
+
+class SpecClassItem(BaseModel):
+    """One class of the resource. TODO(ISS-0077): its fields, names and types."""
+
+
+class ResourceSpecResponse(BaseModel):
+    """The specification of one resource: its Operations and Entities sections.
+
+    Built on every request (ADR-0115); there is no separate list of problem
+    fields - they are shown at the fields of ``classes`` (ADR-0088).
+    """
+
+    operations: list[SpecOperationItem]
+    classes: list[SpecClassItem]
+
+    @classmethod
+    def from_spec(cls, spec: ResourceSpec) -> ResourceSpecResponse:
+        return cls(
+            operations=[SpecOperationItem() for _ in spec.operations],
+            classes=[SpecClassItem() for _ in spec.classes],
         )
 
 

@@ -50,6 +50,7 @@ from tools.panel.core.db.models import (  # noqa: E402
     Snapshot,
 )
 from tools.panel.core.ingest import ingest_service_result  # noqa: E402
+from tools.panel.core.spec import ResourceSpec, resource_spec  # noqa: E402
 from tools.shared.ir import Document, HttpMethod  # noqa: E402
 from tools.shared.ir import Service as IrService  # noqa: E402
 from tools.shared.scan import DocumentScanResult, RepositoryScanResult  # noqa: E402
@@ -1544,3 +1545,74 @@ def test_layout_of_an_ineligible_repository_is_not_found(laid_out, session_facto
     _set_eligibility(session_factory, REPO, False)
 
     assert laid_out.get(LAYOUT).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Generation resource spec
+# ---------------------------------------------------------------------------
+
+
+def _spec(resource_id: int, repo: str = REPO, version: str = "v1") -> str:
+    return f"/api/generation/services/{repo}/spec/{version}/{resource_id}"
+
+
+def test_spec_has_operations_and_classes_and_nothing_else(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [LIST_SERVERS, CREATE_SERVER])
+
+    response = laid_out.get(_spec(servers))
+
+    assert response.status_code == 200
+    assert response.json() == {"operations": [], "classes": []}
+
+
+def test_spec_is_built_by_a_function_callable_outside_the_route(
+    laid_out, session_factory
+):
+    """The generation job builds its model with the same function (ADR-0114)."""
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+
+    with session_factory() as session:
+        service = session.scalars(select(Service).where(Service.repo == REPO)).one()
+        spec = resource_spec(session, service, servers)
+
+    assert spec == ResourceSpec(operations=[], classes=[])
+
+
+def test_spec_of_a_resource_the_layout_lacks_is_not_found(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+
+    response = laid_out.get(_spec(servers + 1))
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {"code": "not_found", "message": "Resource not found"}
+    }
+
+
+def test_spec_of_another_services_resource_is_not_found(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+    other = "opentelekomcloud-docs/vpc"
+    _register(session_factory, other)
+    _run_scan(session_factory, other, documents=[CREATE_SERVER])
+
+    response = laid_out.get(_spec(servers, repo=other))
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == "Resource not found"
+
+
+def test_spec_of_a_repository_never_registered_is_not_found(client):
+    response = client.get(_spec(1))
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == "Service not found"
+
+
+def test_spec_of_an_excluded_service_is_not_found(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+    assert _exclude(laid_out).status_code == 204
+
+    response = laid_out.get(_spec(servers))
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == "Service not found"
