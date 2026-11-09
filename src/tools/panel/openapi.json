@@ -772,6 +772,31 @@
         "title": "RescanReason",
         "type": "string"
       },
+      "ResourceSpecResponse": {
+        "description": "The specification of one resource: its Operations and Entities sections.\n\nBuilt on every request (ADR-0115); there is no separate list of problem\nfields - they are shown at the fields of ``classes`` (ADR-0088).",
+        "properties": {
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/SpecClassItem"
+            },
+            "title": "Classes",
+            "type": "array"
+          },
+          "operations": {
+            "items": {
+              "$ref": "#/components/schemas/SpecOperationItem"
+            },
+            "title": "Operations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "operations",
+          "classes"
+        ],
+        "title": "ResourceSpecResponse",
+        "type": "object"
+      },
       "ScanRequest": {
         "description": "Body for launching a scan.\n\n``initiated_by`` is still accepted, and still ignored: the Job records the\nauthenticated caller instead, because a self-reported name is not an\nattribution. The field stays required so a client written against the older\ncontract keeps working - dropping it would be the breaking change.",
         "properties": {
@@ -1527,6 +1552,18 @@
         "title": "SnapshotsResponse",
         "type": "object"
       },
+      "SpecClassItem": {
+        "description": "One class of the resource. TODO(ISS-0077): its fields, names and types.",
+        "properties": {},
+        "title": "SpecClassItem",
+        "type": "object"
+      },
+      "SpecOperationItem": {
+        "description": "One operation of the resource. TODO(ISS-0076): its kind, method and endpoint.",
+        "properties": {},
+        "title": "SpecOperationItem",
+        "type": "object"
+      },
       "StartScanResponse": {
         "description": "Returned immediately when a scan Job is queued.",
         "properties": {
@@ -1785,6 +1822,69 @@
           }
         ],
         "summary": "Start Service Layout"
+      }
+    },
+    "/api/generation/services/{repo}/spec/{version}/{resource_id}": {
+      "get": {
+        "description": "The specification of one resource of a service on the Generation list.\n\nBuilt on every request, so it follows the current layout and the active\nSnapshot (ADR-0115). A repository off that list, or a resource its layout\nlacks, answers 404. TODO(ISS-0081): ``version`` is not checked yet, nor is\nwhether the resource is confirmed.",
+        "operationId": "get_resource_spec_api_generation_services__repo__spec__version___resource_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "title": "Resource Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceSpecResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Resource Spec"
       }
     },
     "/api/jobs/{job_id}": {
