@@ -7,6 +7,7 @@ the database comes from tests/test_panel_db.py's PostgreSQL provisioning.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import UTC, datetime
 
 import pytest
@@ -392,28 +393,32 @@ def test_discovery_stores_the_branch_head_of_eligible_repositories(
     assert provider.head_calls == [(f"{ORG}/ecs", "main")]
 
 
-def test_discovery_stores_when_it_read_the_head(session_factory, monkeypatch):
-    """The time is taken before the lookups, so it is never later than the read."""
-    read_at: list[datetime] = []
+def test_discovery_stores_when_it_read_each_head(session_factory, monkeypatch):
+    """Each repository gets the moment just before its own lookup, not one time
+    for the whole pass: a HEAD read late in the pass must not look older than a
+    scan that ran in between."""
+    read_at: dict[str, datetime] = {}
 
     class TimedProvider(FakeProvider):
         def get_commit_hash(self, repo: str, branch: str) -> str | None:
-            read_at.append(datetime.now(tz=UTC))
+            read_at[repo] = datetime.now(tz=UTC)
+            time.sleep(0.01)
             return super().get_commit_hash(repo, branch)
 
-    before = datetime.now(tz=UTC)
+    repos = [f"{ORG}/ecs", f"{ORG}/vpc"]
     _run(
         monkeypatch,
         TimedProvider(
-            repos=[f"{ORG}/ecs"],
-            with_api_ref={f"{ORG}/ecs"},
-            heads={f"{ORG}/ecs": HEAD_A},
+            repos=repos,
+            with_api_ref=set(repos),
+            heads={repo: HEAD_A for repo in repos},
         ),
     )
 
-    checked_at = _head_checked_at(session_factory, f"{ORG}/ecs")
-    assert checked_at is not None
-    assert before <= checked_at <= read_at[0]
+    first, second = (_head_checked_at(session_factory, repo) for repo in repos)
+    assert first is not None and second is not None
+    assert first <= read_at[repos[0]]
+    assert read_at[repos[0]] < second <= read_at[repos[1]]
 
 
 def test_discovery_refreshes_the_head_on_a_later_run(session_factory, monkeypatch):

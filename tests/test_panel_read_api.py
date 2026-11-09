@@ -21,7 +21,7 @@ pytest.importorskip("httpx")  # required by fastapi.testclient.TestClient
 
 from alembic import command  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy import create_engine, func, select  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from tests.test_panel_db import (  # noqa: E402,F401  (reused DB fixtures)
@@ -543,6 +543,22 @@ def test_a_rescan_past_the_stored_head_clears_drift(scanned, session_factory):
 
     _run_scan(session_factory, commit_hash="e" * 40)
 
+    (item,) = scanned.get("/api/scan/services").json()["items"]
+    assert item["docs_changed"] is False
+    assert item["rescan_reason"] is None
+
+
+def test_a_rescan_that_reuses_the_snapshot_clears_drift(scanned, session_factory):
+    """HEAD moved to another commit and back: the rescan reads the active
+    snapshot's commit again and reuses it, and that rescan is the latest
+    confirmation of the snapshot - not the scan that first produced it."""
+    _set_head(session_factory, "f" * 40)
+    assert scanned.get("/api/scan/services").json()["items"][0]["docs_changed"] is True
+
+    _run_scan(session_factory, commit_hash=COMMIT)
+
+    with session_factory() as session:
+        assert session.scalar(select(func.count(Snapshot.id))) == 1  # reused
     (item,) = scanned.get("/api/scan/services").json()["items"]
     assert item["docs_changed"] is False
     assert item["rescan_reason"] is None
