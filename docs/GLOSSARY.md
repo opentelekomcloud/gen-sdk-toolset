@@ -275,7 +275,7 @@ racy.
 
 ### Generation layout
 
-Tables in `src/tools/panel/core/db/models.py`, read in
+Tables in `src/tools/panel/core/db/models.py`, read and first stored in
 `src/tools/panel/core/layout.py`. Kept beside the Scan tables, never in them
 (ADR-0074).
 
@@ -288,6 +288,7 @@ Tables in `src/tools/panel/core/db/models.py`, read in
 | **Unassigned** | Endpoints of the active Snapshot with an API version and no resource, listed under their version. Derived on read, never stored. |
 | **No version** | Endpoints of the active Snapshot whose `api_version` the scanner did not find, in no resource. Derived on read, never stored. |
 | **Layout read** | `GET /api/generation/services/{repo}/layout` → `has_layout`, `versions` (each with its `resources` and `unassigned`) and `no_version`; an endpoint is served as the Scan documents list serves a row (`DocumentListItem`). Before the grouping has run all three are empty. `404` for a repository off the Generation list. |
+| **Layout start** | `POST /api/generation/services/{repo}/layout` (worker): runs `group_endpoints` on the active Snapshot's endpoints within the request and stores the `Layout` row and the resources; answers `201` with what the **Layout read** serves. `409` once the service has a layout, even one without a resource (ADR-0072) - the `layout` primary key refuses it, so two concurrent starts store one. A failure commits nothing and the start can be retried (ADR-0061). `404` for a repository off the Generation list. |
 
 ### Preliminary grouping (endpoints into resources)
 

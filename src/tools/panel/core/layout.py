@@ -3,6 +3,9 @@
 Stored resources are matched to the active Snapshot's endpoint documents by
 path; a path that Snapshot lacks is left out. The "unassigned" and "no version"
 lists are derived here, never stored, so they follow the active Snapshot.
+
+A layout is created once, by the preliminary grouping (:func:`start_layout`);
+after that it changes only by editing (ADR-0072).
 """
 
 from __future__ import annotations
@@ -10,10 +13,17 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, selectinload, undefer
 
-from tools.panel.core.db.models import DocumentRecord, Layout, Resource, Service
+from tools.panel.core.db.models import (
+    DocumentRecord,
+    Layout,
+    Resource,
+    ResourceEndpoint,
+    Service,
+)
+from tools.panel.core.grouping import group_endpoints
 from tools.shared.ir import ENDPOINT_KIND
 
 
@@ -60,12 +70,7 @@ def service_layout(db: Session, service: Service) -> ServiceLayout:
     ).all()
 
     documents = db.scalars(
-        select(DocumentRecord)
-        .where(
-            DocumentRecord.snapshot_id == service.active_snapshot_id,
-            DocumentRecord.kind == ENDPOINT_KIND,
-        )
-        .options(undefer(DocumentRecord.payload))
+        _active_endpoints(service).options(undefer(DocumentRecord.payload))
     ).all()
     by_path = {document.path: document for document in documents}
     placed_paths = {link.path for resource in resources for link in resource.endpoints}
@@ -101,6 +106,43 @@ def service_layout(db: Session, service: Service) -> ServiceLayout:
     ]
     return ServiceLayout(
         has_layout=True, versions=versions, no_version=_ordered(no_version)
+    )
+
+
+def start_layout(db: Session, service: Service, *, created_by: str) -> None:
+    """Store the preliminary grouping of ``service``'s active Snapshot as its layout.
+
+    The ``Layout`` row is flushed before anything is grouped. Its primary key is
+    the service, so a second start - or one racing this one - fails right there
+    with an ``IntegrityError``, and an existing layout stays as it is. Only the
+    resources are stored; "unassigned" and "no version" are derived on read.
+
+    Nothing is committed: the caller commits once, so a failure leaves no part
+    of a layout behind and the start can be retried (ADR-0061).
+    """
+    db.add(Layout(service_id=service.id, created_by=created_by))
+    db.flush()
+
+    grouping = group_endpoints(db.scalars(_active_endpoints(service)).all())
+    for version in grouping.versions:
+        for grouped in version.resources:
+            resource = Resource(
+                service_id=service.id,
+                api_version=version.api_version,
+                name=grouped.name,
+            )
+            resource.endpoints = [
+                ResourceEndpoint(service_id=service.id, path=path)
+                for path in grouped.endpoints
+            ]
+            db.add(resource)
+    db.flush()
+
+
+def _active_endpoints(service: Service) -> Select[tuple[DocumentRecord]]:
+    return select(DocumentRecord).where(
+        DocumentRecord.snapshot_id == service.active_snapshot_id,
+        DocumentRecord.kind == ENDPOINT_KIND,
     )
 
 

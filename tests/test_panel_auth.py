@@ -79,6 +79,7 @@ MUTATIONS = [
     (f"/api/scan/services/{REPO}/exclude", {"reason": "r", "initiated_by": "body"}),
     (f"/api/scan/services/{REPO}/include", None),
     ("/api/jobs/1/cancel", None),
+    (f"/api/generation/services/{REPO}/layout", None),
 ]
 
 

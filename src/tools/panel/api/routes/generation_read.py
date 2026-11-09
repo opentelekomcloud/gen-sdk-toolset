@@ -18,6 +18,7 @@ from tools.panel.api.routes.scan_read import (
     matches_search,
 )
 from tools.panel.api.schemas import GenerationServiceItem, LayoutResponse
+from tools.panel.core.db.models import Service
 from tools.panel.core.layout import service_layout
 from tools.panel.core.service_state import in_generation_list
 
@@ -49,7 +50,12 @@ def get_service_layout(repo: str, db: Session = Depends(get_db)) -> LayoutRespon
     A repository off that list - unknown, excluded, ineligible or without
     endpoints in its active snapshot - answers 404, the same as its pages do.
     """
+    return LayoutResponse.from_layout(service_layout(db, generation_service(db, repo)))
+
+
+def generation_service(db: Session, repo: str) -> Service:
+    """A service on the Generation list, or 404 - the same for every route on it."""
     found = counted_service(db, repo)
     if found is None or not in_generation_list(found[1]):
         raise HTTPException(status_code=404, detail="Service not found")
-    return LayoutResponse.from_layout(service_layout(db, found[0]))
+    return found[0]
