@@ -371,6 +371,13 @@ def _head_of(session_factory, repo: str) -> str | None:
         return session.scalar(select(Service).where(Service.repo == repo)).head_commit
 
 
+def _head_checked_at(session_factory, repo: str) -> datetime | None:
+    with session_factory() as session:
+        return session.scalar(
+            select(Service).where(Service.repo == repo)
+        ).head_checked_at
+
+
 def test_discovery_stores_the_branch_head_of_eligible_repositories(
     session_factory, monkeypatch
 ):
@@ -383,6 +390,30 @@ def test_discovery_stores_the_branch_head_of_eligible_repositories(
     assert _head_of(session_factory, f"{ORG}/ecs") == HEAD_A
     # Resolved against the configured branch, not a default.
     assert provider.head_calls == [(f"{ORG}/ecs", "main")]
+
+
+def test_discovery_stores_when_it_read_the_head(session_factory, monkeypatch):
+    """The time is taken before the lookups, so it is never later than the read."""
+    read_at: list[datetime] = []
+
+    class TimedProvider(FakeProvider):
+        def get_commit_hash(self, repo: str, branch: str) -> str | None:
+            read_at.append(datetime.now(tz=UTC))
+            return super().get_commit_hash(repo, branch)
+
+    before = datetime.now(tz=UTC)
+    _run(
+        monkeypatch,
+        TimedProvider(
+            repos=[f"{ORG}/ecs"],
+            with_api_ref={f"{ORG}/ecs"},
+            heads={f"{ORG}/ecs": HEAD_A},
+        ),
+    )
+
+    checked_at = _head_checked_at(session_factory, f"{ORG}/ecs")
+    assert checked_at is not None
+    assert before <= checked_at <= read_at[0]
 
 
 def test_discovery_refreshes_the_head_on_a_later_run(session_factory, monkeypatch):
@@ -424,6 +455,7 @@ def test_an_unresolvable_ref_keeps_the_head_already_stored(
             heads={f"{ORG}/ecs": HEAD_A},
         ),
     )
+    first_checked_at = _head_checked_at(session_factory, f"{ORG}/ecs")
     capsys.readouterr()
 
     exit_code = _run(
@@ -433,6 +465,7 @@ def test_an_unresolvable_ref_keeps_the_head_already_stored(
 
     assert exit_code == 0
     assert _head_of(session_factory, f"{ORG}/ecs") == HEAD_A  # untouched
+    assert _head_checked_at(session_factory, f"{ORG}/ecs") == first_checked_at
     # The skip is visible, not just logged: the drift flag now answers from an
     # older reading and the operator has to be able to tell.
     assert "branch HEAD unresolved for 1" in capsys.readouterr().out

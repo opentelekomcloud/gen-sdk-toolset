@@ -81,11 +81,7 @@ def derive_service_state(service: Service, *, scanner_version: str) -> ServiceSt
     active_job = _active_scan_job(service)
     snapshot = service.active_snapshot
 
-    docs_changed = (
-        service.head_commit is not None
-        and snapshot is not None
-        and service.head_commit != snapshot.commit_hash
-    )
+    docs_changed = _docs_changed(service, snapshot)
     scan_status = _scan_status(snapshot, active_job=active_job, last_job=last_job)
 
     return ServiceState(
@@ -102,6 +98,20 @@ def derive_service_state(service: Service, *, scanner_version: str) -> ServiceSt
         latest_snapshot=service.latest_snapshot,
         active_job=active_job,
         last_job=last_job,
+    )
+
+
+def _docs_changed(service: Service, snapshot: Snapshot | None) -> bool:
+    # Only a HEAD read after the scan started can say the docs moved past it.
+    if snapshot is None or service.head_commit is None:
+        return False
+    head_checked_at = service.head_checked_at
+    scan_started_at = snapshot.source_job.started_at
+    if head_checked_at is None or scan_started_at is None:
+        return False
+    return (
+        head_checked_at > scan_started_at
+        and service.head_commit != snapshot.commit_hash
     )
 
 

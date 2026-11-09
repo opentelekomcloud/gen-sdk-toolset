@@ -423,7 +423,7 @@ def _service_query():
         .where(Service.has_api_ref.is_not(False))
         .options(
             selectinload(Service.jobs),
-            joinedload(Service.active_snapshot),
+            joinedload(Service.active_snapshot).joinedload(Snapshot.source_job),
             joinedload(Service.latest_snapshot),
         )
     )

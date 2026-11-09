@@ -95,12 +95,13 @@ def _discover_command(org: str | None, branch: str | None) -> int:
     heads: dict[str, str] = {}
     unresolved: list[str] = []
     head_interruption = None
+    heads_read_at = datetime.now(tz=UTC)
     if result.interruption is None:
         heads, unresolved, head_interruption = _resolve_heads(
             provider, _branches_to_read(eligible, default=branch)
         )
     created, updated = _persist_discovered(
-        result.repositories, branch=branch, heads=heads
+        result.repositories, branch=branch, heads=heads, heads_read_at=heads_read_at
     )
 
     print(
@@ -214,7 +215,11 @@ def _resolve_heads(
 
 
 def _persist_discovered(
-    repositories: list[DiscoveredRepository], *, branch: str, heads: dict[str, str]
+    repositories: list[DiscoveredRepository],
+    *,
+    branch: str,
+    heads: dict[str, str],
+    heads_read_at: datetime,
 ) -> tuple[int, int]:
     """Insert or refresh one Service per discovered repository, eligible or not.
 
@@ -264,6 +269,7 @@ def _persist_discovered(
             head = heads.get(discovered.repo)
             if head is not None:
                 service.head_commit = head
+                service.head_checked_at = heads_read_at
         session.commit()
     return created, updated
 
