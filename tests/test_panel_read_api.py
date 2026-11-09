@@ -10,6 +10,8 @@ is skipped unless TEST_DATABASE_URL is set or Docker is available.
 
 from __future__ import annotations
 
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 import pytest
@@ -21,7 +23,7 @@ pytest.importorskip("httpx")  # required by fastapi.testclient.TestClient
 
 from alembic import command  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, select  # noqa: E402
+from sqlalchemy import create_engine, select, text  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from tests.test_panel_db import (  # noqa: E402,F401  (reused DB fixtures)
@@ -36,6 +38,7 @@ from tools.panel.api import deps  # noqa: E402
 from tools.panel.api.app import create_app  # noqa: E402
 from tools.panel.api.auth import Identity, PanelRole, current_identity  # noqa: E402
 from tools.panel.core import ingest as ingest_module  # noqa: E402
+from tools.panel.core import layout as layout_module  # noqa: E402
 from tools.panel.core.db.models import (  # noqa: E402
     TERMINAL_JOB_STATUSES,
     DocumentRecord,
@@ -49,6 +52,7 @@ from tools.panel.core.db.models import (  # noqa: E402
     Service,
     Snapshot,
 )
+from tools.panel.core.grouping import group_endpoints  # noqa: E402
 from tools.panel.core.ingest import ingest_service_result  # noqa: E402
 from tools.panel.core.spec import ResourceSpec, resource_spec  # noqa: E402
 from tools.shared.ir import Document, HttpMethod  # noqa: E402
@@ -1545,6 +1549,217 @@ def test_layout_of_an_ineligible_repository_is_not_found(laid_out, session_facto
     _set_eligibility(session_factory, REPO, False)
 
     assert laid_out.get(LAYOUT).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Starting the preliminary grouping - the endpoint is in
+# api/routes/generation.py, and what it stores is read back through the layout
+# read above
+# ---------------------------------------------------------------------------
+
+
+def test_starting_the_grouping_answers_with_the_layout_it_stored(laid_out):
+    response = laid_out.post(LAYOUT)
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body == laid_out.get(LAYOUT).json()
+    assert body["has_layout"] is True
+    v1, v2 = body["versions"]
+    (servers,) = v1["resources"]
+    assert servers["name"] == "servers"
+    assert servers["confirmed_by"] is None and servers["confirmed_at"] is None
+    assert _paths(servers["endpoints"]) == ["list_servers.rst", "create_server.rst"]
+    assert _paths(v1["unassigned"]) == ["project.rst"]
+    (tags,) = v2["resources"]
+    assert tags["name"] == "tags"
+    assert _paths(tags["endpoints"]) == ["list_tags.rst"]
+    assert v2["unassigned"] == []
+    assert _paths(body["no_version"]) == ["quotas.rst"]
+
+
+def test_only_the_resources_are_stored_and_by_the_caller(laid_out, session_factory):
+    """ "Unassigned" and "no version" are derived on read: stored, they would
+    stop following the active snapshot."""
+    laid_out.post(LAYOUT)
+
+    with session_factory() as session:
+        (layout,) = session.scalars(select(Layout)).all()
+        stored = sorted(session.scalars(select(ResourceEndpoint.path)))
+
+    assert layout.created_by == TEST_WORKER.name
+    assert stored == sorted(
+        endpoint.path for endpoint in (CREATE_SERVER, LIST_SERVERS, LIST_TAGS)
+    )
+
+
+def test_a_grouping_without_a_resource_is_still_a_layout(client, session_factory):
+    _register(session_factory)
+    _run_scan(session_factory, documents=[PROJECT_INFO, QUOTAS])
+
+    body = client.post(LAYOUT).json()
+
+    assert body["has_layout"] is True
+    (v1,) = body["versions"]
+    assert v1["resources"] == []
+    assert _paths(v1["unassigned"]) == ["project.rst"]
+    assert _paths(body["no_version"]) == ["quotas.rst"]
+    assert client.post(LAYOUT).status_code == 409
+
+
+def test_a_second_start_is_refused_and_keeps_edits_and_confirmations(
+    laid_out, session_factory
+):
+    _place(session_factory, "renamed", [CREATE_SERVER], confirmed_by="valeriia")
+    before = laid_out.get(LAYOUT).json()
+
+    response = laid_out.post(LAYOUT)
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "conflict",
+            "message": f"Service {REPO} already has a layout",
+        }
+    }
+    assert laid_out.get(LAYOUT).json() == before
+
+
+def test_a_layout_without_a_resource_refuses_a_start_too(laid_out, session_factory):
+    _start_layout(session_factory)
+
+    assert laid_out.post(LAYOUT).status_code == 409
+
+    with session_factory() as session:
+        assert session.scalars(select(Resource)).all() == []
+
+
+def test_two_concurrent_starts_store_one_layout(laid_out, session_factory):
+    """The first start has written its layout but not committed it yet. A
+    check before the insert would see no layout and let the second one through;
+    the primary key makes it wait for the first, then refuses it."""
+    with session_factory() as first:
+        service_id = first.scalar(select(Service.id).where(Service.repo == REPO))
+        first.add(Layout(service_id=service_id, created_by="first"))
+        first.flush()
+        response = _start_behind(first, laid_out, session_factory)
+
+    assert response.status_code == 409
+    with session_factory() as session:
+        assert session.get(Layout, service_id).created_by == "first"
+        assert session.scalars(select(Resource)).all() == []
+
+
+def test_a_start_groups_the_snapshot_an_activation_in_flight_makes_active(
+    laid_out, session_factory
+):
+    """The grouping runs once, so it must not be stored from a snapshot that
+    stopped being the active one before the layout was."""
+    older = _active_snapshot_id(session_factory)
+    _run_scan(session_factory, documents=[CREATE_SERVER], commit_hash=NEXT_COMMIT)
+    with session_factory() as first:
+        service = first.scalar(
+            select(Service).where(Service.repo == REPO).with_for_update()
+        )
+        service.active_snapshot_id = older
+        first.flush()
+        response = _start_behind(first, laid_out, session_factory)
+
+    assert response.status_code == 201
+    with session_factory() as session:
+        stored = sorted(session.scalars(select(Resource.name)))
+    assert stored == ["servers", "tags"]
+
+
+def _active_snapshot_id(session_factory) -> int:
+    with session_factory() as session:
+        return session.scalar(
+            select(Service.active_snapshot_id).where(Service.repo == REPO)
+        )
+
+
+def _start_behind(first, client, session_factory):
+    """Start the grouping while ``first`` holds a lock it needs.
+
+    ``first`` commits once the start waits for it - or if it never does, so a
+    failed probe is reported instead of leaving the start waiting forever.
+    """
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        second = pool.submit(client.post, LAYOUT)
+        try:
+            _wait_for_a_blocked_query(session_factory)
+        finally:
+            first.commit()
+        return second.result(timeout=10)
+
+
+def _wait_for_a_blocked_query(session_factory, timeout: float = 10) -> None:
+    deadline = time.monotonic() + timeout
+    with session_factory() as probe:
+        while time.monotonic() < deadline:
+            blocked = probe.scalar(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE wait_event_type = 'Lock'"
+                )
+            )
+            if blocked:
+                return
+            # pg_stat_activity is read once per transaction
+            probe.rollback()
+            time.sleep(0.05)
+    raise AssertionError("the second start never waited for the first")
+
+
+def test_a_failed_start_leaves_no_layout_and_can_be_retried(laid_out, monkeypatch):
+    def broken(endpoints):
+        raise RuntimeError("grouping broke")
+
+    monkeypatch.setattr(layout_module, "group_endpoints", broken)
+    # the layout row is already flushed when the grouping fails
+    response = TestClient(laid_out.app, raise_server_exceptions=False).post(LAYOUT)
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    assert laid_out.get(LAYOUT).json()["has_layout"] is False
+
+    monkeypatch.setattr(layout_module, "group_endpoints", group_endpoints)
+    assert laid_out.post(LAYOUT).status_code == 201
+
+
+def test_an_empty_api_version_is_no_version_when_started_and_read(
+    client, session_factory
+):
+    empty = _endpoint("empty.rst", "GET", "/v1/{project_id}/servers", "")
+    _register(session_factory)
+    _run_scan(session_factory, documents=[CREATE_SERVER, empty])
+
+    started = client.post(LAYOUT).json()
+
+    assert started == client.get(LAYOUT).json()
+    assert _paths(started["no_version"]) == ["empty.rst"]
+    assert [version["api_version"] for version in started["versions"]] == ["v1"]
+
+
+def test_starting_the_grouping_of_a_repository_never_registered_is_not_found(
+    client,
+):
+    assert client.post(LAYOUT).status_code == 404
+
+
+def test_starting_the_grouping_of_an_excluded_service_is_not_found(laid_out):
+    assert _exclude(laid_out).status_code == 204
+
+    assert laid_out.post(LAYOUT).status_code == 404
+
+
+def test_starting_the_grouping_of_a_service_without_endpoints_is_not_found(
+    client, session_factory
+):
+    _register(session_factory)
+    _run_scan(session_factory, documents=[_page_without_endpoints()])
+
+    assert client.post(LAYOUT).status_code == 404
 
 
 # ---------------------------------------------------------------------------

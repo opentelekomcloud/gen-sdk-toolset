@@ -44,7 +44,22 @@ export interface paths {
          */
         get: operations["get_service_layout_api_generation_services__repo__layout_get"];
         put?: never;
-        post?: never;
+        /**
+         * Start Service Layout
+         * @description Run the preliminary grouping of a service and answer with its layout.
+         *
+         *     Runs within the request: the rule reads stored columns only and calls
+         *     nothing outside the database, so there is no Job to poll. The answer is
+         *     what the layout read serves afterwards.
+         *
+         *     A repository off the Generation list is a ``404``, as for the read. A
+         *     service that already has a layout - even one without a resource - is a
+         *     ``409``: a layout changes only by editing (ADR-0072). That refusal comes
+         *     from the ``layout`` primary key, not from a check before the insert, so two
+         *     concurrent starts cannot both store one. A failure commits nothing: the
+         *     service stays without a layout and the start can be retried (ADR-0061).
+         */
+        post: operations["start_service_layout_api_generation_services__repo__layout_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1200,6 +1215,37 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_service_layout_api_generation_services__repo__layout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

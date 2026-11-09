@@ -275,7 +275,7 @@ racy.
 
 ### Generation layout
 
-Tables in `src/tools/panel/core/db/models.py`, read in
+Tables in `src/tools/panel/core/db/models.py`, read and first stored in
 `src/tools/panel/core/layout.py`. Kept beside the Scan tables, never in them
 (ADR-0074).
 
@@ -286,8 +286,9 @@ Tables in `src/tools/panel/core/db/models.py`, read in
 | `Resource` (table `resource`) | A named group of a service's endpoints within one API version, under the service's `Layout`; becomes the Python SDK package `services/<service>/<api_version>/<name>`. `id` survives a rename; `name` is unique within the version and matches `^[a-z][a-z0-9_]*$`. `confirmed_by` / `confirmed_at` are set together or not at all. |
 | `ResourceEndpoint` (table `resource_endpoint`) | An endpoint placed in a resource, named by its document `path`, not by a `document.id`: document rows are rewritten by every scan, the path is not. The primary key `(service_id, path)` keeps an endpoint in at most one resource. A path the active Snapshot lacks is not shown, and comes back with a Snapshot that has it. |
 | **Unassigned** | Endpoints of the active Snapshot with an API version and no resource, listed under their version. Derived on read, never stored. |
-| **No version** | Endpoints of the active Snapshot whose `api_version` the scanner did not find, in no resource. Derived on read, never stored. |
+| **No version** | Endpoints of the active Snapshot whose `api_version` the scanner did not find, or found empty, in no resource. Derived on read, never stored. |
 | **Layout read** | `GET /api/generation/services/{repo}/layout` → `has_layout`, `versions` (each with its `resources` and `unassigned`) and `no_version`; an endpoint is served as the Scan documents list serves a row (`DocumentListItem`). Before the grouping has run all three are empty. `404` for a repository off the Generation list. |
+| **Layout start** | `POST /api/generation/services/{repo}/layout` (worker): runs `group_endpoints` on the active Snapshot's endpoints within the request and stores the `Layout` row and the resources; answers `201` with what the **Layout read** serves. `409` once the service has a layout, even one without a resource (ADR-0072) - the `layout` primary key refuses it, so two concurrent starts store one. The `Service` row is locked first, as activation and ingest lock it, so the snapshot grouped is still the active one when the layout is stored. A failure commits nothing and the start can be retried (ADR-0061). `404` for a repository off the Generation list. |
 | **Resource spec** | `GET /api/generation/services/{repo}/spec/{version}/{resource_id}` → `operations` and `classes`, the page's Operations and Entities sections (ADR-0088). Built on every request by `resource_spec()` in `src/tools/panel/core/spec.py`, never stored (ADR-0115); the generation job builds its model with the same function (ADR-0114). `404` for a repository off the Generation list or a resource its layout lacks. |
 
 ### Preliminary grouping (endpoints into resources)

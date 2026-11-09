@@ -1779,6 +1779,49 @@
           }
         ],
         "summary": "Get Service Layout"
+      },
+      "post": {
+        "description": "Run the preliminary grouping of a service and answer with its layout.\n\nRuns within the request: the rule reads stored columns only and calls\nnothing outside the database, so there is no Job to poll. The answer is\nwhat the layout read serves afterwards.\n\nA repository off the Generation list is a ``404``, as for the read. A\nservice that already has a layout - even one without a resource - is a\n``409``: a layout changes only by editing (ADR-0072). That refusal comes\nfrom the ``layout`` primary key, not from a check before the insert, so two\nconcurrent starts cannot both store one. A failure commits nothing: the\nservice stays without a layout and the start can be retried (ADR-0061).",
+        "operationId": "start_service_layout_api_generation_services__repo__layout_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Service Layout"
       }
     },
     "/api/generation/services/{repo}/spec/{version}/{resource_id}": {
