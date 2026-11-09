@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tools.panel.core.db.models import Service
-from tools.panel.core.layout import PlacedResource, service_layout
+from tools.panel.core.db.models import Resource, Service
 
 
 @dataclass(frozen=True)
@@ -41,17 +41,12 @@ def resource_spec(
 
     None if the service's layout has no such resource.
     """
-    placed = _find_resource(db, service, resource_id)
-    if placed is None:
+    resource = db.scalar(
+        select(Resource).where(
+            Resource.service_id == service.id,
+            Resource.id == resource_id,
+        )
+    )
+    if resource is None:
         return None
     return ResourceSpec(operations=[], classes=[])
-
-
-def _find_resource(
-    db: Session, service: Service, resource_id: int
-) -> PlacedResource | None:
-    for version in service_layout(db, service).versions:
-        for placed in version.resources:
-            if placed.resource.id == resource_id:
-                return placed
-    return None
