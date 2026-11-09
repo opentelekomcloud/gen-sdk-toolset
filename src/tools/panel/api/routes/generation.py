@@ -7,6 +7,7 @@ Today that is the start of a service's preliminary grouping. The reads stay in
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -14,7 +15,7 @@ from tools.panel.api.auth import Identity, require_worker
 from tools.panel.api.deps import get_db
 from tools.panel.api.routes.generation_read import generation_service
 from tools.panel.api.schemas import LayoutResponse
-from tools.panel.core.db.models import Layout
+from tools.panel.core.db.models import Layout, Service
 from tools.panel.core.layout import service_layout, start_layout
 
 router = APIRouter()
@@ -43,6 +44,9 @@ def start_service_layout(
     concurrent starts cannot both store one. A failure commits nothing: the
     service stays without a layout and the start can be retried (ADR-0061).
     """
+    # Held until the commit, as snapshot activation and ingest hold it: the
+    # active snapshot grouped below cannot change before the layout is stored.
+    db.execute(select(Service.id).where(Service.repo == repo).with_for_update())
     service = generation_service(db, repo)
     service_id = service.id
     try:

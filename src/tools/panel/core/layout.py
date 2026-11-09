@@ -89,7 +89,8 @@ def service_layout(db: Session, service: Service) -> ServiceLayout:
     for document in documents:
         if document.path in placed_paths:
             continue
-        if document.api_version is None:
+        # an empty version is no version, as for the grouping rule
+        if not document.api_version:
             no_version.append(document)
         else:
             unassigned_by_version.setdefault(document.api_version, []).append(document)

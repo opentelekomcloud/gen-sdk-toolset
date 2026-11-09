@@ -1641,16 +1641,55 @@ def test_two_concurrent_starts_store_one_layout(laid_out, session_factory):
         service_id = first.scalar(select(Service.id).where(Service.repo == REPO))
         first.add(Layout(service_id=service_id, created_by="first"))
         first.flush()
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            second = pool.submit(laid_out.post, LAYOUT)
-            _wait_for_a_blocked_query(session_factory)
-            first.commit()
-            response = second.result(timeout=10)
+        response = _start_behind(first, laid_out, session_factory)
 
     assert response.status_code == 409
     with session_factory() as session:
         assert session.get(Layout, service_id).created_by == "first"
         assert session.scalars(select(Resource)).all() == []
+
+
+def test_a_start_groups_the_snapshot_an_activation_in_flight_makes_active(
+    laid_out, session_factory
+):
+    """The grouping runs once, so it must not be stored from a snapshot that
+    stopped being the active one before the layout was."""
+    older = _active_snapshot_id(session_factory)
+    _run_scan(session_factory, documents=[CREATE_SERVER], commit_hash=NEXT_COMMIT)
+    with session_factory() as first:
+        service = first.scalar(
+            select(Service).where(Service.repo == REPO).with_for_update()
+        )
+        service.active_snapshot_id = older
+        first.flush()
+        response = _start_behind(first, laid_out, session_factory)
+
+    assert response.status_code == 201
+    with session_factory() as session:
+        stored = sorted(session.scalars(select(Resource.name)))
+    assert stored == ["servers", "tags"]
+
+
+def _active_snapshot_id(session_factory) -> int:
+    with session_factory() as session:
+        return session.scalar(
+            select(Service.active_snapshot_id).where(Service.repo == REPO)
+        )
+
+
+def _start_behind(first, client, session_factory):
+    """Start the grouping while ``first`` holds a lock it needs.
+
+    ``first`` commits once the start waits for it - or if it never does, so a
+    failed probe is reported instead of leaving the start waiting forever.
+    """
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        second = pool.submit(client.post, LAYOUT)
+        try:
+            _wait_for_a_blocked_query(session_factory)
+        finally:
+            first.commit()
+        return second.result(timeout=10)
 
 
 def _wait_for_a_blocked_query(session_factory, timeout: float = 10) -> None:
@@ -1685,6 +1724,20 @@ def test_a_failed_start_leaves_no_layout_and_can_be_retried(laid_out, monkeypatc
 
     monkeypatch.setattr(layout_module, "group_endpoints", group_endpoints)
     assert laid_out.post(LAYOUT).status_code == 201
+
+
+def test_an_empty_api_version_is_no_version_when_started_and_read(
+    client, session_factory
+):
+    empty = _endpoint("empty.rst", "GET", "/v1/{project_id}/servers", "")
+    _register(session_factory)
+    _run_scan(session_factory, documents=[CREATE_SERVER, empty])
+
+    started = client.post(LAYOUT).json()
+
+    assert started == client.get(LAYOUT).json()
+    assert _paths(started["no_version"]) == ["empty.rst"]
+    assert [version["api_version"] for version in started["versions"]] == ["v1"]
 
 
 def test_starting_the_grouping_of_a_repository_never_registered_is_not_found(
