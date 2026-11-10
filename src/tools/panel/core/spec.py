@@ -14,11 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tools.panel.core.db.models import Resource, Service
-
-
-@dataclass(frozen=True)
-class SpecOperation:
-    """One operation of the resource. TODO(ISS-0076): its kind, method and endpoint."""
+from tools.panel.core.operations import SpecOperation
 
 
 @dataclass(frozen=True)
