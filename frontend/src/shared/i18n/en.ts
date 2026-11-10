@@ -22,6 +22,8 @@ export const en = {
   "header.subtitle": "Service scan registry · T Cloud Public",
   "header.scansRunning": "scans running: {n}",
   "header.scanner": "scanner v{v}",
+  "header.summaryFailed": "Counters failed to load",
+  "header.summaryLoading": "Loading counters…",
 
   "tab.scan": "Scan",
   "tab.generation": "Generation",
@@ -34,6 +36,7 @@ export const en = {
   "attention.allClear": "All caught up — nothing requires attention.",
   "attention.futurePanel": "Arrives with the Generation / Maintenance panels",
   "attention.loadFailed": "Could not load the {panel} rules — this list may be incomplete.",
+  "attention.loading": "Loading the {panel} rules…",
   "attention.rule.failed": "failed and hold no data",
   "attention.rule.version": "scanned with an outdated scanner",
   "attention.rule.drift": "docs changed since last scan",
@@ -70,6 +73,8 @@ export const en = {
   "registry.noEndpointDocs": "no endpoint docs",
   "registry.scanning": "scanning…",
   "registry.empty": "No services match the current filter.",
+  "registry.loading": "Loading services…",
+  "registry.loadFailed": "Failed to load the service list",
   "registry.failedBanner": "{failed} repos failed and hold no data. Metrics cover {ok} scanned repos.",
   "legend.ok": "ok",
   "legend.partial": "partial",
@@ -78,6 +83,7 @@ export const en = {
 
   "rescan.retry": "Retry",
   "rescan.version": "Rescan · v{v}",
+  "rescan.versionUnknown": "Rescan · new scanner",
   "rescan.drift": "Rescan · docs changed",
   "rescan.queueing": "queueing…",
   "rescan.job": "job #{id}",
@@ -131,6 +137,7 @@ export const en = {
   "snap.popoverHint":
     "A snapshot is stored each time the scan result changes. A rescan that finds nothing changed stores none: it reuses the latest snapshot and only refreshes its date, so an older active snapshot stays exactly as it is. Switching only changes which snapshot is active — it never starts a scan or alters data.",
   "snap.loading": "Loading snapshots…",
+  "snap.loadFailed": "Failed to load snapshots",
   "snap.latestBadge": "latest",
   "snap.activeBadge": "active",
   "snap.docsOk": "docs",
@@ -157,6 +164,8 @@ export const en = {
   "doc.openSourceHint": "Open this document in the repository at the scanned commit",
   "doc.example": "Example",
   "docs.title": "Documents",
+  "docs.loading": "Loading documents…",
+  "docs.loadFailed": "Failed to load documents",
   "docs.noVersion": "no version",
   "docs.filter": "Filter docs…",
   "docs.empty": "No documents match the filter.",
@@ -211,6 +220,8 @@ export const en = {
   "exclude.confirm": "Exclude service",
 
   "excluded.title": "Excluded services",
+  "excluded.loading": "Loading excluded services…",
+  "excluded.loadFailed": "Failed to load the excluded services",
   "excluded.by": "excluded by {by} · {at}",
   "excluded.restore": "Restore",
   "excluded.restoreConfirm":
@@ -219,14 +230,14 @@ export const en = {
     "Nothing excluded. Repos excluded here keep their scan history, disappear from all counts, and are skipped by nightly discovery until restored.",
 
   "ineligible.title": "No API reference",
+  "ineligible.loading": "Loading services without an API reference…",
+  "ineligible.loadFailed": "Failed to load the services without an API reference",
   "ineligible.checked": "{branch} · checked {at}",
   "ineligible.neverChecked": "{branch} · not yet checked",
   "ineligible.empty":
     "Every discovered repository has an API reference. Repos land here when discovery finds no api-ref path; they leave again by themselves once one appears.",
 
   "gen.list.eligible": "Services whose active Scan snapshot has at least one endpoint document.",
-  "gen.list.loading": "Loading services…",
-  "gen.list.loadFailed": "Failed to load the service list",
   "gen.col.tbd": "TBD",
   "gen.state.not_generated": "Not generated",
   "gen.state.in_progress": "In progress",
