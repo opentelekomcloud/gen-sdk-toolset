@@ -39,10 +39,8 @@ class NamingConflict(StrEnum):
 
 @dataclass(frozen=True)
 class SpecOperation:
-    """A source operation, including the request variant when a page defines several.
+    """One SDK method proposal per source operation or documented action variant.
 
-    A conflicted proposal cannot be used as a unique SDK method. Keep a
-    colliding spelling so the reviewer can see exactly which name was taken.
     TODO(ISS-0076): attach the source endpoint and expose it on the spec page.
     """
 
@@ -69,8 +67,6 @@ def _kind(method: HttpMethod, segments: tuple[str | None, ...]) -> OperationKind
     leaf = literals[-1] if literals else ""
     if method is HttpMethod.GET and leaf == "detail" and not on_item:
         return OperationKind.get if segments[-2:-1] == (None,) else OperationKind.list
-    # GETs on plural nouns such as export-tasks or access-keys read a
-    # collection even though the first word can also be a command.
     plural = leaf.lower().endswith("s") and not leaf.lower().endswith(("ss", "us"))
     if (
         not on_item
@@ -78,9 +74,6 @@ def _kind(method: HttpMethod, segments: tuple[str | None, ...]) -> OperationKind
         and (method is not HttpMethod.GET or not plural)
     ):
         return OperationKind.non_standard
-    # A literal after the resource can be a subcollection (routes, policies)
-    # or a singleton (status, metadata). A POST to an unknown singleton
-    # cannot be assumed to create a child.
     collection = not on_item and (len(literals) <= 1 or plural)
     match method:
         case HttpMethod.GET:
@@ -134,12 +127,7 @@ def _ordinary_name(
 
 
 def propose_operations(endpoints: Sequence[Endpoint]) -> list[SpecOperation]:
-    """Name the *whole* resource supplied by the caller in stable source order.
-
-    Layout membership is an input. Inferring it from URI or api_version would
-    undo manual moves. Every source path survives, even when its request
-    selector is missing or two operations claim the same Python identifier.
-    """
+    """Propose names for all endpoints assigned to one resource in the layout."""
     operations: list[SpecOperation] = []
     actions: defaultdict[tuple[HttpMethod, tuple[str | None, ...]], list[Endpoint]] = (
         defaultdict(list)
@@ -165,8 +153,7 @@ def propose_operations(endpoints: Sequence[Endpoint]) -> list[SpecOperation]:
     for (_, segments), group in actions.items():
         collection = next((s for s in reversed(segments[:-1]) if s is not None), None)
         operations.extend(_action_operations(group, collection))
-    # A manual move can put different URI roots in one resource. Restore the
-    # omitted root only when it distinguishes otherwise identical proposals.
+    # Manual layout moves can put different URI roots in the same resource.
     operations = [
         replace(op, proposed_name=qualified_names[op.path])
         if op.selector is None

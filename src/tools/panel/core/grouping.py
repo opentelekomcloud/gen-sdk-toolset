@@ -223,11 +223,7 @@ def _version_order(version: str) -> tuple[list[int], str]:
 
 
 def uri_segments(uri: str | None) -> tuple[str | None, ...]:
-    """Path after the version, with one None per parameter and decoded literals.
-
-    Grouping needs the first literal. Operation naming also needs to know
-    whether the route ends in a parameter, including an encoded one.
-    """
+    """Return decoded path segments after the version, with None for placeholders."""
     if uri is None:
         return ()
     # Read as written: placeholders, the query string, the version segment and

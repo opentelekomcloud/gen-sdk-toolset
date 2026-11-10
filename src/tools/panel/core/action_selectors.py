@@ -23,8 +23,6 @@ from tools.shared.ir import (
 
 ACTION = "action"
 
-# Command words found in the URI or request keys of the OTC service scans.
-# Unknown request shapes stay available for review.
 COMMAND_WORDS = frozenset(
     """access add apply associate attach batch bind cancel change check close
     confirm copy count create delete deny detach disable disassociate enable
@@ -121,8 +119,6 @@ def _schema_envelopes(roots: dict[str, Parameter]) -> list[tuple[str, ...]]:
         if field.param_type is ParameterType.ARRAY:
             break
         parameters = field.children
-    # Optional sibling command objects can also be documented together in
-    # one request table without a separate JSON example for each variant.
     if len(parameters) > 1 and all(
         not field.mandatory
         and is_command(field.name)
@@ -137,7 +133,6 @@ def _schema_envelopes(roots: dict[str, Parameter]) -> list[tuple[str, ...]]:
 
 
 def _envelope(body: dict) -> tuple[str, ...]:
-    """A chain of single-key request objects, ending before ordinary scalar data."""
     keys = []
     while isinstance(body, dict) and len(body) == 1:
         key, body = next(iter(body.items()))
@@ -173,7 +168,7 @@ def _request_bodies(
                     break
                 raw = rest.lstrip()
             if not raw:
-                continue  # A request line and its JSON can be separate blocks.
+                continue
             try:
                 body = json.loads(raw)
             except (ValueError, RecursionError):
@@ -182,11 +177,6 @@ def _request_bodies(
 
 
 def _request_evidence(endpoint: Endpoint) -> _Evidence:
-    """Read possible variants from the body schema and request examples.
-
-    Some request-example sections also contain structured error objects
-    unrelated to the documented request. They supply no request selector.
-    """
     sections = {section.name: section for section in endpoint.sections}
     roots = _root_parameters(sections[SectionName.BODY].parameters)
     action_field = roots.get(ACTION)
@@ -213,14 +203,12 @@ def _request_evidence(endpoint: Endpoint) -> _Evidence:
         and not action_field
         and not any(obj and ACTION in obj for obj in bodies)
     ):
-        # The body contains arguments for the action selected by the query.
         return _Evidence(set(), query_selectors, not all(query_fields.values()))
     values = _documented_values(action_field.description) if action_field else set()
     envelopes = set()
     ambiguous = False
     for obj in bodies:
         if obj is None:
-            # Keep schema-derived actions and also surface the unread variant.
             ambiguous = True
             continue
         if ACTION in obj:
@@ -231,6 +219,7 @@ def _request_evidence(endpoint: Endpoint) -> _Evidence:
                 ambiguous = True
             continue
         if roots and not roots.keys() & obj.keys():
+            # Some request-example sections include an API error response.
             if len(obj) == 1 and any(
                 isinstance(payload, dict) and {"message", "code"} <= payload.keys()
                 for payload in obj.values()
@@ -241,7 +230,6 @@ def _request_evidence(endpoint: Endpoint) -> _Evidence:
             envelopes.add(path)
         else:
             ambiguous = True
-    # A less specific schema is covered by its example(s).
     if not action_field:
         for schema_path in _schema_envelopes(roots):
             if not any(p[: len(schema_path)] == schema_path for p in envelopes):
@@ -259,9 +247,7 @@ def _request_evidence(endpoint: Endpoint) -> _Evidence:
 def _selector(
     path: tuple[str, ...], branches: set[tuple[str, ...]]
 ) -> ActionSelector | None:
-    # Differing sibling envelopes are evidence even when the action's key is
-    # unfamiliar. Prefer the most specific dispatch point. Ordinary argument
-    # names below a known command do not independently select a method.
+    """Use the deepest branching key to distinguish actions under a shared command."""
     command_depth = next(
         (
             i
@@ -276,8 +262,6 @@ def _selector(
     if command_depth:
         return ActionSelector(path[:command_depth])
     if len(path) == 1:
-        # A single named envelope is itself the dispatch key. Its spelling
-        # need not be in the command vocabulary (e.g. an API extension).
         return ActionSelector(path)
     return None
 
