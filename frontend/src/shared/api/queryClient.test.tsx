@@ -48,7 +48,15 @@ function later() {
   const arrived = new Promise<unknown>((resolve) => {
     send = resolve;
   });
-  return { answer: () => arrived.then((body) => new Response(JSON.stringify(body))), send };
+  let fail: () => void = () => {};
+  const failed = new Promise<Response>((resolve) => {
+    fail = () => resolve(failing());
+  });
+  return {
+    answer: () => Promise.race([arrived.then((body) => new Response(JSON.stringify(body))), failed]),
+    send,
+    fail,
+  };
 }
 
 const failing = () =>
@@ -387,6 +395,75 @@ describe("a tab shown again", () => {
     expect(server.calls(SUMMARY)).toBe(2);
     await elapse(1_000);
     expect(server.calls(SUMMARY)).toBe(3);
+  });
+
+  /* The return reuses a request still under way rather than sending another.
+     That request went out before the tab was hidden, so its answer says
+     nothing of what changed meanwhile: it must not count as the return's. */
+  it("asks again once a request sent before it was hidden answers after its return", async () => {
+    const state: Record<string, unknown> = { [SUMMARY]: { services_total: 1 } };
+    const server = serve(state);
+    mount(<HeaderProbe />);
+    await elapse(0);
+    const slow = later();
+    state[SUMMARY] = slow.answer;
+    await elapse(REFETCH_INTERVAL_MS);
+    expect(server.calls(SUMMARY)).toBe(2);
+
+    await setTab("hidden");
+    state[SUMMARY] = { services_total: 3 };
+    await setTab("visible");
+    await elapse(0);
+    expect(server.calls(SUMMARY)).toBe(2);
+
+    slow.send({ services_total: 2 });
+    // no interval tick: the next one is a full interval away
+    await elapse(0);
+
+    expect(server.calls(SUMMARY)).toBe(3);
+    expect(shown("summary")).toBe('{"services_total":3}');
+  });
+
+  it("takes a retry sent after the return as the return's own answer", async () => {
+    const state: Record<string, unknown> = { [SUMMARY]: { services_total: 1 } };
+    const server = serve(state);
+    mount(<HeaderProbe />);
+    await elapse(0);
+    const slow = later();
+    state[SUMMARY] = slow.answer;
+    await elapse(REFETCH_INTERVAL_MS);
+    await setTab("hidden");
+    await setTab("visible");
+    await elapse(0);
+
+    // the request from before fails after the return; its retry goes out after it
+    state[SUMMARY] = { services_total: 3 };
+    slow.fail();
+    // the built-in retry waits 1 s after the failure, then asks
+    await elapse(1_100);
+
+    expect(server.calls(SUMMARY)).toBe(3);
+    expect(shown("summary")).toBe('{"services_total":3}');
+    // and nothing more until the interval comes round again
+    await elapse(REFETCH_INTERVAL_MS - 2_000);
+    expect(server.calls(SUMMARY)).toBe(3);
+  });
+
+  it("sends a request held back while hidden once, as the return's own", async () => {
+    const state: Record<string, unknown> = { [SUMMARY]: { services_total: 1 } };
+    const server = serve(state);
+    const { client } = mount(<HeaderProbe />);
+    await elapse(0);
+    await setTab("hidden");
+    void client.invalidateQueries({ queryKey: keys.summary });
+    state[SUMMARY] = { services_total: 2 };
+
+    await setTab("visible");
+    await elapse(0);
+
+    // it went out after the return, so its answer is the return's: nothing more
+    expect(server.calls(SUMMARY)).toBe(2);
+    expect(shown("summary")).toBe('{"services_total":2}');
   });
 
   it("then refreshes on the interval like any visible tab", async () => {

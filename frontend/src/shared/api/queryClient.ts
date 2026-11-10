@@ -11,8 +11,16 @@ export const REFETCH_INTERVAL_MS = 10_000;
 
 /** How many times the tab has been shown again after being hidden. */
 let returns = 0;
-/** For each query, how many returns there had been when its last answer came. */
+/**
+ * For each query, how many returns there had been when the request behind its
+ * last answer went out - not when the answer came: a request sent before the
+ * tab was hidden answers for that time, however late it arrives.
+ */
 const answeredAfter = new WeakMap<object, number>();
+/** For each query, how many returns there had been when its current request went out. */
+const askedAfter = new WeakMap<object, number>();
+/** The query-cache actions after which a request goes out: a fetch, a retry, a resumed fetch. */
+const SENDS = new Set(["fetch", "failed", "continue"]);
 
 /**
  * Lets queries fetch only while the tab is visible, as well as online (ADR-0080).
@@ -34,8 +42,8 @@ const answeredAfter = new WeakMap<object, number>();
  *
  * A return is counted before the tab is allowed to fetch, so the refetch that
  * follows can tell a return from a network coming back. Counted, not timed: a
- * clock would mistake an answer from the same millisecond as the return for
- * one fetched after it.
+ * clock would mistake a request sent in the same millisecond as the return for
+ * one sent after it.
  */
 function fetchOnlyWhileVisible() {
   onlineManager.setEventListener((setOnline) => {
@@ -95,12 +103,20 @@ function fetchOnlyWhileVisible() {
  * tab stayed visible therefore fetches nothing either: that tab is already on
  * the interval. A request already sent when the tab is hidden is left to
  * finish and its answer is shown; only what would follow it - a retry, a
- * refetch - waits.
+ * refetch - waits. If that answer arrives after the tab is back, it is from
+ * before the return, so the query is fetched once more (`answered`).
  */
 export function createQueryClient() {
   fetchOnlyWhileVisible();
+  const queryCache = new QueryCache({ onSuccess: answered });
+  queryCache.subscribe((event) => {
+    /* A request goes out when its fetch starts; a retry, after the request
+       before it failed; and a fetch or retry paused while the tab was hidden,
+       when it continues - each of these counts it again. */
+    if (event.type === "updated" && SENDS.has(event.action.type)) askedAfter.set(event.query, returns);
+  });
   return new QueryClient({
-    queryCache: new QueryCache({ onSuccess: (_data, query) => answeredAfter.set(query, returns) }),
+    queryCache,
     defaultOptions: {
       queries: {
         staleTime: 15_000,
@@ -115,11 +131,27 @@ export function createQueryClient() {
 }
 
 /**
+ * Records which return an answer stands for, and asks again when it stands for
+ * none since the latest one.
+ *
+ * Shown again, the tab reuses a request still under way rather than sending
+ * another, as TanStack does for every refetch on return. That request went out
+ * before the tab was hidden; its answer says nothing of what changed meanwhile,
+ * so the query is fetched once more as soon as it lands - by then nothing is
+ * under way to reuse.
+ */
+function answered(_data: unknown, query: Query) {
+  const asked = askedAfter.get(query) ?? returns;
+  answeredAfter.set(query, asked);
+  if (asked < returns && query.isActive()) void query.fetch().catch(() => undefined);
+}
+
+/**
  * Every query on screen when the tab is shown again; otherwise, as TanStack
- * does by default, only the stale ones. A query whose last answer came before
- * the latest return has not been fetched since the tab came back - including
- * one that answered while the tab was hidden, or never answered. After a
- * network outage alone, every query on screen has answered since.
+ * does by default, only the stale ones. A query whose last answer was asked
+ * for before the latest return has not been fetched since the tab came back -
+ * including one that answered while the tab was hidden, or never answered.
+ * After a network outage alone, every answer on screen was asked for since.
  */
 function refetchOnReturn(query: Query): boolean | "always" {
   return (answeredAfter.get(query) ?? -1) < returns ? "always" : true;
