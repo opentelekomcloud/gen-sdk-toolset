@@ -23,7 +23,7 @@ from tools.panel.core.db.models import (
     ResourceEndpoint,
     Service,
 )
-from tools.panel.core.grouping import group_endpoints
+from tools.panel.core.grouping import group_endpoints, has_api_version
 from tools.shared.ir import ENDPOINT_KIND
 
 
@@ -89,8 +89,7 @@ def service_layout(db: Session, service: Service) -> ServiceLayout:
     for document in documents:
         if document.path in placed_paths:
             continue
-        # an empty version is no version, as for the grouping rule
-        if not document.api_version:
+        if not has_api_version(document.api_version):
             no_version.append(document)
         else:
             unassigned_by_version.setdefault(document.api_version, []).append(document)
@@ -138,6 +137,44 @@ def start_layout(db: Session, service: Service, *, created_by: str) -> None:
             ]
             db.add(resource)
     db.flush()
+
+
+def listed_versions(db: Session, service: Service) -> set[str]:
+    """The API versions :func:`service_layout` lists, read from columns alone.
+
+    The versions of the service's resources, and of the active Snapshot's
+    endpoints that are in no resource and have a version - the "unassigned"
+    ones. The same rule as the read, without loading a single payload, for an
+    edit that needs only the names; which versions count is decided by
+    :func:`has_api_version` in Python, as the read decides it, not restated in
+    SQL.
+    """
+    resource_versions = set(
+        db.scalars(
+            select(Resource.api_version).where(Resource.service_id == service.id)
+        )
+    )
+    placed = select(ResourceEndpoint.path).where(
+        ResourceEndpoint.service_id == service.id
+    )
+    endpoint_versions = db.scalars(
+        _active_endpoints(service)
+        .with_only_columns(DocumentRecord.api_version)
+        .distinct()
+        .where(DocumentRecord.path.not_in(placed))
+    )
+    return resource_versions | {
+        version for version in endpoint_versions if has_api_version(version)
+    }
+
+
+def active_endpoint(db: Session, service: Service, path: str) -> DocumentRecord | None:
+    """The endpoint document at ``path`` in the service's active Snapshot, if any.
+
+    What a layout edit may move: the same documents :func:`service_layout`
+    shows, so an endpoint the read does not list cannot be placed either.
+    """
+    return db.scalar(_active_endpoints(service).where(DocumentRecord.path == path))
 
 
 def _active_endpoints(service: Service) -> Select[tuple[DocumentRecord]]:

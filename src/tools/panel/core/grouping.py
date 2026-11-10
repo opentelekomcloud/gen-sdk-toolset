@@ -179,8 +179,7 @@ def group_endpoints(endpoints: Sequence[GroupableEndpoint]) -> EndpointGrouping:
                 f"{endpoint.path} is a {endpoint.kind!r} document, not an endpoint"
             )
         version = endpoint.api_version
-        # an empty version names no version either: it would be a group with no name
-        if not version:
+        if not has_api_version(version):
             no_version.append(endpoint.path)
             continue
         segment = _resource_segment(endpoint.uri)
@@ -205,6 +204,17 @@ def group_endpoints(endpoints: Sequence[GroupableEndpoint]) -> EndpointGrouping:
         ],
         no_version=sorted(no_version),
     )
+
+
+def has_api_version(api_version: str | None) -> bool:
+    """Whether an endpoint names an API version at all (ADR-0059).
+
+    An empty version names none, just as a missing one: it would be a version
+    group, and a package ``services/<service>//<resource>/``, without a name.
+    The grouping, the layout read and the layout edits all ask this, so an
+    endpoint is in "no version" for every one of them or for none.
+    """
+    return bool(api_version)
 
 
 def _version_order(version: str) -> tuple[list[int], str]:
