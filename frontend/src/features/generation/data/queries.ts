@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch, qs } from "../../scan/api/client";
 import { keys } from "../../scan/api/queries";
-import type { GenerationServiceItem } from "../../../shared/api/types";
+import type { GenerationServiceItem, Layout } from "../../../shared/api/types";
 import {
   generationAttention,
   generationResources,
@@ -29,6 +29,14 @@ export function useGenerationList(params: { q: string }) {
     /* Keep the table while a new search loads - but never from a request that
        failed: its rows are the stale list the error block is standing in for. */
     placeholderData: (prev, prevQuery) => (prevQuery?.state.status === "error" ? undefined : prev),
+  });
+}
+
+/** The layout of one service, read from the backend; `has_layout` is false until its grouping has run. */
+export function useGenerationLayout(name: string) {
+  return useQuery({
+    queryKey: keys.genLayout(name),
+    queryFn: () => apiFetch<Layout>(`/generation/services/${encodeURIComponent(name)}/layout`),
   });
 }
 

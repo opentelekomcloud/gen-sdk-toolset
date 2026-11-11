@@ -40,6 +40,8 @@ export const keys = {
   genServices: ["generation", "services"] as const,
   genList: (p?: object) => (p ? (["generation", "list", p] as const) : (["generation", "list"] as const)),
   genResources: (name: string) => ["generation", "resources", name] as const,
+  /** The layout of a service as the backend stores it. */
+  genLayout: (name: string) => ["generation", "layout", name] as const,
   genAttention: ["generation", "attention"] as const,
   /** Prefix for the generation specs of every resource of a service — invalidation target. */
   genSpecs: (name: string) => ["generation", "spec", name] as const,
@@ -79,6 +81,7 @@ export function invalidateSnapshot(qc: QueryClient, name: string) {
  * of a resource. Jobs are untouched, so the attention rules are not.
  */
 export function invalidateGenLayout(qc: QueryClient, name: string) {
+  void qc.invalidateQueries({ queryKey: keys.genLayout(name) });
   void qc.invalidateQueries({ queryKey: keys.genResources(name) });
   void qc.invalidateQueries({ queryKey: keys.genServices });
   void qc.invalidateQueries({ queryKey: keys.genSpecs(name) });
