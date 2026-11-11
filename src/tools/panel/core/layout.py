@@ -7,7 +7,8 @@ lists are derived here, never stored, so they follow the active Snapshot.
 A layout is created once, by the preliminary grouping (:func:`start_layout`);
 after that its grouping changes only by editing (ADR-0072). A confirmation can
 also be dropped when the active Snapshot moves and changes the endpoints it
-covered (:func:`switch_active_snapshot`, ADR-0068).
+covered or leaves one of them not ``ok`` (:func:`switch_active_snapshot`,
+ADR-0067, ADR-0068).
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from dataclasses import dataclass
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, selectinload, undefer
 
+from tools.panel.core.analytics import OverallStatus
 from tools.panel.core.db.models import (
     DocumentRecord,
     Layout,
@@ -208,15 +210,19 @@ def _drop_outdated_confirmations(
     db: Session, service: Service, snapshot_id: int
 ) -> None:
     """Drop each confirmation ``snapshot_id`` would leave covering a different
-    set of endpoints (ADR-0068).
+    set of endpoints (ADR-0068) or an endpoint that is not ``ok`` (ADR-0067).
 
     A confirmation covers the name and the endpoints the user checked
-    (ADR-0068, ADR-0110): those of the resource in the active Snapshot, the
-    ones the layout read shows. A rescan or an activation that takes one of
-    them away, or brings back a stored path the confirmation never saw, leaves
-    the resource with another set, so it has to be checked again - just as an
-    edit that changes the set drops it. A resource whose set stays keeps its
-    confirmation.
+    (ADR-0068): those of the resource in the active Snapshot, the ones the
+    layout read shows. A rescan or an activation that takes one of them away,
+    or brings back a stored path the confirmation never saw, leaves the
+    resource with another set, so it has to be checked again - just as an edit
+    that changes the set drops it.
+
+    A resource is confirmed only while every endpoint it shows is ``ok``
+    (ADR-0067), so one whose set stays still loses its confirmation when the
+    new Snapshot reads any of them as not ``ok``. A resource whose set stays
+    and is ``ok`` throughout keeps it.
     """
     if service.active_snapshot_id in (None, snapshot_id):
         return
@@ -229,29 +235,34 @@ def _drop_outdated_confirmations(
     if not stored:
         return
 
-    def shown_in(snapshot: int | None) -> set[str]:
-        return set(
-            db.scalars(
-                select(DocumentRecord.path).where(
-                    DocumentRecord.snapshot_id == snapshot,
-                    DocumentRecord.kind == ENDPOINT_KIND,
-                    DocumentRecord.path.in_(stored),
-                )
+    def shown_in(snapshot: int | None) -> dict[str, str | None]:
+        rows = db.execute(
+            select(DocumentRecord.path, DocumentRecord.overall_status).where(
+                DocumentRecord.snapshot_id == snapshot,
+                DocumentRecord.kind == ENDPOINT_KIND,
+                DocumentRecord.path.in_(stored),
             )
-        )
+        ).all()
+        return {path: status for path, status in rows}
 
     before, after = shown_in(service.active_snapshot_id), shown_in(snapshot_id)
     for resource in confirmed:
         mine = {link.path for link in resource.endpoints}
-        if mine & before != mine & after:
-            unconfirm(resource)
-            logger.info(
-                "service %s: confirmation of resource %s dropped, snapshot %s "
-                "changes its endpoints",
-                service.repo,
-                resource.id,
-                snapshot_id,
-            )
+        kept = mine & after.keys()
+        if kept != mine & before.keys():
+            reason = "changes its endpoints"
+        elif any(after[path] != OverallStatus.OK for path in kept):
+            reason = "leaves an endpoint not ok"
+        else:
+            continue
+        unconfirm(resource)
+        logger.info(
+            "service %s: confirmation of resource %s dropped, snapshot %s %s",
+            service.repo,
+            resource.id,
+            snapshot_id,
+            reason,
+        )
 
 
 def endpoint_statuses(
