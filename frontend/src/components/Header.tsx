@@ -1,6 +1,6 @@
-import { Activity, Eye, LogOut, Settings } from "lucide-react";
+import { Activity, AlertTriangle, Eye, Loader2, LogOut, RefreshCw, Settings } from "lucide-react";
 import { NavLink } from "react-router";
-import { useSummary } from "../features/scan/api/queries";
+import { blockOf, useRetry, useSummary } from "../features/scan/api/queries";
 import { useSession } from "../shared/auth/useSession";
 import { useI18n, type Lang } from "../shared/i18n";
 
@@ -56,9 +56,40 @@ function Session() {
   );
 }
 
+/**
+ * The counters' place when the summary did not load, first or on a refresh
+ * (ADR-0081): the failure and a Retry instead of counts that may be stale, in
+ * the header's own pill. The same rule as `BlockFailed`, through `useRetry`:
+ * it says it is loading only while a Retry the user asked for runs.
+ */
+function SummaryFailed({ query }: { query: ReturnType<typeof useSummary> }) {
+  const { t } = useI18n();
+  const { retrying, retry } = useRetry(query);
+  if (retrying) {
+    return (
+      <span className="flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs text-white">
+        <Loader2 size={12} className="animate-spin" /> {t("header.summaryLoading")}
+      </span>
+    );
+  }
+  return (
+    <span role="alert" className="flex items-center gap-1.5 rounded-full bg-white/15 py-1 pl-2.5 pr-1 text-xs text-white">
+      <AlertTriangle size={12} /> {t("header.summaryFailed")}
+      <button
+        type="button"
+        onClick={retry}
+        className="flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 font-medium transition hover:bg-white/30"
+      >
+        <RefreshCw size={10} /> {t("service.retry")}
+      </button>
+    </span>
+  );
+}
+
 /** Logo + pills from summary; no bulk actions here by design (PS9). */
 export function Header() {
-  const { data: summary } = useSummary();
+  const query = useSummary();
+  const { data: summary, failed } = blockOf(query);
   const { t } = useI18n();
   return (
     <header className="flex items-center justify-between bg-brand px-6 py-3">
@@ -71,6 +102,7 @@ export function Header() {
         </div>
       </div>
       <div className="flex items-center gap-3">
+        {failed && <SummaryFailed query={query} />}
         {summary && summary.scans_running > 0 && (
           <span className="flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs text-white">
             <Activity size={12} className="animate-pulse" /> {t("header.scansRunning", { n: summary.scans_running })}

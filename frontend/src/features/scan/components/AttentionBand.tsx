@@ -9,7 +9,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
-import { useAttention } from "../api/queries";
+import { blockOf, useAttention } from "../api/queries";
+import { BlockFailed } from "./ServicePageStates";
 import type { AttentionRuleCode } from "../types";
 import type { AttentionRule } from "../../../shared/api/types";
 import { useGenerationAttention } from "../../generation/data/queries";
@@ -74,14 +75,18 @@ export function AttentionBand() {
   const { t } = useI18n();
   const activeRule = searchParams.get("rule");
 
+  const scanRules = blockOf(scan);
+  const genRules = blockOf(gen);
   // band appears once every panel has answered; no layout jump worth a skeleton
-  if (scan.isPending || gen.isPending) return null;
-  /* One panel failing must not hide the other's rules, nor pass for "all clear":
-     what arrived is shown, and a panel whose rules did not load is named. */
-  const rules = [...(scan.data ?? []), ...(gen.data ?? [])];
-  const unloaded: MessageKey[] = [];
-  if (scan.isError) unloaded.push("tab.scan");
-  if (gen.isError) unloaded.push("tab.generation");
+  if (scanRules.pending || genRules.pending) return null;
+  /* Each panel's rules are a block of their own (ADR-0081): a panel whose rules
+     did not load - first or on a refresh - shows its failure and a Retry in
+     place of its rules, never the ones it had before. The other panel's rules
+     stay, and a failure never passes for "all clear". */
+  const rules = [...(scanRules.data ?? []), ...(genRules.data ?? [])];
+  const unloaded: { panel: MessageKey; query: typeof scan | typeof gen }[] = [];
+  if (scanRules.failed) unloaded.push({ panel: "tab.scan", query: scan });
+  if (genRules.failed) unloaded.push({ panel: "tab.generation", query: gen });
   if (rules.length === 0 && unloaded.length === 0) return <AllClear />;
   const showTags = new Set(rules.map((r) => r.panel)).size > 1;
 
@@ -139,10 +144,13 @@ export function AttentionBand() {
               })}
             </div>
           )}
-          {unloaded.map((panel) => (
-            <div key={panel} role="alert" className="flex items-center gap-1.5 text-xs font-medium text-red-600">
-              <AlertTriangle size={14} /> {t("attention.loadFailed", { panel: t(panel) })}
-            </div>
+          {unloaded.map(({ panel, query }) => (
+            <BlockFailed
+              key={panel}
+              query={query}
+              label={t("attention.loadFailed", { panel: t(panel) })}
+              loadingLabel={t("attention.loading", { panel: t(panel) })}
+            />
           ))}
         </div>
       </div>

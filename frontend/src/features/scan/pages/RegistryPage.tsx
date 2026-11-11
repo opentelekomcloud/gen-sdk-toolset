@@ -2,10 +2,11 @@ import { useCallback } from "react";
 import { AlertTriangle, ChevronRight } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useRescan } from "../api/mutations";
-import { useServices, useSummary, type ServicesParams } from "../api/queries";
+import { blockOf, useServices, useSummary, type ServicesParams } from "../api/queries";
 import type { ServiceListItem } from "../../../shared/api/types";
 import type { AttentionRuleCode, ServiceFilter, ServiceSort } from "../types";
 import { RescanButton } from "../components/RescanButton";
+import { BlockFailed } from "../components/ServicePageStates";
 import { useSession } from "../../../shared/auth/useSession";
 import { SectionStrip } from "../components/SectionStrip";
 import { StatusPill } from "../components/StatusPill";
@@ -28,12 +29,14 @@ const CHIPS: [ServiceFilter, MessageKey][] = [
   ["needs_rescan", "filter.needs_rescan"],
 ];
 
-function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVersion: string }) {
+function ServiceRow({ item, scannerVersion }: { item: ServiceListItem; scannerVersion: string | undefined }) {
   const { canWrite } = useSession();
   const navigate = useNavigate();
   const rescan = useRescan(item.name);
   const { t } = useI18n();
-  const outdated = item.scanner_version != null && item.scanner_version !== scannerVersion;
+  /* Only against a scanner version the summary gave: without one - loading or
+     failed - every scanned row would read as outdated. */
+  const outdated = scannerVersion !== undefined && item.scanner_version != null && item.scanner_version !== scannerVersion;
   const scanning = item.scan_status === "scanning";
 
   return (
@@ -124,9 +127,13 @@ export function RegistryPage() {
     [setSearchParams],
   );
 
-  const { data } = useServices(params);
-  const { data: summary } = useSummary();
-  const scannerVersion = summary?.scanner_version ?? "";
+  const services = useServices(params);
+  const list = blockOf(services);
+  const data = list.data;
+  /* The summary's own failure is shown in the Header; here its numbers are
+     left out rather than shown from an answer that failed to refresh. */
+  const summary = blockOf(useSummary()).data;
+  const scannerVersion = summary?.scanner_version;
 
   return (
     <>
@@ -143,7 +150,9 @@ export function RegistryPage() {
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {CHIPS.map(([k, labelKey]) => (
             <button type="button" key={k} onClick={() => setParam("status", k, true)} className={chipCls(params.status === k && !params.rule)}>
-              {t(labelKey)} <span className="font-mono tabular-nums opacity-70">{data?.counts[k] ?? 0}</span>
+              {t(labelKey)}{" "}
+              {/* no count until the list answered: a 0 would read as a count */}
+              {data && <span className="font-mono tabular-nums opacity-70">{data.counts[k] ?? 0}</span>}
             </button>
           ))}
           <SearchInput value={input} onChange={setInput} />
@@ -158,25 +167,31 @@ export function RegistryPage() {
           </select>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="grid grid-cols-12 gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            <div className="col-span-3">{t("registry.col.service")}</div>
-            <div className="col-span-2">{t("registry.col.status")}</div>
-            <div className="col-span-3">{t("registry.col.docs")}</div>
-            <div className="col-span-2">{t("registry.col.sections")}</div>
-            <div className="col-span-2 text-right">{t("registry.col.rescan")}</div>
+        {/* A list that did not load - first or on a refresh - is not shown as a
+            table (ADR-0081): rows kept from before would read as current. */}
+        {list.failed ? (
+          <BlockFailed query={services} label={t("registry.loadFailed")} loadingLabel={t("registry.loading")} />
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div className="grid grid-cols-12 gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <div className="col-span-3">{t("registry.col.service")}</div>
+              <div className="col-span-2">{t("registry.col.status")}</div>
+              <div className="col-span-3">{t("registry.col.docs")}</div>
+              <div className="col-span-2">{t("registry.col.sections")}</div>
+              <div className="col-span-2 text-right">{t("registry.col.rescan")}</div>
+            </div>
+            {data?.items.map((item) => (
+              <ServiceRow key={item.name} item={item} scannerVersion={scannerVersion} />
+            ))}
+            {data && data.items.length === 0 && (
+              <div className="px-4 py-10 text-center text-sm text-gray-400">{t("registry.empty")}</div>
+            )}
           </div>
-          {data?.items.map((item) => (
-            <ServiceRow key={item.name} item={item} scannerVersion={scannerVersion} />
-          ))}
-          {data && data.items.length === 0 && (
-            <div className="px-4 py-10 text-center text-sm text-gray-400">{t("registry.empty")}</div>
-          )}
-        </div>
+        )}
 
         <div className="mt-3 flex items-center justify-between text-xs text-gray-400">
           <span>
-            {t("header.scanner", { v: scannerVersion })}
+            {scannerVersion !== undefined && t("header.scanner", { v: scannerVersion })}
           </span>
           <span className="flex items-center gap-3">
             <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> {t("legend.ok")}</span>
