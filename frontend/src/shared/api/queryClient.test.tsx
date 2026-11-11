@@ -449,6 +449,33 @@ describe("a tab shown again", () => {
     expect(server.calls(SUMMARY)).toBe(3);
   });
 
+  /* TanStack reports a failure before the retry's delay, not when the retry
+     goes out: a tab hidden and shown during that delay sends the retry after
+     its return, and that answer is the return's own. */
+  it("takes a retry that waited out a return as the return's own answer", async () => {
+    const state: Record<string, unknown> = { [SUMMARY]: { services_total: 1 } };
+    const server = serve(state);
+    mount(<HeaderProbe />);
+    await elapse(0);
+    state[SUMMARY] = failing;
+    await elapse(REFETCH_INTERVAL_MS);
+    expect(server.calls(SUMMARY)).toBe(2);
+
+    // within the 1 s before the retry
+    await elapse(100);
+    await setTab("hidden");
+    await elapse(100);
+    await setTab("visible");
+    state[SUMMARY] = { services_total: 3 };
+    await elapse(1_000);
+
+    expect(server.calls(SUMMARY)).toBe(3);
+    expect(shown("summary")).toBe('{"services_total":3}');
+    // and nothing more until the interval comes round again
+    await elapse(REFETCH_INTERVAL_MS - 2_000);
+    expect(server.calls(SUMMARY)).toBe(3);
+  });
+
   it("sends a request held back while hidden once, as the return's own", async () => {
     const state: Record<string, unknown> = { [SUMMARY]: { services_total: 1 } };
     const server = serve(state);

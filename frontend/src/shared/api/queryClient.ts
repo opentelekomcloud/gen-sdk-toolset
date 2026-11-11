@@ -1,4 +1,11 @@
-import { onlineManager, QueryCache, QueryClient, type Query } from "@tanstack/react-query";
+import {
+  onlineManager,
+  QueryCache,
+  QueryClient,
+  type Query,
+  type QueryFunction,
+  type QueryFunctionContext,
+} from "@tanstack/react-query";
 
 /**
  * How often every mounted query is fetched again from the server (ADR-0076).
@@ -19,8 +26,6 @@ let returns = 0;
 const answeredAfter = new WeakMap<object, number>();
 /** For each query, how many returns there had been when its current request went out. */
 const askedAfter = new WeakMap<object, number>();
-/** The query-cache actions after which a request goes out: a fetch, a retry, a resumed fetch. */
-const SENDS = new Set(["fetch", "failed", "continue"]);
 
 /**
  * Lets queries fetch only while the tab is visible, as well as online (ADR-0080).
@@ -108,17 +113,15 @@ function fetchOnlyWhileVisible() {
  */
 export function createQueryClient() {
   fetchOnlyWhileVisible();
-  const queryCache = new QueryCache({ onSuccess: answered });
-  queryCache.subscribe((event) => {
-    /* A request goes out when its fetch starts; a retry, after the request
-       before it failed; and a fetch or retry paused while the tab was hidden,
-       when it continues - each of these counts it again. */
-    if (event.type === "updated" && SENDS.has(event.action.type)) askedAfter.set(event.query, returns);
-  });
   return new QueryClient({
-    queryCache,
+    queryCache: new QueryCache({ onSuccess: answered }),
     defaultOptions: {
       queries: {
+        persister: sent,
+        /* TanStack's own default, said out loud: with a persister it would
+           switch to "offlineFirst" and send a first attempt while the tab is
+           hidden, which counts as offline here. */
+        networkMode: "online",
         staleTime: 15_000,
         retry: 1,
         refetchInterval: REFETCH_INTERVAL_MS,
@@ -128,6 +131,21 @@ export function createQueryClient() {
       },
     },
   });
+}
+
+/**
+ * Records how many returns there had been as each attempt of a query goes out.
+ *
+ * TanStack calls this around every attempt, at the moment it is sent: a first
+ * request, each retry, and one held back while the tab was hidden. Its cache
+ * events do not tell that moment - a failure is reported before the retry's
+ * delay, and a retry that is not held back sends without an event - so a
+ * return during that delay would be missed. Only the count is kept; the query
+ * function runs as it is.
+ */
+function sent<T>(queryFn: QueryFunction<T>, context: QueryFunctionContext, query: Query): T | Promise<T> {
+  askedAfter.set(query, returns);
+  return queryFn(context);
 }
 
 /**
