@@ -1988,6 +1988,60 @@
         "summary": "Add Resource"
       }
     },
+    "/api/generation/services/{repo}/layout/resources/{resource_id}/confirm": {
+      "post": {
+        "description": "Confirm one resource, leaving every other resource as it is (ADR-0066).\n\nOnly a resource with at least one endpoint in the active Snapshot, all of\nthem ``ok`` (ADR-0067); otherwise a ``409`` that names what blocks it, and\nnothing changes - other resources stay confirmable. Confirming a confirmed\nresource changes nothing either: ``confirmed_by`` and ``confirmed_at`` keep\nthe first confirmation, the one that checked these endpoints.\n\n``confirmed_at`` is when the request came, not when the lock was granted.",
+        "operationId": "confirm_resource_api_generation_services__repo__layout_resources__resource_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "title": "Resource Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm Resource"
+      }
+    },
     "/api/generation/services/{repo}/layout/resources/{resource_id}/rename": {
       "post": {
         "description": "Give a resource a new name; its ``id`` stays, so links to it do too.\n\nRenaming to the name it already has changes nothing, so its confirmation\nstays as well.",
@@ -2847,7 +2901,7 @@
     },
     "/api/scan/services/{repo}/snapshots/{snapshot_id}/activate": {
       "post": {
-        "description": "Serve this Service's scan-result views from another of its Snapshots.\n\nMoves ``active_snapshot_id`` only: ``latest_snapshot_id`` and the stored\nSnapshots stay as they are, and every view downstream already follows this\npointer. Re-activating the active Snapshot changes nothing and answers 200.\nAn excluded Service is allowed; the caller's identity is logged, not stored.\n\nRefused with ``409`` while a scan Job is queued or running, whatever the\nrequest would change: ingest moves the same pointer, so one would silently\noverwrite the other. Terminal Jobs never block. The Service row is locked\nfor the check-then-write, as in ``start_scan``.",
+        "description": "Serve this Service's scan-result views from another of its Snapshots.\n\nMoves ``active_snapshot_id``: ``latest_snapshot_id`` and the stored\nSnapshots stay as they are, and every view downstream already follows this\npointer. A resource confirmation the new Snapshot no longer covers - its\nendpoints there differ from the ones it checked - is dropped (ADR-0068), and\nactivating the previous Snapshot again does not bring it back.\nRe-activating the active Snapshot changes nothing and answers 200.\nAn excluded Service is allowed; the caller's identity is logged, not stored.\n\nRefused with ``409`` while a scan Job is queued or running, whatever the\nrequest would change: ingest moves the same pointer, so one would silently\noverwrite the other. Terminal Jobs never block. The Service row is locked\nfor the check-then-write, as in ``start_scan``.",
         "operationId": "activate_snapshot_api_scan_services__repo__snapshots__snapshot_id__activate_post",
         "parameters": [
           {

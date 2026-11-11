@@ -65,7 +65,11 @@ from tools.panel.core.layout import listed_versions  # noqa: E402
 from tools.panel.core.spec import ResourceSpec, resource_spec  # noqa: E402
 from tools.shared.ir import Document, HttpMethod  # noqa: E402
 from tools.shared.ir import Service as IrService  # noqa: E402
-from tools.shared.scan import DocumentScanResult, RepositoryScanResult  # noqa: E402
+from tools.shared.scan import (  # noqa: E402
+    DocumentScanResult,
+    RepositoryScanResult,
+    SectionStatus,
+)
 
 REPO = "opentelekomcloud-docs/ecs"
 COMMIT = "a" * 40
@@ -2256,6 +2260,310 @@ def test_moving_into_a_resource_of_another_service_is_not_found(
     assert laid_out.get(LAYOUT).json() == before
     other = laid_out.get(_layout_of(OTHER_REPO)).json()
     assert _paths(_named(other, "v1", "vpcs")["endpoints"]) == ["list_vpcs.rst"]
+
+
+# --- confirm ---------------------------------------------------------------
+
+
+def _ok(endpoint):
+    """``endpoint`` read in full: every section ``ok``, so its status is ``ok``."""
+    return endpoint.model_copy(
+        update={
+            "sections": [
+                section.model_copy(
+                    update={
+                        "scan_result": section.scan_result.model_copy(
+                            update={"status": SectionStatus.OK, "issues": []}
+                        )
+                    }
+                )
+                if section.scan_result is not None
+                else section
+                for section in endpoint.sections
+            ]
+        }
+    )
+
+
+#: Two endpoints read in full; PROJECT_INFO, LIST_TAGS and QUOTAS stay partial.
+OK_CREATE_SERVER = _ok(CREATE_SERVER)
+OK_LIST_SERVERS = _ok(LIST_SERVERS)
+
+
+@pytest.fixture
+def ready(client, session_factory):
+    """REPO scanned with two endpoints ``ok`` and three ``partial``."""
+    _register(session_factory)
+    _run_scan(
+        session_factory,
+        documents=[OK_CREATE_SERVER, OK_LIST_SERVERS, PROJECT_INFO, LIST_TAGS, QUOTAS],
+    )
+    return client
+
+
+def _confirm(client, resource_id: int, repo: str = REPO):
+    return client.post(
+        f"/api/generation/services/{repo}/layout/resources/{resource_id}/confirm"
+    )
+
+
+def test_a_resource_with_every_endpoint_ok_is_confirmed_by_the_caller(
+    ready, session_factory
+):
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER, OK_LIST_SERVERS])
+    before = datetime.now(tz=UTC)
+
+    response = _confirm(ready, servers)
+
+    assert response.status_code == 200
+    confirmed = _named(response.json(), "v1", "servers")
+    assert confirmed["confirmed_by"] == TEST_WORKER.name
+    at = datetime.fromisoformat(confirmed["confirmed_at"])
+    assert before <= at <= datetime.now(tz=UTC)
+    # the layout read serves it as saved
+    assert response.json() == ready.get(LAYOUT).json()
+    assert [e["overall_status"] for e in confirmed["endpoints"]] == ["ok", "ok"]
+
+
+def test_confirming_one_resource_leaves_every_other_as_it_was(ready, session_factory):
+    """ADR-0066: each resource is confirmed on its own."""
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER])
+    _place(session_factory, "lists", [OK_LIST_SERVERS])
+    _place(session_factory, "projects", [PROJECT_INFO], confirmed_by="val")
+
+    body = _confirm(ready, servers).json()
+
+    assert _named(body, "v1", "servers")["confirmed_by"] == TEST_WORKER.name
+    assert _named(body, "v1", "lists")["confirmed_by"] is None
+    projects = _named(body, "v1", "projects")
+    assert projects["confirmed_by"] == "val"
+    assert projects["confirmed_at"].startswith("2026-11-03")
+
+
+def test_a_resource_with_an_endpoint_not_ok_is_refused_and_nothing_changes(
+    ready, session_factory
+):
+    """ADR-0067: one endpoint not ``ok`` blocks its own resource, no other."""
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER, PROJECT_INFO])
+    lists = _place(session_factory, "lists", [OK_LIST_SERVERS])
+    before = ready.get(LAYOUT).json()
+
+    response = _confirm(ready, servers)
+
+    _refused(ready, response, 409, PROJECT_INFO.path)
+    assert OK_CREATE_SERVER.path not in response.json()["error"]["message"]
+    assert ready.get(LAYOUT).json() == before
+    assert _confirm(ready, lists).status_code == 200
+
+
+@pytest.mark.parametrize("content", ["no endpoint", "a path the snapshot lacks"])
+def test_a_resource_without_an_endpoint_in_the_active_snapshot_is_refused(
+    ready, session_factory, content
+):
+    endpoints = (
+        []
+        if content == "no endpoint"
+        else [_endpoint("gone.rst", "GET", "/v1/x", "v1")]
+    )
+    empty = _place(session_factory, "empty", endpoints)
+
+    response = _confirm(ready, empty)
+
+    _refused(ready, response, 409, "has no endpoint in the active snapshot")
+    assert _named(ready.get(LAYOUT).json(), "v1", "empty")["confirmed_by"] is None
+
+
+def test_a_path_the_active_snapshot_lacks_is_neither_checked_nor_blocking(
+    ready, session_factory
+):
+    """What the layout read does not show cannot be checked, or moved out of
+    the resource: it neither counts as an endpoint nor blocks the others."""
+    servers = _place(
+        session_factory,
+        "servers",
+        [OK_CREATE_SERVER, _endpoint("gone.rst", "GET", "/v1/gone", "v1")],
+    )
+
+    assert _confirm(ready, servers).status_code == 200
+
+
+def test_only_the_active_snapshot_decides(client, session_factory):
+    """An older snapshot's statuses - of an endpoint since read in full, or of
+    one since gone - are not the endpoints the layout read shows."""
+    gone = _endpoint("gone.rst", "GET", "/v1/gone", "v1")
+    _register(session_factory)
+    _run_scan(session_factory, documents=[CREATE_SERVER, gone])
+    _run_scan(session_factory, documents=[OK_CREATE_SERVER], commit_hash=NEXT_COMMIT)
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER, gone])
+
+    assert _confirm(client, servers).status_code == 200
+
+
+def test_confirming_a_confirmed_resource_keeps_the_first_confirmation(
+    ready, session_factory
+):
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER], confirmed_by="val")
+    before = ready.get(LAYOUT).json()
+
+    response = _confirm(ready, servers)
+
+    assert response.status_code == 200
+    assert response.json() == before
+    kept = _named(response.json(), "v1", "servers")
+    assert kept["confirmed_by"] == "val"
+    assert kept["confirmed_at"].startswith("2026-11-03")
+
+
+@pytest.mark.parametrize("whose", ["unknown", "another service's"])
+def test_confirming_a_resource_the_layout_lacks_is_not_found(
+    laid_out, session_factory, other_service, whose
+):
+    _place(session_factory, "servers", [CREATE_SERVER])
+    resource_id = 999_999 if whose == "unknown" else other_service
+
+    _refused(
+        laid_out,
+        _confirm(laid_out, resource_id),
+        404,
+        f"Resource {resource_id} not found",
+    )
+
+
+def test_a_confirmation_is_refused_for_a_service_without_a_layout(ready):
+    _refused(ready, _confirm(ready, 1), 409, "has no layout yet")
+
+
+def test_an_edit_after_a_confirmation_asks_for_a_new_check(ready, session_factory):
+    """ADR-0068: the confirmation covered exactly the endpoints it checked. A
+    move from "unassigned" brings one it did not, so it is dropped - and the
+    new check refuses, as that endpoint is not ``ok``."""
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER])
+    assert _confirm(ready, servers).status_code == 200
+
+    moved = _move(ready, PROJECT_INFO.path, servers).json()
+
+    assert _named(moved, "v1", "servers")["confirmed_by"] is None
+    _refused(ready, _confirm(ready, servers), 409, PROJECT_INFO.path)
+
+
+def test_a_refusal_counts_what_blocks_and_names_the_first_few(client, session_factory):
+    blocking = [
+        _endpoint(f"partial_{n}.rst", "GET", f"/v1/thing{n}", "v1") for n in range(7)
+    ]
+    _register(session_factory)
+    _run_scan(session_factory, documents=blocking)
+    things = _place(session_factory, "things", blocking)
+
+    message = _confirm(client, things).json()["error"]["message"]
+
+    assert "7 endpoint(s) that are not ok" in message
+    assert message.endswith("and 2 more")
+    assert sum(endpoint.path in message for endpoint in blocking) == 5
+
+
+# --- a snapshot change ------------------------------------------------------
+
+
+def _confirmed(client) -> dict[str, str | None]:
+    return {
+        resource["name"]: resource["confirmed_by"]
+        for version in client.get(LAYOUT).json()["versions"]
+        for resource in version["resources"]
+    }
+
+
+def test_a_rescan_that_takes_an_endpoint_away_drops_that_confirmation_only(
+    ready, session_factory
+):
+    """ADR-0068: a confirmation covers the endpoints it checked. One gone,
+    the resource is another set; a resource whose set stays keeps its own."""
+    _place(session_factory, "servers", [OK_CREATE_SERVER], confirmed_by="val")
+    _place(session_factory, "lists", [OK_LIST_SERVERS], confirmed_by="val")
+
+    _run_scan(session_factory, documents=[OK_CREATE_SERVER], commit_hash=NEXT_COMMIT)
+
+    assert _confirmed(ready) == {"servers": "val", "lists": None}
+
+
+def test_a_rescan_that_keeps_the_endpoints_keeps_the_confirmation(
+    ready, session_factory
+):
+    """The set is what a confirmation covers (ADR-0068, ADR-0110): the same
+    endpoints read again keep it, whatever the new reading says of them."""
+    _place(session_factory, "servers", [OK_CREATE_SERVER], confirmed_by="val")
+
+    _run_scan(session_factory, documents=[CREATE_SERVER], commit_hash=NEXT_COMMIT)
+
+    assert _confirmed(ready) == {"servers": "val"}
+
+
+def test_activating_a_snapshot_that_brings_back_a_hidden_endpoint_drops_it(
+    client, session_factory
+):
+    """A stored path the confirmation never saw comes back with an older
+    snapshot: the resource then holds an endpoint nobody checked."""
+    gone = _endpoint("gone.rst", "GET", "/v1/gone", "v1")
+    _register(session_factory)
+    _run_scan(session_factory, documents=[OK_CREATE_SERVER, OK_LIST_SERVERS, gone])
+    _run_scan(
+        session_factory,
+        documents=[OK_CREATE_SERVER, OK_LIST_SERVERS],
+        commit_hash=NEXT_COMMIT,
+    )
+    _place(session_factory, "servers", [OK_CREATE_SERVER, gone], confirmed_by="val")
+    _place(session_factory, "lists", [OK_LIST_SERVERS], confirmed_by="val")
+    with session_factory() as session:
+        first = session.scalars(select(Snapshot.id).order_by(Snapshot.id)).first()
+
+    assert _activate(client, first).status_code == 200
+
+    assert _confirmed(client) == {"servers": None, "lists": "val"}
+
+
+def test_moving_the_active_snapshot_takes_the_service_lock_itself(
+    ready, session_factory, impatient_engine
+):
+    """Ingest locks only its Job: the Service row must be locked by the move
+    itself, or a confirmation written meanwhile would outlive the switch.
+    Shown with a move that changes nothing else, so only its own lock waits."""
+    with session_factory() as holder:
+        holder.scalar(select(Service).where(Service.repo == REPO).with_for_update())
+
+        with sessionmaker(bind=impatient_engine)() as mover:
+            service = mover.scalar(select(Service).where(Service.repo == REPO))
+            with pytest.raises(OperationalError, match="lock timeout"):
+                layout_module.switch_active_snapshot(
+                    mover, service, service.active_snapshot_id
+                )
+
+
+def test_the_check_and_the_confirmation_happen_while_the_service_is_locked(
+    ready, session_factory, monkeypatch
+):
+    """An edit, an ingest or an activation takes the same lock, so none can
+    change the endpoints between their check and the confirmation written for
+    them - proven by failing to take the lock from a second session."""
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER])
+    locked: list[bool] = []
+    statuses = generation.endpoint_statuses
+
+    def checking(db, service, resource):
+        with session_factory() as other:
+            try:
+                other.scalar(
+                    select(Service)
+                    .where(Service.repo == REPO)
+                    .with_for_update(nowait=True)
+                )
+                locked.append(False)
+            except OperationalError:
+                locked.append(True)
+        return statuses(db, service, resource)
+
+    monkeypatch.setattr(generation, "endpoint_statuses", checking)
+
+    assert _confirm(ready, servers).status_code == 200
+    assert locked == [True]
 
 
 # --- every edit ------------------------------------------------------------
