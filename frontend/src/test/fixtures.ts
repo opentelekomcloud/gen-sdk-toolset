@@ -1,4 +1,4 @@
-import type { ServiceDetail, Snapshot } from "../shared/api/types";
+import type { DocumentListItem, Layout, ServiceDetail, Snapshot } from "../shared/api/types";
 
 /**
  * Answers of the panel API as the backend serves them, complete and typed: a
@@ -59,6 +59,36 @@ export function serviceDetail(overrides: Partial<ServiceDetail> = {}): ServiceDe
     interruption: null,
     top_issues: [],
     non_endpoint_documents: 0,
+    ...overrides,
+  };
+}
+
+/** An endpoint document that was read in full. */
+export function endpoint(overrides: Partial<DocumentListItem> = {}): DocumentListItem {
+  return {
+    id: 1,
+    path: "api-ref/source/servers/list_servers.rst",
+    title: "Querying servers",
+    method: "GET",
+    uri: "/v1/{project_id}/cloudservers",
+    overall_status: "ok",
+    issues: [],
+    ...overrides,
+  };
+}
+
+/** A layout after the grouping: one version with one unconfirmed resource, nothing left over. */
+export function layout(overrides: Partial<Layout> = {}): Layout {
+  return {
+    has_layout: true,
+    versions: [
+      {
+        api_version: "v1",
+        resources: [{ id: 1, name: "cloudservers", confirmed_by: null, confirmed_at: null, endpoints: [endpoint()] }],
+        unassigned: [],
+      },
+    ],
+    no_version: [],
     ...overrides,
   };
 }

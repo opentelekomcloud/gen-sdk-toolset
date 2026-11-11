@@ -1,6 +1,7 @@
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
-import { invalidateSnapshot, keys } from "./queries";
+import { invalidateGenLayout, invalidateSnapshot, keys } from "./queries";
+import { layout } from "../../../test/fixtures";
 
 describe("the Generation list in the invalidation sets", () => {
   const NAME = "opentelekomcloud-docs/ecs";
@@ -21,5 +22,21 @@ describe("the Generation list in the invalidation sets", () => {
 
     expect(invalidated(qc, "")).toBe(true);
     expect(invalidated(qc, "ec")).toBe(true);
+  });
+});
+
+describe("the layout of a service in the invalidation sets", () => {
+  const NAME = "opentelekomcloud-docs/ecs";
+  const OTHER = "opentelekomcloud-docs/vpc";
+
+  it("goes stale after an edit of that service's layout, and only that service's", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(keys.genLayout(NAME), layout());
+    qc.setQueryData(keys.genLayout(OTHER), layout());
+
+    invalidateGenLayout(qc, NAME);
+
+    expect(qc.getQueryState(keys.genLayout(NAME))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(keys.genLayout(OTHER))?.isInvalidated).toBe(false);
   });
 });
