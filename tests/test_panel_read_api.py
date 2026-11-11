@@ -23,7 +23,7 @@ pytest.importorskip("httpx")  # required by fastapi.testclient.TestClient
 
 from alembic import command  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, select, text  # noqa: E402
+from sqlalchemy import create_engine, func, select, text  # noqa: E402
 from sqlalchemy.exc import IntegrityError, OperationalError  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
@@ -502,11 +502,18 @@ def test_an_excluded_service_stays_on_the_excluded_list(scanned):
 # ---------------------------------------------------------------------------
 
 
-def _set_head(session_factory, commit: str, repo: str = REPO) -> None:
+def _set_head(
+    session_factory,
+    commit: str,
+    repo: str = REPO,
+    *,
+    checked_at: datetime | None = None,
+) -> None:
     """What discovery writes when it resolves the branch HEAD (PS2-4)."""
     with session_factory() as session:
         service = session.scalar(select(Service).where(Service.repo == repo))
         service.head_commit = commit
+        service.head_checked_at = checked_at or datetime.now(tz=UTC)
         session.commit()
 
 
@@ -542,6 +549,56 @@ def test_drift_clears_once_that_commit_has_been_scanned(scanned, session_factory
     assert "drift" not in {
         rule["code"] for rule in scanned.get("/api/scan/attention").json()
     }
+
+
+def test_a_rescan_past_the_stored_head_clears_drift(scanned, session_factory):
+    """The rescan read a newer HEAD than discovery did: the stored head is the
+    older reading, so it no longer says the docs moved past the snapshot."""
+    _set_head(session_factory, "f" * 40)
+    assert scanned.get("/api/scan/services").json()["items"][0]["docs_changed"] is True
+
+    _run_scan(session_factory, commit_hash="e" * 40)
+
+    (item,) = scanned.get("/api/scan/services").json()["items"]
+    assert item["docs_changed"] is False
+    assert item["rescan_reason"] is None
+
+
+def test_a_rescan_that_reuses_the_snapshot_clears_drift(scanned, session_factory):
+    """HEAD moved to another commit and back: the rescan reads the active
+    snapshot's commit again and reuses it, and that rescan is the latest
+    confirmation of the snapshot - not the scan that first produced it."""
+    _set_head(session_factory, "f" * 40)
+    assert scanned.get("/api/scan/services").json()["items"][0]["docs_changed"] is True
+
+    _run_scan(session_factory, commit_hash=COMMIT)
+
+    with session_factory() as session:
+        assert session.scalar(select(func.count(Snapshot.id))) == 1  # reused
+    (item,) = scanned.get("/api/scan/services").json()["items"]
+    assert item["docs_changed"] is False
+    assert item["rescan_reason"] is None
+
+
+def test_a_head_read_before_the_scan_started_is_not_drift(scanned, session_factory):
+    _set_head(session_factory, "f" * 40, checked_at=datetime(2026, 1, 1, tzinfo=UTC))
+
+    (item,) = scanned.get("/api/scan/services").json()["items"]
+
+    assert item["docs_changed"] is False
+    assert item["rescan_reason"] is None
+
+
+def test_a_head_with_no_read_time_is_not_drift(scanned, session_factory):
+    with session_factory() as session:
+        service = session.scalar(select(Service).where(Service.repo == REPO))
+        service.head_commit = "f" * 40
+        service.head_checked_at = None
+        session.commit()
+
+    (item,) = scanned.get("/api/scan/services").json()["items"]
+
+    assert item["docs_changed"] is False
 
 
 def test_a_head_matching_the_active_snapshot_is_not_drift(scanned, session_factory):

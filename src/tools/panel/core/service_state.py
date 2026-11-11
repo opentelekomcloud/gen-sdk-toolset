@@ -81,11 +81,7 @@ def derive_service_state(service: Service, *, scanner_version: str) -> ServiceSt
     active_job = _active_scan_job(service)
     snapshot = service.active_snapshot
 
-    docs_changed = (
-        service.head_commit is not None
-        and snapshot is not None
-        and service.head_commit != snapshot.commit_hash
-    )
+    docs_changed = _docs_changed(service, snapshot)
     scan_status = _scan_status(snapshot, active_job=active_job, last_job=last_job)
 
     return ServiceState(
@@ -102,6 +98,26 @@ def derive_service_state(service: Service, *, scanner_version: str) -> ServiceSt
         latest_snapshot=service.latest_snapshot,
         active_job=active_job,
         last_job=last_job,
+    )
+
+
+def _docs_changed(service: Service, snapshot: Snapshot | None) -> bool:
+    # Only a HEAD read after the latest scan that confirmed the snapshot counts.
+    if snapshot is None or service.head_commit is None:
+        return False
+    head_checked_at = service.head_checked_at
+    confirmed_at = max(
+        (
+            job.started_at
+            for job in service.jobs
+            if job.result_snapshot_id == snapshot.id and job.started_at is not None
+        ),
+        default=None,
+    )
+    if head_checked_at is None or confirmed_at is None:
+        return False
+    return (
+        head_checked_at > confirmed_at and service.head_commit != snapshot.commit_hash
     )
 
 
