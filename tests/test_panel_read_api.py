@@ -10,6 +10,8 @@ is skipped unless TEST_DATABASE_URL is set or Docker is available.
 
 from __future__ import annotations
 
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 
 import pytest
@@ -21,7 +23,8 @@ pytest.importorskip("httpx")  # required by fastapi.testclient.TestClient
 
 from alembic import command  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, func, select  # noqa: E402
+from sqlalchemy import create_engine, func, select, text  # noqa: E402
+from sqlalchemy.exc import IntegrityError, OperationalError  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from tests.test_panel_db import (  # noqa: E402,F401  (reused DB fixtures)
@@ -35,8 +38,15 @@ from tools import __version__ as SCANNER_VERSION  # noqa: E402
 from tools.panel.api import deps  # noqa: E402
 from tools.panel.api.app import create_app  # noqa: E402
 from tools.panel.api.auth import Identity, PanelRole, current_identity  # noqa: E402
+from tools.panel.api.routes import generation  # noqa: E402
+from tools.panel.api.schemas import (  # noqa: E402
+    MoveEndpointRequest,
+    RenameResourceRequest,
+)
 from tools.panel.core import ingest as ingest_module  # noqa: E402
+from tools.panel.core import layout as layout_module  # noqa: E402
 from tools.panel.core.db.models import (  # noqa: E402
+    RESOURCE_NAME_UNIQUE_IN_VERSION,
     TERMINAL_JOB_STATUSES,
     DocumentRecord,
     ExcludedService,
@@ -49,11 +59,17 @@ from tools.panel.core.db.models import (  # noqa: E402
     Service,
     Snapshot,
 )
+from tools.panel.core.grouping import group_endpoints  # noqa: E402
 from tools.panel.core.ingest import ingest_service_result  # noqa: E402
+from tools.panel.core.layout import listed_versions  # noqa: E402
 from tools.panel.core.spec import ResourceSpec, resource_spec  # noqa: E402
 from tools.shared.ir import Document, HttpMethod  # noqa: E402
 from tools.shared.ir import Service as IrService  # noqa: E402
-from tools.shared.scan import DocumentScanResult, RepositoryScanResult  # noqa: E402
+from tools.shared.scan import (  # noqa: E402
+    DocumentScanResult,
+    RepositoryScanResult,
+    SectionStatus,
+)
 
 REPO = "opentelekomcloud-docs/ecs"
 COMMIT = "a" * 40
@@ -1401,11 +1417,12 @@ def _place(
     *,
     api_version: str = "v1",
     confirmed_by: str | None = None,
+    repo: str = REPO,
 ) -> int:
-    """Store one resource of REPO's layout holding ``endpoints``."""
-    _start_layout(session_factory)
+    """Store one resource of ``repo``'s layout holding ``endpoints``."""
+    _start_layout(session_factory, repo)
     with session_factory() as session:
-        service_id = session.scalar(select(Service.id).where(Service.repo == REPO))
+        service_id = session.scalar(select(Service.id).where(Service.repo == repo))
         resource = Resource(
             service_id=service_id,
             api_version=api_version,
@@ -1422,10 +1439,10 @@ def _place(
         return resource.id
 
 
-def _start_layout(session_factory) -> None:
-    """Record that REPO's preliminary grouping ran, as starting it will."""
+def _start_layout(session_factory, repo: str = REPO) -> None:
+    """Record that ``repo``'s preliminary grouping ran, as starting it will."""
     with session_factory() as session:
-        service_id = session.scalar(select(Service.id).where(Service.repo == REPO))
+        service_id = session.scalar(select(Service.id).where(Service.repo == repo))
         if session.get(Layout, service_id) is None:
             session.add(Layout(service_id=service_id, created_by="valeriia"))
             session.commit()
@@ -1605,6 +1622,217 @@ def test_layout_of_an_ineligible_repository_is_not_found(laid_out, session_facto
 
 
 # ---------------------------------------------------------------------------
+# Starting the preliminary grouping - the endpoint is in
+# api/routes/generation.py, and what it stores is read back through the layout
+# read above
+# ---------------------------------------------------------------------------
+
+
+def test_starting_the_grouping_answers_with_the_layout_it_stored(laid_out):
+    response = laid_out.post(LAYOUT)
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body == laid_out.get(LAYOUT).json()
+    assert body["has_layout"] is True
+    v1, v2 = body["versions"]
+    (servers,) = v1["resources"]
+    assert servers["name"] == "servers"
+    assert servers["confirmed_by"] is None and servers["confirmed_at"] is None
+    assert _paths(servers["endpoints"]) == ["list_servers.rst", "create_server.rst"]
+    assert _paths(v1["unassigned"]) == ["project.rst"]
+    (tags,) = v2["resources"]
+    assert tags["name"] == "tags"
+    assert _paths(tags["endpoints"]) == ["list_tags.rst"]
+    assert v2["unassigned"] == []
+    assert _paths(body["no_version"]) == ["quotas.rst"]
+
+
+def test_only_the_resources_are_stored_and_by_the_caller(laid_out, session_factory):
+    """ "Unassigned" and "no version" are derived on read: stored, they would
+    stop following the active snapshot."""
+    laid_out.post(LAYOUT)
+
+    with session_factory() as session:
+        (layout,) = session.scalars(select(Layout)).all()
+        stored = sorted(session.scalars(select(ResourceEndpoint.path)))
+
+    assert layout.created_by == TEST_WORKER.name
+    assert stored == sorted(
+        endpoint.path for endpoint in (CREATE_SERVER, LIST_SERVERS, LIST_TAGS)
+    )
+
+
+def test_a_grouping_without_a_resource_is_still_a_layout(client, session_factory):
+    _register(session_factory)
+    _run_scan(session_factory, documents=[PROJECT_INFO, QUOTAS])
+
+    body = client.post(LAYOUT).json()
+
+    assert body["has_layout"] is True
+    (v1,) = body["versions"]
+    assert v1["resources"] == []
+    assert _paths(v1["unassigned"]) == ["project.rst"]
+    assert _paths(body["no_version"]) == ["quotas.rst"]
+    assert client.post(LAYOUT).status_code == 409
+
+
+def test_a_second_start_is_refused_and_keeps_edits_and_confirmations(
+    laid_out, session_factory
+):
+    _place(session_factory, "renamed", [CREATE_SERVER], confirmed_by="valeriia")
+    before = laid_out.get(LAYOUT).json()
+
+    response = laid_out.post(LAYOUT)
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "conflict",
+            "message": f"Service {REPO} already has a layout",
+        }
+    }
+    assert laid_out.get(LAYOUT).json() == before
+
+
+def test_a_layout_without_a_resource_refuses_a_start_too(laid_out, session_factory):
+    _start_layout(session_factory)
+
+    assert laid_out.post(LAYOUT).status_code == 409
+
+    with session_factory() as session:
+        assert session.scalars(select(Resource)).all() == []
+
+
+def test_two_concurrent_starts_store_one_layout(laid_out, session_factory):
+    """The first start has written its layout but not committed it yet. A
+    check before the insert would see no layout and let the second one through;
+    the primary key makes it wait for the first, then refuses it."""
+    with session_factory() as first:
+        service_id = first.scalar(select(Service.id).where(Service.repo == REPO))
+        first.add(Layout(service_id=service_id, created_by="first"))
+        first.flush()
+        response = _start_behind(first, laid_out, session_factory)
+
+    assert response.status_code == 409
+    with session_factory() as session:
+        assert session.get(Layout, service_id).created_by == "first"
+        assert session.scalars(select(Resource)).all() == []
+
+
+def test_a_start_groups_the_snapshot_an_activation_in_flight_makes_active(
+    laid_out, session_factory
+):
+    """The grouping runs once, so it must not be stored from a snapshot that
+    stopped being the active one before the layout was."""
+    older = _active_snapshot_id(session_factory)
+    _run_scan(session_factory, documents=[CREATE_SERVER], commit_hash=NEXT_COMMIT)
+    with session_factory() as first:
+        service = first.scalar(
+            select(Service).where(Service.repo == REPO).with_for_update()
+        )
+        service.active_snapshot_id = older
+        first.flush()
+        response = _start_behind(first, laid_out, session_factory)
+
+    assert response.status_code == 201
+    with session_factory() as session:
+        stored = sorted(session.scalars(select(Resource.name)))
+    assert stored == ["servers", "tags"]
+
+
+def _active_snapshot_id(session_factory) -> int:
+    with session_factory() as session:
+        return session.scalar(
+            select(Service.active_snapshot_id).where(Service.repo == REPO)
+        )
+
+
+def _start_behind(first, client, session_factory):
+    """Start the grouping while ``first`` holds a lock it needs.
+
+    ``first`` commits once the start waits for it - or if it never does, so a
+    failed probe is reported instead of leaving the start waiting forever.
+    """
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        second = pool.submit(client.post, LAYOUT)
+        try:
+            _wait_for_a_blocked_query(session_factory)
+        finally:
+            first.commit()
+        return second.result(timeout=10)
+
+
+def _wait_for_a_blocked_query(session_factory, timeout: float = 10) -> None:
+    deadline = time.monotonic() + timeout
+    with session_factory() as probe:
+        while time.monotonic() < deadline:
+            blocked = probe.scalar(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE wait_event_type = 'Lock'"
+                )
+            )
+            if blocked:
+                return
+            # pg_stat_activity is read once per transaction
+            probe.rollback()
+            time.sleep(0.05)
+    raise AssertionError("the second start never waited for the first")
+
+
+def test_a_failed_start_leaves_no_layout_and_can_be_retried(laid_out, monkeypatch):
+    def broken(endpoints):
+        raise RuntimeError("grouping broke")
+
+    monkeypatch.setattr(layout_module, "group_endpoints", broken)
+    # the layout row is already flushed when the grouping fails
+    response = TestClient(laid_out.app, raise_server_exceptions=False).post(LAYOUT)
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    assert laid_out.get(LAYOUT).json()["has_layout"] is False
+
+    monkeypatch.setattr(layout_module, "group_endpoints", group_endpoints)
+    assert laid_out.post(LAYOUT).status_code == 201
+
+
+def test_an_empty_api_version_is_no_version_when_started_and_read(
+    client, session_factory
+):
+    empty = _endpoint("empty.rst", "GET", "/v1/{project_id}/servers", "")
+    _register(session_factory)
+    _run_scan(session_factory, documents=[CREATE_SERVER, empty])
+
+    started = client.post(LAYOUT).json()
+
+    assert started == client.get(LAYOUT).json()
+    assert _paths(started["no_version"]) == ["empty.rst"]
+    assert [version["api_version"] for version in started["versions"]] == ["v1"]
+
+
+def test_starting_the_grouping_of_a_repository_never_registered_is_not_found(
+    client,
+):
+    assert client.post(LAYOUT).status_code == 404
+
+
+def test_starting_the_grouping_of_an_excluded_service_is_not_found(laid_out):
+    assert _exclude(laid_out).status_code == 204
+
+    assert laid_out.post(LAYOUT).status_code == 404
+
+
+def test_starting_the_grouping_of_a_service_without_endpoints_is_not_found(
+    client, session_factory
+):
+    _register(session_factory)
+    _run_scan(session_factory, documents=[_page_without_endpoints()])
+
+    assert client.post(LAYOUT).status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Generation resource spec
 # ---------------------------------------------------------------------------
 
@@ -1673,3 +1901,1052 @@ def test_spec_of_an_excluded_service_is_not_found(laid_out, session_factory):
 
     assert response.status_code == 404
     assert response.json()["error"]["message"] == "Service not found"
+
+
+# ---------------------------------------------------------------------------
+# Generation layout edits
+# ---------------------------------------------------------------------------
+
+OTHER_REPO = "opentelekomcloud-docs/vpc"
+#: An endpoint only OTHER_REPO has: REPO's layout must not take it.
+VPC_ONLY = _endpoint("list_vpcs.rst", "GET", "/v1/{project_id}/vpcs", "v1")
+
+
+def _add(client, name: str, api_version: str = "v1", repo: str = REPO):
+    return client.post(
+        f"/api/generation/services/{repo}/layout/resources",
+        json={"api_version": api_version, "name": name},
+    )
+
+
+def _rename(client, resource_id: int, name: str, repo: str = REPO):
+    return client.post(
+        f"/api/generation/services/{repo}/layout/resources/{resource_id}/rename",
+        json={"name": name},
+    )
+
+
+def _move(client, path: str, resource_id: int, repo: str = REPO):
+    return client.post(
+        f"/api/generation/services/{repo}/layout/endpoints/move",
+        json={"path": path, "resource_id": resource_id},
+    )
+
+
+def _version(body, api_version: str) -> dict:
+    [version] = [v for v in body["versions"] if v["api_version"] == api_version]
+    return version
+
+
+def _named(body, api_version: str, name: str) -> dict:
+    [resource] = [
+        r for r in _version(body, api_version)["resources"] if r["name"] == name
+    ]
+    return resource
+
+
+def _refused(client, response, status: int, message: str) -> None:
+    """The edit was refused through the error envelope, naming why."""
+    assert response.status_code == status
+    error = response.json()["error"]
+    assert (
+        error["code"]
+        == {404: "not_found", 409: "conflict", 422: "validation_error"}[status]
+    )
+    assert message in error["message"]
+
+
+@pytest.fixture
+def other_service(laid_out, session_factory):
+    """A second service on the Generation list, with a layout of its own."""
+    _register(session_factory, OTHER_REPO)
+    _run_scan(session_factory, OTHER_REPO, documents=[VPC_ONLY])
+    return _place(session_factory, "vpcs", [VPC_ONLY], repo=OTHER_REPO)
+
+
+# --- rename ----------------------------------------------------------------
+
+
+def test_a_renamed_resource_keeps_its_id_and_its_endpoints(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [LIST_SERVERS, CREATE_SERVER])
+
+    response = _rename(laid_out, servers, "cloud_servers")
+
+    assert response.status_code == 200
+    (resource,) = _version(response.json(), "v1")["resources"]
+    assert resource["id"] == servers
+    assert resource["name"] == "cloud_servers"
+    assert _paths(resource["endpoints"]) == ["list_servers.rst", "create_server.rst"]
+    # saved, not only answered
+    assert laid_out.get(LAYOUT).json() == response.json()
+
+
+def test_renaming_a_confirmed_resource_drops_only_its_confirmation(
+    laid_out, session_factory
+):
+    """ADR-0068: the confirmation covered the old name, not the new one."""
+    servers = _place(session_factory, "servers", [CREATE_SERVER], confirmed_by="val")
+    _place(session_factory, "projects", [PROJECT_INFO], confirmed_by="val")
+
+    body = _rename(laid_out, servers, "cloud_servers").json()
+
+    renamed = _named(body, "v1", "cloud_servers")
+    assert renamed["confirmed_by"] is None and renamed["confirmed_at"] is None
+    assert _named(body, "v1", "projects")["confirmed_by"] == "val"
+
+
+def test_renaming_a_resource_to_its_own_name_changes_nothing(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER], confirmed_by="val")
+    before = laid_out.get(LAYOUT).json()
+
+    response = _rename(laid_out, servers, "servers")
+
+    assert response.status_code == 200
+    assert response.json() == before
+    assert _named(before, "v1", "servers")["confirmed_by"] == "val"
+
+
+@pytest.mark.parametrize("name", ["Servers", "os-keypairs", "2fa", "_servers", ""])
+def test_a_name_that_is_no_package_name_is_invalid(laid_out, session_factory, name):
+    """A malformed name is a bad request (422), not a conflict with the layout
+    (409): it is refused before the layout is read."""
+    servers = _place(session_factory, "servers", [CREATE_SERVER], confirmed_by="val")
+    before = laid_out.get(LAYOUT).json()
+
+    _refused(laid_out, _rename(laid_out, servers, name), 422, "validation failed")
+    _refused(laid_out, _add(laid_out, name), 422, "validation failed")
+    assert laid_out.get(LAYOUT).json() == before
+
+
+def test_a_name_taken_in_the_version_is_refused(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+    _place(session_factory, "projects", [PROJECT_INFO])
+    before = laid_out.get(LAYOUT).json()
+
+    response = _rename(laid_out, servers, "projects")
+
+    _refused(laid_out, response, 409, "'projects' already exists in v1")
+    assert laid_out.get(LAYOUT).json() == before
+
+
+def test_a_name_taken_only_in_another_version_is_free(laid_out, session_factory):
+    _place(session_factory, "servers", [CREATE_SERVER])
+    tags = _place(session_factory, "tags", [LIST_TAGS], api_version="v2")
+
+    response = _rename(laid_out, tags, "servers")
+
+    assert response.status_code == 200
+    assert _named(response.json(), "v2", "servers")["id"] == tags
+
+
+def test_renaming_an_unknown_resource_is_not_found(laid_out, session_factory):
+    _start_layout(session_factory)
+
+    _refused(laid_out, _rename(laid_out, 999_999, "servers"), 404, "Resource 999999")
+
+
+def test_renaming_a_resource_of_another_service_is_not_found(
+    laid_out, session_factory, other_service
+):
+    _start_layout(session_factory)
+
+    response = _rename(laid_out, other_service, "servers")
+
+    _refused(laid_out, response, 404, f"Resource {other_service} not found")
+    vpcs = _named(laid_out.get(_layout_of(OTHER_REPO)).json(), "v1", "vpcs")
+    assert vpcs["id"] == other_service
+
+
+def _layout_of(repo: str) -> str:
+    return f"/api/generation/services/{repo}/layout"
+
+
+# --- add -------------------------------------------------------------------
+
+
+def test_a_resource_is_added_empty_to_a_version_the_layout_lists(
+    laid_out, session_factory
+):
+    _start_layout(session_factory)
+
+    response = _add(laid_out, "tags", api_version="v2")
+
+    assert response.status_code == 201
+    added = _named(response.json(), "v2", "tags")
+    assert isinstance(added["id"], int)
+    assert added["endpoints"] == []
+    assert added["confirmed_by"] is None
+    # the endpoints it could take are still where they were
+    assert _paths(_version(response.json(), "v2")["unassigned"]) == ["list_tags.rst"]
+    assert laid_out.get(LAYOUT).json() == response.json()
+
+
+def test_a_resource_is_added_to_a_version_listed_by_its_resources_alone(
+    laid_out, session_factory
+):
+    """Every v2 endpoint is placed, so v2 has no "unassigned" left; the layout
+    read still lists it, and that is the condition."""
+    _place(session_factory, "tags", [LIST_TAGS], api_version="v2")
+
+    assert _add(laid_out, "labels", api_version="v2").status_code == 201
+
+
+@pytest.mark.parametrize("api_version", ["v3", "", "V1"])
+def test_a_resource_is_not_added_to_a_version_the_layout_does_not_list(
+    laid_out, session_factory, api_version
+):
+    _start_layout(session_factory)
+    before = laid_out.get(LAYOUT).json()
+
+    response = _add(laid_out, "things", api_version=api_version)
+
+    _refused(laid_out, response, 409, f"has no version {api_version}")
+    assert laid_out.get(LAYOUT).json() == before
+
+
+def test_an_added_resource_needs_a_package_name_free_in_its_version(
+    laid_out, session_factory
+):
+    _place(session_factory, "servers", [CREATE_SERVER])
+    before = laid_out.get(LAYOUT).json()
+
+    _refused(laid_out, _add(laid_out, "Servers"), 422, "validation failed")
+    _refused(laid_out, _add(laid_out, "servers"), 409, "already exists in v1")
+    assert laid_out.get(LAYOUT).json() == before
+    # the same name in another version is a different package
+    assert _add(laid_out, "servers", api_version="v2").status_code == 201
+
+
+# --- move ------------------------------------------------------------------
+
+
+def test_an_unassigned_endpoint_moves_into_a_resource_of_its_version(
+    laid_out, session_factory
+):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+
+    response = _move(laid_out, PROJECT_INFO.path, servers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert _paths(_named(body, "v1", "servers")["endpoints"]) == [
+        "project.rst",
+        "create_server.rst",
+    ]
+    assert _paths(_version(body, "v1")["unassigned"]) == ["list_servers.rst"]
+    assert laid_out.get(LAYOUT).json() == body
+
+
+def test_an_unassigned_endpoint_does_not_move_into_another_version(
+    laid_out, session_factory
+):
+    tags = _place(session_factory, "tags", [LIST_TAGS], api_version="v2")
+    before = laid_out.get(LAYOUT).json()
+
+    response = _move(laid_out, PROJECT_INFO.path, tags)
+
+    _refused(laid_out, response, 409, "is in v1; it cannot move to resource tags in v2")
+    assert laid_out.get(LAYOUT).json() == before
+
+
+@pytest.mark.parametrize("api_version", ["v1", "v2"])
+def test_an_endpoint_without_a_version_moves_into_a_resource_of_any_version(
+    laid_out, session_factory, api_version
+):
+    """ADR-0059: the user sets the version the scanner did not find."""
+    target = _place(session_factory, "quotas", [], api_version=api_version)
+
+    body = _move(laid_out, QUOTAS.path, target).json()
+
+    assert _paths(_named(body, api_version, "quotas")["endpoints"]) == ["quotas.rst"]
+    assert body["no_version"] == []
+
+
+def test_an_endpoint_moves_between_resources_of_one_version(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER, LIST_SERVERS])
+    projects = _place(session_factory, "projects", [PROJECT_INFO])
+
+    body = _move(laid_out, CREATE_SERVER.path, projects).json()
+
+    assert _paths(_named(body, "v1", "servers")["endpoints"]) == ["list_servers.rst"]
+    assert _paths(_named(body, "v1", "projects")["endpoints"]) == [
+        "project.rst",
+        "create_server.rst",
+    ]
+    assert _named(body, "v1", "servers")["id"] == servers
+
+
+def test_a_move_drops_the_confirmation_of_both_resources_and_no_other(
+    laid_out, session_factory
+):
+    """ADR-0068: both resources now hold a set of endpoints nobody checked."""
+    servers = _place(session_factory, "servers", [CREATE_SERVER], confirmed_by="val")
+    projects = _place(session_factory, "projects", [PROJECT_INFO], confirmed_by="val")
+    _place(session_factory, "lists", [LIST_SERVERS], confirmed_by="val")
+
+    body = _move(laid_out, CREATE_SERVER.path, projects).json()
+
+    assert _named(body, "v1", "servers")["id"] == servers
+    for name in ("servers", "projects"):
+        resource = _named(body, "v1", name)
+        assert resource["confirmed_by"] is None and resource["confirmed_at"] is None
+    assert _named(body, "v1", "lists")["confirmed_by"] == "val"
+
+
+def test_moving_from_unassigned_drops_only_the_target_confirmation(
+    laid_out, session_factory
+):
+    servers = _place(session_factory, "servers", [CREATE_SERVER], confirmed_by="val")
+    _place(session_factory, "lists", [LIST_SERVERS], confirmed_by="val")
+
+    body = _move(laid_out, PROJECT_INFO.path, servers).json()
+
+    assert _named(body, "v1", "servers")["confirmed_by"] is None
+    assert _named(body, "v1", "lists")["confirmed_by"] == "val"
+
+
+def test_an_endpoint_in_a_resource_stays_in_that_resource_version(
+    laid_out, session_factory
+):
+    """Once placed, an endpoint from "no version" has the version of its
+    resource: it may not move on into another one."""
+    quotas = _place(session_factory, "quotas", [QUOTAS], api_version="v2")
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+    before = laid_out.get(LAYOUT).json()
+
+    response = _move(laid_out, QUOTAS.path, servers)
+
+    _refused(laid_out, response, 409, "is in v2; it cannot move")
+    assert laid_out.get(LAYOUT).json() == before
+    assert _named(before, "v2", "quotas")["id"] == quotas
+
+
+def test_moving_an_endpoint_into_its_own_resource_changes_nothing(
+    laid_out, session_factory
+):
+    servers = _place(session_factory, "servers", [CREATE_SERVER], confirmed_by="val")
+    before = laid_out.get(LAYOUT).json()
+
+    response = _move(laid_out, CREATE_SERVER.path, servers)
+
+    assert response.status_code == 200
+    assert response.json() == before
+
+
+def test_a_resource_whose_endpoints_all_moved_out_stays(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+    projects = _place(session_factory, "projects", [])
+
+    body = _move(laid_out, CREATE_SERVER.path, projects).json()
+
+    emptied = _named(body, "v1", "servers")
+    assert emptied["id"] == servers
+    assert emptied["endpoints"] == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "api-ref/source/nothing_here.rst",
+        # a document of the snapshot, but not an endpoint
+        make_plain_document().path,
+    ],
+)
+def test_moving_an_unknown_endpoint_is_not_found(laid_out, session_factory, path):
+    _run_scan(
+        session_factory,
+        documents=[*LAYOUT_ENDPOINTS, make_plain_document()],
+        commit_hash=NEXT_COMMIT,
+    )
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+    before = laid_out.get(LAYOUT).json()
+
+    _refused(laid_out, _move(laid_out, path, servers), 404, f"Endpoint {path}")
+    assert laid_out.get(LAYOUT).json() == before
+
+
+def test_moving_an_endpoint_of_another_service_is_not_found(
+    laid_out, session_factory, other_service
+):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+    before = laid_out.get(LAYOUT).json()
+
+    _refused(laid_out, _move(laid_out, VPC_ONLY.path, servers), 404, "not found")
+    assert laid_out.get(LAYOUT).json() == before
+
+
+def test_an_endpoint_the_active_snapshot_lacks_cannot_be_moved(
+    laid_out, session_factory
+):
+    """Still linked to its resource, but not in what the layout shows."""
+    servers = _place(session_factory, "servers", [CREATE_SERVER, LIST_SERVERS])
+    projects = _place(session_factory, "projects", [PROJECT_INFO])
+    _run_scan(
+        session_factory,
+        documents=[CREATE_SERVER, PROJECT_INFO],
+        commit_hash=NEXT_COMMIT,
+    )
+    before = laid_out.get(LAYOUT).json()
+
+    response = _move(laid_out, LIST_SERVERS.path, projects)
+
+    _refused(laid_out, response, 404, "not found in the active snapshot")
+    assert laid_out.get(LAYOUT).json() == before
+    assert _named(before, "v1", "servers")["id"] == servers
+
+
+def test_moving_into_an_unknown_resource_is_not_found(laid_out, session_factory):
+    _start_layout(session_factory)
+    before = laid_out.get(LAYOUT).json()
+
+    response = _move(laid_out, PROJECT_INFO.path, 999_999)
+
+    _refused(laid_out, response, 404, "Resource 999999")
+    assert laid_out.get(LAYOUT).json() == before
+
+
+def test_moving_into_a_resource_of_another_service_is_not_found(
+    laid_out, session_factory, other_service
+):
+    _start_layout(session_factory)
+    before = laid_out.get(LAYOUT).json()
+
+    response = _move(laid_out, PROJECT_INFO.path, other_service)
+
+    _refused(laid_out, response, 404, f"Resource {other_service} not found")
+    assert laid_out.get(LAYOUT).json() == before
+    other = laid_out.get(_layout_of(OTHER_REPO)).json()
+    assert _paths(_named(other, "v1", "vpcs")["endpoints"]) == ["list_vpcs.rst"]
+
+
+# --- confirm ---------------------------------------------------------------
+
+
+def _ok(endpoint):
+    """``endpoint`` read in full: every section ``ok``, so its status is ``ok``."""
+    return endpoint.model_copy(
+        update={
+            "sections": [
+                section.model_copy(
+                    update={
+                        "scan_result": section.scan_result.model_copy(
+                            update={"status": SectionStatus.OK, "issues": []}
+                        )
+                    }
+                )
+                if section.scan_result is not None
+                else section
+                for section in endpoint.sections
+            ]
+        }
+    )
+
+
+#: Two endpoints read in full; PROJECT_INFO, LIST_TAGS and QUOTAS stay partial.
+OK_CREATE_SERVER = _ok(CREATE_SERVER)
+OK_LIST_SERVERS = _ok(LIST_SERVERS)
+
+
+@pytest.fixture
+def ready(client, session_factory):
+    """REPO scanned with two endpoints ``ok`` and three ``partial``."""
+    _register(session_factory)
+    _run_scan(
+        session_factory,
+        documents=[OK_CREATE_SERVER, OK_LIST_SERVERS, PROJECT_INFO, LIST_TAGS, QUOTAS],
+    )
+    return client
+
+
+def _confirm(client, resource_id: int, repo: str = REPO):
+    return client.post(
+        f"/api/generation/services/{repo}/layout/resources/{resource_id}/confirm"
+    )
+
+
+def test_a_resource_with_every_endpoint_ok_is_confirmed_by_the_caller(
+    ready, session_factory
+):
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER, OK_LIST_SERVERS])
+    before = datetime.now(tz=UTC)
+
+    response = _confirm(ready, servers)
+
+    assert response.status_code == 200
+    confirmed = _named(response.json(), "v1", "servers")
+    assert confirmed["confirmed_by"] == TEST_WORKER.name
+    at = datetime.fromisoformat(confirmed["confirmed_at"])
+    assert before <= at <= datetime.now(tz=UTC)
+    # the layout read serves it as saved
+    assert response.json() == ready.get(LAYOUT).json()
+    assert [e["overall_status"] for e in confirmed["endpoints"]] == ["ok", "ok"]
+
+
+def test_confirming_one_resource_leaves_every_other_as_it_was(ready, session_factory):
+    """ADR-0066: each resource is confirmed on its own."""
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER])
+    _place(session_factory, "lists", [OK_LIST_SERVERS])
+    _place(session_factory, "projects", [PROJECT_INFO], confirmed_by="val")
+
+    body = _confirm(ready, servers).json()
+
+    assert _named(body, "v1", "servers")["confirmed_by"] == TEST_WORKER.name
+    assert _named(body, "v1", "lists")["confirmed_by"] is None
+    projects = _named(body, "v1", "projects")
+    assert projects["confirmed_by"] == "val"
+    assert projects["confirmed_at"].startswith("2026-11-03")
+
+
+def test_a_resource_with_an_endpoint_not_ok_is_refused_and_nothing_changes(
+    ready, session_factory
+):
+    """ADR-0067: one endpoint not ``ok`` blocks its own resource, no other."""
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER, PROJECT_INFO])
+    lists = _place(session_factory, "lists", [OK_LIST_SERVERS])
+    before = ready.get(LAYOUT).json()
+
+    response = _confirm(ready, servers)
+
+    _refused(ready, response, 409, PROJECT_INFO.path)
+    assert OK_CREATE_SERVER.path not in response.json()["error"]["message"]
+    assert ready.get(LAYOUT).json() == before
+    assert _confirm(ready, lists).status_code == 200
+
+
+@pytest.mark.parametrize("content", ["no endpoint", "a path the snapshot lacks"])
+def test_a_resource_without_an_endpoint_in_the_active_snapshot_is_refused(
+    ready, session_factory, content
+):
+    endpoints = (
+        []
+        if content == "no endpoint"
+        else [_endpoint("gone.rst", "GET", "/v1/x", "v1")]
+    )
+    empty = _place(session_factory, "empty", endpoints)
+
+    response = _confirm(ready, empty)
+
+    _refused(ready, response, 409, "has no endpoint in the active snapshot")
+    assert _named(ready.get(LAYOUT).json(), "v1", "empty")["confirmed_by"] is None
+
+
+def test_a_path_the_active_snapshot_lacks_is_neither_checked_nor_blocking(
+    ready, session_factory
+):
+    """What the layout read does not show cannot be checked, or moved out of
+    the resource: it neither counts as an endpoint nor blocks the others."""
+    servers = _place(
+        session_factory,
+        "servers",
+        [OK_CREATE_SERVER, _endpoint("gone.rst", "GET", "/v1/gone", "v1")],
+    )
+
+    assert _confirm(ready, servers).status_code == 200
+
+
+def test_only_the_active_snapshot_decides(client, session_factory):
+    """An older snapshot's statuses - of an endpoint since read in full, or of
+    one since gone - are not the endpoints the layout read shows."""
+    gone = _endpoint("gone.rst", "GET", "/v1/gone", "v1")
+    _register(session_factory)
+    _run_scan(session_factory, documents=[CREATE_SERVER, gone])
+    _run_scan(session_factory, documents=[OK_CREATE_SERVER], commit_hash=NEXT_COMMIT)
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER, gone])
+
+    assert _confirm(client, servers).status_code == 200
+
+
+def test_confirming_a_confirmed_resource_keeps_the_first_confirmation(
+    ready, session_factory
+):
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER], confirmed_by="val")
+    before = ready.get(LAYOUT).json()
+
+    response = _confirm(ready, servers)
+
+    assert response.status_code == 200
+    assert response.json() == before
+    kept = _named(response.json(), "v1", "servers")
+    assert kept["confirmed_by"] == "val"
+    assert kept["confirmed_at"].startswith("2026-11-03")
+
+
+@pytest.mark.parametrize("whose", ["unknown", "another service's"])
+def test_confirming_a_resource_the_layout_lacks_is_not_found(
+    laid_out, session_factory, other_service, whose
+):
+    _place(session_factory, "servers", [CREATE_SERVER])
+    resource_id = 999_999 if whose == "unknown" else other_service
+
+    _refused(
+        laid_out,
+        _confirm(laid_out, resource_id),
+        404,
+        f"Resource {resource_id} not found",
+    )
+
+
+def test_a_confirmation_is_refused_for_a_service_without_a_layout(ready):
+    _refused(ready, _confirm(ready, 1), 409, "has no layout yet")
+
+
+def test_an_edit_after_a_confirmation_asks_for_a_new_check(ready, session_factory):
+    """ADR-0068: the confirmation covered exactly the endpoints it checked. A
+    move from "unassigned" brings one it did not, so it is dropped - and the
+    new check refuses, as that endpoint is not ``ok``."""
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER])
+    assert _confirm(ready, servers).status_code == 200
+
+    moved = _move(ready, PROJECT_INFO.path, servers).json()
+
+    assert _named(moved, "v1", "servers")["confirmed_by"] is None
+    _refused(ready, _confirm(ready, servers), 409, PROJECT_INFO.path)
+
+
+def test_a_refusal_counts_what_blocks_and_names_the_first_few(client, session_factory):
+    blocking = [
+        _endpoint(f"partial_{n}.rst", "GET", f"/v1/thing{n}", "v1") for n in range(7)
+    ]
+    _register(session_factory)
+    _run_scan(session_factory, documents=blocking)
+    things = _place(session_factory, "things", blocking)
+
+    message = _confirm(client, things).json()["error"]["message"]
+
+    assert "7 endpoint(s) that are not ok" in message
+    assert message.endswith("and 2 more")
+    assert sum(endpoint.path in message for endpoint in blocking) == 5
+
+
+# --- a snapshot change ------------------------------------------------------
+
+
+def _confirmed(client) -> dict[str, str | None]:
+    return {
+        resource["name"]: resource["confirmed_by"]
+        for version in client.get(LAYOUT).json()["versions"]
+        for resource in version["resources"]
+    }
+
+
+def test_a_rescan_that_takes_an_endpoint_away_drops_that_confirmation_only(
+    ready, session_factory
+):
+    """ADR-0068: a confirmation covers the endpoints it checked. One gone,
+    the resource is another set; a resource whose set stays keeps its own."""
+    _place(session_factory, "servers", [OK_CREATE_SERVER], confirmed_by="val")
+    _place(session_factory, "lists", [OK_LIST_SERVERS], confirmed_by="val")
+
+    _run_scan(session_factory, documents=[OK_CREATE_SERVER], commit_hash=NEXT_COMMIT)
+
+    assert _confirmed(ready) == {"servers": "val", "lists": None}
+
+
+def test_a_rescan_that_keeps_the_endpoints_keeps_the_confirmation(
+    ready, session_factory
+):
+    """The set is what a confirmation covers (ADR-0068, ADR-0110): the same
+    endpoints read again keep it, whatever the new reading says of them."""
+    _place(session_factory, "servers", [OK_CREATE_SERVER], confirmed_by="val")
+
+    _run_scan(session_factory, documents=[CREATE_SERVER], commit_hash=NEXT_COMMIT)
+
+    assert _confirmed(ready) == {"servers": "val"}
+
+
+def test_activating_a_snapshot_that_brings_back_a_hidden_endpoint_drops_it(
+    client, session_factory
+):
+    """A stored path the confirmation never saw comes back with an older
+    snapshot: the resource then holds an endpoint nobody checked."""
+    gone = _endpoint("gone.rst", "GET", "/v1/gone", "v1")
+    _register(session_factory)
+    _run_scan(session_factory, documents=[OK_CREATE_SERVER, OK_LIST_SERVERS, gone])
+    _run_scan(
+        session_factory,
+        documents=[OK_CREATE_SERVER, OK_LIST_SERVERS],
+        commit_hash=NEXT_COMMIT,
+    )
+    _place(session_factory, "servers", [OK_CREATE_SERVER, gone], confirmed_by="val")
+    _place(session_factory, "lists", [OK_LIST_SERVERS], confirmed_by="val")
+    with session_factory() as session:
+        first = session.scalars(select(Snapshot.id).order_by(Snapshot.id)).first()
+
+    assert _activate(client, first).status_code == 200
+
+    assert _confirmed(client) == {"servers": None, "lists": "val"}
+
+
+def test_moving_the_active_snapshot_takes_the_service_lock_itself(
+    ready, session_factory, impatient_engine
+):
+    """Ingest locks only its Job: the Service row must be locked by the move
+    itself, or a confirmation written meanwhile would outlive the switch.
+    Shown with a move that changes nothing else, so only its own lock waits."""
+    with session_factory() as holder:
+        holder.scalar(select(Service).where(Service.repo == REPO).with_for_update())
+
+        with sessionmaker(bind=impatient_engine)() as mover:
+            service = mover.scalar(select(Service).where(Service.repo == REPO))
+            with pytest.raises(OperationalError, match="lock timeout"):
+                layout_module.switch_active_snapshot(
+                    mover, service, service.active_snapshot_id
+                )
+
+
+def test_the_check_and_the_confirmation_happen_while_the_service_is_locked(
+    ready, session_factory, monkeypatch
+):
+    """An edit, an ingest or an activation takes the same lock, so none can
+    change the endpoints between their check and the confirmation written for
+    them - proven by failing to take the lock from a second session."""
+    servers = _place(session_factory, "servers", [OK_CREATE_SERVER])
+    locked: list[bool] = []
+    statuses = generation.endpoint_statuses
+
+    def checking(db, service, resource):
+        with session_factory() as other:
+            try:
+                other.scalar(
+                    select(Service)
+                    .where(Service.repo == REPO)
+                    .with_for_update(nowait=True)
+                )
+                locked.append(False)
+            except OperationalError:
+                locked.append(True)
+        return statuses(db, service, resource)
+
+    monkeypatch.setattr(generation, "endpoint_statuses", checking)
+
+    assert _confirm(ready, servers).status_code == 200
+    assert locked == [True]
+
+
+# --- every edit ------------------------------------------------------------
+
+
+def _every_edit(client, resource_id: int):
+    return [
+        _add(client, "things"),
+        _rename(client, resource_id, "things"),
+        _move(client, PROJECT_INFO.path, resource_id),
+    ]
+
+
+def test_no_edit_reaches_a_service_whose_grouping_has_not_run(laid_out):
+    """A layout starts only from the preliminary grouping, not from an edit."""
+    for response in _every_edit(laid_out, 1):
+        _refused(laid_out, response, 409, "has no layout yet")
+    assert laid_out.get(LAYOUT).json()["has_layout"] is False
+
+
+def test_no_edit_reaches_a_repository_never_registered(client):
+    for response in _every_edit(client, 1):
+        _refused(client, response, 404, "Service not found")
+
+
+def test_no_edit_reaches_an_excluded_service(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+    assert _exclude(laid_out).status_code == 204
+
+    for response in _every_edit(laid_out, servers):
+        _refused(laid_out, response, 404, "Service not found")
+
+    assert laid_out.post(f"/api/scan/services/{REPO}/include").status_code == 204
+    (resource,) = laid_out.get(LAYOUT).json()["versions"][0]["resources"]
+    assert resource["name"] == "servers"
+    assert _paths(resource["endpoints"]) == ["create_server.rst"]
+
+
+def test_no_edit_reaches_an_ineligible_repository(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+    _set_eligibility(session_factory, REPO, False)
+
+    for response in _every_edit(laid_out, servers):
+        _refused(laid_out, response, 404, "Service not found")
+
+
+def test_no_edit_reaches_a_service_without_endpoints(client, session_factory):
+    _register(session_factory)
+    _run_scan(session_factory, documents=[_page_without_endpoints()])
+    _start_layout(session_factory)
+
+    for response in _every_edit(client, 1):
+        _refused(client, response, 404, "Service not found")
+
+
+def test_listed_versions_are_the_versions_the_layout_read_lists(
+    laid_out, session_factory
+):
+    """The add check reads versions from columns alone; it must agree with
+    the read in every way a version gets listed - or does not."""
+    # v2's only endpoint linked into a v1 resource, as a rescan that changed
+    # its version leaves it: placed, so it no longer lists v2
+    _place(session_factory, "tags", [LIST_TAGS], api_version="v1")
+    _place(session_factory, "spare", [], api_version="v4")  # an empty resource
+    # v1 keeps PROJECT_INFO and the servers in "unassigned"; QUOTAS stays in
+    # "no version", which is no version to list
+
+    read = {v["api_version"] for v in laid_out.get(LAYOUT).json()["versions"]}
+    with session_factory() as session:
+        service = session.scalar(select(Service).where(Service.repo == REPO))
+        listed = listed_versions(session, service)
+
+    assert listed == read == {"v1", "v4"}
+
+
+class _Diagnostics:
+    def __init__(self, constraint_name: str | None) -> None:
+        self.constraint_name = constraint_name
+
+
+class _DriverError(Exception):
+    """What a PostgreSQL driver hands SQLAlchemy as ``IntegrityError.orig``."""
+
+    def __init__(self, constraint_name: str | None = None) -> None:
+        super().__init__("integrity error")
+        if constraint_name is not None:
+            self.diag = _Diagnostics(constraint_name)
+
+
+class _FailingSave:
+    """A session whose flush or commit breaks a constraint, recording each call."""
+
+    def __init__(self, error: IntegrityError, *, on: str) -> None:
+        self.error = error
+        self.on = on
+        self.calls: list[str] = []
+
+    def flush(self) -> None:
+        self.calls.append("flush")
+        if self.on == "flush":
+            raise self.error
+
+    def expire_all(self) -> None:
+        self.calls.append("expire_all")
+
+    def commit(self) -> None:
+        self.calls.append("commit")
+        if self.on == "commit":
+            raise self.error
+
+    def rollback(self) -> None:
+        self.calls.append("rollback")
+
+
+@pytest.mark.parametrize(
+    "orig",
+    [
+        _DriverError("fk_resource_service_id_layout"),
+        # a driver that reports no constraint name at all
+        _DriverError(),
+    ],
+)
+@pytest.mark.parametrize("on", ["flush", "commit"])
+def test_a_violation_that_is_not_the_name_is_no_refusal(monkeypatch, orig, on):
+    """Only a taken name is the request's to fix; anything else is a server
+    fault and must surface as one, not as a 409 blaming the name. A reply built
+    before a commit that then fails is dropped, never returned."""
+    monkeypatch.setattr(generation, "_layout", lambda db, service: "the reply")
+    error = IntegrityError("UPDATE resource", {}, orig)
+    db = _FailingSave(error, on=on)
+
+    with pytest.raises(IntegrityError) as raised:
+        generation._save(db, Service(), name="servers", api_version="v1")
+
+    assert raised.value is error
+    assert db.calls[-1] == "rollback"
+
+
+def test_a_taken_name_is_refused_only_for_an_edit_that_names_one(monkeypatch):
+    """A move writes no name, so even the unique name constraint is no
+    refusal of it: only an add or a rename can have picked a taken name."""
+    monkeypatch.setattr(generation, "_layout", lambda db, service: "the reply")
+    error = IntegrityError(
+        "INSERT resource_endpoint",
+        {},
+        _DriverError(RESOURCE_NAME_UNIQUE_IN_VERSION.name),
+    )
+
+    with pytest.raises(IntegrityError):
+        generation._save(_FailingSave(error, on="flush"), Service())
+
+
+def test_the_reply_is_read_before_the_commit(monkeypatch):
+    monkeypatch.setattr(generation, "_layout", lambda db, service: "the reply")
+    db = _FailingSave(IntegrityError("", {}, _DriverError()), on="neither")
+
+    reply = generation._save(db, Service())
+
+    assert reply == "the reply"
+    assert db.calls == ["flush", "expire_all", "commit"]
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        "start",
+        "add",
+        "rename",
+        "move",
+        "rename to its name",
+        "move into its resource",
+    ],
+)
+def test_every_reply_is_read_while_the_service_is_locked(
+    laid_out, session_factory, monkeypatch, edit
+):
+    """Read after the lock is gone, the reply's several queries could each see
+    a different edit of another worker. So the layout is read back while the
+    row is still held - proven by failing to take it from a second session.
+    The layout start answers the same way."""
+    servers = (
+        None if edit == "start" else _place(session_factory, "servers", [CREATE_SERVER])
+    )
+    locked_while_read: list[bool] = []
+    read_layout = generation.service_layout
+
+    def reading(db, service):
+        with session_factory() as other:
+            try:
+                other.scalar(
+                    select(Service)
+                    .where(Service.repo == REPO)
+                    .with_for_update(nowait=True)
+                )
+                locked_while_read.append(False)
+            except OperationalError:
+                locked_while_read.append(True)
+        return read_layout(db, service)
+
+    monkeypatch.setattr(generation, "service_layout", reading)
+
+    response = {
+        "start": lambda: laid_out.post(LAYOUT),
+        "add": lambda: _add(laid_out, "projects"),
+        "rename": lambda: _rename(laid_out, servers, "cloud_servers"),
+        "move": lambda: _move(laid_out, PROJECT_INFO.path, servers),
+        "rename to its name": lambda: _rename(laid_out, servers, "servers"),
+        "move into its resource": lambda: _move(laid_out, CREATE_SERVER.path, servers),
+    }[edit]()
+
+    assert response.status_code in (200, 201)
+    assert locked_while_read == [True]
+    # and what was read is what was saved
+    monkeypatch.setattr(generation, "service_layout", read_layout)
+    assert response.json() == laid_out.get(LAYOUT).json()
+
+
+@pytest.fixture
+def impatient_engine(engine):
+    """The scratch database again, giving up on a row lock after 200 ms."""
+    eng = create_engine(
+        engine.url.render_as_string(hide_password=False),
+        connect_args={"options": "-c lock_timeout=200"},
+    )
+    yield eng
+    eng.dispose()
+
+
+def test_a_scan_landing_mid_edit_waits_for_the_edit_to_commit(
+    laid_out, session_factory, impatient_engine, monkeypatch
+):
+    """An edit checks an endpoint against the active Snapshot while holding the
+    Service row; ingest replaces that Snapshot by writing the row, so it cannot
+    slip in between. Proven by holding the row as an edit does: ingest, given a
+    short lock timeout, gives up instead of going ahead."""
+    monkeypatch.setattr(
+        ingest_module, "SessionLocal", sessionmaker(bind=impatient_engine)
+    )
+    _start_layout(session_factory)
+
+    with session_factory() as session:
+        job = RepositoryScanJob(
+            service_id=session.scalar(select(Service.id).where(Service.repo == REPO)),
+            kind=JobKind.scan,
+            status=JobStatus.running,
+            initiated_by="tester",
+            started_at=datetime.now(tz=UTC),
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+    result = RepositoryScanResult(
+        repository=IrService(repo=REPO, documents=[CREATE_SERVER]),
+        branch="main",
+        commit_hash=NEXT_COMMIT,
+    )
+
+    with session_factory() as edit:
+        generation._editable_service(edit, REPO)
+
+        with pytest.raises(OperationalError, match="lock timeout"):
+            ingest_service_result(job_id=job_id, service_repo=REPO, result=result)
+
+    snapshots = laid_out.get(f"/api/scan/services/{REPO}/snapshots").json()["items"]
+    assert [snapshot["commit_hash"] for snapshot in snapshots] == [COMMIT]
+
+
+@pytest.mark.parametrize("edit", ["rename", "move"])
+def test_an_edit_that_changes_nothing_holds_no_lock_while_it_answers(
+    laid_out, session_factory, edit
+):
+    """An edit that writes nothing still ends its transaction once it has its
+    answer, so a scan or another edit can take the row at once."""
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+
+    with session_factory() as db:
+        if edit == "rename":
+            generation.rename_resource(
+                REPO,
+                servers,
+                RenameResourceRequest(name="servers"),
+                identity=TEST_WORKER,
+                db=db,
+            )
+        else:
+            generation.move_endpoint(
+                REPO,
+                MoveEndpointRequest(path=CREATE_SERVER.path, resource_id=servers),
+                identity=TEST_WORKER,
+                db=db,
+            )
+
+        with session_factory() as other:
+            other.scalar(
+                select(Service).where(Service.repo == REPO).with_for_update(nowait=True)
+            )
+
+
+#: An endpoint whose version the scanner left empty rather than missing.
+BLANK_VERSION = _endpoint("blank.rst", "GET", "/{project_id}/blank", "")
+
+
+def test_an_empty_version_is_no_version_in_the_read_and_the_edits(
+    client, session_factory
+):
+    """The grouping puts `api_version=""` in "no version"; the read, the version
+    listing and a move must agree, or such an endpoint would be in "no version"
+    for one and under a nameless version for another."""
+    _register(session_factory)
+    _run_scan(session_factory, documents=[*LAYOUT_ENDPOINTS, BLANK_VERSION])
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+
+    body = client.get(LAYOUT).json()
+    assert _paths(body["no_version"]) == ["blank.rst", "quotas.rst"]
+    assert [v["api_version"] for v in body["versions"]] == ["v1", "v2"]
+    with session_factory() as session:
+        service = session.scalar(select(Service).where(Service.repo == REPO))
+        assert listed_versions(session, service) == {"v1", "v2"}
+
+    response = _move(client, BLANK_VERSION.path, servers)
+
+    assert response.status_code == 200
+    moved = response.json()
+    # ordered by URI, as the read orders every list
+    assert _paths(_named(moved, "v1", "servers")["endpoints"]) == [
+        "create_server.rst",
+        "blank.rst",
+    ]
+    assert _paths(moved["no_version"]) == ["quotas.rst"]

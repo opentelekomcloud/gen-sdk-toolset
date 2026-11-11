@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
-import { useDocumentDetail } from "../api/queries";
+import { blockOf, useDocumentDetail } from "../api/queries";
 import type { DocumentListItem } from "../../../shared/api/types";
 import { DOC_STATUS_CLS, methodCls } from "../styles";
-import { BlockLoadFailed, BlockLoading } from "../components/ServicePageStates";
+import { BlockFailed, BlockLoading } from "../components/ServicePageStates";
 import { DocSectionRow } from "./DocSectionRow";
 import { useI18n } from "../../../shared/i18n";
 
@@ -15,7 +15,8 @@ import { useI18n } from "../../../shared/i18n";
  */
 export function DocRow({ serviceName, doc }: { serviceName: string; doc: DocumentListItem }) {
   const [open, setOpen] = useState(false);
-  const detail = useDocumentDetail(serviceName, doc.id, open);
+  const query = useDocumentDetail(serviceName, doc.id, open);
+  const { data: detail, failed } = blockOf(query);
   const { t } = useI18n();
 
   return (
@@ -63,26 +64,26 @@ export function DocRow({ serviceName, doc }: { serviceName: string; doc: Documen
 
       {open && (
         <div className="border-t border-gray-100 bg-gray-50 px-10 py-3">
-          {detail.isPending ? (
+          {failed ? (
+            <BlockFailed query={query} label={t("doc.detailFailed")} loadingLabel={t("doc.loadingDetail")} />
+          ) : !detail ? (
             <BlockLoading label={t("doc.loadingDetail")} />
-          ) : detail.isError ? (
-            <BlockLoadFailed label={t("doc.detailFailed")} onRetry={() => void detail.refetch()} />
           ) : (
             <>
               <div className="mb-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-xs text-gray-500">
                 <span>
-                  {detail.data.method} <span className="text-gray-700">{detail.data.uri || "—"}</span>
+                  {detail.method} <span className="text-gray-700">{detail.uri || "—"}</span>
                 </span>
-                {detail.data.api_version && (
+                {detail.api_version && (
                   <span>
-                    {t("doc.apiVersion")} <span className="text-gray-700">{detail.data.api_version}</span>
+                    {t("doc.apiVersion")} <span className="text-gray-700">{detail.api_version}</span>
                   </span>
                 )}
-                {detail.data.failure_reason && (
-                  <span className="text-red-600">{t("doc.gatingFailure", { reason: detail.data.failure_reason })}</span>
+                {detail.failure_reason && (
+                  <span className="text-red-600">{t("doc.gatingFailure", { reason: detail.failure_reason })}</span>
                 )}
                 <a
-                  href={detail.data.source_url}
+                  href={detail.source_url}
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
@@ -92,15 +93,15 @@ export function DocRow({ serviceName, doc }: { serviceName: string; doc: Documen
                   <ExternalLink size={12} /> {t("doc.openSource")}
                 </a>
               </div>
-              {detail.data.sections.length > 0 ? (
+              {detail.sections.length > 0 ? (
                 <div className="grid grid-cols-1 gap-1.5">
-                  {detail.data.sections.map((sec) => (
+                  {detail.sections.map((sec) => (
                     <DocSectionRow key={sec.name} section={sec} />
                   ))}
                 </div>
               ) : (
                 <div className="text-xs text-gray-400">
-                  {detail.data.failure_reason ? t("doc.noSectionsGating") : t("doc.noSections")}
+                  {detail.failure_reason ? t("doc.noSectionsGating") : t("doc.noSections")}
                 </div>
               )}
             </>

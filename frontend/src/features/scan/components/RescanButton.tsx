@@ -6,7 +6,8 @@ import { useI18n } from "../../../shared/i18n";
 interface Props {
   reason: RescanReason | null;
   scanning?: { jobId?: number; startedBy?: string };
-  scannerVersion: string;
+  /** The current scanner version; undefined while the summary is loading or failed to load. */
+  scannerVersion: string | undefined;
   onClick: () => void;
   size?: "sm" | "lg";
 }
@@ -29,7 +30,12 @@ export function RescanButton({ reason, scanning, scannerVersion, onClick, size =
   if (!reason) return null;
   const meta = RESCAN_META[reason];
   const Icon = meta.icon;
-  const label = t(meta.labelKey, { v: scannerVersion });
+  /* No version to name while the summary is loading or failed to load: say a
+     newer scanner did it rather than "v" with nothing after it. */
+  const label =
+    scannerVersion === undefined
+      ? t(reason === "version" ? "rescan.versionUnknown" : meta.labelKey)
+      : t(meta.labelKey, { v: scannerVersion });
   if (size === "lg") {
     return (
       <button type="button"

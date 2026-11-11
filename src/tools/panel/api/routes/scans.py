@@ -30,6 +30,7 @@ from tools.panel.core.db.models import (
     Snapshot,
 )
 from tools.panel.core.jobs import run_scan_job, terminate_job
+from tools.panel.core.layout import switch_active_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +112,12 @@ def activate_snapshot(
 ) -> SnapshotsResponse:
     """Serve this Service's scan-result views from another of its Snapshots.
 
-    Moves ``active_snapshot_id`` only: ``latest_snapshot_id`` and the stored
+    Moves ``active_snapshot_id``: ``latest_snapshot_id`` and the stored
     Snapshots stay as they are, and every view downstream already follows this
-    pointer. Re-activating the active Snapshot changes nothing and answers 200.
+    pointer. A resource confirmation the new Snapshot no longer covers - its
+    endpoints there differ from the ones it checked - is dropped (ADR-0068), and
+    activating the previous Snapshot again does not bring it back.
+    Re-activating the active Snapshot changes nothing and answers 200.
     An excluded Service is allowed; the caller's identity is logged, not stored.
 
     Refused with ``409`` while a scan Job is queued or running, whatever the
@@ -144,7 +148,7 @@ def activate_snapshot(
             ),
         )
 
-    service.active_snapshot_id = snapshot.id
+    switch_active_snapshot(db, service, snapshot.id)
     db.commit()
     logger.info(
         "service %s: snapshot %s activated by %s", repo, snapshot_id, identity.name

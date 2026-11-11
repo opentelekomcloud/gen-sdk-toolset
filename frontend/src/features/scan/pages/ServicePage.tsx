@@ -4,7 +4,7 @@ import { AlertTriangle, Ban, CheckCircle2, Download, FolderOpen, Loader2 } from 
 import { useNavigate, useParams } from "react-router";
 import { ApiError } from "../api/client";
 import { useActivateSnapshot, useExclude, useRescan } from "../api/mutations";
-import { useService, useSummary } from "../api/queries";
+import { blockOf, useService, useSummary } from "../api/queries";
 import { SnapshotBanner } from "../components/SnapshotBanner";
 import { SnapshotSelector } from "../components/SnapshotSelector";
 import { RescanButton } from "../components/RescanButton";
@@ -46,7 +46,9 @@ export function ServicePage() {
   const { t } = useI18n();
 
   const { data: service, isPending, isError, error, refetch } = useService(name);
-  const { data: summary } = useSummary();
+  /* The summary's failure is the Header's to show; its version is not used
+     here from an answer that failed to refresh. */
+  const summary = blockOf(useSummary()).data;
   const rescan = useRescan(name);
   const activate = useActivateSnapshot(name);
   const exclude = useExclude(name);
@@ -58,7 +60,7 @@ export function ServicePage() {
   }
   const scanning = service.scan_status === "scanning";
   const switching = activate.isPending;
-  const scannerVersion = summary?.scanner_version ?? "";
+  const scannerVersion = summary?.scanner_version;
   /* A JSONB column, so the schema promises only an object of unknown values -
      it overlaps nothing, hence the two-step cast. Ingest writes a
      RepositoryInterruption; this is the one place that says so. */

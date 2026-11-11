@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, FileQuestion } from "lucide-react";
-import { useIneligible } from "../api/queries";
+import { blockOf, useIneligible } from "../api/queries";
+import { SectionFailed } from "../components/ServicePageStates";
 import type { Ineligible } from "../../../shared/api/types";
 import { fmtSnapshotAt } from "../lib/snapshot";
 import { useI18n } from "../../../shared/i18n";
@@ -34,8 +35,23 @@ function IneligibleRow({ item }: { item: Ineligible }) {
  *  reverses itself the next time discovery finds the API-reference path. */
 export function IneligibleSection() {
   const [open, setOpen] = useState(false);
-  const { data: ineligible } = useIneligible();
+  const query = useIneligible();
+  const { data: ineligible, failed } = blockOf(query);
   const { t } = useI18n();
+  /* As the excluded list: on a failed load or refresh, the title and the
+     failure, no count, no rows (ADR-0081). */
+  if (failed) {
+    return (
+      <SectionFailed
+        icon={FileQuestion}
+        title={t("ineligible.title")}
+        className="mt-3"
+        query={query}
+        label={t("ineligible.loadFailed")}
+        loadingLabel={t("ineligible.loading")}
+      />
+    );
+  }
   if (!ineligible) return null;
 
   return (

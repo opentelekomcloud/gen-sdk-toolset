@@ -44,7 +44,123 @@ export interface paths {
          */
         get: operations["get_service_layout_api_generation_services__repo__layout_get"];
         put?: never;
-        post?: never;
+        /**
+         * Start Service Layout
+         * @description Run the preliminary grouping of a service and answer with its layout.
+         *
+         *     Runs within the request: the rule reads stored columns only and calls
+         *     nothing outside the database, so there is no Job to poll. The answer is
+         *     what the layout read serves afterwards.
+         *
+         *     A repository off the Generation list is a ``404``, as for the read. A
+         *     service that already has a layout - even one without a resource - is a
+         *     ``409``: a layout changes only by editing (ADR-0072). That refusal comes
+         *     from the ``layout`` primary key, not from a check before the insert, so two
+         *     concurrent starts cannot both store one. A failure commits nothing: the
+         *     service stays without a layout and the start can be retried (ADR-0061).
+         */
+        post: operations["start_service_layout_api_generation_services__repo__layout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generation/services/{repo}/layout/endpoints/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move Endpoint
+         * @description Put one endpoint of the active Snapshot into a resource of the layout.
+         *
+         *     The endpoint never leaves its version (ADR-0064): one in a resource moves
+         *     only within that resource's version, one in "unassigned" only into its own
+         *     version, and one in "no version" into any version - the user sets the
+         *     version the scanner did not find. An empty version is no version, as in
+         *     the grouping and the read. Moving it into the resource it is in changes
+         *     nothing.
+         */
+        post: operations["move_endpoint_api_generation_services__repo__layout_endpoints_move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generation/services/{repo}/layout/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Resource
+         * @description Add an empty resource to a version the layout already lists.
+         *
+         *     Only such a version - the versions of its resources and of its
+         *     "unassigned" endpoints: adding a version is not among the edits.
+         */
+        post: operations["add_resource_api_generation_services__repo__layout_resources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generation/services/{repo}/layout/resources/{resource_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Resource
+         * @description Confirm one resource, leaving every other resource as it is (ADR-0066).
+         *
+         *     Only a resource with at least one endpoint in the active Snapshot, all of
+         *     them ``ok`` (ADR-0067); otherwise a ``409`` that names what blocks it, and
+         *     nothing changes - other resources stay confirmable. Confirming a confirmed
+         *     resource changes nothing either: ``confirmed_by`` and ``confirmed_at`` keep
+         *     the first confirmation, the one that checked these endpoints.
+         *
+         *     ``confirmed_at`` is when the request came, not when the lock was granted.
+         */
+        post: operations["confirm_resource_api_generation_services__repo__layout_resources__resource_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generation/services/{repo}/layout/resources/{resource_id}/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rename Resource
+         * @description Give a resource a new name; its ``id`` stays, so links to it do too.
+         *
+         *     Renaming to the name it already has changes nothing, so its confirmation
+         *     stays as well.
+         */
+        post: operations["rename_resource_api_generation_services__repo__layout_resources__resource_id__rename_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -435,9 +551,12 @@ export interface paths {
          * Activate Snapshot
          * @description Serve this Service's scan-result views from another of its Snapshots.
          *
-         *     Moves ``active_snapshot_id`` only: ``latest_snapshot_id`` and the stored
+         *     Moves ``active_snapshot_id``: ``latest_snapshot_id`` and the stored
          *     Snapshots stay as they are, and every view downstream already follows this
-         *     pointer. Re-activating the active Snapshot changes nothing and answers 200.
+         *     pointer. A resource confirmation the new Snapshot no longer covers - its
+         *     endpoints there differ from the ones it checked - is dropped (ADR-0068), and
+         *     activating the previous Snapshot again does not bring it back.
+         *     Re-activating the active Snapshot changes nothing and answers 200.
          *     An excluded Service is allowed; the caller's identity is logged, not stored.
          *
          *     Refused with ``409`` while a scan Job is queued or running, whatever the
@@ -508,6 +627,20 @@ export interface components {
         ActivateSnapshotRequest: {
             /** Initiated By */
             initiated_by: string;
+        };
+        /**
+         * AddResourceRequest
+         * @description Body for adding a resource to one version of a service's layout.
+         *
+         *     ``name`` must be a package name (ADR-0065), the pattern the grouping's
+         *     names follow, so a malformed one is a ``422``. Whether it is free in its
+         *     version is the ``resource`` table's to say - a taken one is a ``409``.
+         */
+        AddResourceRequest: {
+            /** Api Version */
+            api_version: string;
+            /** Name */
+            name: string;
         };
         /**
          * AttentionRule
@@ -793,6 +926,19 @@ export interface components {
             unassigned: components["schemas"]["DocumentListItem"][];
         };
         /**
+         * MoveEndpointRequest
+         * @description Body for moving one endpoint into a resource of the layout.
+         *
+         *     The endpoint is named by its document ``path``, as the layout stores it: a
+         *     document id changes with every scan, the path does not.
+         */
+        MoveEndpointRequest: {
+            /** Path */
+            path: string;
+            /** Resource Id */
+            resource_id: number;
+        };
+        /**
          * ParameterResponse
          * @description One parameter row, nested exactly as the scan recorded it.
          *
@@ -815,6 +961,14 @@ export interface components {
             param_type: string;
             /** Type Name */
             type_name?: string | null;
+        };
+        /**
+         * RenameResourceRequest
+         * @description Body for renaming a resource; the name is checked as on adding one.
+         */
+        RenameResourceRequest: {
+            /** Name */
+            name: string;
         };
         /**
          * RescanReason
@@ -1197,6 +1351,175 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_service_layout_api_generation_services__repo__layout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_endpoint_api_generation_services__repo__layout_endpoints_move_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveEndpointRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_resource_api_generation_services__repo__layout_resources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddResourceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_resource_api_generation_services__repo__layout_resources__resource_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+                resource_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_resource_api_generation_services__repo__layout_resources__resource_id__rename_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+                resource_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameResourceRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

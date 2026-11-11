@@ -1,5 +1,6 @@
-import { AlertTriangle, ArrowLeft, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, RefreshCw, type LucideIcon } from "lucide-react";
 import { Link } from "react-router";
+import { useRetry, type Retryable } from "../api/queries";
 import { useI18n } from "../../../shared/i18n";
 
 /**
@@ -67,6 +68,54 @@ export function BlockLoadFailed({ label, onRetry }: { label: string; onRetry: ()
       >
         <RefreshCw size={11} /> {t("service.retry")}
       </button>
+    </div>
+  );
+}
+
+/**
+ * What a block shows in place of its data when it did not load, on the first
+ * load or on a refresh (ADR-0081): the failure and a Retry. TanStack Query
+ * keeps the last answer through a failed refresh; the block shows this instead,
+ * so that answer is not read as current. While the Retry runs the block says
+ * it is loading, so the click visibly did something and cannot be repeated.
+ */
+export function BlockFailed({
+  query,
+  label,
+  loadingLabel,
+}: {
+  query: Retryable;
+  label: string;
+  loadingLabel: string;
+}) {
+  const { retrying, retry } = useRetry(query);
+  return retrying ? <BlockLoading label={loadingLabel} /> : <BlockLoadFailed label={label} onRetry={retry} />;
+}
+
+/**
+ * A collapsible list at the bottom of a page whose data did not load: its
+ * title, without the count it no longer has, and the failure under it, folded
+ * or not.
+ */
+export function SectionFailed({
+  icon: Icon,
+  title,
+  className,
+  ...failed
+}: {
+  icon: LucideIcon;
+  title: string;
+  className: string;
+  query: Retryable;
+  label: string;
+  loadingLabel: string;
+}) {
+  return (
+    <div className={className}>
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-gray-400">
+        <Icon size={12} /> {title}
+      </div>
+      <BlockFailed {...failed} />
     </div>
   );
 }

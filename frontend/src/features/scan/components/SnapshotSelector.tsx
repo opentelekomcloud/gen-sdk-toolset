@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, GitCommit, History, Loader2 } from "lucide-react";
-import { useSnapshots } from "../api/queries";
+import { blockOf, useSnapshots } from "../api/queries";
+import { BlockFailed } from "./ServicePageStates";
 import type { Snapshot, ServiceDetail } from "../../../shared/api/types";
 import { fmtSnapshotAt, shortCommit, structPct } from "../lib/snapshot";
 import { structOkCls } from "../styles";
@@ -26,7 +27,8 @@ export function SnapshotSelector({ service, disabled, onActivate }: Props) {
   const { t, locale } = useI18n();
   const active = service.active_snapshot;
   const latest = service.latest_snapshot;
-  const { data, isPending } = useSnapshots(service.name, open);
+  const snapshots = useSnapshots(service.name, open);
+  const history = blockOf(snapshots);
 
   /* Escape closes the popover — click-away alone is mouse-only (a11y) */
   useEffect(() => {
@@ -62,7 +64,7 @@ export function SnapshotSelector({ service, disabled, onActivate }: Props) {
     onActivate(g.id);
     close();
   };
-  const items = data?.items ?? [];
+  const items = history.data?.items ?? [];
   const pending = pendingId != null ? items.find((g) => g.id === pendingId) : undefined;
 
   return (
@@ -110,7 +112,13 @@ export function SnapshotSelector({ service, disabled, onActivate }: Props) {
               <div className="mt-0.5 text-[11px] leading-relaxed text-gray-400">{t("snap.popoverHint")}</div>
             </div>
             <div className="max-h-64 overflow-y-auto">
-              {isPending ? (
+              {/* A history that did not load - first or on a refresh - is not
+                  shown from before (ADR-0081): its failure and a Retry instead. */}
+              {history.failed ? (
+                <div className="px-3.5 py-3">
+                  <BlockFailed query={snapshots} label={t("snap.loadFailed")} loadingLabel={t("snap.loading")} />
+                </div>
+              ) : history.pending ? (
                 <div className="flex items-center gap-2 px-3.5 py-4 text-xs text-gray-400">
                   <Loader2 size={13} className="animate-spin" /> {t("snap.loading")}
                 </div>
