@@ -23,11 +23,19 @@ worker, and the reply would show a layout that never existed.
 
 Editing a confirmed resource removes its confirmation, and a move removes it
 from both resources it touches (ADR-0068); every other resource keeps its own.
+
+A resource is confirmed on its own (ADR-0066), and only while every endpoint
+it holds in the active Snapshot - at least one - has ``overall_status`` ``ok``
+(ADR-0067). The confirmation takes the same lock as the edits, so no edit,
+ingest or activation can slip between the check of those endpoints and the
+confirmation written for them. A later ingest or activation that changes those
+endpoints drops it again (``switch_active_snapshot``).
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -43,6 +51,7 @@ from tools.panel.api.schemas import (
     MoveEndpointRequest,
     RenameResourceRequest,
 )
+from tools.panel.core.analytics import OverallStatus
 from tools.panel.core.db.base import violated_constraint
 from tools.panel.core.db.models import (
     RESOURCE_NAME_UNIQUE_IN_VERSION,
@@ -54,12 +63,17 @@ from tools.panel.core.db.models import (
 from tools.panel.core.grouping import has_api_version
 from tools.panel.core.layout import (
     active_endpoint,
+    endpoint_statuses,
     listed_versions,
     service_layout,
     start_layout,
+    unconfirm,
 )
 
 logger = logging.getLogger(__name__)
+
+#: How many blocking endpoints a refused confirmation names; the rest it counts.
+NAMED_BLOCKERS = 5
 
 router = APIRouter()
 
@@ -166,7 +180,7 @@ def rename_resource(
         return _unchanged(db, service)
 
     resource.name = body.name
-    _unconfirm(resource)
+    unconfirm(resource)
     response = _save(db, service, name=body.name, api_version=resource.api_version)
     logger.info(
         "service %s: resource %s renamed to %s by %s",
@@ -229,8 +243,8 @@ def move_endpoint(
         )
     else:
         link.resource = target
-        _unconfirm(source)
-    _unconfirm(target)
+        unconfirm(source)
+    unconfirm(target)
     response = _save(db, service)
     logger.info(
         "service %s: endpoint %s moved to resource %s by %s",
@@ -238,6 +252,62 @@ def move_endpoint(
         body.path,
         target.id,
         identity.name,
+    )
+    return response
+
+
+@router.post(
+    "/generation/services/{repo:path}/layout/resources/{resource_id}/confirm",
+    response_model=LayoutResponse,
+)
+def confirm_resource(
+    repo: str,
+    resource_id: int,
+    identity: Identity = Depends(require_worker),
+    db: Session = Depends(get_db),
+) -> LayoutResponse:
+    """Confirm one resource, leaving every other resource as it is (ADR-0066).
+
+    Only a resource with at least one endpoint in the active Snapshot, all of
+    them ``ok`` (ADR-0067); otherwise a ``409`` that names what blocks it, and
+    nothing changes - other resources stay confirmable. Confirming a confirmed
+    resource changes nothing either: ``confirmed_by`` and ``confirmed_at`` keep
+    the first confirmation, the one that checked these endpoints.
+
+    ``confirmed_at`` is when the request came, not when the lock was granted.
+    """
+    requested_at = datetime.now(tz=UTC)
+    service = _editable_service(db, repo)
+    resource = _resource_or_404(db, service, resource_id)
+    if resource.confirmed_by is not None:
+        return _unchanged(db, service)
+
+    statuses = endpoint_statuses(db, service, resource)
+    if not statuses:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Resource {resource.name} has no endpoint in the active snapshot",
+        )
+    not_ok = sorted(
+        path for path, status in statuses.items() if status != OverallStatus.OK
+    )
+    if not_ok:
+        # how many block it, and the first few by path: enough to act on
+        named = ", ".join(not_ok[:NAMED_BLOCKERS])
+        more = len(not_ok) - NAMED_BLOCKERS
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Resource {resource.name} has {len(not_ok)} endpoint(s) that are "
+                f"not ok: {named}" + (f" and {more} more" if more > 0 else "")
+            ),
+        )
+
+    resource.confirmed_by = identity.name
+    resource.confirmed_at = requested_at
+    response = _save(db, service)
+    logger.info(
+        "service %s: resource %s confirmed by %s", repo, resource_id, identity.name
     )
     return response
 
@@ -283,12 +353,6 @@ def _resource_or_404(db: Session, service: Service, resource_id: int) -> Resourc
             detail=f"Resource {resource_id} not found for service {service.repo}",
         )
     return resource
-
-
-def _unconfirm(resource: Resource) -> None:
-    """Drop a resource's confirmation (ADR-0068); both columns go together."""
-    resource.confirmed_by = None
-    resource.confirmed_at = None
 
 
 def _save(

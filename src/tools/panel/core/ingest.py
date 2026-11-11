@@ -39,6 +39,7 @@ from tools.panel.core.db.models import (
     Service,
     Snapshot,
 )
+from tools.panel.core.layout import switch_active_snapshot
 from tools.shared.exceptions import GenSdkError
 from tools.shared.ir import DOCUMENT_SCHEMA_VERSION, Document
 from tools.shared.ir import Service as IrService
@@ -184,7 +185,7 @@ def _persist(
 
     _record_eligibility(service, finished_at)
     service.latest_snapshot_id = snapshot.id
-    service.active_snapshot_id = snapshot.id
+    switch_active_snapshot(session, service, snapshot.id)
     # head_commit is deliberately not touched here: it is the branch HEAD, which
     # discovery resolves, and the commit this scan read is not necessarily it.
     # Writing the scanned commit would make drift compare a value against
