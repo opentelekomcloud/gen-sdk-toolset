@@ -1,4 +1,11 @@
-import { QueryClient } from "@tanstack/react-query";
+import {
+  onlineManager,
+  QueryCache,
+  QueryClient,
+  type Query,
+  type QueryFunction,
+  type QueryFunctionContext,
+} from "@tanstack/react-query";
 
 /**
  * How often every mounted query is fetched again from the server (ADR-0076).
@@ -8,6 +15,72 @@ import { QueryClient } from "@tanstack/react-query";
  * longest for summary and attention - both recompute every service.
  */
 export const REFETCH_INTERVAL_MS = 10_000;
+
+/** How many times the tab has been shown again after being hidden. */
+let returns = 0;
+/**
+ * For each query, how many returns there had been when the request behind its
+ * last answer went out - not when the answer came: a request sent before the
+ * tab was hidden answers for that time, however late it arrives.
+ */
+const answeredAfter = new WeakMap<object, number>();
+/** For each query, how many returns there had been when its current request went out. */
+const askedAfter = new WeakMap<object, number>();
+
+/**
+ * Lets queries fetch only while the tab is visible, as well as online (ADR-0080).
+ *
+ * TanStack Query holds back the periodic refetch and the retries of a hidden
+ * tab by itself, but a fetch started by an invalidation or by a query mounted
+ * while hidden waits only for the network. Its online state is the one thing
+ * every fetch waits for, so a hidden tab counts as offline here: the fetch is
+ * paused, sends nothing, and goes out when the tab is shown again.
+ *
+ * The network part is TanStack's own default: only the `online` and `offline`
+ * events move it, never `navigator.onLine`, which reports offline wrongly in
+ * some browsers.
+ *
+ * Mutations wait on the same state, so one started in a hidden tab would go
+ * out once the tab is shown. Every mutation in the panel starts from a click,
+ * which a hidden tab cannot receive; one sent before the tab was hidden is not
+ * held back.
+ *
+ * A return is counted before the tab is allowed to fetch, so the refetch that
+ * follows can tell a return from a network coming back. Counted, not timed: a
+ * clock would mistake a request sent in the same millisecond as the return for
+ * one sent after it.
+ */
+function fetchOnlyWhileVisible() {
+  onlineManager.setEventListener((setOnline) => {
+    let online = true;
+    let hidden = document.visibilityState === "hidden";
+    const update = () => setOnline(online && !hidden);
+    const onVisibility = () => {
+      const wasHidden = hidden;
+      hidden = document.visibilityState === "hidden";
+      // only a change from hidden is a return; a "visible" repeated is none
+      if (wasHidden && !hidden) returns += 1;
+      update();
+    };
+    const goOnline = () => {
+      online = true;
+      update();
+    };
+    const goOffline = () => {
+      online = false;
+      update();
+    };
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    document.addEventListener("visibilitychange", onVisibility);
+    update();
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  });
+}
 
 /**
  * The query client the panel runs with.
@@ -20,11 +93,84 @@ export const REFETCH_INTERVAL_MS = 10_000;
  * `gcTime: 0` drops a query's cache as soon as nothing shows it, so a page
  * opened again loads from the server instead of showing the previous visit
  * (ADR-0078).
+ *
+ * A hidden tab sends no request at all (`fetchOnlyWhileVisible`). Shown again,
+ * it can fetch again, and `refetchOnReconnect` fetches every query on screen at
+ * once, however briefly it was hidden, with no threshold. The fetch restarts the
+ * interval, so the tab then refreshes like any visible one (ADR-0080). A scan
+ * or another user's change made meanwhile reaches it this way, not through a
+ * job poll (ADR-0085). A network coming back while the tab stayed visible keeps
+ * TanStack's own rule and refetches only data older than `staleTime`: the
+ * interval was already keeping the rest current.
+ *
+ * That is the one trigger of the return: `refetchOnWindowFocus` is off, as
+ * TanStack's "focus" is the same visibility change. Focusing a window whose
+ * tab stayed visible therefore fetches nothing either: that tab is already on
+ * the interval. A request already sent when the tab is hidden is left to
+ * finish and its answer is shown; only what would follow it - a retry, a
+ * refetch - waits. If that answer arrives after the tab is back, it is from
+ * before the return, so the query is fetched once more (`answered`).
  */
 export function createQueryClient() {
+  fetchOnlyWhileVisible();
   return new QueryClient({
+    queryCache: new QueryCache({ onSuccess: answered }),
     defaultOptions: {
-      queries: { staleTime: 15_000, retry: 1, refetchInterval: REFETCH_INTERVAL_MS, gcTime: 0 },
+      queries: {
+        persister: sent,
+        /* TanStack's own default, said out loud: with a persister it would
+           switch to "offlineFirst" and send a first attempt while the tab is
+           hidden, which counts as offline here. */
+        networkMode: "online",
+        staleTime: 15_000,
+        retry: 1,
+        refetchInterval: REFETCH_INTERVAL_MS,
+        refetchOnReconnect: refetchOnReturn,
+        refetchOnWindowFocus: false,
+        gcTime: 0,
+      },
     },
   });
+}
+
+/**
+ * Records how many returns there had been as each attempt of a query goes out.
+ *
+ * TanStack calls this around every attempt, at the moment it is sent: a first
+ * request, each retry, and one held back while the tab was hidden. Its cache
+ * events do not tell that moment - a failure is reported before the retry's
+ * delay, and a retry that is not held back sends without an event - so a
+ * return during that delay would be missed. Only the count is kept; the query
+ * function runs as it is.
+ */
+function sent<T>(queryFn: QueryFunction<T>, context: QueryFunctionContext, query: Query): T | Promise<T> {
+  askedAfter.set(query, returns);
+  return queryFn(context);
+}
+
+/**
+ * Records which return an answer stands for, and asks again when it stands for
+ * none since the latest one.
+ *
+ * Shown again, the tab reuses a request still under way rather than sending
+ * another, as TanStack does for every refetch on return. That request went out
+ * before the tab was hidden; its answer says nothing of what changed meanwhile,
+ * so the query is fetched once more as soon as it lands - by then nothing is
+ * under way to reuse.
+ */
+function answered(_data: unknown, query: Query) {
+  const asked = askedAfter.get(query) ?? returns;
+  answeredAfter.set(query, asked);
+  if (asked < returns && query.isActive()) void query.fetch().catch(() => undefined);
+}
+
+/**
+ * Every query on screen when the tab is shown again; otherwise, as TanStack
+ * does by default, only the stale ones. A query whose last answer was asked
+ * for before the latest return has not been fetched since the tab came back -
+ * including one that answered while the tab was hidden, or never answered.
+ * After a network outage alone, every answer on screen was asked for since.
+ */
+function refetchOnReturn(query: Query): boolean | "always" {
+  return (answeredAfter.get(query) ?? -1) < returns ? "always" : true;
 }
