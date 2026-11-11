@@ -2542,16 +2542,55 @@ def test_a_rescan_that_takes_an_endpoint_away_drops_that_confirmation_only(
     assert _confirmed(ready) == {"servers": "val", "lists": None}
 
 
-def test_a_rescan_that_keeps_the_endpoints_keeps_the_confirmation(
+def test_a_rescan_that_keeps_the_endpoints_ok_keeps_the_confirmation(
     ready, session_factory
 ):
-    """The set is what a confirmation covers (ADR-0068, ADR-0110): the same
-    endpoints read again keep it, whatever the new reading says of them."""
     _place(session_factory, "servers", [OK_CREATE_SERVER], confirmed_by="val")
 
-    _run_scan(session_factory, documents=[CREATE_SERVER], commit_hash=NEXT_COMMIT)
+    _run_scan(
+        session_factory,
+        documents=[OK_CREATE_SERVER, OK_LIST_SERVERS],
+        commit_hash=NEXT_COMMIT,
+    )
 
     assert _confirmed(ready) == {"servers": "val"}
+
+
+def test_a_rescan_that_leaves_an_endpoint_not_ok_drops_that_confirmation_only(
+    ready, session_factory
+):
+    """ADR-0067: only a resource whose endpoints are all ``ok`` is confirmed.
+    The set stays, but one endpoint is read as ``partial`` now."""
+    _place(session_factory, "servers", [OK_CREATE_SERVER], confirmed_by="val")
+    _place(session_factory, "lists", [OK_LIST_SERVERS], confirmed_by="val")
+
+    _run_scan(
+        session_factory,
+        documents=[CREATE_SERVER, OK_LIST_SERVERS],
+        commit_hash=NEXT_COMMIT,
+    )
+
+    assert _confirmed(ready) == {"servers": None, "lists": "val"}
+
+
+def test_activating_a_snapshot_that_reads_an_endpoint_as_not_ok_drops_it(
+    client, session_factory
+):
+    _register(session_factory)
+    _run_scan(session_factory, documents=[CREATE_SERVER, OK_LIST_SERVERS])
+    _run_scan(
+        session_factory,
+        documents=[OK_CREATE_SERVER, OK_LIST_SERVERS],
+        commit_hash=NEXT_COMMIT,
+    )
+    _place(session_factory, "servers", [OK_CREATE_SERVER], confirmed_by="val")
+    _place(session_factory, "lists", [OK_LIST_SERVERS], confirmed_by="val")
+    with session_factory() as session:
+        first = session.scalars(select(Snapshot.id).order_by(Snapshot.id)).first()
+
+    assert _activate(client, first).status_code == 200
+
+    assert _confirmed(client) == {"servers": None, "lists": "val"}
 
 
 def test_activating_a_snapshot_that_brings_back_a_hidden_endpoint_drops_it(
