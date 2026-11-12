@@ -281,7 +281,7 @@ export const de: Record<keyof typeof en, string> = {
   "gen.layout.versions": "{n} Version|{n} Versionen",
   "gen.layout.resources": "{n} Ressource|{n} Ressourcen",
   "gen.layout.confirmedOf": "{n} von {total} Ressourcen bestätigt",
-  "gen.layout.pill.empty": "nichts anzulegen",
+  "gen.layout.pill.noLayout": "noch kein Layout",
   "gen.layout.pill.confirmed": "Layout bestätigt",
   "gen.layout.pill.unconfirmed": "Bestätigung nötig",
   "gen.layout.edited": "Layout bearbeitet · am Service gespeichert",
@@ -311,7 +311,8 @@ export const de: Record<keyof typeof en, string> = {
   "gen.layout.empty": "Leere Ressource — Endpunkte hierher ziehen.",
   "gen.layout.notOk":
     "Nicht vollständig erkannt — eine Ressource mit diesem Endpunkt lässt sich nicht generieren. Er lässt sich in eine andere Ressource ziehen.",
-  "gen.layout.nothing": "Gescannt — keine Endpunkt-Dokumente gefunden. Nichts anzulegen.",
+  "gen.layout.noLayout": "Noch kein Layout. Die Ressourcen erscheinen hier, sobald der Service gruppiert ist.",
+  "gen.layout.refreshFailed": "Konnte nicht prüfen, ob dieser Service noch in Generation ist. Ihr ungespeicherter Name bleibt erhalten.",
   "gen.layout.footer": "Bestätigte Ressourcen sind für jede Ausgabe bereit.",
   "gen.spec.back": "Layout von {name}",
   "gen.spec.heading": "Generierungsspezifikation · {target}",

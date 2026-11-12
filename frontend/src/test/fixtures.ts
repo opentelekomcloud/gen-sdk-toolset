@@ -1,4 +1,5 @@
-import type { DocumentListItem, Layout, ServiceDetail, Snapshot } from "../shared/api/types";
+import { keys } from "../features/scan/api/queries";
+import type { DocumentListItem, GenerationServiceItem, Layout, ServiceDetail, Snapshot } from "../shared/api/types";
 
 /**
  * Answers of the panel API as the backend serves them, complete and typed: a
@@ -91,4 +92,17 @@ export function layout(overrides: Partial<Layout> = {}): Layout {
     no_version: [],
     ...overrides,
   };
+}
+
+/** The /generation list: one service per name, labelled with it. */
+export function generationList(...names: string[]): GenerationServiceItem[] {
+  return names.map((name) => ({ name, label: name }));
+}
+
+/**
+ * The /generation list as a seed, under the key the Generation pages check a
+ * service against: the server's list without a search (ADR-0086).
+ */
+export function listedSeed(...names: string[]): [readonly unknown[], GenerationServiceItem[]] {
+  return [keys.genList({ q: "" }), generationList(...names)];
 }

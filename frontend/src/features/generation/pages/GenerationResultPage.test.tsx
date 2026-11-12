@@ -1,7 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
-import { renderPage } from "../../../test/render";
+import { backend, FAILED, refresh, renderPage } from "../../../test/render";
+import { generationList } from "../../../test/fixtures";
+import { mockListedSeed } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../../scan/api/queries";
 import {
@@ -18,8 +20,21 @@ import { GenerationResultPage } from "./GenerationResultPage";
 import { GenerationServicePage } from "./GenerationServicePage";
 import { GenerationSpecPage } from "./GenerationSpecPage";
 
+/* Every service of the mock with endpoints is in the server's list. */
+const LISTED = mockListedSeed();
+
 /** The session the mocked provider hands back; each test sets the roles. */
 const session = vi.hoisted(() => ({ token: "" }));
+
+/* Tests drive the result page switched on, so it does not rot; the last block checks it switched off. */
+const flags = vi.hoisted(() => ({ showGenResult: true }));
+
+vi.mock("../flags", () => ({
+  SHOW_GEN_STATE: true,
+  get SHOW_GEN_RESULT() {
+    return flags.showGenResult;
+  },
+}));
 
 vi.mock("react-oidc-context", () => ({
   useAuth: () => ({
@@ -49,7 +64,7 @@ function resultPage(path = "/generation/billing-api/result/v1/v1_invoices", seed
       <GenerationResultPage />
       <Location />
     </>,
-    { path, route: "/generation/:name/result/:version/:resource", seed },
+    { path, route: "/generation/:name/result/:version/:resource", seed: [LISTED, ...seed] },
   );
 }
 
@@ -64,7 +79,7 @@ function panel(path: string, seed: [readonly unknown[], unknown][] = []) {
       </Routes>
       <Location />
     </>,
-    { path, route: "*", seed },
+    { path, route: "*", seed: [LISTED, ...seed] },
   );
 }
 
@@ -667,3 +682,59 @@ describe("the way in and out", () => {
   });
 });
 
+describe("the services the result opens for (ADR-0086)", () => {
+  const LIST = "/api/generation/services";
+  const PATH = "/generation/billing-api/result/v1/v1_invoices";
+  const ROUTE = "/generation/:name/result/:version/:resource";
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows a first load of the list that failed as a failure with Retry, not as Page not found", async () => {
+    backend({ [LIST]: FAILED });
+    renderPage(<GenerationResultPage />, { path: PATH, route: ROUTE });
+
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+    expect(screen.queryByText("Page not found.")).toBeNull();
+  });
+
+  it("turns into Page not found once a refresh no longer lists the service, and a failed refresh into a failure", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api") };
+    backend(answers);
+    const { client } = renderPage(<GenerationResultPage />, { path: PATH, route: ROUTE });
+    expect(await screen.findByText("Live check")).toBeInTheDocument();
+
+    answers[LIST] = FAILED;
+    await refresh(client, keys.genList());
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+    expect(screen.queryByText("Page not found.")).toBeNull();
+
+    answers[LIST] = generationList("customer-core");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+  });
+});
+
+describe("switched off (ADR-0086)", () => {
+  beforeEach(() => {
+    flags.showGenResult = false;
+  });
+  afterEach(() => {
+    flags.showGenResult = true;
+  });
+
+  it("shows Page not found for a service of the list, where the resource has a job", async () => {
+    resultPage("/generation/billing-api/result/v1/v1_invoices");
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation");
+  });
+
+  it("shows Page not found on any target, and leads back to the list", async () => {
+    resultPage("/generation/billing-api/result/v1/v1_invoices?target=ansible");
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation");
+  });
+});

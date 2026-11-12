@@ -18,7 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router";
-import { useGenerationResources, useGenerationServices, useGenerationTargets } from "../data/queries";
+import { useGenerationResources, useGenerationTargets, useInGeneration } from "../data/queries";
 import { useEditLayout, useLayoutEdited, type LayoutEdit } from "../data/mutations";
 import type { GenJobStatus, GenResource, GenTarget } from "../data/types";
 import { LayoutBadge } from "../components/LayoutBadge";
@@ -26,6 +26,7 @@ import { PageNotFound } from "../components/PageNotFound";
 import { lockingJob, mergedEverywhere } from "../lib/layout";
 import { listPath, servicePath } from "../lib/paths";
 import {
+  BlockFailed,
   RefusalBanner,
   ServiceBackLink,
   ServiceLoadFailed,
@@ -305,7 +306,7 @@ export function GenerationLayoutPage() {
   const { t } = useI18n();
   const { canWrite } = useSession();
   const targets = useGenerationTargets();
-  const services = useGenerationServices();
+  const access = useInGeneration(name);
   const resources = useGenerationResources(name);
   const edit = useEditLayout(name);
   /* The prototype's note next to the title: the layout of this service was edited in this session. */
@@ -324,14 +325,19 @@ export function GenerationLayoutPage() {
       back={listTo}
       backState={fromList}
       onRetry={() => {
-        for (const q of [targets, services, resources]) if (q.isError) void q.refetch();
+        if (access.failed) access.retry();
+        for (const q of [targets, resources]) if (q.isError) void q.refetch();
       }}
     />
   );
 
-  if (targets.isPending || services.isPending) return loading;
-  if (targets.isError || services.isError) return failed;
-  if (!services.data.some((s) => s.name === name)) {
+  /* A name being typed is an unsaved edit. A failed refresh of the list does
+     not replace the page under it, which stays with a warning instead
+     (ADR-0081); the page was open, so the service was in the list. */
+  const keepEdit = access.failed && renaming !== null;
+  if (targets.isPending || access.pending) return loading;
+  if (targets.isError || (access.failed && !keepEdit)) return failed;
+  if (!keepEdit && !access.listed) {
     return <PageNotFound back={<ServiceBackLink to={listTo} state={fromList} />} />;
   }
   if (resources.isPending) return loading;
@@ -345,7 +351,7 @@ export function GenerationLayoutPage() {
   const endpoints = all.reduce((n, r) => n + r.endpoints.length, 0);
   const confirmed = all.filter((r) => r.confirmedBy != null).length;
   const pill = !all.length
-    ? { cls: "border-gray-200 bg-gray-50 text-gray-400", label: t("gen.layout.pill.empty") }
+    ? { cls: "border-gray-200 bg-gray-50 text-gray-400", label: t("gen.layout.pill.noLayout") }
     : confirmed === all.length
       ? { cls: "border-emerald-200 bg-emerald-50 text-emerald-700", label: t("gen.layout.pill.confirmed") }
       : { cls: "border-amber-200 bg-amber-50 text-amber-800", label: t("gen.layout.pill.unconfirmed") };
@@ -386,6 +392,12 @@ export function GenerationLayoutPage() {
         </div>
         {edited && <span className="text-xs text-gray-400">{t("gen.layout.edited")}</span>}
       </div>
+
+      {keepEdit && (
+        <div className="mb-4">
+          <BlockFailed query={access.query} label={t("gen.layout.refreshFailed")} loadingLabel={t("service.loading")} />
+        </div>
+      )}
 
       {edit.isError && (
         <RefusalBanner
@@ -479,7 +491,7 @@ export function GenerationLayoutPage() {
 
       {versions.length === 0 && (
         <div className="mb-4 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 py-14 text-center text-sm text-gray-400">
-          {t("gen.layout.nothing")}
+          {t("gen.layout.noLayout")}
         </div>
       )}
 

@@ -13,6 +13,7 @@ import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
 import { LayoutBadge } from "../components/LayoutBadge";
 import { PageNotFound } from "../components/PageNotFound";
+import { SHOW_GEN_RESULT } from "../flags";
 import { holdOf, undecided } from "../lib/layout";
 import { listPath, servicePath, type FromSpec } from "../lib/paths";
 import {
@@ -265,7 +266,15 @@ export function GenerationSpecPage() {
               <button
                 type="button"
                 disabled={hold != null || open > 0 || generate.isPending}
-                onClick={() => generate.mutate(target.id, { onSuccess: () => navigate(resultTo, { state: toResult }) })}
+                onClick={() =>
+                  generate.mutate(target.id, {
+                    /* The result page is PageNotFound while it is switched off
+                       (ADR-0086): the spec stays, its job in place of Generate. */
+                    onSuccess: () => {
+                      if (SHOW_GEN_RESULT) navigate(resultTo, { state: toResult });
+                    },
+                  })
+                }
                 className="inline-flex items-center gap-1.5 rounded border border-transparent bg-brand px-3.5 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:text-gray-300 disabled:hover:opacity-100"
               >
                 <Play size={14} /> {t("gen.spec.generate", { target: target.label })}

@@ -14,17 +14,18 @@ import {
 import { useLocation, useParams, useSearchParams } from "react-router";
 import {
   useGenerationResources,
-  useGenerationServices,
   useGenerationSpec,
   useGenerationTargets,
+  useInGeneration,
   useOtcSettings,
 } from "../data/queries";
 import { useLiveCall, useRefreshPullRequest, useStartGeneration } from "../data/mutations";
 import type { GenJobStatus, GenLiveResponse, GenOperation, GenState } from "../data/types";
 import { HoldReason } from "../components/HoldReason";
 import { PageNotFound } from "../components/PageNotFound";
+import { SHOW_GEN_RESULT } from "../flags";
 import { holdOf, undecided } from "../lib/layout";
-import { listPath, servicePath, type FromSpec } from "../lib/paths";
+import { listPath, servicePath, type FromList, type FromSpec } from "../lib/paths";
 import { pathParams } from "../lib/uri";
 import { GEN_STATE_CLS, genStateKey } from "../styles";
 import { StatusPill } from "../../scan/components/StatusPill";
@@ -311,6 +312,18 @@ function LiveOperation({
 }
 
 /**
+ * The result page: PageNotFound for any service while it is switched off
+ * (`SHOW_GEN_RESULT`, ADR-0086), the way back leading to the list.
+ */
+export function GenerationResultPage() {
+  const { state } = useLocation();
+  if (SHOW_GEN_RESULT) return <ResultPage />;
+  /* The list's state, when the card was opened from it, goes back with the way back; the mark of the spec does not. */
+  const fromList: Partial<FromList> = { listSearch: (state as Partial<FromSpec> | null)?.listSearch };
+  return <PageNotFound back={<ServiceBackLink to={listPath(fromList)} state={fromList} />} />;
+}
+
+/**
  * Result of one resource's generation on one target: its job, and - once the
  * job has opened a pull request - the pull request with its state on GitHub,
  * which can be picked up now rather than at the next scheduled poll, and a live
@@ -326,7 +339,7 @@ function LiveOperation({
  * address; the way back leads to the spec when the result was opened from it,
  * and to the card otherwise, as in the prototype.
  */
-export function GenerationResultPage() {
+function ResultPage() {
   const { name = "", version = "", resource: id = "" } = useParams();
   const [searchParams] = useSearchParams();
   const { state: navState } = useLocation();
@@ -335,7 +348,7 @@ export function GenerationResultPage() {
   const { t, locale } = useI18n();
   const { canWrite } = useSession();
   const targets = useGenerationTargets();
-  const services = useGenerationServices();
+  const access = useInGeneration(name);
   const resources = useGenerationResources(name);
   const spec = useGenerationSpec(name, id);
   const settings = useOtcSettings();
@@ -355,14 +368,15 @@ export function GenerationResultPage() {
       back={listTo}
       backState={fromList}
       onRetry={() => {
-        for (const q of [targets, services, resources, spec, settings]) if (q.isError) void q.refetch();
+        if (access.failed) access.retry();
+        for (const q of [targets, resources, spec, settings]) if (q.isError) void q.refetch();
       }}
     />
   );
 
-  if (targets.isPending || services.isPending) return loading;
-  if (targets.isError || services.isError) return failed;
-  if (!services.data.some((s) => s.name === name)) {
+  if (targets.isPending || access.pending) return loading;
+  if (targets.isError || access.failed) return failed;
+  if (!access.listed) {
     return <PageNotFound back={<ServiceBackLink to={listTo} state={fromList} />} />;
   }
   if (resources.isPending) return loading;

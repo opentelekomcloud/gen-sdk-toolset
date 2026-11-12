@@ -1,12 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
-import { renderPage } from "../../../test/render";
+import { backend, FAILED, later, refresh, renderPage } from "../../../test/render";
+import { generationList, listedSeed } from "../../../test/fixtures";
+import { mockListedSeed } from "../../../test/generationMock";
 import { keys } from "../../scan/api/queries";
 import { generationResources } from "../data/mock";
-import type { GenEndpoint, GenJob, GenJobStatus, GenResource, GenService, GenTarget } from "../data/types";
+import type { GenEndpoint, GenJob, GenJobStatus, GenResource, GenTarget } from "../data/types";
 import { GenerationListPage } from "./GenerationListPage";
 import { GenerationServicePage } from "./GenerationServicePage";
+
+/* Every service of the mock with endpoints is in the server's list. */
+const LISTED = mockListedSeed();
 
 /** Where the page navigated to. */
 function Location() {
@@ -20,14 +25,42 @@ function cardPage(path: string, seed?: [readonly unknown[], unknown][]) {
       <GenerationServicePage />
       <Location />
     </>,
-    { path, route: "/generation/:name", seed },
+    { path, route: "/generation/:name", seed: [LISTED, ...(seed ?? [])] },
   );
 }
 
 const location = () => screen.getByTestId("location").textContent;
 
-/* The way back carries the filter chip, which is behind the flag. */
-vi.mock("../flags", () => ({ SHOW_GEN_STATE: true }));
+/* The way back carries the filter chip, which is behind the flag; the job tags lead to the result
+   only while that page is switched on, which the tests drive unless they say otherwise. */
+const flags = vi.hoisted(() => ({ showGenResult: true }));
+vi.mock("../flags", () => ({
+  SHOW_GEN_STATE: true,
+  get SHOW_GEN_RESULT() {
+    return flags.showGenResult;
+  },
+}));
+
+/* A layout that does not load, for the test that says so. */
+const fail = vi.hoisted(() => ({ resources: false }));
+
+vi.mock("../data/mock", async (importOriginal) => {
+  const mock = await importOriginal<typeof import("../data/mock")>();
+  return {
+    ...mock,
+    generationResources: (service: string) => {
+      if (fail.resources) throw new Error("layout store unavailable");
+      return mock.generationResources(service);
+    },
+  };
+});
+
+afterEach(() => {
+  flags.showGenResult = true;
+  fail.resources = false;
+  vi.unstubAllGlobals();
+});
+
 const targetButton = (label: string) => screen.getByRole("button", { name: new RegExp(`^${label}`) });
 
 describe("the billing-api card on the in-memory mock", () => {
@@ -285,7 +318,7 @@ describe("the way back to the list", () => {
         </Routes>
         <Location />
       </>,
-      { path, route: "*" },
+      { path, route: "*", seed: [LISTED] },
     );
   }
 
@@ -323,11 +356,11 @@ describe("the way back to the list", () => {
 });
 
 describe("other services on the mock", () => {
-  it("says so when nothing is laid out", async () => {
+  it("does not open a service without endpoints, which the server never lists (ADR-0087)", async () => {
     cardPage("/generation/tariff-catalog");
 
-    expect(await screen.findByText("Nothing laid out for this service yet.")).toBeInTheDocument();
-    expect(targetButton("Python SDK")).toHaveTextContent("no resources");
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "tariff-catalog" })).toBeNull();
   });
 
   it("does not open a service that is not in Generation", async () => {
@@ -344,14 +377,6 @@ describe("states the mock does not hold today", () => {
     { id: "ansible", label: "Ansible modules", live: false, base: "python", repo: "opentelekomcloud/ansible-collection-cloud" },
     { id: "terraform", label: "Terraform provider", live: false, base: null, repo: "opentelekomcloud/terraform-provider" },
   ];
-  const SERVICE: GenService = {
-    name: "svc",
-    targets: {
-      python: { state: "failed", merged: 1, total: 8 },
-      ansible: { state: "not_generated", merged: 0, total: 8 },
-      terraform: { state: "not_generated", merged: 0, total: 8 },
-    },
-  };
   /** `n` endpoints, the last `notOk` of them with a document not recognized in full. */
   const eps = (id: string, n: number, notOk = 0): GenEndpoint[] =>
     Array.from({ length: n }, (_, i) => ({
@@ -394,7 +419,7 @@ describe("states the mock does not hold today", () => {
   ];
   const SEED: [readonly unknown[], unknown][] = [
     [keys.genTargets, TARGETS],
-    [keys.genServices, [SERVICE]],
+    listedSeed("svc"),
     [keys.genResources("svc"), RESOURCES],
   ];
 
@@ -443,10 +468,18 @@ describe("states the mock does not hold today", () => {
     expect(screen.getAllByText("Terraform provider not connected yet")).toHaveLength(4);
   });
 
+  it("fills the coverage of each target from the resources merged there", async () => {
+    cardPage("/generation/svc", SEED);
+
+    expect(await screen.findByRole("heading", { name: "svc" })).toBeInTheDocument();
+    expect(targetButton("Python SDK")).toHaveTextContent("1 / 7 merged");
+  });
+
   it("says the service did not load, rather than showing it empty", async () => {
+    fail.resources = true;
     cardPage("/generation/ghost", [
       [keys.genTargets, TARGETS],
-      [keys.genServices, [{ ...SERVICE, name: "ghost" }]],
+      listedSeed("ghost"),
     ]);
 
     expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
@@ -455,5 +488,117 @@ describe("states the mock does not hold today", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+  });
+});
+
+describe("the services the card opens for (ADR-0086)", () => {
+  const LIST = "/api/generation/services";
+
+  it("opens for a service of the server's list that the mock has no layout for", async () => {
+    cardPage("/generation/opentelekomcloud-docs%2Fecs", [listedSeed("opentelekomcloud-docs/ecs")]);
+
+    expect(await screen.findByRole("heading", { name: "opentelekomcloud-docs/ecs" })).toBeInTheDocument();
+    expect(screen.getByText("Nothing laid out for this service yet.")).toBeInTheDocument();
+    expect(targetButton("Python SDK")).toHaveTextContent("no resources");
+  });
+
+  it("does not open a service of the mock that the server's list does not hold", async () => {
+    cardPage("/generation/billing-api", [listedSeed("customer-core")]);
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "billing-api" })).toBeNull();
+  });
+
+  it("checks against the whole list, not one a search on the list page narrowed", async () => {
+    const requested: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      requested.push(String(input));
+      return new Response(JSON.stringify(generationList("customer-core")));
+    });
+    // the list page searched "bill" and holds billing-api; the whole list does not
+    renderPage(<GenerationServicePage />, {
+      path: "/generation/billing-api",
+      route: "/generation/:name",
+      seed: [[keys.genList({ q: "bill" }), generationList("billing-api")]],
+    });
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(requested).toEqual([LIST]);
+  });
+
+  it("joins a refresh already asking when Retry is clicked, rather than asking a second time", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api") };
+    const api = backend(answers);
+    const { client } = renderPage(<GenerationServicePage />, { path: "/generation/billing-api", route: "/generation/:name" });
+    expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
+    // a refresh fails over the list already shown: TanStack keeps that answer, which a cancelling refetch would act on
+    answers[LIST] = FAILED;
+    await refresh(client, keys.genList());
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+
+    const pending = later();
+    answers[LIST] = pending.arrived;
+    await act(async () => {
+      void client.refetchQueries({ queryKey: keys.genList() });
+    });
+    expect(api.calls(LIST)).toBe(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    pending.send(generationList("billing-api"));
+
+    expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
+    expect(api.calls(LIST)).toBe(3);
+  });
+
+  it("turns into the page a direct address shows once a refresh no longer lists the service", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api") };
+    backend(answers);
+    const { client } = renderPage(<GenerationServicePage />, { path: "/generation/billing-api", route: "/generation/:name" });
+    expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
+
+    // excluded by someone else, or out of the list since its active snapshot changed
+    answers[LIST] = generationList("customer-core");
+    await refresh(client, keys.genList());
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation");
+  });
+
+  it("shows a failed refresh of the list as a failure with Retry, not as Page not found", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api") };
+    backend(answers);
+    const { client } = renderPage(<GenerationServicePage />, { path: "/generation/billing-api", route: "/generation/:name" });
+    expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
+
+    answers[LIST] = FAILED;
+    await refresh(client, keys.genList());
+
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+    expect(screen.queryByText("Page not found.")).toBeNull();
+    // the answer before the failure is not shown as current either
+    expect(screen.queryByRole("heading", { name: "billing-api" })).toBeNull();
+
+    answers[LIST] = generationList("billing-api");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
+  });
+
+  it("shows a first load of the list that failed as a failure with Retry, not as Page not found", async () => {
+    backend({ [LIST]: FAILED });
+    renderPage(<GenerationServicePage />, { path: "/generation/billing-api", route: "/generation/:name" });
+
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+    expect(screen.queryByText("Page not found.")).toBeNull();
+  });
+});
+
+describe("with the result page switched off (ADR-0086)", () => {
+  it("shows each job as a tag that leads nowhere, as its result is not found", async () => {
+    flags.showGenResult = false;
+    cardPage("/generation/billing-api");
+
+    expect(await screen.findByText("in review · PR 131")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "in review · PR 131" })).toBeNull();
   });
 });

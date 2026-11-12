@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
 import { renderPage } from "../../../test/render";
+import { mockListedSeed } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
 import {
   chooseType,
@@ -17,11 +18,21 @@ import { GenerationListPage } from "./GenerationListPage";
 import { GenerationServicePage } from "./GenerationServicePage";
 import { GenerationSpecPage } from "./GenerationSpecPage";
 
+/* Every service of the mock with endpoints is in the server's list. */
+const LISTED = mockListedSeed();
+
 /** The session the mocked provider hands back; each test sets the roles. */
 const session = vi.hoisted(() => ({ token: "" }));
 
-/* These tests go through the prototype's list, which is behind the flag. */
-vi.mock("../flags", () => ({ SHOW_GEN_STATE: true }));
+/* These tests go through the prototype's list, which is behind the flag, and Generate leads to the
+   result while that page is switched on, which the tests drive unless they say otherwise. */
+const flags = vi.hoisted(() => ({ showGenResult: true }));
+vi.mock("../flags", () => ({
+  SHOW_GEN_STATE: true,
+  get SHOW_GEN_RESULT() {
+    return flags.showGenResult;
+  },
+}));
 
 vi.mock("react-oidc-context", () => ({
   useAuth: () => ({
@@ -786,7 +797,7 @@ describe("the way in and out", () => {
         </Routes>
         <Location />
       </>,
-      { path, route: "*" },
+      { path, route: "*", seed: [LISTED] },
     );
   }
 
@@ -910,5 +921,23 @@ describe("the way in and out", () => {
       "href",
       "/generation?filter=review&q=billing",
     );
+  });
+});
+
+describe("with the result page switched off (ADR-0086)", () => {
+  afterEach(() => {
+    flags.showGenResult = true;
+  });
+
+  it("stays on the spec after Generate, with the job in its place and no way to a result", async () => {
+    flags.showGenResult = false;
+    confirmResource("billing-api", "v2_invoices", "valeriia");
+    specPage("/generation/billing-api/spec/v2/v2_invoices");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Generate for Python SDK" }));
+
+    expect(await screen.findByText("generating")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "generating" })).toBeNull();
+    expect(location()).toBe("/generation/billing-api/spec/v2/v2_invoices");
   });
 });
