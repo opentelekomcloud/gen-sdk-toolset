@@ -279,7 +279,7 @@ export const en = {
   "gen.layout.versions": "{n} version|{n} versions",
   "gen.layout.resources": "{n} resource|{n} resources",
   "gen.layout.confirmedOf": "{n} of {total} resources confirmed",
-  "gen.layout.pill.empty": "nothing to lay out",
+  "gen.layout.pill.noLayout": "no layout yet",
   "gen.layout.pill.confirmed": "layout confirmed",
   "gen.layout.pill.unconfirmed": "needs confirmation",
   "gen.layout.edited": "Layout edited · saved on the service",
@@ -308,7 +308,8 @@ export const en = {
   "gen.layout.empty": "Empty resource — drag endpoints here.",
   "gen.layout.notOk":
     "Not recognized in full — a resource holding this endpoint cannot be generated. It can be dragged to another resource.",
-  "gen.layout.nothing": "Scanned — no endpoint documents found. Nothing to lay out.",
+  "gen.layout.noLayout": "No layout yet. Its resources appear here once the service is grouped.",
+  "gen.layout.refreshFailed": "Could not check that this service is still in Generation. Your unsaved name is kept.",
   "gen.layout.footer": "Confirmed resources are ready for every edition.",
   "gen.spec.back": "{name} layout",
   "gen.spec.heading": "Generation spec · {target}",

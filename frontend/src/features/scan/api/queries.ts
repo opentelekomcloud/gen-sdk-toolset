@@ -139,22 +139,27 @@ export interface Retryable {
 }
 
 /**
+ * A Retry: it asks the query again, and joins a refresh already asking rather
+ * than cancelling it for a second request - the backend has done the work for
+ * the first, and refreshing may add no requests beyond the periodic one
+ * (ADR-0084, ADR-0085). TanStack's own default would cancel and ask again.
+ */
+export function retryJoining(query: Retryable): Promise<unknown> {
+  return query.refetch({ cancelRefetch: false });
+}
+
+/**
  * A Retry the user asked for, and whether it is still under way.
  *
  * Only the click counts. The periodic refresh keeps asking for a query that
  * failed, every 10 s; shown as "loading", it would take the failure and its
  * Retry off the screen on each round and announce the failure again.
- *
- * A Retry clicked while that refresh is already asking joins it rather than
- * cancelling it for a second request: the backend has done the work for the
- * first, and refreshing may add no requests beyond the periodic one (ADR-0084,
- * ADR-0085). TanStack's own default would cancel and ask again.
  */
 export function useRetry(query: Retryable) {
   const [retrying, setRetrying] = useState(false);
   const retry = () => {
     setRetrying(true);
-    void query.refetch({ cancelRefetch: false }).finally(() => setRetrying(false));
+    void retryJoining(query).finally(() => setRetrying(false));
   };
   return { retrying, retry };
 }

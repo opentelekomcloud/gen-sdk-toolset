@@ -1,6 +1,6 @@
 import { Folder, Play } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { useGenerationResources, useGenerationServices, useGenerationTargets } from "../data/queries";
+import { useGenerationResources, useGenerationTargets, useInGeneration } from "../data/queries";
 import type { GenResource, GenTarget } from "../data/types";
 import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
@@ -77,7 +77,7 @@ export function GenerationServicePage() {
   const navigate = useNavigate();
   const { t } = useI18n();
   const targets = useGenerationTargets();
-  const services = useGenerationServices();
+  const access = useInGeneration(name);
   const resources = useGenerationResources(name);
 
   const listTo = listPath(fromList);
@@ -88,15 +88,15 @@ export function GenerationServicePage() {
       back={listTo}
       backState={fromList}
       onRetry={() => {
-        for (const q of [targets, services, resources]) if (q.isError) void q.refetch();
+        if (access.failed) access.retry();
+        for (const q of [targets, resources]) if (q.isError) void q.refetch();
       }}
     />
   );
 
-  if (targets.isPending || services.isPending) return loading;
-  if (targets.isError || services.isError) return failed;
-  const service = services.data.find((s) => s.name === name);
-  if (!service) return <PageNotFound back={back} />;
+  if (targets.isPending || access.pending) return loading;
+  if (targets.isError || access.failed) return failed;
+  if (!access.listed) return <PageNotFound back={back} />;
   if (resources.isPending) return loading;
   if (resources.isError) return failed;
 
@@ -127,7 +127,8 @@ export function GenerationServicePage() {
       <div className="mb-2.5 flex flex-wrap gap-2">
         {targets.data.map((x) => {
           const on = x.id === target.id;
-          const { merged, total } = service.targets[x.id];
+          const total = resources.data.length;
+          const merged = resources.data.filter((r) => r.jobs[x.id]?.status === "merged").length;
           const xBase = labelOf(x.base);
           const sub = !x.live
             ? xBase
