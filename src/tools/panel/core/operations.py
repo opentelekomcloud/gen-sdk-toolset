@@ -68,14 +68,22 @@ def _identifier(parts: tuple[str, ...]) -> str | None:
     return name + "_" if keyword.iskeyword(name) else name
 
 
+# Plurals the suffix rules below get wrong.
+_SINGULAR = {"aliases": "alias", "caches": "cache"}
+
+
 def _singular(word: str) -> str:
-    lower = word.lower()
+    """Singular of the last word of a URI segment, by its suffix."""
+    head, tail = re.fullmatch(r"(.*[-_])?(.*)", word).groups(default="")
+    lower = tail.lower()
+    if lower in _SINGULAR:
+        return head + _SINGULAR[lower]
     if lower.endswith("ies"):
-        return word[:-3] + "y"
-    if lower.endswith(("sses", "xes", "shes")):
-        return word[:-2]
+        return head + tail[:-3] + "y"
+    if lower.endswith(("sses", "xes", "shes", "ches")):
+        return head + tail[:-2]
     if lower.endswith("s") and not lower.endswith(("ss", "us", "sis")):
-        return word[:-1]
+        return head + tail[:-1]
     return word
 
 
@@ -134,19 +142,35 @@ def propose_operations(endpoints: Sequence[Endpoint]) -> list[SpecOperation]:
             for path in paths:
                 names[path], missing[path] = None, MissingName.same_call
 
+    # PATCH next to PUT on one item: both would be "update".
+    puts = {
+        (segments[path], names[path])
+        for path in names
+        if methods[path] is HttpMethod.PUT and kinds[path] is OperationKind.update
+    }
+    for path, name in names.items():
+        if (
+            name
+            and methods[path] is HttpMethod.PATCH
+            and kinds[path] is OperationKind.update
+            and (segments[path], name) in puts
+        ):
+            names[path] = "patch" + name.removeprefix(OperationKind.update.value)
+
     for paths in _same_name(names):
         several_methods = len({methods[path] for path in paths}) > 1
         has_base = any(kinds[path] is not OperationKind.custom for path in paths)
-        for path in paths:
-            method, name = methods[path], names[path]
-            if kinds[path] is OperationKind.custom:
-                if several_methods or has_base:
-                    names[path] = f"{method.value.lower()}_{name}"
-            elif several_methods and method is HttpMethod.PATCH:
-                names[path] = "patch" + name.removeprefix(OperationKind.update.value)
+        if several_methods or has_base:
+            for path in paths:
+                if kinds[path] is OperationKind.custom:
+                    names[path] = f"{methods[path].value.lower()}_{names[path]}"
+
+    # A base name gives way only to another base name.
     for paths in _same_name(names):
+        base = [path for path in paths if kinds[path] is not OperationKind.custom]
         for path in paths:
-            names[path], missing[path] = None, MissingName.name_conflict
+            if kinds[path] is OperationKind.custom or len(base) > 1:
+                names[path], missing[path] = None, MissingName.name_conflict
 
     return [
         SpecOperation(path, kinds[path], names[path], missing.get(path))

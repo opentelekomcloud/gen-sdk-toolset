@@ -145,7 +145,19 @@ def test_post_on_an_item_is_custom():
         ("mailboxes", "delete_mailbox"),
         ("status", "delete_status"),
         ("diagnosis", "delete_diagnosis"),
+        ("autosearch-parameter-analysis", "delete_autosearch_parameter_analysis"),
         ("apis", "delete_api"),
+        ("switches", "delete_switch"),
+        ("caches", "delete_cache"),
+        ("aliases", "delete_alias"),
+        ("ip-aliases", "delete_ip_alias"),
+        ("databases", "delete_database"),
+        ("releases", "delete_release"),
+        ("gateway-responses", "delete_gateway_response"),
+        ("ipaddresses", "delete_ipaddress"),
+        ("business", "delete_business"),
+        ("switch-status", "delete_switch_status"),
+        ("metadata", "delete_metadata"),
     ],
 )
 def test_item_operation_names_its_collection_in_the_singular(collection, name):
@@ -267,6 +279,35 @@ def test_patch_next_to_put_on_one_item_is_named_patch():
     docs = [_doc(PUT, pod), _doc(PATCH, pod), _doc(PUT, tag), _doc(PATCH, tag)]
     assert _names(*docs) == ["update", "patch", "update_tag", "patch_tag"]
     assert {op.kind for op in propose_operations(docs)} == {OperationKind.update}
+
+
+def test_patch_without_a_put_on_its_item_stays_update():
+    rules = "/v1/rules"
+    assert _names(
+        _doc(PATCH, f"{rules}/{{id}}"),
+        _doc(POST, f"{rules}/update"),
+        _doc(PUT, f"{rules}/{{id}}/tags/{{tag}}"),
+    ) == ["update", "post_update", "update_tag"]
+
+
+def test_custom_name_gives_way_to_the_final_base_name():
+    rules = "/v1/rules"
+    assert _names(
+        _doc(PUT, f"{rules}/{{id}}"),
+        _doc(PATCH, f"{rules}/{{id}}"),
+        _doc(POST, f"{rules}/patch"),
+    ) == ["update", "patch", "post_patch"]
+
+
+def test_base_name_stays_when_a_prefixed_custom_name_reaches_it():
+    policy = "/v1/servers/{id}/policy"
+    docs = [
+        _doc(DELETE, f"{policy}/{{policy_id}}"),
+        _doc(DELETE, policy),
+        _doc(PUT, policy),
+    ]
+    assert _names(*docs) == ["delete_policy", None, "put_policy"]
+    assert _missing(*docs) == [None, MissingName.name_conflict, None]
 
 
 def test_names_that_still_coincide_are_left_empty():
