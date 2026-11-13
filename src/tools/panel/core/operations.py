@@ -9,8 +9,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-from pydantic.alias_generators import to_snake
-
 from tools.panel.core.grouping import uri_segments
 from tools.shared.ir import Endpoint, HttpMethod
 
@@ -58,8 +56,14 @@ class SpecOperation:
     missing_name: MissingName | None = None
 
 
+_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+
 def _identifier(parts: tuple[str, ...]) -> str | None:
-    words = [re.sub("[^a-z0-9]+", "_", to_snake(part)).strip("_") for part in parts]
+    words = [
+        re.sub("[^a-z0-9]+", "_", _CAMEL_BOUNDARY.sub("_", part).lower()).strip("_")
+        for part in parts
+    ]
     name = "_".join(filter(None, words))
     if not name:
         return None
@@ -157,6 +161,7 @@ def propose_operations(endpoints: Sequence[Endpoint]) -> list[SpecOperation]:
         ):
             names[path] = "patch" + name.removeprefix(OperationKind.update.value)
 
+    prefixed = set()
     for paths in _same_name(names):
         several_methods = len({methods[path] for path in paths}) > 1
         has_base = any(kinds[path] is not OperationKind.custom for path in paths)
@@ -164,12 +169,15 @@ def propose_operations(endpoints: Sequence[Endpoint]) -> list[SpecOperation]:
             for path in paths:
                 if kinds[path] is OperationKind.custom:
                     names[path] = f"{methods[path].value.lower()}_{names[path]}"
+                    prefixed.add(path)
 
-    # A base name gives way only to another base name.
+    # A base name gives way only to a base name, a name as written in the URI
+    # only to a base name or another such name.
     for paths in _same_name(names):
         base = [path for path in paths if kinds[path] is not OperationKind.custom]
+        keep = base or [path for path in paths if path not in prefixed]
         for path in paths:
-            if kinds[path] is OperationKind.custom or len(base) > 1:
+            if path not in keep or len(keep) > 1:
                 names[path], missing[path] = None, MissingName.name_conflict
 
     return [

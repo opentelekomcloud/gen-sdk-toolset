@@ -148,6 +148,7 @@ def test_post_on_an_item_is_custom():
         ("autosearch-parameter-analysis", "delete_autosearch_parameter_analysis"),
         ("apis", "delete_api"),
         ("switches", "delete_switch"),
+        ("l7policies", "delete_l7policy"),
         ("caches", "delete_cache"),
         ("aliases", "delete_alias"),
         ("ip-aliases", "delete_ip_alias"),
@@ -190,6 +191,8 @@ def test_custom_operation_on_the_resource_segment_takes_its_name():
         ("rolling-restart", "rolling_restart"),
         ("resizeVolume", "resize_volume"),
         ("2fa", "op_2fa"),
+        ("floatingips_v6", "floatingips_v6"),
+        ("OS-FEDERATION", "os_federation"),
         ("import", "import_"),
     ],
 )
@@ -307,6 +310,17 @@ def test_base_name_stays_when_a_prefixed_custom_name_reaches_it():
         _doc(PUT, policy),
     ]
     assert _names(*docs) == ["delete_policy", None, "put_policy"]
+    assert _missing(*docs) == [None, MissingName.name_conflict, None]
+
+
+def test_name_as_written_stays_when_a_prefixed_name_reaches_it():
+    instance = "/v3/{project_id}/instances/{instance_id}"
+    docs = [
+        _doc(GET, f"{instance}/extensions"),
+        _doc(DELETE, f"{instance}/extensions"),
+        _doc(DELETE, f"{instance}/delete-extensions"),
+    ]
+    assert _names(*docs) == ["get_extensions", None, "delete_extensions"]
     assert _missing(*docs) == [None, MissingName.name_conflict, None]
 
 
