@@ -2,13 +2,21 @@ import type { GenTarget } from "../data/types";
 
 /**
  * Address of a Generation page of one service: its card, or `rest` below it
+ * (`layout`). The repo is one segment, slashes and all (ADR-0063). `target`,
+ * the one the address names, rides along as it is; none is left out.
+ */
+export const generationPath = (name: string, rest: string[] = [], target: string | null = null) =>
+  `/${["generation", name, ...rest].map(encodeURIComponent).join("/")}${
+    target ? `?target=${encodeURIComponent(target)}` : ""
+  }`;
+
+/**
+ * Address of a Generation page of one service: its card, or `rest` below it
  * (`layout`, `spec/v1/v1_invoices`). The target rides along in the address; the
  * default target is left out, so a card opens as plain `/generation/<name>`.
  */
 export const servicePath = (name: string, target: GenTarget, defaultTarget: GenTarget, rest: string[] = []) =>
-  `/${["generation", name, ...rest].map(encodeURIComponent).join("/")}${
-    target.id === defaultTarget.id ? "" : `?target=${target.id}`
-  }`;
+  generationPath(name, rest, target.id === defaultTarget.id ? null : target.id);
 
 /** Navigation state of a card opened from the list: the list's query, so the way back returns to it as it was left. */
 export interface FromList {
