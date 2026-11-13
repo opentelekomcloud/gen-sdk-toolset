@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import { renderPage, stubEmptyApi } from "../../../test/render";
+import { serviceDetail, snapshot } from "../../../test/fixtures";
 import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../api/queries";
-import type { ServiceDetail } from "../../../shared/api/types";
 import { ServicePage } from "./ServicePage";
 import { Header } from "../../../components/Header";
 import { ExcludedSection } from "../excluded/ExcludedSection";
@@ -24,45 +24,16 @@ vi.mock("react-oidc-context", () => ({
 const NAME = "opentelekomcloud-docs/ecs";
 
 /** Enough of a service for the page to render its controls. */
-const SERVICE = {
+const SERVICE = serviceDetail({
   name: NAME,
-  label: "ecs",
-  scan_status: "scanned",
-  documents: 2,
-  read_in_full: 2,
-  docs_ok: 100,
-  scanner_version: "0.1.0",
-  scanned_at: "2026-08-01T10:00:00Z",
   docs_changed: true,
   /* A reason is what makes the rescan button render at all: without one the
      page shows "up to date" and there would be nothing for a role to hide. */
   rescan_reason: "drift",
-  overall_breakdown: { ok: 2 },
-  unread_breakdown: {},
-  unread_documents: 0,
-  rows_unrecognized: 0,
-  section_rollup: {},
-  error: null,
-  error_at: null,
-  active_snapshot: {
-    id: 3,
-    commit_hash: "a".repeat(40),
-    scanner_version: "0.1.0",
-    last_scanned_at: "2026-08-01T10:00:00Z",
-    documents_total: 2,
-    docs_ok: 100,
-    parser_ok: 100,
-    completeness: 1,
-    created_at: "2026-08-01T10:00:00Z",
-  },
-  latest_snapshot: { id: 3, commit_hash: "a".repeat(40) },
   // (a second fixture below pins the banner, which only appears when active
   //  and latest differ)
   head_commit: "b".repeat(40),
-  interruption: null,
-  top_issues: [],
-  non_endpoint_documents: 0,
-} as unknown as ServiceDetail;
+});
 
 function servicePage() {
   return renderPage(<ServicePage />, {
@@ -217,15 +188,10 @@ describe("the excluded list at the bottom of the registry", () => {
 
 describe("the banner shown when an older snapshot is active", () => {
   /** The banner renders only while active and latest differ. */
-  const LAGGING = {
+  const LAGGING = serviceDetail({
     ...SERVICE,
-    latest_snapshot: {
-      id: 9,
-      commit_hash: "b".repeat(40),
-      last_scanned_at: "2026-08-02T10:00:00Z",
-      scanner_version: "0.1.0",
-    },
-  } as unknown as ServiceDetail;
+    latest_snapshot: snapshot({ id: 9, commit_hash: "b".repeat(40), last_scanned_at: "2026-08-02T10:00:00Z" }),
+  });
 
   function laggingPage() {
     return renderPage(<ServicePage />, {

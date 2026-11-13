@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 import type { ReactElement } from "react";
 import { I18nProvider } from "../shared/i18n";
 import { keys } from "../features/scan/api/queries";
+import type { ApiErrorEnvelope } from "../features/scan/types";
 
 /**
  * Render a page as a signed-in user would see it.
@@ -69,4 +70,50 @@ export function stubEmptyApi() {
         ),
     ),
   );
+}
+
+export const FAILED = Symbol("the backend fails this request");
+const FAILURE = { error: { code: "internal_error", message: "down" } } satisfies ApiErrorEnvelope;
+
+/**
+ * The backend, path by path: each request is answered with what `answers`
+ * holds for its path at that moment - so a test breaks the backend by setting
+ * a path to FAILED, holds an answer back by setting a promise there, or
+ * answers request by request through a function.
+ */
+export function backend(answers: Record<string, unknown>) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const path = String(input).split("?")[0];
+    const entry = answers[path];
+    const answer = await (typeof entry === "function" ? entry() : entry);
+    return answer === FAILED
+      ? new Response(JSON.stringify(FAILURE), { status: 500 })
+      : new Response(JSON.stringify(answer ?? null));
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return { calls: (path: string) => fetchMock.mock.calls.filter(([input]) => String(input).split("?")[0] === path).length };
+}
+
+/** A refresh, as the periodic one or an invalidation runs it. */
+export const refresh = (client: QueryClient, key: readonly unknown[]) => act(() => client.invalidateQueries({ queryKey: key }));
+
+/** The alert that says `text` - announced, and holding its own Retry. */
+export async function alertNamed(text: string): Promise<HTMLElement> {
+  const alert = (await screen.findByText(text)).closest<HTMLElement>("[role=alert]");
+  expect(alert).not.toBeNull();
+  return alert as HTMLElement;
+}
+
+/** The periodic refresh of `keys`: no click, and time for TanStack to tell the components. */
+export const pollAgain = (client: QueryClient, ...queryKeys: (readonly unknown[])[]) =>
+  act(async () => {
+    for (const queryKey of queryKeys) void client.refetchQueries({ queryKey });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+
+/** An answer the test sends when it chooses; until then the request is under way. */
+export function later() {
+  let send: (body: unknown) => void = () => {};
+  const arrived = new Promise((resolve) => (send = resolve));
+  return { arrived, send };
 }

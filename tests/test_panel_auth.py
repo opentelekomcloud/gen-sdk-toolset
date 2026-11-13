@@ -92,6 +92,7 @@ MUTATIONS = [
         f"/api/generation/services/{REPO}/layout/endpoints/move",
         {"path": "api-ref/source/a.rst", "resource_id": 1},
     ),
+    (f"/api/generation/services/{REPO}/layout/resources/1/confirm", None),
 ]
 
 

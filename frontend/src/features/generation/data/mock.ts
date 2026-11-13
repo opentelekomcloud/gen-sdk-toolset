@@ -633,9 +633,13 @@ export function generationServices(): GenService[] {
   }));
 }
 
-/** The layout of one service, in order, with each resource's job on every target. */
+/**
+ * The layout of one service, in order, with each resource's job on every target.
+ * A service of the /generation list that the mock has no layout for has no
+ * resources yet: its pages open on the server's list (ADR-0086), not the mock's.
+ */
 export function generationResources(service: string): GenResource[] {
-  return layoutOf(service).map((r) => ({
+  return (layout[service] ?? []).map((r) => ({
     id: r.id,
     version: r.version,
     name: r.name,

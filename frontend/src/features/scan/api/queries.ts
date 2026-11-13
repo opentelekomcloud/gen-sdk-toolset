@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { apiFetch, qs } from "./client";
 import type {
@@ -39,6 +40,8 @@ export const keys = {
   genServices: ["generation", "services"] as const,
   genList: (p?: object) => (p ? (["generation", "list", p] as const) : (["generation", "list"] as const)),
   genResources: (name: string) => ["generation", "resources", name] as const,
+  /** The layout of a service as the backend stores it. */
+  genLayout: (name: string) => ["generation", "layout", name] as const,
   genAttention: ["generation", "attention"] as const,
   /** Prefix for the generation specs of every resource of a service — invalidation target. */
   genSpecs: (name: string) => ["generation", "spec", name] as const,
@@ -78,6 +81,7 @@ export function invalidateSnapshot(qc: QueryClient, name: string) {
  * of a resource. Jobs are untouched, so the attention rules are not.
  */
 export function invalidateGenLayout(qc: QueryClient, name: string) {
+  void qc.invalidateQueries({ queryKey: keys.genLayout(name) });
   void qc.invalidateQueries({ queryKey: keys.genResources(name) });
   void qc.invalidateQueries({ queryKey: keys.genServices });
   void qc.invalidateQueries({ queryKey: keys.genSpecs(name) });
@@ -96,6 +100,68 @@ export function invalidateGenJobs(qc: QueryClient, name: string) {
   void qc.invalidateQueries({ queryKey: keys.genServices });
   void qc.invalidateQueries({ queryKey: keys.genAttention });
   void qc.invalidateQueries({ queryKey: keys.genSpecs(name) });
+}
+
+/** What a block of the page shows of one query: its data, its failure, or that it is on the way. */
+export interface Block<T> {
+  /** The answer to show; undefined while the block has failed or is on the way. */
+  data: T | undefined;
+  /** The last request failed: the block shows that and a Retry instead of data. */
+  failed: boolean;
+  /** No answer and no failure yet: the first load is under way. */
+  pending: boolean;
+}
+
+/**
+ * The one rule every block follows for its query (ADR-0081).
+ *
+ * A request that failed is shown as a failure with a Retry, never as data:
+ * TanStack Query keeps the last answer through a failed refresh, and that
+ * answer would read as current. A first load that failed and a refresh that
+ * failed look the same, and stay so while the periodic refresh (ADR-0076) or a
+ * Retry asks again - for a query that never had an answer TanStack goes back
+ * to "pending" on each new request, which would make the block disappear and
+ * come back every 10 s. The block changes only when an answer arrives.
+ */
+export function blockOf<T>(query: {
+  data: T | undefined;
+  isError: boolean;
+  isPending: boolean;
+  errorUpdateCount: number;
+}): Block<T> {
+  const failed = query.isError || (query.isPending && query.errorUpdateCount > 0);
+  return { data: failed ? undefined : query.data, failed, pending: !failed && query.isPending };
+}
+
+/** What a Retry needs of a query: TanStack's `refetch`. */
+export interface Retryable {
+  refetch: (options?: { cancelRefetch?: boolean }) => Promise<unknown>;
+}
+
+/**
+ * A Retry: it asks the query again, and joins a refresh already asking rather
+ * than cancelling it for a second request - the backend has done the work for
+ * the first, and refreshing may add no requests beyond the periodic one
+ * (ADR-0084, ADR-0085). TanStack's own default would cancel and ask again.
+ */
+export function retryJoining(query: Retryable): Promise<unknown> {
+  return query.refetch({ cancelRefetch: false });
+}
+
+/**
+ * A Retry the user asked for, and whether it is still under way.
+ *
+ * Only the click counts. The periodic refresh keeps asking for a query that
+ * failed, every 10 s; shown as "loading", it would take the failure and its
+ * Retry off the screen on each round and announce the failure again.
+ */
+export function useRetry(query: Retryable) {
+  const [retrying, setRetrying] = useState(false);
+  const retry = () => {
+    setRetrying(true);
+    void retryJoining(query).finally(() => setRetrying(false));
+  };
+  return { retrying, retry };
 }
 
 export interface ServicesParams {
@@ -158,7 +224,10 @@ export function useDocuments(name: string, params: DocumentsParams) {
           status: params.status === "all" ? undefined : params.status,
         })}`,
       ),
-    placeholderData: (prev) => prev, // keep the table while paging
+    /* Keep the table while paging - but never from a request that failed: its
+       rows are the stale answer the failure stands in for (ADR-0081), as for
+       the Generation list. */
+    placeholderData: (prev, prevQuery) => (prevQuery?.state.status === "error" ? undefined : prev),
   });
 }
 

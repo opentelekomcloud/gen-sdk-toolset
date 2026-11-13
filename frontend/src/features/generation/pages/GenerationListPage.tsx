@@ -5,7 +5,8 @@ import type { GenFilter, GenService, GenTarget } from "../data/types";
 import { servicePath, type FromList } from "../lib/paths";
 import { GEN_STATE_CLS, genStateKey } from "../styles";
 import { SHOW_GEN_STATE } from "../flags";
-import { BlockLoadFailed, BlockLoading } from "../../scan/components/ServicePageStates";
+import { BlockFailed, BlockLoading } from "../../scan/components/ServicePageStates";
+import { blockOf } from "../../scan/api/queries";
 import { StatusPill } from "../../scan/components/StatusPill";
 import { chipCls } from "../../scan/styles";
 import { useI18n } from "../../../shared/i18n";
@@ -165,7 +166,8 @@ function ServiceList() {
   const { search } = useLocation();
   const { q, input, setInput } = useUrlSearch();
   const list = useGenerationList({ q });
-  const loading = <BlockLoading label={t("gen.list.loading")} />;
+  const { data: listed, failed } = blockOf(list);
+  const loading = <BlockLoading label={t("registry.loading")} />;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
@@ -180,13 +182,9 @@ function ServiceList() {
           read as "no service qualifies", and an earlier answer still in the
           cache would read as current. While a Retry runs, the page says it is
           loading, so the click visibly did something and cannot be repeated. */}
-      {list.isError ? (
-        list.isFetching ? (
-          loading
-        ) : (
-          <BlockLoadFailed label={t("gen.list.loadFailed")} onRetry={() => void list.refetch()} />
-        )
-      ) : list.isPending ? (
+      {failed ? (
+        <BlockFailed query={list} label={t("registry.loadFailed")} loadingLabel={t("registry.loading")} />
+      ) : !listed ? (
         loading
       ) : (
         /* Rows kept from the previous search are dimmed until the new answer
@@ -200,7 +198,7 @@ function ServiceList() {
           <div style={gridCols(0)} className={HEAD_CLS}>
             <div>{t("registry.col.service")}</div>
           </div>
-          {list.data.map((s) => (
+          {listed.map((s) => (
             <div
               key={s.name}
               style={gridCols(0)}
@@ -214,7 +212,7 @@ function ServiceList() {
               <ServiceCell label={s.label} />
             </div>
           ))}
-          {list.data.length === 0 && (
+          {listed.length === 0 && (
             <div className="px-4 py-10 text-center text-sm text-gray-400">{t("registry.empty")}</div>
           )}
         </div>

@@ -24,6 +24,8 @@ export const de: Record<keyof typeof en, string> = {
   "header.subtitle": "Service-Scan-Registry · T Cloud Public",
   "header.scansRunning": "laufende Scans: {n}",
   "header.scanner": "Scanner v{v}",
+  "header.summaryFailed": "Zähler konnten nicht geladen werden",
+  "header.summaryLoading": "Zähler werden geladen…",
 
   "tab.scan": "Scan",
   "tab.generation": "Generierung",
@@ -36,6 +38,7 @@ export const de: Record<keyof typeof en, string> = {
   "attention.allClear": "Alles erledigt — nichts erfordert Aufmerksamkeit.",
   "attention.futurePanel": "Kommt mit den Panels Generierung / Wartung",
   "attention.loadFailed": "Die Regeln von {panel} konnten nicht geladen werden — die Liste ist möglicherweise unvollständig.",
+  "attention.loading": "Die Regeln von {panel} werden geladen…",
   "attention.rule.failed": "fehlgeschlagen, keine Daten vorhanden",
   "attention.rule.version": "mit veraltetem Scanner gescannt",
   "attention.rule.drift": "Doku seit letztem Scan geändert",
@@ -72,6 +75,8 @@ export const de: Record<keyof typeof en, string> = {
   "registry.noEndpointDocs": "keine Endpoint-Doks",
   "registry.scanning": "wird gescannt…",
   "registry.empty": "Kein Service entspricht dem aktuellen Filter.",
+  "registry.loading": "Services werden geladen…",
+  "registry.loadFailed": "Die Service-Liste konnte nicht geladen werden",
   "registry.failedBanner": "{failed} Repos fehlgeschlagen, ohne Daten. Metriken decken {ok} gescannte Repos ab.",
   "legend.ok": "ok",
   "legend.partial": "teilweise",
@@ -80,6 +85,7 @@ export const de: Record<keyof typeof en, string> = {
 
   "rescan.retry": "Wiederholen",
   "rescan.version": "Rescan · v{v}",
+  "rescan.versionUnknown": "Rescan · neuer Scanner",
   "rescan.drift": "Rescan · Doku geändert",
   "rescan.queueing": "in Warteschlange…",
   "rescan.job": "Job #{id}",
@@ -133,6 +139,7 @@ export const de: Record<keyof typeof en, string> = {
   "snap.popoverHint":
     "Ein Snapshot wird gespeichert, sobald sich das Scan-Ergebnis ändert. Ein Rescan ohne Änderung speichert keinen: Er verwendet den neuesten Snapshot weiter und aktualisiert nur dessen Datum — ein älterer aktiver Snapshot bleibt unverändert. Das Umschalten ändert nur den aktiven Snapshot — es startet keinen Scan und verändert keine Daten.",
   "snap.loading": "Snapshots werden geladen…",
+  "snap.loadFailed": "Snapshots konnten nicht geladen werden",
   "snap.latestBadge": "neueste",
   "snap.activeBadge": "aktiv",
   "snap.docsOk": "Doku",
@@ -159,6 +166,8 @@ export const de: Record<keyof typeof en, string> = {
   "doc.openSourceHint": "Dieses Dokument im Repository beim gescannten Commit öffnen",
   "doc.example": "Beispiel",
   "docs.title": "Dokumente",
+  "docs.loading": "Dokumente werden geladen…",
+  "docs.loadFailed": "Dokumente konnten nicht geladen werden",
   "docs.noVersion": "ohne Version",
   "docs.filter": "Doks filtern…",
   "docs.empty": "Kein Dokument entspricht dem Filter.",
@@ -213,6 +222,8 @@ export const de: Record<keyof typeof en, string> = {
   "exclude.confirm": "Service ausschließen",
 
   "excluded.title": "Ausgeschlossene Services",
+  "excluded.loading": "Ausgeschlossene Services werden geladen…",
+  "excluded.loadFailed": "Ausgeschlossene Services konnten nicht geladen werden",
   "excluded.by": "ausgeschlossen von {by} · {at}",
   "excluded.restore": "Wiederherstellen",
   "excluded.restoreConfirm":
@@ -221,14 +232,14 @@ export const de: Record<keyof typeof en, string> = {
     "Nichts ausgeschlossen. Hier ausgeschlossene Repos behalten ihre Scan-Historie, verschwinden aus allen Zählern und werden von der nächtlichen Discovery übersprungen, bis sie wiederhergestellt werden.",
 
   "ineligible.title": "Keine API-Referenz",
+  "ineligible.loading": "Services ohne API-Referenz werden geladen…",
+  "ineligible.loadFailed": "Services ohne API-Referenz konnten nicht geladen werden",
   "ineligible.checked": "{branch} · geprüft {at}",
   "ineligible.neverChecked": "{branch} · noch nicht geprüft",
   "ineligible.empty":
     "Jedes gefundene Repository hat eine API-Referenz. Repos landen hier, wenn die Discovery keinen api-ref-Pfad findet; sie verschwinden von selbst wieder, sobald einer auftaucht.",
 
   "gen.list.eligible": "Services, deren aktiver Scan-Snapshot mindestens ein Endpoint-Dokument enthält.",
-  "gen.list.loading": "Services werden geladen…",
-  "gen.list.loadFailed": "Die Service-Liste konnte nicht geladen werden",
   "gen.col.tbd": "noch offen",
   "gen.state.not_generated": "Nicht generiert",
   "gen.state.in_progress": "In Arbeit",
@@ -270,7 +281,7 @@ export const de: Record<keyof typeof en, string> = {
   "gen.layout.versions": "{n} Version|{n} Versionen",
   "gen.layout.resources": "{n} Ressource|{n} Ressourcen",
   "gen.layout.confirmedOf": "{n} von {total} Ressourcen bestätigt",
-  "gen.layout.pill.empty": "nichts anzulegen",
+  "gen.layout.pill.noLayout": "noch kein Layout",
   "gen.layout.pill.confirmed": "Layout bestätigt",
   "gen.layout.pill.unconfirmed": "Bestätigung nötig",
   "gen.layout.edited": "Layout bearbeitet · am Service gespeichert",
@@ -300,7 +311,8 @@ export const de: Record<keyof typeof en, string> = {
   "gen.layout.empty": "Leere Ressource — Endpunkte hierher ziehen.",
   "gen.layout.notOk":
     "Nicht vollständig erkannt — eine Ressource mit diesem Endpunkt lässt sich nicht generieren. Er lässt sich in eine andere Ressource ziehen.",
-  "gen.layout.nothing": "Gescannt — keine Endpunkt-Dokumente gefunden. Nichts anzulegen.",
+  "gen.layout.noLayout": "Noch kein Layout. Die Ressourcen erscheinen hier, sobald der Service gruppiert ist.",
+  "gen.layout.refreshFailed": "Konnte nicht prüfen, ob dieser Service noch in Generation ist. Ihr ungespeicherter Name bleibt erhalten.",
   "gen.layout.footer": "Bestätigte Ressourcen sind für jede Ausgabe bereit.",
   "gen.spec.back": "Layout von {name}",
   "gen.spec.heading": "Generierungsspezifikation · {target}",

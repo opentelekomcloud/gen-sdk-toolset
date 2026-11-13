@@ -92,7 +92,7 @@ def _discover_command(org: str | None, branch: str | None) -> int:
     # just refused - the loop stops on the first operational failure - so one
     # lookup per eligible repository would be a burst of calls that cannot
     # succeed, and against a rate limit it would only dig the hole deeper.
-    heads: dict[str, str] = {}
+    heads: dict[str, tuple[str, datetime]] = {}
     unresolved: list[str] = []
     head_interruption = None
     if result.interruption is None:
@@ -174,8 +174,11 @@ def _branches_to_read(
 
 def _resolve_heads(
     provider: DocProvider, branches: dict[str, str]
-) -> tuple[dict[str, str], list[str], RepositoryInterruption | None]:
+) -> tuple[dict[str, tuple[str, datetime]], list[str], RepositoryInterruption | None]:
     """Resolve each repository's branch HEAD, before any session is open.
+
+    Each HEAD comes with the moment just before its own lookup, so a HEAD read
+    late in the pass is never recorded as older than a scan that ran meanwhile.
 
     Every call here is a network round trip, so this runs with no transaction
     held - the persistence loop below is one transaction over local work only.
@@ -193,9 +196,10 @@ def _resolve_heads(
     what `discover_repositories` does with the same class of failure; whatever
     resolved before it is kept and stored.
     """
-    heads: dict[str, str] = {}
+    heads: dict[str, tuple[str, datetime]] = {}
     unresolved: list[str] = []
     for repo, branch in branches.items():
+        read_at = datetime.now(tz=UTC)
         try:
             head = provider.get_commit_hash(repo, branch)
         except ProviderError as error:
@@ -209,12 +213,15 @@ def _resolve_heads(
             logger.warning("No commit resolved for %s@%s", repo, branch)
             unresolved.append(repo)
             continue
-        heads[repo] = head
+        heads[repo] = (head, read_at)
     return heads, unresolved, None
 
 
 def _persist_discovered(
-    repositories: list[DiscoveredRepository], *, branch: str, heads: dict[str, str]
+    repositories: list[DiscoveredRepository],
+    *,
+    branch: str,
+    heads: dict[str, tuple[str, datetime]],
 ) -> tuple[int, int]:
     """Insert or refresh one Service per discovered repository, eligible or not.
 
@@ -263,7 +270,7 @@ def _persist_discovered(
             # either way.
             head = heads.get(discovered.repo)
             if head is not None:
-                service.head_commit = head
+                service.head_commit, service.head_checked_at = head
         session.commit()
     return created, updated
 

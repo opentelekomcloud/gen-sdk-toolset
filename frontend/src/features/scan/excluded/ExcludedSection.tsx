@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Ban, ChevronDown, ChevronRight, Undo2 } from "lucide-react";
-import { useExcluded } from "../api/queries";
+import { blockOf, useExcluded } from "../api/queries";
+import { SectionFailed } from "../components/ServicePageStates";
 import { useInclude } from "../api/mutations";
 import type { ExcludedService } from "../../../shared/api/types";
 import { useSession } from "../../../shared/auth/useSession";
@@ -68,8 +69,23 @@ function ExcludedRow({ item }: { item: ExcludedService }) {
 /** Collapsed managed list at the bottom of the registry (PS19). */
 export function ExcludedSection() {
   const [open, setOpen] = useState(false);
-  const { data: excluded } = useExcluded();
+  const query = useExcluded();
+  const { data: excluded, failed } = blockOf(query);
   const { t } = useI18n();
+  /* A list that did not load - first or on a refresh - keeps its title and
+     shows the failure under it, open or not (ADR-0081): no count, no rows. */
+  if (failed) {
+    return (
+      <SectionFailed
+        icon={Ban}
+        title={t("excluded.title")}
+        className="mt-6"
+        query={query}
+        label={t("excluded.loadFailed")}
+        loadingLabel={t("excluded.loading")}
+      />
+    );
+  }
   if (!excluded) return null;
 
   return (

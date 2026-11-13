@@ -96,6 +96,10 @@ class Service(Base):
         sa.String(64),
         nullable=True,
     )
+    head_checked_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+    )
 
     active_snapshot_id: Mapped[int | None] = mapped_column(
         sa.ForeignKey(

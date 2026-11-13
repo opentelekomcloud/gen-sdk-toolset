@@ -116,6 +116,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/generation/services/{repo}/layout/resources/{resource_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Resource
+         * @description Confirm one resource, leaving every other resource as it is (ADR-0066).
+         *
+         *     Only a resource with at least one endpoint in the active Snapshot, all of
+         *     them ``ok`` (ADR-0067); otherwise a ``409`` that names what blocks it, and
+         *     nothing changes - other resources stay confirmable. Confirming a confirmed
+         *     resource changes nothing either: ``confirmed_by`` and ``confirmed_at`` keep
+         *     the first confirmation, the one that checked these endpoints.
+         *
+         *     ``confirmed_at`` is when the request came, not when the lock was granted.
+         */
+        post: operations["confirm_resource_api_generation_services__repo__layout_resources__resource_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/generation/services/{repo}/layout/resources/{resource_id}/rename": {
         parameters: {
             query?: never;
@@ -523,9 +551,12 @@ export interface paths {
          * Activate Snapshot
          * @description Serve this Service's scan-result views from another of its Snapshots.
          *
-         *     Moves ``active_snapshot_id`` only: ``latest_snapshot_id`` and the stored
+         *     Moves ``active_snapshot_id``: ``latest_snapshot_id`` and the stored
          *     Snapshots stay as they are, and every view downstream already follows this
-         *     pointer. Re-activating the active Snapshot changes nothing and answers 200.
+         *     pointer. A resource confirmation the new Snapshot no longer covers - its
+         *     endpoints there differ from the ones it checked - is dropped (ADR-0068), and
+         *     activating the previous Snapshot again does not bring it back.
+         *     Re-activating the active Snapshot changes nothing and answers 200.
          *     An excluded Service is allowed; the caller's identity is logged, not stored.
          *
          *     Refused with ``409`` while a scan Job is queued or running, whatever the
@@ -1424,6 +1455,38 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LayoutResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_resource_api_generation_services__repo__layout_resources__resource_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                repo: string;
+                resource_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

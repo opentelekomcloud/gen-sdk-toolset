@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, FileText, Search, X } from "lucide-react";
-import { useDocuments } from "../api/queries";
+import { blockOf, useDocuments } from "../api/queries";
+import { BlockFailed, BlockLoading } from "../components/ServicePageStates";
 import type { DocFilter, DocStatus } from "../types";
+import type { DocumentsResponse } from "../../../shared/api/types";
 import { sectionLabelKey, UNVERSIONED } from "../constants";
 import { chipCls } from "../styles";
 import { DocRow } from "./DocRow";
@@ -31,7 +33,7 @@ export function DocumentsBlock({ serviceName, filter, onClearFilter }: Props) {
     return () => clearTimeout(timer);
   }, [q]);
 
-  const { data } = useDocuments(serviceName, {
+  const documents = useDocuments(serviceName, {
     status,
     q: qDebounced,
     page,
@@ -40,13 +42,30 @@ export function DocumentsBlock({ serviceName, filter, onClearFilter }: Props) {
     issue: filter?.kind === "issue" ? filter.code : undefined,
     api_version: version ?? undefined,
   });
-  if (!data) return null;
+  /* The block keeps its place while it has no rows to show: the title, the
+     filters in force and the search stay, and the rows give way to the
+     failure and a Retry (ADR-0081) or to the panel's spinner while an answer
+     is on its way (ADR-0060). So the search field is never taken away while
+     someone types in it, and a filter whose request fails can still be taken
+     off. The counts and the rows come only from an answer. */
+  const { data, failed } = blockOf(documents);
 
-  const chips = CHIP_ORDER.filter((k) => k === "all" || data.doc_counts[k]);
-  const totalPages = Math.max(1, Math.ceil(data.total / data.page_size));
-  const from = (data.page - 1) * data.page_size + 1;
-  const to = Math.min(data.page * data.page_size, data.total);
-
+  const chips = data
+    ? CHIP_ORDER.filter((k) => k === "all" || data.doc_counts[k])
+    : CHIP_ORDER.filter((k) => k === "all" || k === status);
+  /* Versions come from the same response as the rows, so the chips can never
+     claim a version the current filter has no documents for. Numbered versions
+     first, "no version" last: it is a leftover bucket, not a version anyone
+     released. */
+  const versions: [string, number | null][] = data
+    ? Object.keys(data.version_counts).length > 1
+      ? Object.entries(data.version_counts).sort(([a], [b]) =>
+          a === UNVERSIONED ? 1 : b === UNVERSIONED ? -1 : a.localeCompare(b),
+        )
+      : []
+    : version != null
+      ? [[version, null]]
+      : [];
   return (
     <>
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -61,31 +80,23 @@ export function DocumentsBlock({ serviceName, filter, onClearFilter }: Props) {
             }}
             className={chipCls(status === k)}
           >
-            {t(`docstatus.${k}` as MessageKey)} <span className="font-mono tabular-nums opacity-70">{data.doc_counts[k] ?? 0}</span>
+            {t(`docstatus.${k}` as MessageKey)}{" "}
+            {data && <span className="font-mono tabular-nums opacity-70">{data.doc_counts[k] ?? 0}</span>}
           </button>
         ))}
-        {/* Versions come from the same response as the rows, so the chips can
-            never claim a version the current filter has no documents for. */}
-        {Object.keys(data.version_counts).length > 1 &&
-          Object.entries(data.version_counts)
-            /* Numbered versions first, "no version" last: it is a leftover
-               bucket, not a version anyone released. */
-            .sort(([a], [b]) =>
-              a === UNVERSIONED ? 1 : b === UNVERSIONED ? -1 : a.localeCompare(b),
-            )
-            .map(([name, count]) => (
-              <button type="button"
-                key={name}
-                onClick={() => {
-                  setVersion(version === name ? null : name);
-                  setPage(1);
-                }}
-                className={chipCls(version === name)}
-              >
-                {name === UNVERSIONED ? t("docs.noVersion") : name}{" "}
-                <span className="font-mono tabular-nums opacity-70">{count}</span>
-              </button>
-            ))}
+        {versions.map(([name, count]) => (
+          <button type="button"
+            key={name}
+            onClick={() => {
+              setVersion(version === name ? null : name);
+              setPage(1);
+            }}
+            className={chipCls(version === name)}
+          >
+            {name === UNVERSIONED ? t("docs.noVersion") : name}{" "}
+            {count != null && <span className="font-mono tabular-nums opacity-70">{count}</span>}
+          </button>
+        ))}
         {filter && (
           <button
             type="button"
@@ -112,6 +123,34 @@ export function DocumentsBlock({ serviceName, filter, onClearFilter }: Props) {
         </div>
       </div>
 
+      {data ? (
+        <DocumentsTable serviceName={serviceName} data={data} setPage={setPage} />
+      ) : failed ? (
+        <BlockFailed query={documents} label={t("docs.loadFailed")} loadingLabel={t("docs.loading")} />
+      ) : (
+        <BlockLoading label={t("docs.loading")} />
+      )}
+    </>
+  );
+}
+
+/** The rows of one answer and the pager under them. */
+function DocumentsTable({
+  serviceName,
+  data,
+  setPage,
+}: {
+  serviceName: string;
+  data: DocumentsResponse;
+  setPage: (update: (page: number) => number) => void;
+}) {
+  const { t } = useI18n();
+  const totalPages = Math.max(1, Math.ceil(data.total / data.page_size));
+  const from = (data.page - 1) * data.page_size + 1;
+  const to = Math.min(data.page * data.page_size, data.total);
+
+  return (
+    <>
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         {data.items.map((doc) => (
           <DocRow key={doc.id} serviceName={serviceName} doc={doc} />
