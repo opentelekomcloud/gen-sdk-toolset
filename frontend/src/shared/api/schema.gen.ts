@@ -1242,12 +1242,12 @@ export interface components {
         };
         /**
          * SpecClassItem
-         * @description One class of the resource. TODO(ISS-0077): its fields, names and types.
+         * @description One class of the resource. TODO(ISS-0092): its fields, names and types.
          */
         SpecClassItem: Record<string, never>;
         /**
          * SpecOperationItem
-         * @description One operation of the resource. TODO(ISS-0076): its kind, method and endpoint.
+         * @description One operation of the resource. TODO(ISS-0091): its kind, method and endpoint.
          */
         SpecOperationItem: Record<string, never>;
         /**

@@ -642,11 +642,11 @@ class LayoutResponse(BaseModel):
 
 
 class SpecOperationItem(BaseModel):
-    """One operation of the resource. TODO(ISS-0076): its kind, method and endpoint."""
+    """One operation of the resource. TODO(ISS-0091): its kind, method and endpoint."""
 
 
 class SpecClassItem(BaseModel):
-    """One class of the resource. TODO(ISS-0077): its fields, names and types."""
+    """One class of the resource. TODO(ISS-0092): its fields, names and types."""
 
 
 class ResourceSpecResponse(BaseModel):

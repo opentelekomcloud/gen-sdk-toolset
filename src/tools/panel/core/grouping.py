@@ -182,7 +182,7 @@ def group_endpoints(endpoints: Sequence[GroupableEndpoint]) -> EndpointGrouping:
         if not has_api_version(version):
             no_version.append(endpoint.path)
             continue
-        segment = _resource_segment(endpoint.uri)
+        segment = next((s for s in uri_segments(endpoint.uri) if s is not None), None)
         if segment is None:
             unassigned[version].append(endpoint.path)
         else:
@@ -222,22 +222,24 @@ def _version_order(version: str) -> tuple[list[int], str]:
     return numbers, version
 
 
-def _resource_segment(uri: str | None) -> str | None:
+def uri_segments(uri: str | None) -> tuple[str | None, ...]:
+    """Return decoded path segments after the version, with None for placeholders."""
     if uri is None:
-        return None
+        return ()
     # Read as written: placeholders, the query string, the version segment and
     # the "/" between segments are all found before anything is decoded, so
     # "%3F" and "%2F" stay inside their segment.
     path = URI_PLACEHOLDER_RE.sub(_PARAMETER, uri).split("?", 1)[0]
     version = API_VERSION_RE.search(path)
     after_version = path[version.end(1) :] if version else path
+    segments = []
     for raw in after_version.split("/"):
-        if not raw or _PARAMETER in raw:
+        if not raw:
             continue
         segment = urllib.parse.unquote(raw)
-        if _BROKEN_PARAMETER.isdisjoint(segment):
-            return segment
-    return None
+        parameter = _PARAMETER in raw or not _BROKEN_PARAMETER.isdisjoint(segment)
+        segments.append(None if parameter else segment)
+    return tuple(segments)
 
 
 def _resource_name(segment: str) -> str:
