@@ -14,12 +14,12 @@ const PATH = "/api/generation/services/opentelekomcloud-docs%2Fecs/layout";
 
 afterEach(() => vi.unstubAllGlobals());
 
-function readLayout() {
+function readLayout(options?: { enabled?: boolean }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
-  return { qc, ...renderHook(() => useGenerationLayout(NAME), { wrapper }) };
+  return { qc, ...renderHook(() => useGenerationLayout(NAME, options), { wrapper }) };
 }
 
 describe("useGenerationLayout", () => {
@@ -54,5 +54,17 @@ describe("useGenerationLayout", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toBeInstanceOf(ApiError);
     expect((result.current.error as ApiError).status).toBe(404);
+  });
+
+  it("asks nothing while it is held back, as for a repository off the list", async () => {
+    const api = backend({ [PATH]: layout() });
+
+    const { qc, result } = readLayout({ enabled: false });
+
+    // an enabled query is fetching from its first render; a refetch of every query skips a held one
+    expect(result.current.fetchStatus).toBe("idle");
+    await qc.refetchQueries();
+    expect(api.calls(PATH)).toBe(0);
+    expect(result.current.data).toBeUndefined();
   });
 });

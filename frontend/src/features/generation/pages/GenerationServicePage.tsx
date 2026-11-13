@@ -1,12 +1,14 @@
 import { Folder, Play } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import type { ReactNode } from "react";
 import { useGenerationResources, useGenerationTargets, useInGeneration } from "../data/queries";
 import type { GenResource, GenTarget } from "../data/types";
 import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
 import { PageNotFound } from "../components/PageNotFound";
 import { holdOf } from "../lib/layout";
-import { listPath, servicePath } from "../lib/paths";
+import { generationPath, listPath, servicePath } from "../lib/paths";
+import { SHOW_GEN_JOBS } from "../flags";
 import { ServiceBackLink, ServiceLoadFailed, ServiceLoading } from "../../scan/components/ServicePageStates";
 import { useI18n } from "../../../shared/i18n";
 
@@ -63,42 +65,95 @@ function ResourceRow({
   );
 }
 
+/** The repo as the title, and the way to its layout (ADR-0063). */
+function CardHeader({ name, sub, layoutTo }: { name: string; sub?: string; layoutTo: string }) {
+  const { t } = useI18n();
+  /* the list's state rides on into the layout, and back */
+  const { state: fromList } = useLocation();
+  return (
+    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 className="font-mono text-xl font-semibold text-gray-900">{name}</h1>
+        {sub && <div className="mt-1 text-xs text-gray-400">{sub}</div>}
+      </div>
+      <Link
+        to={layoutTo}
+        state={fromList}
+        className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-gray-500"
+      >
+        <Folder size={14} className="text-gray-400" /> {t("gen.card.editLayout")}
+      </Link>
+    </div>
+  );
+}
+
 /**
- * Service card: one target at a time - coverage of every target, the resources
- * with their state there, and Generate or the reason it is not offered. The
- * layout is shared by every target and only read here; it is edited on its own
- * page. The target round-trips through the address.
+ * Service card of a service in the /generation list (ADR-0086): the repo, the
+ * way to its layout, and what is generated of it. Any other repo - excluded,
+ * without endpoints, or unknown - is PageNotFound; the list decides, not the
+ * client (ADR-0049). A list that failed to load is a failure with Retry, never
+ * PageNotFound (ADR-0081).
+ *
+ * The server has no generation data yet, so the card shows "Nothing laid out"
+ * in its place (`SHOW_GEN_JOBS`). TODO(ISS-0039): this and ISS-0040 replace it
+ * with the resources of the stored layout.
  */
 export function GenerationServicePage() {
   const { name = "" } = useParams();
   const [searchParams] = useSearchParams();
   /* Opened from the list, the card knows the list's query and search text and leads back to both. */
   const { state: fromList } = useLocation();
-  const navigate = useNavigate();
   const { t } = useI18n();
-  const targets = useGenerationTargets();
   const access = useInGeneration(name);
-  const resources = useGenerationResources(name);
 
   const listTo = listPath(fromList);
   const back = <ServiceBackLink to={listTo} state={fromList} />;
+
+  if (access.pending) return <ServiceLoading />;
+  if (access.failed) return <ServiceLoadFailed back={listTo} backState={fromList} onRetry={access.retry} />;
+  if (!access.listed) return <PageNotFound back={back} />;
+  if (SHOW_GEN_JOBS) return <TargetCard name={name} back={back} />;
+
+  return (
+    <div className="mx-auto max-w-6xl px-6 py-5">
+      {back}
+      {/* the target the address names rides along into the layout, and back */}
+      <CardHeader name={name} layoutTo={generationPath(name, ["layout"], searchParams.get("target"))} />
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="px-4 py-10 text-center text-sm text-gray-400">{t("gen.card.empty")}</div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The card on generation data, one target at a time - coverage of every
+ * target, the resources with their state there, and Generate or the reason it
+ * is not offered. It reads the in-memory mock, so it is switched off
+ * (`SHOW_GEN_JOBS`). The layout is shared by every target and only read here;
+ * it is edited on its own page. The target round-trips through the address.
+ */
+function TargetCard({ name, back }: { name: string; back: ReactNode }) {
+  const [searchParams] = useSearchParams();
+  const { state: fromList } = useLocation();
+  const navigate = useNavigate();
+  const { t } = useI18n();
+  const targets = useGenerationTargets();
+  const resources = useGenerationResources(name);
+
   const loading = <ServiceLoading />;
   const failed = (
     <ServiceLoadFailed
-      back={listTo}
+      back={listPath(fromList)}
       backState={fromList}
       onRetry={() => {
-        if (access.failed) access.retry();
         for (const q of [targets, resources]) if (q.isError) void q.refetch();
       }}
     />
   );
 
-  if (targets.isPending || access.pending) return loading;
-  if (targets.isError || access.failed) return failed;
-  if (!access.listed) return <PageNotFound back={back} />;
-  if (resources.isPending) return loading;
-  if (resources.isError) return failed;
+  if (targets.isPending || resources.isPending) return loading;
+  if (targets.isError || resources.isError) return failed;
 
   const [defaultTarget] = targets.data;
   /* An unknown target falls back to the default, as in the prototype. */
@@ -110,19 +165,11 @@ export function GenerationServicePage() {
     <div className="mx-auto max-w-6xl px-6 py-5">
       {back}
 
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-mono text-xl font-semibold text-gray-900">{name}</h1>
-          <div className="mt-1 text-xs text-gray-400">{t("gen.card.generating", { target: target.label })}</div>
-        </div>
-        <Link
-          to={servicePath(name, target, defaultTarget, ["layout"])}
-          state={fromList}
-          className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-gray-500"
-        >
-          <Folder size={14} className="text-gray-400" /> {t("gen.card.editLayout")}
-        </Link>
-      </div>
+      <CardHeader
+        name={name}
+        sub={t("gen.card.generating", { target: target.label })}
+        layoutTo={servicePath(name, target, defaultTarget, ["layout"])}
+      />
 
       <div className="mb-2.5 flex flex-wrap gap-2">
         {targets.data.map((x) => {

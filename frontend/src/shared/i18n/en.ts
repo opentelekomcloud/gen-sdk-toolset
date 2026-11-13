@@ -309,7 +309,9 @@ export const en = {
   "gen.layout.notOk":
     "Not recognized in full — a resource holding this endpoint cannot be generated. It can be dragged to another resource.",
   "gen.layout.noLayout": "No layout yet. Its resources appear here once the service is grouped.",
-  "gen.layout.refreshFailed": "Could not check that this service is still in Generation. Your unsaved name is kept.",
+  "gen.layout.refreshFailed": "Could not refresh this layout. Your unsaved name is kept.",
+  "gen.layout.toCard": "Open the service page",
+  "gen.layout.notShown": "This service has a layout, but it cannot be shown here yet.",
   "gen.layout.footer": "Confirmed resources are ready for every edition.",
   "gen.spec.back": "{name} layout",
   "gen.spec.heading": "Generation spec · {target}",

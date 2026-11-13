@@ -312,7 +312,9 @@ export const de: Record<keyof typeof en, string> = {
   "gen.layout.notOk":
     "Nicht vollständig erkannt — eine Ressource mit diesem Endpunkt lässt sich nicht generieren. Er lässt sich in eine andere Ressource ziehen.",
   "gen.layout.noLayout": "Noch kein Layout. Die Ressourcen erscheinen hier, sobald der Service gruppiert ist.",
-  "gen.layout.refreshFailed": "Konnte nicht prüfen, ob dieser Service noch in Generation ist. Ihr ungespeicherter Name bleibt erhalten.",
+  "gen.layout.refreshFailed": "Konnte dieses Layout nicht aktualisieren. Ihr ungespeicherter Name bleibt erhalten.",
+  "gen.layout.toCard": "Service-Seite öffnen",
+  "gen.layout.notShown": "Dieser Service hat ein Layout, das hier noch nicht angezeigt werden kann.",
   "gen.layout.footer": "Bestätigte Ressourcen sind für jede Ausgabe bereit.",
   "gen.spec.back": "Layout von {name}",
   "gen.spec.heading": "Generierungsspezifikation · {target}",

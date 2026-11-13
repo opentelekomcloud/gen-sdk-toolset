@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from "react";
+import { useState, type DragEvent, type ReactNode } from "react";
 import {
   AlertTriangle,
   Check,
@@ -18,13 +18,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router";
-import { useGenerationResources, useGenerationTargets, useInGeneration } from "../data/queries";
+import { useGenerationLayout, useGenerationResources, useGenerationTargets, useInGeneration } from "../data/queries";
 import { useEditLayout, useLayoutEdited, type LayoutEdit } from "../data/mutations";
 import type { GenJobStatus, GenResource, GenTarget } from "../data/types";
 import { LayoutBadge } from "../components/LayoutBadge";
 import { PageNotFound } from "../components/PageNotFound";
 import { lockingJob, mergedEverywhere } from "../lib/layout";
-import { listPath, servicePath } from "../lib/paths";
+import { generationPath, listPath } from "../lib/paths";
 import {
   BlockFailed,
   RefusalBanner,
@@ -33,6 +33,8 @@ import {
   ServiceLoading,
 } from "../../scan/components/ServicePageStates";
 import { StatusPill } from "../../scan/components/StatusPill";
+import { isNotFound } from "../../scan/api/client";
+import { blockOf, retryJoining } from "../../scan/api/queries";
 import { mutationErrorKey } from "../../scan/lib/errors";
 import { fmtSnapshotAt } from "../../scan/lib/snapshot";
 import { DOC_STATUS_CLS, methodCls } from "../../scan/styles";
@@ -284,6 +286,73 @@ function ResourceRow({
   );
 }
 
+/**
+ * The top of the layout page: the way back to the service page, the repo with
+ * the state of its layout, and what the editor adds - its summary and the note
+ * that it was edited.
+ */
+function LayoutHeader({
+  name,
+  cardTo,
+  pill,
+  summary,
+  aside,
+}: {
+  name: string;
+  cardTo: string;
+  pill: { cls: string; label: string } | null;
+  summary?: string;
+  aside?: ReactNode;
+}) {
+  const { t } = useI18n();
+  const { state: fromList } = useLocation();
+  return (
+    <>
+      <ServiceBackLink to={cardTo} state={fromList} label={t("gen.layout.back")} />
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h1 className="font-mono text-xl font-semibold text-gray-900">{name}</h1>
+            {pill && <StatusPill cls={pill.cls} label={pill.label} running={false} />}
+          </div>
+          {summary && <div className="mt-1 text-xs text-gray-400">{summary}</div>}
+        </div>
+        {aside}
+      </div>
+    </>
+  );
+}
+
+/**
+ * The page with nothing to edit: the title, a note where the editor would be,
+ * and the way to the service page - a page of its own, not a redirect
+ * (ADR-0086).
+ */
+function NothingToEdit({ name, cardTo, note, noLayout }: { name: string; cardTo: string; note: string; noLayout: boolean }) {
+  const { t } = useI18n();
+  /* The list's state, when the card was opened from it: it goes back with the way back. */
+  const { state: fromList } = useLocation();
+  return (
+    <div className="mx-auto max-w-6xl px-6 py-5">
+      <LayoutHeader
+        name={name}
+        cardTo={cardTo}
+        pill={noLayout ? { cls: "border-gray-200 bg-gray-50 text-gray-400", label: t("gen.layout.pill.noLayout") } : null}
+      />
+      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 py-14 text-center text-sm text-gray-400">
+        {note}
+        <Link
+          to={cardTo}
+          state={fromList}
+          className="mx-auto mt-3 flex w-fit items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-gray-500"
+        >
+          <Play size={12} /> {t("gen.layout.toCard")}
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 const toggled = (set: ReadonlySet<string>, id: string) => {
   const next = new Set(set);
   if (!next.delete(id)) next.add(id);
@@ -297,6 +366,12 @@ const toggled = (set: ReadonlySet<string>, id: string) => {
  * review on any target is frozen; one merged on every connected target has left
  * for Maintenance and is not shown. The target in the address only rides along
  * to the card and back.
+ *
+ * It opens for a service in the /generation list (ADR-0086). Whether the
+ * service has a layout is the backend's answer (`has_layout`); without one the
+ * page is an empty state that leads to the service page, not a redirect.
+ * TODO(ISS-0042): the editor itself still works on the in-memory mock; it
+ * moves onto the stored layout.
  */
 export function GenerationLayoutPage() {
   const { name = "" } = useParams();
@@ -307,7 +382,13 @@ export function GenerationLayoutPage() {
   const { canWrite } = useSession();
   const targets = useGenerationTargets();
   const access = useInGeneration(name);
-  const resources = useGenerationResources(name);
+  /* Asked next to the list on the first load, and from then on only for a
+     service of the list: the backend answers 404 for any other, and a page not
+     shown is not asked for (ADR-0078). */
+  const layout = useGenerationLayout(name, { enabled: access.pending || access.listed });
+  const stored = blockOf(layout);
+  /* The editor's resources, which only a service with a layout has. */
+  const resources = useGenerationResources(name, { enabled: layout.data?.has_layout === true });
   const edit = useEditLayout(name);
   /* The prototype's note next to the title: the layout of this service was edited in this session. */
   const edited = useLayoutEdited(name);
@@ -318,6 +399,11 @@ export function GenerationLayoutPage() {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [over, setOver] = useState<string | null>(null);
 
+  /* The way back to the card; the target the address names rides along (ADR-0063). */
+  const cardTo = generationPath(name, [], searchParams.get("target"));
+  /* A 404 is the backend's word that the service is not in Generation, not a
+     failure: the page turns into the one a direct address shows (ADR-0086). */
+  const gone = isNotFound(layout.error);
   const listTo = listPath(fromList);
   const loading = <ServiceLoading />;
   const failed = (
@@ -326,33 +412,49 @@ export function GenerationLayoutPage() {
       backState={fromList}
       onRetry={() => {
         if (access.failed) access.retry();
+        if (stored.failed && !gone) void retryJoining(layout);
         for (const q of [targets, resources]) if (q.isError) void q.refetch();
       }}
     />
   );
 
-  /* A name being typed is an unsaved edit. A failed refresh of the list does
-     not replace the page under it, which stays with a warning instead
-     (ADR-0081); the page was open, so the service was in the list. */
-  const keepEdit = access.failed && renaming !== null;
-  if (targets.isPending || access.pending) return loading;
-  if (targets.isError || (access.failed && !keepEdit)) return failed;
-  if (!keepEdit && !access.listed) {
-    return <PageNotFound back={<ServiceBackLink to={listTo} state={fromList} />} />;
-  }
-  if (resources.isPending) return loading;
-  if (resources.isError) return failed;
+  /* A name being typed is an unsaved edit. A failed refresh of the list or of
+     the layout does not replace the page under it, which stays with a warning
+     instead (ADR-0081); the page was open, so the service was in the list and
+     had a layout. */
+  const failedRefresh = gone ? null : access.failed ? access.query : stored.failed ? layout : null;
+  const keepEdit = failedRefresh !== null && renaming !== null;
+  const notFound = <PageNotFound back={<ServiceBackLink to={listTo} state={fromList} />} />;
+  if (access.pending) return loading;
+  /* The backend's 404 is an answer, and it wins over a list that failed to
+     refresh in the same round: the service is gone either way. */
+  if (gone) return notFound;
+  if (access.failed && !keepEdit) return failed;
+  if (!keepEdit && !access.listed) return notFound;
+  if (stored.pending) return loading;
+  if (stored.failed && !keepEdit) return failed;
 
-  const [defaultTarget] = targets.data;
-  const target = targets.data.find((x) => x.id === searchParams.get("target")) ?? defaultTarget;
-  const cardTo = servicePath(name, target, defaultTarget);
+  /* No layout until the preliminary grouping has run: an empty state that
+     leads to the service page, not a redirect (ADR-0086). */
+  if (!keepEdit && !layout.data?.has_layout) {
+    return <NothingToEdit name={name} cardTo={cardTo} note={t("gen.layout.noLayout")} noLayout />;
+  }
+  /* Only the editor needs the targets: which job freezes a resource, and
+     which merged one has left. */
+  if (targets.isPending || resources.isPending) return loading;
+  if (targets.isError || resources.isError) return failed;
+  /* The backend has a layout the mock does not hold, so the editor has nothing
+     of it to show - and saying "no layout" would be false.
+     TODO(ISS-0042): the editor reads the stored layout, and this goes. */
+  if (!keepEdit && resources.data.length === 0) {
+    return <NothingToEdit name={name} cardTo={cardTo} note={t("gen.layout.notShown")} noLayout={false} />;
+  }
   const all = resources.data;
   const versions = [...new Set(all.map((r) => r.version))];
   const endpoints = all.reduce((n, r) => n + r.endpoints.length, 0);
   const confirmed = all.filter((r) => r.confirmedBy != null).length;
-  const pill = !all.length
-    ? { cls: "border-gray-200 bg-gray-50 text-gray-400", label: t("gen.layout.pill.noLayout") }
-    : confirmed === all.length
+  const pill =
+    confirmed === all.length
       ? { cls: "border-emerald-200 bg-emerald-50 text-emerald-700", label: t("gen.layout.pill.confirmed") }
       : { cls: "border-amber-200 bg-amber-50 text-amber-800", label: t("gen.layout.pill.unconfirmed") };
   const summary = [
@@ -360,10 +462,8 @@ export function GenerationLayoutPage() {
     t("gen.layout.versions", { n: versions.length }),
     t("gen.layout.resources", { n: all.length }),
     t("gen.card.endpoints", { n: endpoints }),
-    all.length ? t("gen.layout.confirmedOf", { n: confirmed, total: all.length }) : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+    t("gen.layout.confirmedOf", { n: confirmed, total: all.length }),
+  ].join(" · ");
 
   const apply = (change: LayoutEdit, then?: () => void) => edit.mutate(change, { onSuccess: () => then?.() });
   const saveRename = (resource: GenResource) => {
@@ -380,22 +480,17 @@ export function GenerationLayoutPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
-      <ServiceBackLink to={cardTo} state={fromList} label={t("gen.layout.back")} />
-
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="font-mono text-xl font-semibold text-gray-900">{name}</h1>
-            <StatusPill cls={pill.cls} label={pill.label} running={false} />
-          </div>
-          <div className="mt-1 text-xs text-gray-400">{summary}</div>
-        </div>
-        {edited && <span className="text-xs text-gray-400">{t("gen.layout.edited")}</span>}
-      </div>
+      <LayoutHeader
+        name={name}
+        cardTo={cardTo}
+        pill={pill}
+        summary={summary}
+        aside={edited && <span className="text-xs text-gray-400">{t("gen.layout.edited")}</span>}
+      />
 
       {keepEdit && (
         <div className="mb-4">
-          <BlockFailed query={access.query} label={t("gen.layout.refreshFailed")} loadingLabel={t("service.loading")} />
+          <BlockFailed query={failedRefresh} label={t("gen.layout.refreshFailed")} loadingLabel={t("service.loading")} />
         </div>
       )}
 
@@ -488,12 +583,6 @@ export function GenerationLayoutPage() {
           </section>
         );
       })}
-
-      {versions.length === 0 && (
-        <div className="mb-4 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 py-14 text-center text-sm text-gray-400">
-          {t("gen.layout.noLayout")}
-        </div>
-      )}
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-3.5 py-3 text-xs text-gray-500">
         {t("gen.layout.footer")}
