@@ -1,7 +1,8 @@
-import { Folder, Play } from "lucide-react";
+import { Folder, LayoutGrid, Play } from "lucide-react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import type { ReactNode } from "react";
-import { useGenerationResources, useGenerationTargets, useInGeneration } from "../data/queries";
+import { useGenerationLayout, useGenerationResources, useGenerationTargets, useInGeneration } from "../data/queries";
+import { useStartLayout } from "../data/mutations";
 import type { GenResource, GenTarget } from "../data/types";
 import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
@@ -9,7 +10,16 @@ import { PageNotFound } from "../components/PageNotFound";
 import { holdOf } from "../lib/layout";
 import { generationPath, listPath, servicePath } from "../lib/paths";
 import { SHOW_GEN_JOBS } from "../flags";
-import { ServiceBackLink, ServiceLoadFailed, ServiceLoading } from "../../scan/components/ServicePageStates";
+import { isNotFound } from "../../scan/api/client";
+import { mutationErrorKey } from "../../scan/lib/errors";
+import { blockOf, retryJoining } from "../../scan/api/queries";
+import {
+  BlockLoadFailed,
+  BlockLoading,
+  ServiceBackLink,
+  ServiceLoadFailed,
+  ServiceLoading,
+} from "../../scan/components/ServicePageStates";
 import { useI18n } from "../../../shared/i18n";
 
 function ResourceRow({
@@ -94,9 +104,10 @@ function CardHeader({ name, sub, layoutTo }: { name: string; sub?: string; layou
  * client (ADR-0049). A list that failed to load is a failure with Retry, never
  * PageNotFound (ADR-0081).
  *
- * The server has no generation data yet, so the card shows "Nothing laid out"
- * in its place (`SHOW_GEN_JOBS`). TODO(ISS-0039): this and ISS-0040 replace it
- * with the resources of the stored layout.
+ * Its centre follows the stored layout. A service without one gets the one
+ * way to make it: "Generate layout" (ADR-0056). With one, its resources are
+ * ISS-0040's. The server has no generation data yet, so jobs, coverage and
+ * Generate stay switched off (`SHOW_GEN_JOBS`).
  */
 export function GenerationServicePage() {
   const { name = "" } = useParams();
@@ -105,24 +116,88 @@ export function GenerationServicePage() {
   const { state: fromList } = useLocation();
   const { t } = useI18n();
   const access = useInGeneration(name);
+  /* Asked next to the list on the first load, and from then on only for a
+     service of the list, as the layout page does (ADR-0078). The card on the
+     mock does not read it. */
+  const layout = useGenerationLayout(name, { enabled: !SHOW_GEN_JOBS && (access.pending || access.listed) });
+  const stored = blockOf(layout);
+  /* A 404 is the backend's word that the service is not in Generation (ADR-0086). */
+  const gone = isNotFound(layout.error);
+  const start = useStartLayout(name);
 
   const listTo = listPath(fromList);
   const back = <ServiceBackLink to={listTo} state={fromList} />;
+  const failed = (
+    <ServiceLoadFailed
+      back={listTo}
+      backState={fromList}
+      onRetry={() => {
+        if (access.failed) access.retry();
+        if (stored.failed && !gone) void retryJoining(layout);
+      }}
+    />
+  );
 
   if (access.pending) return <ServiceLoading />;
-  if (access.failed) return <ServiceLoadFailed back={listTo} backState={fromList} onRetry={access.retry} />;
+  if (access.failed) return failed;
   if (!access.listed) return <PageNotFound back={back} />;
   if (SHOW_GEN_JOBS) return <TargetCard name={name} back={back} />;
+  if (gone) return <PageNotFound back={back} />;
+  if (stored.pending) return <ServiceLoading />;
+  if (stored.failed) return failed;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
       {back}
       {/* the target the address names rides along into the layout, and back */}
       <CardHeader name={name} layoutTo={generationPath(name, ["layout"], searchParams.get("target"))} />
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="px-4 py-10 text-center text-sm text-gray-400">{t("gen.card.empty")}</div>
-      </div>
+      {/* The centre of the card, named so it can be found as the place of the resources. */}
+      <section
+        aria-label={t("gen.card.resources")}
+        className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+      >
+        {layout.data.has_layout ? (
+          /* No "Generate layout" once there is a layout: it changes only by
+             editing it (ADR-0072). TODO(ISS-0040): its resources go here. */
+          <div className="px-4 py-10 text-center text-sm text-gray-400">{t("gen.layout.notShown")}</div>
+        ) : (
+          <div className="flex justify-center px-4 py-10">
+            <StartGrouping start={start} />
+          </div>
+        )}
+      </section>
     </div>
+  );
+}
+
+/**
+ * The centre of a service with no layout yet: "Generate layout" and nothing
+ * else (ADR-0056); a spinner while the grouping runs (ADR-0060); and if it
+ * failed, the failure with Retry in its place (ADR-0061), and for a refusal
+ * its reason. A failed start stores nothing, so Retry simply starts it again.
+ */
+function StartGrouping({ start }: { start: ReturnType<typeof useStartLayout> }) {
+  const { t } = useI18n();
+  if (start.isPending) return <BlockLoading label={t("gen.card.grouping")} />;
+  if (start.isError) {
+    /* A refusal says why: a role that may not start it is not a grouping that
+       failed, and Retry alone would not tell the two apart. */
+    const refused = mutationErrorKey(start.error) === "auth.forbidden";
+    const label = t(refused ? "gen.card.groupRefused" : "gen.card.groupFailed");
+    return (
+      <div className="w-full max-w-md">
+        <BlockLoadFailed label={label} onRetry={() => start.mutate()} />
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => start.mutate()}
+      className="inline-flex items-center gap-1.5 rounded border border-pink-300 bg-pink-50 px-3.5 py-2 text-sm font-semibold text-brand transition hover:border-brand"
+    >
+      <LayoutGrid size={14} /> {t("gen.card.generateLayout")}
+    </button>
   );
 }
 
