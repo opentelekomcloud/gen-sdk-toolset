@@ -78,13 +78,24 @@ export function invalidateSnapshot(qc: QueryClient, name: string) {
  * An edit of a service's Generation layout changes its resources, and with
  * them what the list and the card count for it: `total`, and the state, when a
  * resource is made or goes - and the specs, whose operations are the endpoints
- * of a resource. Jobs are untouched, so the attention rules are not.
+ * of a resource. Jobs are untouched, so the attention rules are not. It
+ * settles once they are read again, for a caller that waits on that.
  */
-export function invalidateGenLayout(qc: QueryClient, name: string) {
-  void qc.invalidateQueries({ queryKey: keys.genLayout(name) });
-  void qc.invalidateQueries({ queryKey: keys.genResources(name) });
-  void qc.invalidateQueries({ queryKey: keys.genServices });
-  void qc.invalidateQueries({ queryKey: keys.genSpecs(name) });
+export function invalidateGenLayout(qc: QueryClient, name: string): Promise<unknown> {
+  return Promise.all([qc.invalidateQueries({ queryKey: keys.genLayout(name) }), invalidateFromGenLayout(qc, name)]);
+}
+
+/**
+ * What a service's layout feeds, without the layout itself - for a caller that
+ * already holds the new layout, as the start of the grouping does with its
+ * answer, and so has no reason to read it again.
+ */
+export function invalidateFromGenLayout(qc: QueryClient, name: string): Promise<unknown> {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: keys.genResources(name) }),
+    qc.invalidateQueries({ queryKey: keys.genServices }),
+    qc.invalidateQueries({ queryKey: keys.genSpecs(name) }),
+  ]);
 }
 
 /**
