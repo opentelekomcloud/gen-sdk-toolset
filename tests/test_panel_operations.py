@@ -1,389 +1,261 @@
-"""Operation proposals for the endpoints already placed in one resource."""
+"""The default kind and SDK method name of a resource's operations (ISS-0090).
+
+Pure tests: the input is hand-built IR for the endpoints of one layout resource.
+"""
+
+import random
 
 import pytest
 
-from tools.panel.core.action_selectors import ActionSelector
-from tools.panel.core.operations import (
-    NamingConflict,
-    OperationKind,
-    propose_operations,
-)
-from tools.shared.ir import (
-    Endpoint,
-    Example,
-    HttpMethod,
-    Parameter,
-    ParameterType,
-    Section,
-    SectionName,
-)
+from tools.panel.core.operations import OperationKind, propose_operations
+from tools.shared.ir import Endpoint, HttpMethod, Section, SectionName
+
+GET, POST, PUT = HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT
+PATCH, DELETE = HttpMethod.PATCH, HttpMethod.DELETE
 
 
 def _doc(
-    path: str,
-    uri: str,
-    method: HttpMethod = HttpMethod.POST,
-    *,
-    examples: tuple[dict, ...] = (),
-    body: tuple[Parameter, ...] = (),
-    query: tuple[Parameter, ...] = (),
-    responses: tuple[dict, ...] = (),
+    method: HttpMethod, uri: str, path: str | None = None, title: str = ""
 ) -> Endpoint:
-    sections = {s: Section(name=s) for s in SectionName}
-    sections[SectionName.BODY].parameters.extend(body)
-    sections[SectionName.QUERY_PARAMS].parameters.extend(query)
-    for section, values in (
-        (SectionName.EXAMPLE_REQUEST, examples),
-        (SectionName.EXAMPLE_RESPONSE, responses),
-    ):
-        sections[section].examples.extend(Example(raw="", parsed=v) for v in values)
-    return Endpoint(path=path, uri=uri, method=method, sections=list(sections.values()))
+    return Endpoint(
+        path=path or f"{method.value} {uri}",
+        title=title,
+        method=method,
+        uri=uri,
+        sections=[Section(name=name) for name in SectionName],
+    )
+
+
+def _proposed(*docs: Endpoint) -> dict[str, tuple[OperationKind, str | None]]:
+    return {op.path: (op.kind, op.name) for op in propose_operations(docs)}
+
+
+def _names(*docs: Endpoint) -> list[str | None]:
+    proposed = _proposed(*docs)
+    return [proposed[doc.path][1] for doc in docs]
+
+
+VPCS = "/v1/{project_id}/vpcs"
+TAGS = "/v2.1/{project_id}/servers/{server_id}/tags"
+
+# ---------------------------------------------------------------------------
+# Kind: base only on a collection and its item
+# ---------------------------------------------------------------------------
+
+
+def test_collection_and_item_of_the_resource_are_base():
+    assert _proposed(
+        _doc(GET, VPCS),
+        _doc(POST, VPCS),
+        _doc(GET, f"{VPCS}/{{vpc_id}}"),
+        _doc(PUT, f"{VPCS}/{{vpc_id}}"),
+        _doc(DELETE, f"{VPCS}/{{vpc_id}}"),
+    ) == {
+        f"GET {VPCS}": (OperationKind.list, "list"),
+        f"POST {VPCS}": (OperationKind.create, "create"),
+        f"GET {VPCS}/{{vpc_id}}": (OperationKind.get, "get"),
+        f"PUT {VPCS}/{{vpc_id}}": (OperationKind.update, "update"),
+        f"DELETE {VPCS}/{{vpc_id}}": (OperationKind.delete, "delete"),
+    }
+
+
+def test_patch_on_an_item_is_update():
+    [op] = propose_operations([_doc(PATCH, "/v1/vpcs/{id}")])
+    assert (op.kind, op.name) == (OperationKind.update, "update")
+
+
+def test_nested_collection_is_base():
+    assert _proposed(
+        _doc(GET, TAGS),
+        _doc(POST, TAGS),
+        _doc(GET, f"{TAGS}/{{tag}}"),
+        _doc(PUT, f"{TAGS}/{{tag}}"),
+        _doc(DELETE, f"{TAGS}/{{tag}}"),
+    ) == {
+        f"GET {TAGS}": (OperationKind.list, "list_tags"),
+        f"POST {TAGS}": (OperationKind.create, "create_tag"),
+        f"GET {TAGS}/{{tag}}": (OperationKind.get, "get_tag"),
+        f"PUT {TAGS}/{{tag}}": (OperationKind.update, "update_tag"),
+        f"DELETE {TAGS}/{{tag}}": (OperationKind.delete, "delete_tag"),
+    }
+
+
+@pytest.mark.parametrize(
+    ("method", "uri"),
+    [
+        (PUT, "/v2.0/vpc/peerings/{peering_id}/accept"),
+        (POST, "/v1/{project_id}/routetables/{routetable_id}/action"),
+        (GET, "/v1/{project_id}/antiddos/{floating_ip_id}/status"),
+        (GET, "/v2.0/{project_id}/publicips/tags"),
+        (POST, "/v3/{project_id}/backups/create"),
+        (GET, "/v2/apigw/gateway-responses/{response_id}/{response_type}"),
+        (GET, "/{api_version}"),
+    ],
+)
+def test_other_shapes_are_custom(method, uri):
+    [op] = propose_operations([_doc(method, uri)])
+    assert op.kind is OperationKind.custom
+
+
+def test_a_word_is_a_collection_only_with_an_item_in_the_resource():
+    events = "/v2/{project_id}/training-jobs/{job_id}/events"
+    alone = _proposed(_doc(GET, events))
+    with_item = _proposed(_doc(GET, events), _doc(GET, f"{events}/{{event_id}}"))
+    assert alone[f"GET {events}"] == (OperationKind.custom, "events")
+    assert with_item[f"GET {events}"] == (OperationKind.list, "list_events")
+
+
+def test_put_and_delete_on_a_whole_collection_are_custom():
+    proposed = _proposed(
+        _doc(PUT, TAGS), _doc(DELETE, TAGS), _doc(DELETE, f"{TAGS}/{{tag}}")
+    )
+    assert proposed[f"PUT {TAGS}"] == (OperationKind.custom, "put_tags")
+    assert proposed[f"DELETE {TAGS}"] == (OperationKind.custom, "delete_tags")
+    assert proposed[f"DELETE {TAGS}/{{tag}}"] == (OperationKind.delete, "delete_tag")
+
+
+def test_post_on_an_item_is_custom():
+    eip = "/v2/{project_id}/clusters/{cluster_id}/eips/{eip_id}"
+    assert _proposed(_doc(POST, eip))[f"POST {eip}"] == (OperationKind.custom, "eips")
 
 
 # ---------------------------------------------------------------------------
-# URI-only rules and final names within a single layout resource
+# Default name
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    ("method", "uri", "kind", "name"),
+    ("collection", "name"),
     [
-        (HttpMethod.GET, "/v1/{project}/vpcs", OperationKind.list, "list"),
-        (HttpMethod.GET, "/v1/{project}/vpcs/%7Bid%7D", OperationKind.get, "get"),
-        (HttpMethod.POST, "/v1/{project}/vpcs", OperationKind.create, "create"),
-        (HttpMethod.PATCH, "/vpcs/{id}", OperationKind.update, "update"),
-        (HttpMethod.PUT, "/vpcs/{id}", OperationKind.update, "update"),
-        (HttpMethod.DELETE, "/vpcs/{id}", OperationKind.delete, "delete"),
-        (
-            HttpMethod.GET,
-            "/svc/v1.0/{p}/vpcs/{id}/routes/?limit=2",
-            OperationKind.list,
-            "list_routes",
-        ),
-        (HttpMethod.GET, "/vpcs/{id}/status", OperationKind.get, "get_status"),
-        (HttpMethod.GET, "/servers/detail", OperationKind.list, "list_detail"),
-        (HttpMethod.GET, "/servers/{id}/detail", OperationKind.get, "get_detail"),
-        (
-            HttpMethod.GET,
-            "/vpcs/{id}/access-keys",
-            OperationKind.list,
-            "list_access_keys",
-        ),
-        (HttpMethod.POST, "/vpcs/{id}/routes", OperationKind.create, "create_routes"),
-        (HttpMethod.POST, "/vpcs/{id}/search", OperationKind.non_standard, "search"),
-        (HttpMethod.POST, "/vpcs/{id}/unknown", OperationKind.non_standard, "unknown"),
-        (HttpMethod.POST, "/vpcs/{id}", OperationKind.non_standard, "vpcs"),
-        (
-            HttpMethod.HEAD,
-            "/v1/vpcs/{id}/OS-Keys/{key}",
-            OperationKind.non_standard,
-            "os_keys",
-        ),
-        (HttpMethod.OPTIONS, "/vpcs/{id}/class", OperationKind.non_standard, "class_"),
-        (
-            HttpMethod.OPTIONS,
-            "/v1/vpcs/2%2FMore",
-            OperationKind.non_standard,
-            "op_2_more",
-        ),
-        (HttpMethod.GET, "/", OperationKind.list, "list"),
+        ("tags", "delete_tag"),
+        ("security-policies", "delete_security_policy"),
+        ("api-groups", "delete_api_group"),
+        ("policy", "delete_policy"),
+        ("address", "delete_address"),
+        ("status", "delete_status"),
     ],
 )
-def test_uri_kind_and_python_name(method, uri, kind, name) -> None:
-    [op] = propose_operations([_doc("source", uri, method)])
-    assert (op.path, op.kind, op.proposed_name, op.conflict) == (
-        "source",
-        kind,
-        name,
-        None,
-    )
+def test_item_operation_names_its_collection_in_the_singular(collection, name):
+    uri = f"/v1/servers/{{id}}/{collection}/{{item_id}}"
+    assert _names(_doc(DELETE, uri)) == [name]
 
 
-def test_nameless_custom_endpoint_is_retained() -> None:
-    [op] = propose_operations([_doc("root", "/v1/{id}", HttpMethod.HEAD)])
-    assert (op.path, op.kind, op.proposed_name, op.conflict) == (
-        "root",
-        OperationKind.non_standard,
-        None,
-        NamingConflict.missing_name,
-    )
-
-
-def test_normalization_collision_on_distinct_uris_keeps_both_sources() -> None:
-    docs = [_doc("b", "/r/search-by-tag"), _doc("a", "/r/search_by_tag")]
-    ops = propose_operations(docs)
-    assert [(op.path, op.proposed_name, op.conflict) for op in ops] == [
-        (p, "search_by_tag", NamingConflict.duplicate_name) for p in ("a", "b")
+def test_list_keeps_the_collection_name_as_written():
+    routes = "/v1/vpcs/{id}/routes"
+    assert _names(_doc(GET, routes), _doc(GET, f"{routes}/{{route_id}}")) == [
+        "list_routes",
+        "get_route",
     ]
-    assert ops == propose_operations(docs[::-1])
-    assert propose_operations([docs[0]])[0].conflict is None
 
 
-def test_layout_can_place_distinct_uri_roots_in_one_resource() -> None:
-    docs = [
-        _doc(root, f"/{root}/{{id}}", HttpMethod.GET) for root in ("vpcs", "groups")
-    ]
-    assert [(op.proposed_name, op.conflict) for op in propose_operations(docs)] == [
-        ("get_groups", None),
-        ("get_vpcs", None),
-    ]
-    assert propose_operations(docs[::-1]) == propose_operations(docs)
-    assert propose_operations(docs[:1])[0].proposed_name == "get"
+def test_custom_name_joins_the_segments_after_the_resource_segment():
+    assert _names(
+        _doc(PUT, "/v3/{project_id}/instances/{id}/backups/policy/update"),
+        _doc(POST, "/v1/{project_id}/vpcs/{id}/tags/action"),
+    ) == ["backups_policy_update", "tags_action"]
 
 
-# ---------------------------------------------------------------------------
-# Terminal action selectors and incomplete scan evidence
-# ---------------------------------------------------------------------------
-
-
-def test_nova_actions_use_exact_request_keys_on_every_http_method() -> None:
-    uri = "/v2.1/{project}/servers/{server}/action/?details=true"
-    docs = [
-        _doc(key, uri, HttpMethod.PUT, examples=({key: data},))
-        for key, data in (
-            ("addSecurityGroup", {"name": "web"}),
-            ("removeSecurityGroup", {"name": "web"}),
-            ("os-start", None),
-            ("os-stop", {}),
-        )
-    ]
-    ops = propose_operations(docs)
-    assert {op.path: op.proposed_name for op in ops} == {
-        "addSecurityGroup": "add_security_group",
-        "removeSecurityGroup": "remove_security_group",
-        "os-start": "start",
-        "os-stop": "stop",
-    }
-    assert all(
-        op.kind is OperationKind.non_standard and op.conflict is None for op in ops
-    )
-    assert all(op.selector == ActionSelector((op.path,)) for op in ops)
-    renamed = [
-        d.model_copy(update={"title": "New title", "api_version": "v8"}) for d in docs
-    ]
-    assert ops == propose_operations(renamed[::-1])
-
-
-def test_two_values_on_one_document_are_two_stable_operations() -> None:
-    doc = _doc(
-        "tags",
-        "/v1/things/{id}/tags/action",
-        examples=(
-            {"action": "delete", "tags": []},
-            {"action": "create", "tags": []},
-            {"action": "delete"},
-        ),
-    )
-    ops = propose_operations([doc])
-    assert [(op.proposed_name, op.selector, op.conflict) for op in ops] == [
-        ("create_tags", ActionSelector(("action",), "create"), None),
-        ("delete_tags", ActionSelector(("action",), "delete"), None),
-    ]
+def test_custom_operation_on_the_resource_segment_takes_its_name():
+    assert _names(_doc(POST, "/v1/{project_id}/quotas")) == ["quotas"]
 
 
 @pytest.mark.parametrize(
-    ("description", "names"),
+    ("segment", "name"),
     [
-        (
-            "Possible values are create and delete. Use delete to remove tags.",
-            ["delete"],
-        ),
-        ("Enumeration values:\n\ncreate\n\ndelete", ["create", "delete"]),
-        ("Range\n\ncreate\n\nDefault Value\n\nN/A", ["create"]),
-        (
-            "execute: Execute the policy.\n\npause: Pause the policy.",
-            ["execute", "pause"],
-        ),
-        ("The value can be set to create or delete only.", ["create", "delete"]),
-        ("The value is add, update, or remove.", ["add", "remove", "update"]),
-        (
-            "If action is set to count, count. If action is set to filter, list.",
-            ["count", "filter"],
-        ),
+        ("rolling-restart", "rolling_restart"),
+        ("resizeVolume", "resize_volume"),
+        ("2fa", "op_2fa"),
+        ("import", "import_"),
     ],
 )
-def test_schema_can_supply_an_action_without_parsed_examples(
-    description, names
-) -> None:
-    field = Parameter(name="action", description=description)
-    ops = propose_operations([_doc("actions", "/action", body=(field,))])
-    assert [op.proposed_name for op in ops] == names
-    assert all(op.conflict is None for op in ops)
+def test_name_is_a_python_identifier(segment, name):
+    assert _names(_doc(POST, f"/v1/clusters/{{id}}/{segment}")) == [name]
 
 
-def test_nested_dispatch_uses_the_distinguishing_key_and_parent() -> None:
-    uri = "/v1/{project}/routetables/{id}/action"
+def test_version_segment_prefix_and_query_string_do_not_reach_the_name():
+    uri = "/autoscaling-api/v1/{project_id}/groups/{id}/policies?limit=2"
+    assert _names(_doc(GET, uri), _doc(GET, uri.replace("?", "/{pid}?"))) == [
+        "list_policies",
+        "get_policy",
+    ]
+
+
+def test_only_method_and_uri_affect_the_proposal():
+    uri = "/v1/{project_id}/vpcs/{id}/accept"
+    one = propose_operations([_doc(PUT, uri, "a.rst", "Accepting a Peering")])
+    other = propose_operations([_doc(PUT, uri, "a.rst", "Reworded title")])
+    assert one == other
+
+
+def test_result_does_not_depend_on_input_order():
     docs = [
-        _doc(k, uri, examples=({"routetable": {"subnets": {k: ["id"]}}},))
-        for k in ("associate", "disassociate")
+        _doc(GET, TAGS),
+        _doc(PUT, TAGS),
+        _doc(DELETE, TAGS),
+        _doc(DELETE, f"{TAGS}/{{tag}}"),
+        _doc(POST, f"{TAGS}/action", "add.rst"),
+        _doc(POST, f"{TAGS}/action", "delete.rst"),
     ]
-    ops = propose_operations(docs)
-    assert [(op.proposed_name, op.selector) for op in ops] == [
-        (k + "_subnets", ActionSelector(("routetable", "subnets", k)))
-        for k in ("associate", "disassociate")
-    ]
-    assert all(op.conflict is None for op in ops)
-    assert ops == propose_operations(docs[::-1])
-    assert propose_operations([docs[0]]) == [ops[0]]
+    expected = propose_operations(docs)
+    for seed in range(5):
+        shuffled = docs[:]
+        random.Random(seed).shuffle(shuffled)
+        assert propose_operations(shuffled) == expected
 
 
-def test_branching_envelope_with_new_keys_preserves_all_examples() -> None:
-    doc = _doc(
-        "expand",
-        "/instances/{id}/action",
-        examples=(
-            {"expand_cluster": {"coordinators": []}},
-            {"expand_cluster": {"shard": {"count": 2}}},
-            {"enlarge_volume": {"size": 10}},
-        ),
+# ---------------------------------------------------------------------------
+# Names that coincide within the resource
+# ---------------------------------------------------------------------------
+
+
+def test_documents_of_one_method_and_uri_get_no_name():
+    action = "/v1/{project_id}/routetables/{routetable_id}/action"
+    assert _names(
+        _doc(POST, action, "associate.rst"),
+        _doc(POST, action + "/", "disassociate.rst"),
+        _doc(POST, action + "?dry_run=true", "dry_run.rst"),
+    ) == [None, None, None]
+
+
+def test_documents_of_one_base_call_get_no_name_and_keep_their_kind():
+    instances = "/v3/{project_id}/instances"
+    proposed = _proposed(
+        _doc(POST, instances, "create.rst"),
+        _doc(POST, instances, "restore.rst"),
+        _doc(GET, f"{instances}/{{id}}"),
     )
-    ops = propose_operations([doc])
-    assert {op.proposed_name for op in ops} == {
-        "expand_cluster_coordinators",
-        "expand_cluster_shard",
-        "enlarge_volume",
-    }
+    assert proposed["create.rst"] == (OperationKind.create, None)
+    assert proposed["restore.rst"] == (OperationKind.create, None)
+    assert proposed[f"GET {instances}/{{id}}"] == (OperationKind.get, "get")
 
 
-def test_request_table_keeps_nested_command_siblings_with_partial_examples() -> None:
-    commands = [
-        Parameter(name=k, param_type=ParameterType.ARRAY)
-        for k in ("associate", "disassociate")
-    ]
-    table = Parameter(
-        name="routetable", children=[Parameter(name="subnets", children=commands)]
-    )
-    doc = _doc(
-        "table",
-        "/routetables/{id}/action",
-        body=(table,),
-        examples=(
-            {"routetable": {"subnets": {"associate": ["id"]}}},
-            {"os-stop": None},
-        ),
-    )
-    assert {op.proposed_name for op in propose_operations([doc])} == {
-        "associate_subnets",
-        "disassociate_subnets",
-        "stop",
-    }
-
-
-def test_body_table_can_name_an_action_without_using_response_evidence() -> None:
-    length = Parameter(name="length")
-    root = Parameter(name="os-getConsoleOutput", children=[length])
-    (op,) = propose_operations(
-        [
-            _doc(
-                "logs",
-                "/servers/{id}/action",
-                body=(root, length),
-                responses=({"delete": {}},),
-            )
-        ]
-    )
-    assert (op.proposed_name, op.conflict) == ("get_console_output", None)
-
-
-def test_unknown_or_partial_selector_keeps_its_source_and_reason() -> None:
-    uri = "/servers/{id}/action"
-    docs = [
-        _doc("missing", uri, responses=({"os-start": None},)),
-        _doc("ambiguous", uri, examples=({"name": "a", "id": 1},)),
-        _doc("partial", uri, examples=({"action": "enable"}, {"action": ["disable"]})),
-    ]
-    ops = propose_operations(docs)
-    assert [(op.path, op.proposed_name, op.conflict) for op in ops] == [
-        ("ambiguous", None, NamingConflict.ambiguous_action_selector),
-        ("missing", None, NamingConflict.missing_action_selector),
-        ("partial", "enable_servers", None),
-        ("partial", None, NamingConflict.ambiguous_action_selector),
+def test_custom_names_on_one_uri_get_the_http_method():
+    switch = "/v1/{project_id}/ips/switch"
+    assert _names(_doc(GET, switch), _doc(POST, switch)) == [
+        "get_switch",
+        "post_switch",
     ]
 
 
-def test_distinct_selectors_that_normalize_to_one_name_are_preserved() -> None:
-    doc = _doc("one", "/servers/action", examples=({"os-start": {}}, {"start": {}}))
-    ops = propose_operations([doc])
-    assert {op.selector for op in ops} == {
-        ActionSelector(("os-start",)),
-        ActionSelector(("start",)),
-    }
-    assert all(
-        op.proposed_name == "start" and op.conflict is NamingConflict.duplicate_name
-        for op in ops
-    )
+def test_base_name_stays_when_a_custom_name_coincides_with_it():
+    rules = "/v2/{project_id}/alarm-rules"
+    assert _names(
+        _doc(DELETE, f"{rules}/{{rule_id}}"),
+        _doc(POST, f"{rules}/delete"),
+        _doc(GET, rules),
+    ) == ["delete", "post_delete", "list"]
 
 
-def test_named_envelopes_and_action_values_on_one_source_both_survive() -> None:
-    doc = _doc(
-        "mixed",
-        "/servers/action",
-        body=(Parameter(name="action"),),
-        examples=({"action": "enable"}, {"quiesce": {}}, {"os-stop": None}),
-    )
-    assert [(op.proposed_name, op.conflict) for op in propose_operations([doc])] == [
-        ("enable_servers", None),
-        ("stop", None),
-        ("quiesce", None),
-    ]
+def test_names_that_still_coincide_are_left_empty():
+    assert _names(
+        _doc(GET, "/v3/{project_id}/backups"),
+        _doc(GET, "/v3/{project_id}/backups/{id}"),
+        _doc(GET, "/mysql/v3/{project_id}/backups"),
+        _doc(POST, "/v1/{project_id}/clusters/{id}/rolling-restart"),
+        _doc(POST, "/v1/{project_id}/clusters/{id}/rolling_restart"),
+    ) == [None, "get", None, None, None]
 
 
-def test_different_scalar_arguments_do_not_establish_action_names() -> None:
-    docs = [
-        _doc(key, "/servers/action", examples=({key: "x"},)) for key in ("id", "name")
-    ]
-    ops = propose_operations(docs)
-    assert [(op.path, op.conflict) for op in ops] == [
-        ("id", NamingConflict.ambiguous_action_selector),
-        ("name", NamingConflict.ambiguous_action_selector),
-    ]
-
-
-def test_misplaced_error_example_does_not_introduce_an_action() -> None:
-    doc = _doc(
-        "extend",
-        "/volumes/action",
-        body=(Parameter(name="os-extend"),),
-        examples=({"badRequest": {"code": "400", "message": "Bad request"}},),
-    )
-    [op] = propose_operations([doc])
-    assert (op.proposed_name, op.conflict) == ("extend", None)
-
-
-def test_unparsed_example_keeps_a_conflict_alongside_a_known_request() -> None:
-    doc = _doc("volume", "/volumes/action", body=(Parameter(name="os-extend"),))
-    section = next(s for s in doc.sections if s.name is SectionName.EXAMPLE_REQUEST)
-    section.examples.append(Example(raw="POST https://{ECS Endpoint}/volumes/action"))
-    assert [op.proposed_name for op in propose_operations([doc])] == ["extend"]
-    section.examples.append(
-        Example(
-            raw="POST /v2/volumes/action\nPOST /v2.1/volumes/action\n\n"
-            '{"os-detach": null}'
-        )
-    )
-    section.examples.append(Example(raw="{invalid"))
-    assert [(op.proposed_name, op.conflict) for op in propose_operations([doc])] == [
-        ("detach", None),
-        ("extend", None),
-        (None, NamingConflict.ambiguous_action_selector),
-    ]
-
-
-def test_query_dispatch_keeps_the_source_field_and_fixed_value() -> None:
-    field = Parameter(
-        name="action-id", description="reject: Reject it.\nresolve: Approve it."
-    )
-    uri = "/applications/{id}/action"
-    doc = _doc("apply", uri, query=(field,), examples=({"ids": ["1"], "msg": "yes"},))
-    ops = propose_operations([doc])
-    assert [(op.proposed_name, op.selector) for op in ops] == [
-        (
-            value + "_applications",
-            ActionSelector(("action-id",), value, SectionName.QUERY_PARAMS),
-        )
-        for value in ("reject", "resolve")
-    ]
-    [fixed] = propose_operations(
-        [doc.model_copy(update={"uri": uri + "?action-id=reject"})]
-    )
-    assert fixed == ops[0]
+def test_uri_without_a_constant_segment_gets_no_name():
+    [op] = propose_operations([_doc(GET, "/{api_version}")])
+    assert (op.kind, op.name) == (OperationKind.custom, None)

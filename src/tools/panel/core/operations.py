@@ -1,22 +1,16 @@
-"""Propose SDK methods for the endpoints bound to one layout resource (ISS-0075)."""
+"""Propose the default kind and SDK method name of each operation (ISS-0090)."""
 
 from __future__ import annotations
 
 import keyword
 import re
 from collections import Counter, defaultdict
-from collections.abc import Iterator, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Sequence
+from dataclasses import dataclass
 from enum import StrEnum
 
 from pydantic.alias_generators import to_snake
 
-from tools.panel.core.action_selectors import (
-    ACTION,
-    ActionSelector,
-    action_selectors,
-    is_command,
-)
 from tools.panel.core.grouping import uri_segments
 from tools.shared.ir import Endpoint, HttpMethod
 
@@ -27,28 +21,32 @@ class OperationKind(StrEnum):
     create = "create"
     update = "update"
     delete = "delete"
-    non_standard = "non-standard"
+    custom = "custom"
 
 
-class NamingConflict(StrEnum):
-    missing_action_selector = "missing_action_selector"
-    ambiguous_action_selector = "ambiguous_action_selector"
-    missing_name = "missing_name"
-    duplicate_name = "duplicate_name"
+_ITEM_KINDS = {
+    HttpMethod.GET: OperationKind.get,
+    HttpMethod.PUT: OperationKind.update,
+    HttpMethod.PATCH: OperationKind.update,
+    HttpMethod.DELETE: OperationKind.delete,
+}
+_COLLECTION_KINDS = {
+    HttpMethod.GET: OperationKind.list,
+    HttpMethod.POST: OperationKind.create,
+}
 
 
 @dataclass(frozen=True)
 class SpecOperation:
-    """One SDK method proposal per source operation or documented action variant.
+    """One operation per source document, with its default kind and name.
 
-    TODO(ISS-0076): attach the source endpoint and expose it on the spec page.
+    ``name`` is None when the rule proposes no name (ADR-0120).
+    TODO(ISS-0091): attach the source endpoint and expose it on the spec page.
     """
 
     path: str
     kind: OperationKind
-    proposed_name: str | None
-    selector: ActionSelector | None = None
-    conflict: NamingConflict | None = None
+    name: str | None
 
 
 def _identifier(parts: tuple[str, ...]) -> str | None:
@@ -61,112 +59,85 @@ def _identifier(parts: tuple[str, ...]) -> str | None:
     return name + "_" if keyword.iskeyword(name) else name
 
 
-def _kind(method: HttpMethod, segments: tuple[str | None, ...]) -> OperationKind:
+def _singular(word: str) -> str:
+    lower = word.lower()
+    if lower.endswith("ies"):
+        return word[:-3] + "y"
+    if lower.endswith("s") and not lower.endswith(("ss", "us")):
+        return word[:-1]
+    return word
+
+
+def _collections(
+    all_segments: Sequence[tuple[str | None, ...]],
+) -> set[tuple[str | None, ...]]:
+    """Prefixes ending in a constant segment that some URI follows with a parameter."""
+    return {
+        segments[:i]
+        for segments in all_segments
+        for i in range(1, len(segments))
+        if segments[i] is None and segments[i - 1] is not None
+    }
+
+
+def _kind(
+    method: HttpMethod,
+    segments: tuple[str | None, ...],
+    collections: set[tuple[str | None, ...]],
+) -> OperationKind:
+    if segments[-1:] == (None,):
+        if segments[:-1] in collections:
+            return _ITEM_KINDS.get(method, OperationKind.custom)
+        return OperationKind.custom
+    if segments in collections:
+        return _COLLECTION_KINDS.get(method, OperationKind.custom)
+    return OperationKind.custom
+
+
+def _name(kind: OperationKind, segments: tuple[str | None, ...]) -> str | None:
     literals = tuple(s for s in segments if s is not None)
-    on_item = segments[-1:] == (None,)
-    leaf = literals[-1] if literals else ""
-    if method is HttpMethod.GET and leaf == "detail" and not on_item:
-        return OperationKind.get if segments[-2:-1] == (None,) else OperationKind.list
-    plural = leaf.lower().endswith("s") and not leaf.lower().endswith(("ss", "us"))
-    if (
-        not on_item
-        and is_command(leaf)
-        and (method is not HttpMethod.GET or not plural)
-    ):
-        return OperationKind.non_standard
-    collection = not on_item and (len(literals) <= 1 or plural)
-    match method:
-        case HttpMethod.GET:
-            return OperationKind.list if collection else OperationKind.get
-        case HttpMethod.POST if collection:
-            return OperationKind.create
-        case HttpMethod.PUT | HttpMethod.PATCH:
-            return OperationKind.update
-        case HttpMethod.DELETE:
-            return OperationKind.delete
-        case _:
-            return OperationKind.non_standard
-
-
-def _action_operations(
-    endpoints: list[Endpoint], collection: str | None
-) -> Iterator[SpecOperation]:
-    for endpoint, selectors, ambiguous in action_selectors(endpoints):
-        for selector in sorted(
-            selectors, key=lambda s: (s.keys, s.value or "", s.section)
-        ):
-            name = _identifier(selector.name_parts(collection))
-            yield SpecOperation(
-                endpoint.path,
-                OperationKind.non_standard,
-                name,
-                selector,
-                None if name else NamingConflict.missing_name,
-            )
-        if ambiguous or not selectors:
-            reason = (
-                NamingConflict.ambiguous_action_selector
-                if ambiguous
-                else NamingConflict.missing_action_selector
-            )
-            yield SpecOperation(
-                endpoint.path, OperationKind.non_standard, None, conflict=reason
-            )
-
-
-def _ordinary_name(
-    kind: OperationKind, literals: tuple[str, ...], *, include_root: bool
-) -> str | None:
-    nested = literals if include_root else literals[1:]
-    parts = (
-        (nested or literals)
-        if kind is OperationKind.non_standard
-        else (kind.value, *nested)
-    )
-    return _identifier(parts)
+    nested = literals[1:]
+    if kind is OperationKind.custom:
+        return _identifier(nested or literals)
+    if nested and kind is not OperationKind.list:
+        nested = (*nested[:-1], _singular(nested[-1]))
+    return _identifier((kind.value, *nested))
 
 
 def propose_operations(endpoints: Sequence[Endpoint]) -> list[SpecOperation]:
-    """Propose names for all endpoints assigned to one resource in the layout."""
-    operations: list[SpecOperation] = []
-    actions: defaultdict[tuple[HttpMethod, tuple[str | None, ...]], list[Endpoint]] = (
-        defaultdict(list)
-    )
-    qualified_names: dict[str, str] = {}
-    alternatives: defaultdict[str, set[str]] = defaultdict(set)
+    """Propose the kind and name of every endpoint assigned to one layout resource."""
+    segments = {e.path: uri_segments(e.uri) for e in endpoints}
+    collections = _collections(list(segments.values()))
+    kinds = {e.path: _kind(e.method, segments[e.path], collections) for e in endpoints}
+    names = {path: _name(kinds[path], segments[path]) for path in segments}
+
+    # Documents of one HTTP method and URI: only the user can tell them apart.
+    same_call: defaultdict[tuple[HttpMethod, str], list[str]] = defaultdict(list)
     for endpoint in endpoints:
-        segments = uri_segments(endpoint.uri)
-        literals = tuple(s for s in segments if s is not None)
-        if segments[-1:] == (ACTION,):
-            actions[endpoint.method, segments].append(endpoint)
-        else:
-            kind = _kind(endpoint.method, segments)
-            name = _ordinary_name(kind, literals, include_root=False)
-            conflict = None if name else NamingConflict.missing_name
-            operations.append(
-                SpecOperation(endpoint.path, kind, name, conflict=conflict)
-            )
-            qualified = _ordinary_name(kind, literals, include_root=True)
-            if name and qualified:
-                alternatives[name].add(qualified)
-                qualified_names[endpoint.path] = qualified
-    for (_, segments), group in actions.items():
-        collection = next((s for s in reversed(segments[:-1]) if s is not None), None)
-        operations.extend(_action_operations(group, collection))
-    # Manual layout moves can put different URI roots in the same resource.
-    operations = [
-        replace(op, proposed_name=qualified_names[op.path])
-        if op.selector is None
-        and op.proposed_name
-        and len(alternatives[op.proposed_name]) > 1
-        else op
-        for op in operations
-    ]
-    operations.sort(key=lambda op: op.path)
-    counts = Counter(op.proposed_name for op in operations if op.proposed_name)
-    return [
-        replace(op, conflict=NamingConflict.duplicate_name)
-        if op.proposed_name and counts[op.proposed_name] > 1
-        else op
-        for op in operations
-    ]
+        uri = endpoint.uri.split("?", 1)[0].rstrip("/")
+        same_call[endpoint.method, uri].append(endpoint.path)
+    for paths in same_call.values():
+        if len(paths) > 1:
+            for path in paths:
+                names[path] = None
+
+    methods = {e.path: e.method for e in endpoints}
+    for paths in _same_name(names):
+        if len({methods[path] for path in paths}) > 1:
+            for path in paths:
+                if kinds[path] is OperationKind.custom:
+                    names[path] = f"{methods[path].value.lower()}_{names[path]}"
+    for paths in _same_name(names):
+        for path in paths:
+            names[path] = None
+
+    return [SpecOperation(path, kinds[path], names[path]) for path in sorted(segments)]
+
+
+def _same_name(names: dict[str, str | None]) -> list[list[str]]:
+    counts = Counter(name for name in names.values() if name)
+    groups: defaultdict[str, list[str]] = defaultdict(list)
+    for path, name in names.items():
+        if name and counts[name] > 1:
+            groups[name].append(path)
+    return list(groups.values())

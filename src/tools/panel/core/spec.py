@@ -19,7 +19,7 @@ from tools.panel.core.operations import SpecOperation
 
 @dataclass(frozen=True)
 class SpecClass:
-    """One class of the resource. TODO(ISS-0077): its fields, names and types."""
+    """One class of the resource. TODO(ISS-0092): its fields, names and types."""
 
 
 @dataclass(frozen=True)
