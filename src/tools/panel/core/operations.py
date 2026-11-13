@@ -36,17 +36,26 @@ _COLLECTION_KINDS = {
 }
 
 
+class MissingName(StrEnum):
+    """Why the rule proposes no name for an operation (ADR-0120)."""
+
+    same_call = "same_call"
+    name_conflict = "name_conflict"
+    no_segment = "no_segment"
+
+
 @dataclass(frozen=True)
 class SpecOperation:
     """One operation per source document, with its default kind and name.
 
-    ``name`` is None when the rule proposes no name (ADR-0120).
+    ``name`` is None exactly when ``missing_name`` says why.
     TODO(ISS-0091): attach the source endpoint and expose it on the spec page.
     """
 
     path: str
     kind: OperationKind
     name: str | None
+    missing_name: MissingName | None = None
 
 
 def _identifier(parts: tuple[str, ...]) -> str | None:
@@ -63,7 +72,9 @@ def _singular(word: str) -> str:
     lower = word.lower()
     if lower.endswith("ies"):
         return word[:-3] + "y"
-    if lower.endswith("s") and not lower.endswith(("ss", "us")):
+    if lower.endswith(("sses", "xes", "shes")):
+        return word[:-2]
+    if lower.endswith("s") and not lower.endswith(("ss", "us", "sis")):
         return word[:-1]
     return word
 
@@ -107,9 +118,11 @@ def _name(kind: OperationKind, segments: tuple[str | None, ...]) -> str | None:
 def propose_operations(endpoints: Sequence[Endpoint]) -> list[SpecOperation]:
     """Propose the kind and name of every endpoint assigned to one layout resource."""
     segments = {e.path: uri_segments(e.uri) for e in endpoints}
+    methods = {e.path: e.method for e in endpoints}
     collections = _collections(list(segments.values()))
     kinds = {e.path: _kind(e.method, segments[e.path], collections) for e in endpoints}
     names = {path: _name(kinds[path], segments[path]) for path in segments}
+    missing = {path: MissingName.no_segment for path in names if names[path] is None}
 
     # Documents of one HTTP method and URI: only the user can tell them apart.
     same_call: defaultdict[tuple[HttpMethod, str], list[str]] = defaultdict(list)
@@ -119,19 +132,26 @@ def propose_operations(endpoints: Sequence[Endpoint]) -> list[SpecOperation]:
     for paths in same_call.values():
         if len(paths) > 1:
             for path in paths:
-                names[path] = None
+                names[path], missing[path] = None, MissingName.same_call
 
-    methods = {e.path: e.method for e in endpoints}
     for paths in _same_name(names):
-        if len({methods[path] for path in paths}) > 1:
-            for path in paths:
-                if kinds[path] is OperationKind.custom:
-                    names[path] = f"{methods[path].value.lower()}_{names[path]}"
+        several_methods = len({methods[path] for path in paths}) > 1
+        has_base = any(kinds[path] is not OperationKind.custom for path in paths)
+        for path in paths:
+            method, name = methods[path], names[path]
+            if kinds[path] is OperationKind.custom:
+                if several_methods or has_base:
+                    names[path] = f"{method.value.lower()}_{name}"
+            elif several_methods and method is HttpMethod.PATCH:
+                names[path] = "patch" + name.removeprefix(OperationKind.update.value)
     for paths in _same_name(names):
         for path in paths:
-            names[path] = None
+            names[path], missing[path] = None, MissingName.name_conflict
 
-    return [SpecOperation(path, kinds[path], names[path]) for path in sorted(segments)]
+    return [
+        SpecOperation(path, kinds[path], names[path], missing.get(path))
+        for path in sorted(segments)
+    ]
 
 
 def _same_name(names: dict[str, str | None]) -> list[list[str]]:

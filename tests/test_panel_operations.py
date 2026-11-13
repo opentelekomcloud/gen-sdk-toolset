@@ -7,7 +7,11 @@ import random
 
 import pytest
 
-from tools.panel.core.operations import OperationKind, propose_operations
+from tools.panel.core.operations import (
+    MissingName,
+    OperationKind,
+    propose_operations,
+)
 from tools.shared.ir import Endpoint, HttpMethod, Section, SectionName
 
 GET, POST, PUT = HttpMethod.GET, HttpMethod.POST, HttpMethod.PUT
@@ -33,6 +37,11 @@ def _proposed(*docs: Endpoint) -> dict[str, tuple[OperationKind, str | None]]:
 def _names(*docs: Endpoint) -> list[str | None]:
     proposed = _proposed(*docs)
     return [proposed[doc.path][1] for doc in docs]
+
+
+def _missing(*docs: Endpoint) -> list[MissingName | None]:
+    reasons = {op.path: op.missing_name for op in propose_operations(docs)}
+    return [reasons[doc.path] for doc in docs]
 
 
 VPCS = "/v1/{project_id}/vpcs"
@@ -132,7 +141,11 @@ def test_post_on_an_item_is_custom():
         ("api-groups", "delete_api_group"),
         ("policy", "delete_policy"),
         ("address", "delete_address"),
+        ("addresses", "delete_address"),
+        ("mailboxes", "delete_mailbox"),
         ("status", "delete_status"),
+        ("diagnosis", "delete_diagnosis"),
+        ("apis", "delete_api"),
     ],
 )
 def test_item_operation_names_its_collection_in_the_singular(collection, name):
@@ -237,13 +250,23 @@ def test_custom_names_on_one_uri_get_the_http_method():
     ]
 
 
-def test_base_name_stays_when_a_custom_name_coincides_with_it():
+@pytest.mark.parametrize(
+    ("method", "custom"), [(POST, "post_delete"), (DELETE, "delete_delete")]
+)
+def test_base_name_stays_when_a_custom_name_coincides_with_it(method, custom):
     rules = "/v2/{project_id}/alarm-rules"
     assert _names(
         _doc(DELETE, f"{rules}/{{rule_id}}"),
-        _doc(POST, f"{rules}/delete"),
+        _doc(method, f"{rules}/delete"),
         _doc(GET, rules),
-    ) == ["delete", "post_delete", "list"]
+    ) == ["delete", custom, "list"]
+
+
+def test_patch_next_to_put_on_one_item_is_named_patch():
+    pod, tag = "/v2/pods/{name}", "/v2/pods/{name}/tags/{tag}"
+    docs = [_doc(PUT, pod), _doc(PATCH, pod), _doc(PUT, tag), _doc(PATCH, tag)]
+    assert _names(*docs) == ["update", "patch", "update_tag", "patch_tag"]
+    assert {op.kind for op in propose_operations(docs)} == {OperationKind.update}
 
 
 def test_names_that_still_coincide_are_left_empty():
@@ -254,6 +277,25 @@ def test_names_that_still_coincide_are_left_empty():
         _doc(POST, "/v1/{project_id}/clusters/{id}/rolling-restart"),
         _doc(POST, "/v1/{project_id}/clusters/{id}/rolling_restart"),
     ) == [None, "get", None, None, None]
+
+
+def test_missing_name_says_why():
+    action = "/v1/{project_id}/routetables/{routetable_id}/action"
+    assert _missing(
+        _doc(POST, action, "associate.rst"),
+        _doc(POST, action, "disassociate.rst"),
+        _doc(GET, "/v1/{project_id}/routetables/tags"),
+        _doc(GET, "/v1/{project_id}/routetables/{resource_type}/tags"),
+        _doc(GET, "/{api_version}"),
+        _doc(GET, "/v1/{project_id}/routetables"),
+    ) == [
+        MissingName.same_call,
+        MissingName.same_call,
+        MissingName.name_conflict,
+        MissingName.name_conflict,
+        MissingName.no_segment,
+        None,
+    ]
 
 
 def test_uri_without_a_constant_segment_gets_no_name():
