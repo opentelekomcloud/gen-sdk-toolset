@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
-import { backend, FAILED, later, refresh, renderPage } from "../../../test/render";
+import { backend, CONFLICT, FAILED, FORBIDDEN, later, NOT_FOUND, pollAgain, refresh, renderPage } from "../../../test/render";
 import { generationList, layout, listedSeed } from "../../../test/fixtures";
 import { mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
@@ -512,16 +512,21 @@ describe("states the mock does not hold today", () => {
   });
 });
 
+/** A service the grouping has not run for yet. */
+const ECS = "opentelekomcloud-docs/ecs";
+const NO_LAYOUT = layout({ has_layout: false, versions: [], no_version: [] });
+
 describe("the services the card opens for (ADR-0086)", () => {
   const LIST = "/api/generation/services";
+  const LAYOUT = "/api/generation/services/billing-api/layout";
 
   /* The card as it ships: generation itself switched off (ISS-0038). */
   beforeEach(() => {
     flags.showGenJobs = false;
   });
 
-  it("opens for a service of the server's list with its title, the way to its layout and nothing laid out", async () => {
-    cardPage("/generation/opentelekomcloud-docs%2Fecs", [listedSeed("opentelekomcloud-docs/ecs")]);
+  it("opens for a service of the server's list with its title and the way to its layout", async () => {
+    cardPage("/generation/opentelekomcloud-docs%2Fecs", [listedSeed(ECS), [keys.genLayout(ECS), NO_LAYOUT]]);
 
     expect(await screen.findByRole("heading", { name: "opentelekomcloud-docs/ecs" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation");
@@ -530,7 +535,6 @@ describe("the services the card opens for (ADR-0086)", () => {
       "href",
       "/generation/opentelekomcloud-docs%2Fecs/layout",
     );
-    expect(screen.getByText("Nothing laid out for this service yet.")).toBeInTheDocument();
     // no target switcher, no coverage: the server has no generation data yet
     expect(screen.queryByRole("button", { name: /^Python SDK/ })).toBeNull();
     expect(screen.queryByText(/^Generating /)).toBeNull();
@@ -539,7 +543,6 @@ describe("the services the card opens for (ADR-0086)", () => {
   it("is reached by a click in the list, and leads on to the layout of the same service", async () => {
     // the list as it ships, on the server's rows
     flags.showGenState = false;
-    const ecs = "opentelekomcloud-docs/ecs";
     renderPage(
       <>
         <Routes>
@@ -552,13 +555,13 @@ describe("the services the card opens for (ADR-0086)", () => {
       {
         path: "/generation",
         route: "*",
-        seed: [listedSeed(ecs), [keys.genLayout(ecs), layout({ has_layout: false, versions: [], no_version: [] })]],
+        seed: [listedSeed(ECS), [keys.genLayout(ECS), NO_LAYOUT]],
       },
     );
 
-    fireEvent.click(await screen.findByText(ecs));
+    fireEvent.click(await screen.findByText(ECS));
 
-    expect(await screen.findByRole("heading", { name: ecs })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: ECS })).toBeInTheDocument();
     expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs");
 
     fireEvent.click(screen.getByRole("link", { name: "Edit layout" }));
@@ -568,7 +571,7 @@ describe("the services the card opens for (ADR-0086)", () => {
   });
 
   it("carries the target the address names into the layout", async () => {
-    cardPage("/generation/opentelekomcloud-docs%2Fecs?target=ansible", [listedSeed("opentelekomcloud-docs/ecs")]);
+    cardPage("/generation/opentelekomcloud-docs%2Fecs?target=ansible", [listedSeed(ECS), [keys.genLayout(ECS), NO_LAYOUT]]);
 
     expect(await screen.findByRole("link", { name: "Edit layout" })).toHaveAttribute(
       "href",
@@ -582,7 +585,7 @@ describe("the services the card opens for (ADR-0086)", () => {
     cardPage("/generation/billing-api");
 
     expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
-    expect(screen.getByText("Nothing laid out for this service yet.")).toBeInTheDocument();
+    expect(screen.getByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
     expect(screen.queryByText("Failed to load service")).toBeNull();
     expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
     expect(screen.queryByText("in review · PR 131")).toBeNull();
@@ -609,11 +612,12 @@ describe("the services the card opens for (ADR-0086)", () => {
     });
 
     expect(await screen.findByText("Page not found.")).toBeInTheDocument();
-    expect(requested).toEqual([LIST]);
+    expect(requested).toContain(LIST);
+    expect(requested.filter((url) => url.startsWith(`${LIST}?`))).toEqual([]);
   });
 
   it("joins a refresh already asking when Retry is clicked, rather than asking a second time", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api") };
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
     const api = backend(answers);
     const { client } = renderPage(<GenerationServicePage />, { path: "/generation/billing-api", route: "/generation/:name" });
     expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
@@ -637,7 +641,7 @@ describe("the services the card opens for (ADR-0086)", () => {
   });
 
   it("turns into the page a direct address shows once a refresh no longer lists the service", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api") };
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
     backend(answers);
     const { client } = renderPage(<GenerationServicePage />, { path: "/generation/billing-api", route: "/generation/:name" });
     expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
@@ -651,7 +655,7 @@ describe("the services the card opens for (ADR-0086)", () => {
   });
 
   it("shows a failed refresh of the list as a failure with Retry, not as Page not found", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api") };
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
     backend(answers);
     const { client } = renderPage(<GenerationServicePage />, { path: "/generation/billing-api", route: "/generation/:name" });
     expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
@@ -686,5 +690,172 @@ describe("with the result page switched off (ADR-0086)", () => {
 
     expect(await screen.findByText("in review · PR 131")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "in review · PR 131" })).toBeNull();
+  });
+});
+
+describe("the preliminary grouping of a service without a layout (ISS-0039)", () => {
+  const LIST = "/api/generation/services";
+  const LAYOUT = "/api/generation/services/opentelekomcloud-docs%2Fecs/layout";
+  const PATH = "/generation/opentelekomcloud-docs%2Fecs";
+
+  /* The card as it ships: generation itself switched off. */
+  beforeEach(() => {
+    flags.showGenJobs = false;
+  });
+
+  /** The card of ecs on a backend that answers `answers`, starting without a layout. */
+  async function ecsCard(answers: Record<string, unknown>) {
+    const api = backend(answers);
+    const { client } = renderPage(<GenerationServicePage />, { path: PATH, route: "/generation/:name" });
+    expect(await screen.findByRole("button", { name: "Generate layout" })).toBeInTheDocument();
+    return { ...api, client };
+  }
+
+  it("shows only Generate layout in the centre (ADR-0056)", async () => {
+    await ecsCard({ [LIST]: generationList(ECS), [LAYOUT]: NO_LAYOUT });
+
+    // the button is all the centre holds
+    expect(screen.getByRole("region", { name: "Resources" })).toHaveTextContent(/^Generate layout$/);
+  });
+
+  it("starts the grouping, spins while it runs, and shows the stored layout from its answer", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList(ECS), [LAYOUT]: NO_LAYOUT };
+    const api = await ecsCard(answers);
+    // something the layout feeds, as a page left open would hold it
+    api.client.setQueryData(keys.genResources(ECS), []);
+    const start = later();
+    answers[LAYOUT] = start.arrived;
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate layout" }));
+
+    // a spinner in place of the button while the server groups (ADR-0060)
+    expect(await screen.findByText("Grouping endpoints…")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
+
+    start.send(layout());
+
+    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
+    // the read and the start: the answer is shown as it is, not read again
+    expect(api.calls(LAYOUT)).toBe(2);
+    // what the layout feeds is read again, as after any change of the layout
+    expect(api.client.getQueryState(keys.genResources(ECS))?.isInvalidated).toBe(true);
+  });
+
+  it("keeps the started layout over an older read of it still under way", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList(ECS), [LAYOUT]: NO_LAYOUT };
+    const api = await ecsCard(answers);
+    const poll = later();
+    let asked = 0;
+    // the periodic read goes out first and answers late; the start answers at once
+    answers[LAYOUT] = () => (asked++ === 0 ? poll.arrived : layout());
+    await pollAgain(api.client, keys.genLayout(ECS));
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate layout" }));
+    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+
+    // the read from before the grouping was dropped: nothing is left under way that could land on top
+    expect(api.client.getQueryState(keys.genLayout(ECS))?.fetchStatus).toBe("idle");
+    expect(api.client.getQueryData<{ has_layout: boolean }>(keys.genLayout(ECS))?.has_layout).toBe(true);
+
+    await act(async () => {
+      poll.send(NO_LAYOUT);
+      await poll.arrived;
+    });
+    expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
+  });
+
+  it("shows a failed grouping with Retry in place of the button, and Retry starts it again (ADR-0061)", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList(ECS), [LAYOUT]: NO_LAYOUT };
+    await ecsCard(answers);
+    answers[LAYOUT] = FAILED;
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate layout" }));
+
+    const failure = await screen.findByRole("alert");
+    expect(failure).toHaveTextContent("Failed to group endpoints");
+    expect(failure).not.toHaveTextContent("your role does not allow that");
+    expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
+
+    const again = later();
+    answers[LAYOUT] = again.arrived;
+    fireEvent.click(within(failure).getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Grouping endpoints…")).toBeInTheDocument();
+    again.send(layout());
+    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("says why a refused start was refused: the role, not a failed grouping", async () => {
+    // the session of this suite is a viewer's; until ISS-0044 hides the button, the server refuses it
+    const answers: Record<string, unknown> = { [LIST]: generationList(ECS), [LAYOUT]: NO_LAYOUT };
+    await ecsCard(answers);
+    answers[LAYOUT] = FORBIDDEN;
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate layout" }));
+
+    const refusal = await screen.findByRole("alert");
+    expect(refusal).toHaveTextContent("Failed to group endpoints — your role does not allow that");
+    expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
+  });
+
+  it("takes a 409 as someone else's grouping: reads the layout again and shows it, with no failure", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList(ECS), [LAYOUT]: NO_LAYOUT };
+    const api = await ecsCard(answers);
+    const reread = later();
+    let asked = 0;
+    // the start is refused, and the read after it finds the layout someone else made
+    answers[LAYOUT] = () => (asked++ === 0 ? CONFLICT : reread.arrived);
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate layout" }));
+
+    // still under way until the layout is read again: the button does not come back in between
+    await waitFor(() => expect(api.calls(LAYOUT)).toBe(3));
+    expect(screen.getByText("Grouping endpoints…")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
+
+    reread.send(layout());
+
+    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to group endpoints")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
+    expect(api.calls(LAYOUT)).toBe(3);
+    // someone else's layout says nothing about the list: it is not asked again
+    expect(api.calls(LIST)).toBe(1);
+  });
+
+  it("turns into the page a direct address shows when the start finds the service off the list", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList(ECS), [LAYOUT]: NO_LAYOUT };
+    await ecsCard(answers);
+    answers[LAYOUT] = NOT_FOUND;
+    answers[LIST] = generationList("customer-core");
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate layout" }));
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to group endpoints")).toBeNull();
+  });
+
+  it("offers no Generate layout for a service that has a layout already (ADR-0072)", async () => {
+    backend({ [LIST]: generationList(ECS), [LAYOUT]: layout() });
+    renderPage(<GenerationServicePage />, { path: PATH, route: "/generation/:name" });
+
+    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
+  });
+
+  it("shows a layout that failed to load as a failure with Retry, not as a service without one", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList(ECS), [LAYOUT]: FAILED };
+    backend(answers);
+    renderPage(<GenerationServicePage />, { path: PATH, route: "/generation/:name" });
+
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
+
+    answers[LAYOUT] = NO_LAYOUT;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("button", { name: "Generate layout" })).toBeInTheDocument();
   });
 });
