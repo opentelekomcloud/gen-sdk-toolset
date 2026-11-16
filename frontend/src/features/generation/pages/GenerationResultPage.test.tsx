@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
 import { backend, FAILED, refresh, renderPage } from "../../../test/render";
 import { generationList } from "../../../test/fixtures";
-import { mockListedSeed } from "../../../test/generationMock";
+import { mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../../scan/api/queries";
 import {
@@ -20,17 +20,19 @@ import { GenerationResultPage } from "./GenerationResultPage";
 import { GenerationServicePage } from "./GenerationServicePage";
 import { GenerationSpecPage } from "./GenerationSpecPage";
 
-/* Every service of the mock with endpoints is in the server's list. */
-const LISTED = mockListedSeed();
+/* Every service of the mock with endpoints is in the server's list, with a stored layout. */
+const MOCK = mockSeeds();
 
 /** The session the mocked provider hands back; each test sets the roles. */
 const session = vi.hoisted(() => ({ token: "" }));
 
-/* Tests drive the result page switched on, so it does not rot; the last block checks it switched off. */
+/* Tests drive the result page switched on, so it does not rot, and the card it is opened from with its
+   generation on; the last block checks the result page switched off. */
 const flags = vi.hoisted(() => ({ showGenResult: true }));
 
 vi.mock("../flags", () => ({
   SHOW_GEN_STATE: true,
+  SHOW_GEN_JOBS: true,
   get SHOW_GEN_RESULT() {
     return flags.showGenResult;
   },
@@ -64,7 +66,7 @@ function resultPage(path = "/generation/billing-api/result/v1/v1_invoices", seed
       <GenerationResultPage />
       <Location />
     </>,
-    { path, route: "/generation/:name/result/:version/:resource", seed: [LISTED, ...seed] },
+    { path, route: "/generation/:name/result/:version/:resource", seed: [...MOCK, ...seed] },
   );
 }
 
@@ -79,7 +81,7 @@ function panel(path: string, seed: [readonly unknown[], unknown][] = []) {
       </Routes>
       <Location />
     </>,
-    { path, route: "*", seed: [LISTED, ...seed] },
+    { path, route: "*", seed: [...MOCK, ...seed] },
   );
 }
 

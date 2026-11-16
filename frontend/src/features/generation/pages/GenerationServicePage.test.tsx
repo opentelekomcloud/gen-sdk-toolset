@@ -1,17 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
 import { backend, FAILED, later, refresh, renderPage } from "../../../test/render";
-import { generationList, listedSeed } from "../../../test/fixtures";
-import { mockListedSeed } from "../../../test/generationMock";
+import { generationList, layout, listedSeed } from "../../../test/fixtures";
+import { mockSeeds } from "../../../test/generationMock";
+import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../../scan/api/queries";
 import { generationResources } from "../data/mock";
 import type { GenEndpoint, GenJob, GenJobStatus, GenResource, GenTarget } from "../data/types";
+import { GenerationLayoutPage } from "./GenerationLayoutPage";
 import { GenerationListPage } from "./GenerationListPage";
 import { GenerationServicePage } from "./GenerationServicePage";
 
-/* Every service of the mock with endpoints is in the server's list. */
-const LISTED = mockListedSeed();
+/* Every service of the mock with endpoints is in the server's list, with a stored layout. */
+const MOCK = mockSeeds();
 
 /** Where the page navigated to. */
 function Location() {
@@ -25,20 +27,37 @@ function cardPage(path: string, seed?: [readonly unknown[], unknown][]) {
       <GenerationServicePage />
       <Location />
     </>,
-    { path, route: "/generation/:name", seed: [LISTED, ...(seed ?? [])] },
+    { path, route: "/generation/:name", seed: [...MOCK, ...(seed ?? [])] },
   );
 }
 
 const location = () => screen.getByTestId("location").textContent;
 
-/* The way back carries the filter chip, which is behind the flag; the job tags lead to the result
-   only while that page is switched on, which the tests drive unless they say otherwise. */
-const flags = vi.hoisted(() => ({ showGenResult: true }));
+/* The way back carries the filter chip, and the card shows its targets and jobs, each behind its flag;
+   the job tags lead to the result only while that page is switched on. The tests drive all three on
+   unless they say otherwise. */
+const flags = vi.hoisted(() => ({ showGenState: true, showGenResult: true, showGenJobs: true }));
 vi.mock("../flags", () => ({
-  SHOW_GEN_STATE: true,
+  get SHOW_GEN_STATE() {
+    return flags.showGenState;
+  },
   get SHOW_GEN_RESULT() {
     return flags.showGenResult;
   },
+  get SHOW_GEN_JOBS() {
+    return flags.showGenJobs;
+  },
+}));
+
+/* The layout page, reached from the card, reads the signed-in user. */
+vi.mock("react-oidc-context", () => ({
+  useAuth: () => ({
+    user: { access_token: tokenWithRoles("viewer"), profile: { preferred_username: "ada@otc.test" } },
+    isAuthenticated: true,
+    isLoading: false,
+    signinRedirect: vi.fn(),
+    signoutRedirect: vi.fn(),
+  }),
 }));
 
 /* A layout that does not load, for the test that says so. */
@@ -56,7 +75,9 @@ vi.mock("../data/mock", async (importOriginal) => {
 });
 
 afterEach(() => {
+  flags.showGenState = true;
   flags.showGenResult = true;
+  flags.showGenJobs = true;
   fail.resources = false;
   vi.unstubAllGlobals();
 });
@@ -318,7 +339,7 @@ describe("the way back to the list", () => {
         </Routes>
         <Location />
       </>,
-      { path, route: "*", seed: [LISTED] },
+      { path, route: "*", seed: MOCK },
     );
   }
 
@@ -494,12 +515,77 @@ describe("states the mock does not hold today", () => {
 describe("the services the card opens for (ADR-0086)", () => {
   const LIST = "/api/generation/services";
 
-  it("opens for a service of the server's list that the mock has no layout for", async () => {
+  /* The card as it ships: generation itself switched off (ISS-0038). */
+  beforeEach(() => {
+    flags.showGenJobs = false;
+  });
+
+  it("opens for a service of the server's list with its title, the way to its layout and nothing laid out", async () => {
     cardPage("/generation/opentelekomcloud-docs%2Fecs", [listedSeed("opentelekomcloud-docs/ecs")]);
 
     expect(await screen.findByRole("heading", { name: "opentelekomcloud-docs/ecs" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation");
+    // the layout of the same service, the repo one segment of the address (ADR-0063)
+    expect(screen.getByRole("link", { name: "Edit layout" })).toHaveAttribute(
+      "href",
+      "/generation/opentelekomcloud-docs%2Fecs/layout",
+    );
     expect(screen.getByText("Nothing laid out for this service yet.")).toBeInTheDocument();
-    expect(targetButton("Python SDK")).toHaveTextContent("no resources");
+    // no target switcher, no coverage: the server has no generation data yet
+    expect(screen.queryByRole("button", { name: /^Python SDK/ })).toBeNull();
+    expect(screen.queryByText(/^Generating /)).toBeNull();
+  });
+
+  it("is reached by a click in the list, and leads on to the layout of the same service", async () => {
+    // the list as it ships, on the server's rows
+    flags.showGenState = false;
+    const ecs = "opentelekomcloud-docs/ecs";
+    renderPage(
+      <>
+        <Routes>
+          <Route path="generation" element={<GenerationListPage />} />
+          <Route path="generation/:name" element={<GenerationServicePage />} />
+          <Route path="generation/:name/layout" element={<GenerationLayoutPage />} />
+        </Routes>
+        <Location />
+      </>,
+      {
+        path: "/generation",
+        route: "*",
+        seed: [listedSeed(ecs), [keys.genLayout(ecs), layout({ has_layout: false, versions: [], no_version: [] })]],
+      },
+    );
+
+    fireEvent.click(await screen.findByText(ecs));
+
+    expect(await screen.findByRole("heading", { name: ecs })).toBeInTheDocument();
+    expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs");
+
+    fireEvent.click(screen.getByRole("link", { name: "Edit layout" }));
+
+    expect(await screen.findByText("No layout yet. Its resources appear here once the service is grouped.")).toBeInTheDocument();
+    expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs/layout");
+  });
+
+  it("carries the target the address names into the layout", async () => {
+    cardPage("/generation/opentelekomcloud-docs%2Fecs?target=ansible", [listedSeed("opentelekomcloud-docs/ecs")]);
+
+    expect(await screen.findByRole("link", { name: "Edit layout" })).toHaveAttribute(
+      "href",
+      "/generation/opentelekomcloud-docs%2Fecs/layout?target=ansible",
+    );
+  });
+
+  it("reads nothing of the mock for a service it holds: no job, no Generate", async () => {
+    // a layout the mock cannot give would fail the card if it were still read
+    fail.resources = true;
+    cardPage("/generation/billing-api");
+
+    expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
+    expect(screen.getByText("Nothing laid out for this service yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to load service")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+    expect(screen.queryByText("in review · PR 131")).toBeNull();
   });
 
   it("does not open a service of the mock that the server's list does not hold", async () => {

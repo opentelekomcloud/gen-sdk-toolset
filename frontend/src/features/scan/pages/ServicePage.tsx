@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { DocFilter, DocStatus, RepositoryInterruption } from "../types";
 import { AlertTriangle, Ban, CheckCircle2, Download, FolderOpen, Loader2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
-import { ApiError } from "../api/client";
+import { isNotFound } from "../api/client";
 import { useActivateSnapshot, useExclude, useRescan } from "../api/mutations";
 import { blockOf, useService, useSummary } from "../api/queries";
 import { SnapshotBanner } from "../components/SnapshotBanner";
@@ -55,7 +55,7 @@ export function ServicePage() {
 
   if (isPending) return <ServiceLoading />;
   if (isError || !service) {
-    const notFound = error instanceof ApiError && error.status === 404;
+    const notFound = isNotFound(error);
     return <ServiceLoadFailed back="/scan" onRetry={() => void refetch()} notFound={notFound ? name : undefined} />;
   }
   const scanning = service.scan_status === "scanning";

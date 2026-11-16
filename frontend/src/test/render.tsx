@@ -74,21 +74,24 @@ export function stubEmptyApi() {
 
 export const FAILED = Symbol("the backend fails this request");
 const FAILURE = { error: { code: "internal_error", message: "down" } } satisfies ApiErrorEnvelope;
+/** The backend's answer that what was asked for does not exist - an answer, not a failure. */
+export const NOT_FOUND = Symbol("the backend answers 404");
+const MISSING = { error: { code: "not_found", message: "not found" } } satisfies ApiErrorEnvelope;
 
 /**
  * The backend, path by path: each request is answered with what `answers`
  * holds for its path at that moment - so a test breaks the backend by setting
- * a path to FAILED, holds an answer back by setting a promise there, or
- * answers request by request through a function.
+ * a path to FAILED, has it answer 404 with NOT_FOUND, holds an answer back by
+ * setting a promise there, or answers request by request through a function.
  */
 export function backend(answers: Record<string, unknown>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input).split("?")[0];
     const entry = answers[path];
     const answer = await (typeof entry === "function" ? entry() : entry);
-    return answer === FAILED
-      ? new Response(JSON.stringify(FAILURE), { status: 500 })
-      : new Response(JSON.stringify(answer ?? null));
+    if (answer === FAILED) return new Response(JSON.stringify(FAILURE), { status: 500 });
+    if (answer === NOT_FOUND) return new Response(JSON.stringify(MISSING), { status: 404 });
+    return new Response(JSON.stringify(answer ?? null));
   });
   vi.stubGlobal("fetch", fetchMock);
   return { calls: (path: string) => fetchMock.mock.calls.filter(([input]) => String(input).split("?")[0] === path).length };

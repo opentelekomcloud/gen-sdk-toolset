@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
-import { alertNamed, backend, FAILED, refresh, renderPage } from "../../../test/render";
-import { generationList, listedSeed } from "../../../test/fixtures";
-import { mockListedSeed } from "../../../test/generationMock";
+import { alertNamed, backend, FAILED, later, NOT_FOUND, pollAgain, refresh, renderPage } from "../../../test/render";
+import { generationList, layout, listedSeed } from "../../../test/fixtures";
+import { answerStoredLayouts, mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../../scan/api/queries";
 import { generationResources, resetGenerationMock } from "../data/mock";
@@ -11,14 +11,14 @@ import { GenerationLayoutPage } from "./GenerationLayoutPage";
 import { GenerationListPage } from "./GenerationListPage";
 import { GenerationServicePage } from "./GenerationServicePage";
 
-/* Every service of the mock with endpoints is in the server's list. */
-const LISTED = mockListedSeed();
+/* Every service of the mock with endpoints is in the server's list, with a stored layout. */
+const MOCK = mockSeeds();
 
 /** The session the mocked provider hands back; each test sets the roles. */
 const session = vi.hoisted(() => ({ token: "" }));
 
-/* These tests go through the prototype's list, which is behind the flag. */
-vi.mock("../flags", () => ({ SHOW_GEN_STATE: true, SHOW_GEN_RESULT: true }));
+/* These tests go through the prototype's list and the card's generation, both behind flags. */
+vi.mock("../flags", () => ({ SHOW_GEN_STATE: true, SHOW_GEN_RESULT: true, SHOW_GEN_JOBS: true }));
 
 vi.mock("react-oidc-context", () => ({
   useAuth: () => ({
@@ -31,9 +31,18 @@ vi.mock("react-oidc-context", () => ({
 }));
 
 /* The mock lives in module memory, and the edits below change it. */
+/* The backend these suites expect: nothing beyond the stored layouts. */
+let api: ReturnType<typeof answerStoredLayouts>;
+
 beforeEach(() => {
   resetGenerationMock();
+  api = answerStoredLayouts();
   session.token = tokenWithRoles("worker");
+});
+
+afterEach(() => {
+  expect(api.others()).toEqual([]);
+  vi.unstubAllGlobals();
 });
 
 /** Where the page navigated to. */
@@ -48,7 +57,7 @@ function layoutPage(path = "/generation/billing-api/layout", seed?: [readonly un
       <GenerationLayoutPage />
       <Location />
     </>,
-    { path, route: "/generation/:name/layout", seed: [LISTED, ...(seed ?? [])] },
+    { path, route: "/generation/:name/layout", seed: [...MOCK, ...(seed ?? [])] },
   );
 }
 
@@ -165,7 +174,7 @@ describe("the billing-api layout on the in-memory mock", () => {
   it("renames a resource once the name passes, without confirming it", async () => {
     layoutPage();
 
-    await screen.findByRole("heading", { name: "billing-api" });
+    await screen.findByRole("region", { name: "v1" });
     fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
     const input = screen.getByRole("textbox", { name: "Rename resource" });
     expect(input).toHaveValue("payments");
@@ -556,7 +565,7 @@ describe("the way in and out", () => {
         </Routes>
         <Location />
       </>,
-      { path, route: "*", seed: [LISTED] },
+      { path, route: "*", seed: MOCK },
     );
   }
   const location = () => screen.getByTestId("location").textContent;
@@ -638,21 +647,65 @@ describe("other services on the mock", () => {
       "Not recognized in full — a resource holding this endpoint cannot be generated. It can be dragged to another resource.",
     );
     expect(shadow).toHaveAttribute("draggable", "true");
+  });
+
+  it("says there is no layout yet before the grouping has run, and leads to the service page (ADR-0086)", async () => {
+    const ecs = "opentelekomcloud-docs/ecs";
+    layoutPage("/generation/opentelekomcloud-docs%2Fecs/layout", [
+      listedSeed(ecs),
+      [keys.genLayout(ecs), layout({ has_layout: false, versions: [], no_version: [] })],
+    ]);
+
+    expect(await screen.findByRole("heading", { name: ecs })).toBeInTheDocument();
+    expect(screen.getByText("No layout yet. Its resources appear here once the service is grouped.")).toBeInTheDocument();
+    expect(screen.getByText("no layout yet")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open the service page" })).toHaveAttribute(
+      "href",
+      "/generation/opentelekomcloud-docs%2Fecs",
+    );
+    expect(screen.getByRole("link", { name: "Back to generation" })).toHaveAttribute(
+      "href",
+      "/generation/opentelekomcloud-docs%2Fecs",
+    );
+    // an empty state in place, not a redirect, and no editor
+    expect(screen.getByTestId("location")).toHaveTextContent("/generation/opentelekomcloud-docs%2Fecs/layout");
+    expect(screen.queryByRole("region")).toBeNull();
+    expect(screen.queryByText(/^Shared layout/)).toBeNull();
+  });
+
+  it("says a stored layout the editor cannot show yet, rather than that there is none", async () => {
+    const ecs = "opentelekomcloud-docs/ecs";
+    layoutPage("/generation/opentelekomcloud-docs%2Fecs/layout", [listedSeed(ecs), [keys.genLayout(ecs), layout()]]);
+
+    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open the service page" })).toHaveAttribute(
+      "href",
+      "/generation/opentelekomcloud-docs%2Fecs",
+    );
     expect(screen.queryByText("No layout yet. Its resources appear here once the service is grouped.")).toBeNull();
     expect(screen.queryByText("no layout yet")).toBeNull();
   });
 
-  it("says there is no layout yet, and leads to the service page", async () => {
-    // listed, so it has endpoints (ADR-0086); the mock has no layout for it yet
-    layoutPage("/generation/opentelekomcloud-docs%2Fecs/layout", [listedSeed("opentelekomcloud-docs/ecs")]);
+  it("carries the target the address names on the way to the service page", async () => {
+    const ecs = "opentelekomcloud-docs/ecs";
+    layoutPage("/generation/opentelekomcloud-docs%2Fecs/layout?target=ansible", [
+      listedSeed(ecs),
+      [keys.genLayout(ecs), layout({ has_layout: false, versions: [], no_version: [] })],
+    ]);
+
+    expect(await screen.findByRole("link", { name: "Open the service page" })).toHaveAttribute(
+      "href",
+      "/generation/opentelekomcloud-docs%2Fecs?target=ansible",
+    );
+  });
+
+  it("takes the backend's word that there is no layout, whatever the mock holds", async () => {
+    layoutPage("/generation/billing-api/layout", [
+      [keys.genLayout("billing-api"), layout({ has_layout: false, versions: [], no_version: [] })],
+    ]);
 
     expect(await screen.findByText("No layout yet. Its resources appear here once the service is grouped.")).toBeInTheDocument();
-    expect(screen.getByText("no layout yet")).toBeInTheDocument();
-    for (const link of screen.getAllByRole("link", { name: "Back to generation" })) {
-      expect(link).toHaveAttribute("href", "/generation/opentelekomcloud-docs%2Fecs");
-    }
-    expect(screen.getByText("Shared layout · 0 versions · 0 resources · 0 endpoints")).toBeInTheDocument();
-    expect(screen.queryByRole("region")).toBeNull();
+    expect(screen.queryByRole("region", { name: "v1" })).toBeNull();
   });
 
   it("does not open a service that is not in Generation", async () => {
@@ -707,10 +760,7 @@ describe("states the mock does not hold today", () => {
 
 describe("the services the layout opens for (ADR-0086)", () => {
   const LIST = "/api/generation/services";
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+  const LAYOUT = "/api/generation/services/billing-api/layout";
 
   it("does not open a service without endpoints, which the server never lists (ADR-0087)", async () => {
     layoutPage("/generation/tariff-catalog/layout");
@@ -727,7 +777,7 @@ describe("the services the layout opens for (ADR-0086)", () => {
   });
 
   it("turns into the page a direct address shows once a refresh no longer lists the service", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api") };
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
     backend(answers);
     const { client } = renderPage(<GenerationLayoutPage />, {
       path: "/generation/billing-api/layout",
@@ -743,7 +793,7 @@ describe("the services the layout opens for (ADR-0086)", () => {
   });
 
   it("shows a failed refresh of the list as a failure with Retry, not as Page not found", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api") };
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
     backend(answers);
     const { client } = renderPage(<GenerationLayoutPage />, {
       path: "/generation/billing-api/layout",
@@ -764,7 +814,7 @@ describe("the services the layout opens for (ADR-0086)", () => {
   });
 
   it("keeps a name being typed through a failed refresh of the list, with a warning and Retry", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api") };
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
     backend(answers);
     const { client } = renderPage(<GenerationLayoutPage />, {
       path: "/generation/billing-api/layout",
@@ -777,9 +827,7 @@ describe("the services the layout opens for (ADR-0086)", () => {
     answers[LIST] = FAILED;
     await refresh(client, keys.genList());
 
-    const warning = await alertNamed(
-      "Could not check that this service is still in Generation. Your unsaved name is kept.",
-    );
+    const warning = await alertNamed("Could not refresh this layout. Your unsaved name is kept.");
     expect(screen.getByRole("textbox", { name: "Rename resource" })).toHaveValue("charges");
     expect(screen.queryByText("Failed to load service")).toBeNull();
     expect(screen.queryByText("Page not found.")).toBeNull();
@@ -789,5 +837,117 @@ describe("the services the layout opens for (ADR-0086)", () => {
 
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(screen.getByRole("textbox", { name: "Rename resource" })).toHaveValue("charges");
+  });
+
+  it("asks for the layout next to the list, not after it", async () => {
+    const list = later();
+    const api = backend({ [LIST]: list.arrived, [LAYOUT]: layout() });
+    renderPage(<GenerationLayoutPage />, { path: "/generation/billing-api/layout", route: "/generation/:name/layout" });
+
+    await waitFor(() => expect(api.calls(LAYOUT)).toBe(1));
+    expect(api.calls(LIST)).toBe(1);
+
+    list.send(generationList("billing-api"));
+    expect(await screen.findByRole("region", { name: "v1" })).toBeInTheDocument();
+  });
+
+  it("turns into the page a direct address shows when the layout answers 404, though the list still holds it", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
+    backend(answers);
+    const { client } = renderPage(<GenerationLayoutPage />, {
+      path: "/generation/billing-api/layout",
+      route: "/generation/:name/layout",
+    });
+    expect(await screen.findByRole("region", { name: "v1" })).toBeInTheDocument();
+
+    // excluded between the list's answer and the layout's (ADR-0086)
+    answers[LAYOUT] = NOT_FOUND;
+    await refresh(client, keys.genLayout("billing-api"));
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to load service")).toBeNull();
+  });
+
+  it("turns into the page a direct address shows when the layout answers 404 as the list fails, a name being typed", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
+    backend(answers);
+    const { client } = renderPage(<GenerationLayoutPage />, {
+      path: "/generation/billing-api/layout",
+      route: "/generation/:name/layout",
+    });
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Rename resource" }), { target: { value: "charges" } });
+
+    // one round of the periodic refresh: the list fails, and the layout says the service is gone
+    answers[LIST] = FAILED;
+    answers[LAYOUT] = NOT_FOUND;
+    await pollAgain(client, keys.genList(), keys.genLayout("billing-api"));
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(screen.queryByText("Could not refresh this layout. Your unsaved name is kept.")).toBeNull();
+  });
+
+  it("stops asking for the layout of a repo off the list, which the backend answers 404", async () => {
+    const api = backend({ [LIST]: generationList("customer-core"), [LAYOUT]: NOT_FOUND });
+    const { client } = renderPage(<GenerationLayoutPage />, {
+      path: "/generation/billing-api/layout",
+      route: "/generation/:name/layout",
+    });
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    const asked = api.calls(LAYOUT);
+
+    await pollAgain(client, keys.genLayout("billing-api"));
+
+    expect(api.calls(LAYOUT)).toBe(asked);
+    expect(screen.getByText("Page not found.")).toBeInTheDocument();
+  });
+
+  it("shows a layout that failed to load as a failure with Retry, not as Page not found or as no layout", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: FAILED };
+    backend(answers);
+    renderPage(<GenerationLayoutPage />, { path: "/generation/billing-api/layout", route: "/generation/:name/layout" });
+
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+    expect(screen.queryByText("Page not found.")).toBeNull();
+    expect(screen.queryByText("No layout yet. Its resources appear here once the service is grouped.")).toBeNull();
+
+    answers[LAYOUT] = layout();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("region", { name: "v1" })).toBeInTheDocument();
+  });
+
+  it("shows a failed refresh of the layout as a failure, and keeps a name being typed through it", async () => {
+    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
+    backend(answers);
+    const { client } = renderPage(<GenerationLayoutPage />, {
+      path: "/generation/billing-api/layout",
+      route: "/generation/:name/layout",
+    });
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Rename resource" }), { target: { value: "charges" } });
+
+    answers[LAYOUT] = FAILED;
+    await refresh(client, keys.genLayout("billing-api"));
+
+    const warning = await alertNamed("Could not refresh this layout. Your unsaved name is kept.");
+    expect(screen.getByRole("textbox", { name: "Rename resource" })).toHaveValue("charges");
+    expect(screen.queryByText("Failed to load service")).toBeNull();
+
+    answers[LAYOUT] = layout();
+    fireEvent.click(within(warning).getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(screen.getByRole("textbox", { name: "Rename resource" })).toHaveValue("charges");
+
+    // without a name being typed, a failed refresh replaces the layout (ADR-0081)
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    answers[LAYOUT] = FAILED;
+    await refresh(client, keys.genLayout("billing-api"));
+
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "v1" })).toBeNull();
   });
 });

@@ -58,17 +58,25 @@ export function useInGeneration(name: string) {
   };
 }
 
-/** The layout of one service, read from the backend; `has_layout` is false until its grouping has run. */
-export function useGenerationLayout(name: string) {
+/**
+ * The layout of one service, read from the backend; `has_layout` is false until
+ * its grouping has run. `enabled: false` holds it back - for a repo off the
+ * /generation list, which the backend answers 404.
+ */
+export function useGenerationLayout(name: string, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: keys.genLayout(name),
     queryFn: () => apiFetch<Layout>(`/generation/services/${encodeURIComponent(name)}/layout`),
+    enabled,
   });
 }
 
-/** The resources of one service's layout, each with its generation on every target. */
-export function useGenerationResources(name: string) {
-  return useQuery({ queryKey: keys.genResources(name), queryFn: async () => generationResources(name) });
+/**
+ * The resources of one service's layout, each with its generation on every
+ * target. `enabled: false` holds them back, for a service with no layout.
+ */
+export function useGenerationResources(name: string, { enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({ queryKey: keys.genResources(name), queryFn: async () => generationResources(name), enabled });
 }
 
 /** What one resource of a service will be generated as: its operations and classes, with the types chosen so far. */

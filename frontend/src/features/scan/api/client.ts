@@ -14,6 +14,9 @@ export class ApiError extends Error {
   }
 }
 
+/** Whether the backend answered that what was asked for does not exist (404) - an answer, not a failure. */
+export const isNotFound = (error: unknown): boolean => error instanceof ApiError && error.status === 404;
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   /* Headers-safe merge: init.headers may be a plain object, a Headers instance,
      or an entries array — spreading only works for the first. */
