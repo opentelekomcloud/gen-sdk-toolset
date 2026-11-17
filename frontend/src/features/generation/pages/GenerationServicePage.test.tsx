@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { Route, Routes, useLocation } from "react-router";
+import { Route, Routes, useLocation, useNavigate } from "react-router";
 import { backend, CONFLICT, FAILED, FORBIDDEN, later, NOT_FOUND, pollAgain, refresh, renderPage } from "../../../test/render";
 import { generationList, layout, listedSeed } from "../../../test/fixtures";
 import { mockSeeds } from "../../../test/generationMock";
@@ -710,6 +710,54 @@ describe("the preliminary grouping of a service without a layout (ISS-0039)", ()
     expect(await screen.findByRole("button", { name: "Generate layout" })).toBeInTheDocument();
     return { ...api, client };
   }
+
+  it("files the answer under the service it was started for, when the page moves on to another meanwhile", async () => {
+    const OTHER = "opentelekomcloud-docs/evs";
+    const OTHER_LAYOUT = "/api/generation/services/opentelekomcloud-docs%2Fevs/layout";
+    /** The same page, reused for another service, as the router does for a new address of its route. */
+    function MoveOn() {
+      const navigate = useNavigate();
+      return (
+        <button type="button" onClick={() => navigate("/generation/opentelekomcloud-docs%2Fevs")}>
+          move on
+        </button>
+      );
+    }
+    const answers: Record<string, unknown> = {
+      [LIST]: generationList(ECS, OTHER),
+      [LAYOUT]: NO_LAYOUT,
+      [OTHER_LAYOUT]: NO_LAYOUT,
+    };
+    backend(answers);
+    const { client } = renderPage(
+      <>
+        <GenerationServicePage />
+        <MoveOn />
+      </>,
+      { path: PATH, route: "/generation/:name" },
+    );
+    const generate = await screen.findByRole("button", { name: "Generate layout" });
+    const start = later();
+    answers[LAYOUT] = start.arrived;
+    fireEvent.click(generate);
+    expect(await screen.findByText("Grouping endpoints…")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "move on" }));
+
+    // the other service has its own button, not the spinner of a start that is not its own
+    expect(await screen.findByRole("heading", { name: OTHER })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Generate layout" })).toBeInTheDocument();
+    expect(screen.queryByText("Grouping endpoints…")).toBeNull();
+
+    await act(async () => {
+      start.send(layout());
+      await start.arrived;
+    });
+
+    await waitFor(() => expect(client.getQueryData<{ has_layout: boolean }>(keys.genLayout(ECS))?.has_layout).toBe(true));
+    expect(client.getQueryData<{ has_layout: boolean }>(keys.genLayout(OTHER))?.has_layout).toBe(false);
+    expect(screen.getByRole("button", { name: "Generate layout" })).toBeInTheDocument();
+  });
 
   it("shows only Generate layout in the centre (ADR-0056)", async () => {
     await ecsCard({ [LIST]: generationList(ECS), [LAYOUT]: NO_LAYOUT });

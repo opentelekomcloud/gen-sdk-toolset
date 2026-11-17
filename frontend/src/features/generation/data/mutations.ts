@@ -29,13 +29,18 @@ import type { OtcSettingsForm } from "./types";
  * layout is read again. A `404` says it has left the /generation list, so the
  * list is read again too. The page shows what they say. Anything else is a
  * failure that stored nothing, so the start can simply be repeated (ADR-0061).
+ *
+ * The repo goes in with `mutate(repo)` and comes back with the answer: a page
+ * reused for another service while the start is under way hands this mutation
+ * its new options, so a name taken from them could file one service's layout
+ * under another's.
  */
-export function useStartLayout(name: string) {
+export function useStartLayout() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (): Promise<Layout | "taken" | "gone"> => {
+    mutationFn: async (repo: string): Promise<Layout | "taken" | "gone"> => {
       try {
-        return await apiFetch<Layout>(`/generation/services/${encodeURIComponent(name)}/layout`, { method: "POST" });
+        return await apiFetch<Layout>(`/generation/services/${encodeURIComponent(repo)}/layout`, { method: "POST" });
       } catch (error) {
         if (isConflict(error)) return "taken";
         if (isNotFound(error)) return "gone";
@@ -44,21 +49,21 @@ export function useStartLayout(name: string) {
     },
     /* The start stays under way until the page has what to show, so the
        button does not come back in between to be clicked again. */
-    onSuccess: async (stored) => {
+    onSuccess: async (stored, repo) => {
       if (typeof stored === "object") {
         /* The answer is the stored layout: shown as it is, and what it feeds
            read again. A read of the layout still under way may hold an answer
            from before the grouping; it is dropped, so it cannot land on top. */
-        await qc.cancelQueries({ queryKey: keys.genLayout(name) });
-        qc.setQueryData(keys.genLayout(name), stored);
-        await invalidateFromGenLayout(qc, name);
+        await qc.cancelQueries({ queryKey: keys.genLayout(repo) });
+        qc.setQueryData(keys.genLayout(repo), stored);
+        await invalidateFromGenLayout(qc, repo);
         return;
       }
       if (stored === "taken") {
-        await invalidateGenLayout(qc, name);
+        await invalidateGenLayout(qc, repo);
         return;
       }
-      await Promise.all([invalidateGenLayout(qc, name), qc.invalidateQueries({ queryKey: keys.genList() })]);
+      await Promise.all([invalidateGenLayout(qc, repo), qc.invalidateQueries({ queryKey: keys.genList() })]);
     },
   });
 }
