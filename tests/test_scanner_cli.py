@@ -16,6 +16,8 @@ from tools.shared.scan import (
     RepositoryScanResult,
 )
 
+from .conftest import load_fixture
+
 
 class FakeScanner:
     def __init__(self, *, repo_result: RepositoryScanResult):
@@ -200,3 +202,124 @@ def test_org_flag_is_rejected(monkeypatch) -> None:
         scanner_main.main(["--org", "o", "--output", "-"])
 
     assert exc_info.value.code == scanner_main.EXIT_USAGE_ERROR
+
+
+# --- --path: scan a local working copy ---------------------------------------
+
+
+def _local_settings() -> Settings:
+    return Settings(github_token=None, output={"path": "scan.json", "indent": 2})
+
+
+def test_path_scans_without_a_token_and_prints_the_report(
+    monkeypatch, tmp_path: Path, capsys, make_git_repo
+) -> None:
+    root = make_git_repo(
+        {"api-ref/source/doc_errors.rst": load_fixture("doc_checks/doc_errors.rst")}
+    )
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    monkeypatch.chdir(out_dir)
+    monkeypatch.setattr(
+        scanner_main, "_load_settings_or_exit", lambda _path: _local_settings()
+    )
+
+    exit_code = scanner_main.main(["--path", str(root)])
+    report = capsys.readouterr().out
+
+    assert exit_code == scanner_main.EXIT_OK
+    assert report.startswith(f"# API reference scan: {root.name}\n")
+    assert "## api-ref/source/doc_errors.rst" in report
+    assert "`flavors_id`" in report
+    assert "changes after this commit" not in report
+    saved = RepositoryScanResult.model_validate_json(
+        (out_dir / "scan.json").read_text(encoding="utf-8")
+    )
+    assert saved.branch == "main"
+    assert saved.commit_hash is not None
+
+
+def test_path_report_mentions_uncommitted_changes(
+    monkeypatch, tmp_path: Path, capsys, make_git_repo
+) -> None:
+    root = make_git_repo({"api-ref/source/a.rst": "Title\n=====\n"})
+    (root / "api-ref/source/a.rst").write_text("Edited\n======\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        scanner_main, "_load_settings_or_exit", lambda _path: _local_settings()
+    )
+
+    assert scanner_main.main(["--path", str(root)]) == scanner_main.EXIT_OK
+    assert "changes after this commit" in capsys.readouterr().out
+
+
+def test_path_without_api_reference_says_so(
+    monkeypatch, tmp_path: Path, capsys, make_git_repo
+) -> None:
+    root = make_git_repo({"README.md": "no docs"})
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        scanner_main, "_load_settings_or_exit", lambda _path: _local_settings()
+    )
+
+    assert scanner_main.main(["--path", str(root)]) == scanner_main.EXIT_OK
+    assert "No API reference found under `api-ref/source`" in capsys.readouterr().out
+
+
+def test_path_outside_git_is_a_usage_error(monkeypatch, tmp_path: Path, capsys) -> None:
+    monkeypatch.setattr(
+        scanner_main, "_load_settings_or_exit", lambda _path: _local_settings()
+    )
+
+    exit_code = scanner_main.main(["--path", str(tmp_path)])
+
+    assert exit_code == scanner_main.EXIT_USAGE_ERROR
+    assert "git working copy" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--repo", "o/name"],
+        ["--branch", "dev"],
+        ["--stdout"],
+        ["--output", "-"],
+    ],
+)
+def test_path_conflicting_flags_fail_before_settings(monkeypatch, extra) -> None:
+    monkeypatch.setattr(scanner_main, "_load_settings_or_exit", _fail_before_scanner)
+
+    with pytest.raises(SystemExit) as exc_info:
+        scanner_main.main(["--path", ".", *extra])
+
+    assert exc_info.value.code == scanner_main.EXIT_USAGE_ERROR
+
+
+def test_path_unreadable_file_fails_the_scan_instead_of_a_clean_report(
+    monkeypatch, tmp_path: Path, capsys, make_git_repo
+) -> None:
+    """A file the scan could not read must not end as "no errors found"."""
+    root = make_git_repo(
+        {"api-ref/source/doc_errors.rst": load_fixture("doc_checks/doc_errors.rst")}
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        scanner_main, "_load_settings_or_exit", lambda _path: _local_settings()
+    )
+    original = Path.read_bytes
+
+    def _deny_rst(self):
+        if self.suffix == ".rst":
+            raise PermissionError(13, "Permission denied", str(self))
+        return original(self)
+
+    monkeypatch.setattr(Path, "read_bytes", _deny_rst)
+
+    exit_code = scanner_main.main(["--path", str(root)])
+
+    assert exit_code == scanner_main.EXIT_RUNTIME_ERROR
+    assert "No documentation errors found." not in capsys.readouterr().out
+    saved = RepositoryScanResult.model_validate_json(
+        (tmp_path / "scan.json").read_text(encoding="utf-8")
+    )
+    assert "Cannot read api-ref/source/doc_errors.rst" in saved.failure_message

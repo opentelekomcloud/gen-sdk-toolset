@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from tools.config import Settings, require_github_token
 from tools.scanner.github.client import GitHubDocProvider
+from tools.scanner.interfaces import DocProvider
+from tools.scanner.local import LocalDocProvider
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
 
@@ -23,8 +27,18 @@ def build_doc_provider(settings: Settings) -> GitHubDocProvider:
 
 def build_scanner(settings: Settings) -> ScannerService:
     """Wire the GitHub provider and parser into a :class:`ScannerService`."""
+    return _build_service(settings, build_doc_provider(settings))
+
+
+def build_local_scanner(settings: Settings, root: Path) -> ScannerService:
+    """Wire a scanner that reads one local git working copy; needs no token."""
+    provider = LocalDocProvider(root, prefix=settings.scanner.rst_source_prefix)
+    return _build_service(settings, provider)
+
+
+def _build_service(settings: Settings, doc_provider: DocProvider) -> ScannerService:
     return ScannerService(
-        doc_provider=build_doc_provider(settings),
+        doc_provider=doc_provider,
         parser=DocutilsParser(),
         style_classifier=classify_doc_style,
         max_workers=settings.scanner.max_workers,

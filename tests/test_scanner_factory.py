@@ -41,3 +41,17 @@ def test_build_scanner_wires_service_from_settings():
 def test_build_scanner_requires_github_token():
     with pytest.raises(RuntimeError, match="GITHUB_TOKEN"):
         build_scanner(Settings(github_token=None))
+
+
+def test_build_local_scanner_needs_no_token(tmp_path):
+    from tools.scanner.factory import build_local_scanner
+    from tools.scanner.local import LocalDocProvider
+
+    settings = Settings(github_token=None)
+
+    scanner = build_local_scanner(settings, tmp_path)
+
+    assert isinstance(scanner.doc_provider, LocalDocProvider)
+    assert scanner.doc_provider.root == tmp_path.resolve()
+    assert scanner.doc_provider.prefix == settings.scanner.rst_source_prefix
+    assert scanner.api_ref_path == settings.scanner.api_ref_path.rstrip("/")
