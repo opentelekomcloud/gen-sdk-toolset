@@ -21,9 +21,10 @@ import os
 import subprocess
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
+
+from .conftest import REPO_ROOT
 
 sa = pytest.importorskip("sqlalchemy")
 pytest.importorskip("alembic")
@@ -66,7 +67,6 @@ from tools.shared.scan import (  # noqa: E402
     SectionStatus,
 )
 
-REPO_ROOT = Path(__file__).parent.parent
 MIGRATIONS = REPO_ROOT / "src" / "tools" / "panel" / "core" / "db" / "migrations"
 
 

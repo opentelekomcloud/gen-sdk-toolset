@@ -18,9 +18,16 @@ api_url = "https://api.github.com"
 # Directory whose existence makes a repo eligible for scanning. The RST
 # file prefix (api-ref/source/) is derived from this with a trailing slash.
 api_ref_path = "api-ref/source"
-# Path segments that exclude files from processing.
-# Extend this list when new deprecation conventions appear in OTC docs.
-excluded_segments = ["out-of-date_apis"]
+# Path segments that exclude files from processing: a file with any of these
+# as a directory in its path is not scanned and is listed in the result's
+# excluded_documents instead. Any page that is not part of a service's own
+# API, not only deprecated ones:
+#   out-of-date_apis  deprecated API versions
+#   calling_apis      the "Calling APIs" guide, whose example requests (mostly
+#                     to IAM) would otherwise be read as the service's endpoints
+# The list replaces the default rather than adding to it. A test keeps it equal
+# to config.py::ScannerSection, which a deployed panel scans with.
+excluded_segments = ["out-of-date_apis", "calling_apis"]
 # Concurrent file fetches per repo. Increase cautiously — too many will trip
 # GitHub's secondary rate limit.
 max_workers = 8
