@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import ast
 import json
-from pathlib import Path
 
 import pytest
 
@@ -30,9 +29,9 @@ from tools.llm.transport.base import (
     TransportResult,
 )
 
-PROVIDERS_FILE = (
-    Path(__file__).resolve().parents[1] / "src" / "tools" / "llm" / "providers.py"
-)
+from .conftest import REPO_ROOT
+
+PROVIDERS_FILE = REPO_ROOT / "src" / "tools" / "llm" / "providers.py"
 
 SCHEMA_BODY = {"type": "object", "properties": {"chunks": {"type": "array"}}}
 

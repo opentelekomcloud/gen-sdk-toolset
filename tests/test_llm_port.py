@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import ast
 import dataclasses
-from pathlib import Path
 
 import pytest
 
@@ -19,7 +18,9 @@ from tools.llm.schemas import SchemaRepository
 from tools.llm.transport.http import HttpClient
 from tools.llm.transport.ratelimit import RateLimiter
 
-LLM_DIR = Path(__file__).resolve().parents[1] / "src" / "tools" / "llm"
+from .conftest import REPO_ROOT
+
+LLM_DIR = REPO_ROOT / "src" / "tools" / "llm"
 
 
 # --- the port --- #

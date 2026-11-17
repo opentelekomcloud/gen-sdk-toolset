@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import tomllib
+
+from tools.config import ScannerSection
 from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
@@ -14,7 +17,7 @@ from tools.shared.scan import (
     SectionStatus,
 )
 
-from .conftest import load_fixture
+from .conftest import REPO_ROOT, load_fixture
 
 
 class FakeDocProvider:
@@ -634,6 +637,63 @@ def test_excluded_segments_drop_paths() -> None:
         for document in result.repository.documents
     )
     assert result.excluded_documents == ["api-ref/source/out-of-date_apis/old.rst"]
+
+
+def test_calling_apis_guide_is_excluded_by_the_configured_default() -> None:
+    """The guide's example request is not an endpoint of the service.
+
+    The page's example `GET .../v3/auth/projects` line would otherwise make it
+    an endpoint, adding a false `v3` version and an `auth` resource to
+    whichever service carries it. Asserted through the default because that
+    is what both the CLI and a deployed panel scan with.
+    """
+    guide = "api-ref/source/calling_apis/authentication.rst"
+    real = "api-ref/source/real.rst"
+    fake = FakeDocProvider(
+        repos={
+            "o/svc": {
+                guide: load_fixture("iam_calling_apis_authentication.rst"),
+                real: load_fixture("style_a_cce_grid.rst"),
+            }
+        }
+    )
+    scanner = make_scanner(fake, excluded_segments=ScannerSection().excluded_segments)
+
+    result = scanner.scan_repository("o/svc")
+
+    assert isinstance(result.repository, Service)
+    assert [document.path for document in result.repository.documents] == [real]
+    assert [endpoint.path for endpoint in result.repository.endpoints] == [real]
+    assert result.excluded_documents == [guide]
+    assert not any(guide in call for call in fake.calls if call.startswith("fetch"))
+
+
+def test_calling_apis_guide_is_scanned_when_not_excluded() -> None:
+    """Without the segment the guide is read like any other page - so the
+    exclusion, not some later filter, is what keeps it out of the counts."""
+    guide = "api-ref/source/calling_apis/authentication.rst"
+    fake = FakeDocProvider(
+        repos={"o/svc": {guide: load_fixture("iam_calling_apis_authentication.rst")}}
+    )
+
+    result = make_scanner(fake).scan_repository("o/svc")
+
+    assert isinstance(result.repository, Service)
+    assert [document.path for document in result.repository.documents] == [guide]
+    assert result.excluded_documents == []
+
+
+def test_scan_config_toml_excludes_what_the_default_excludes() -> None:
+    """The CLI scans with scan-config.toml, while the panel image ships without
+    it and scans with the code default - a segment in one list only would make
+    the two count different endpoints. Read with tomllib, not load_settings, so
+    an env override cannot mask the file."""
+    toml = REPO_ROOT / "scan-config.toml"
+    with toml.open("rb") as f:
+        scanner_section = tomllib.load(f).get("scanner", {})
+    assert scanner_section.get("excluded_segments") == (
+        ScannerSection().excluded_segments
+    )
 
 
 def test_excluded_default_empty() -> None:

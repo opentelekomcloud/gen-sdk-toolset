@@ -39,7 +39,7 @@ class GitHubSection(BaseModel):
 class ScannerSection(BaseModel):
     api_ref_path: str = "api-ref/source"
     excluded_segments: list[str] = Field(
-        default_factory=lambda: ["out-of-date_apis"],
+        default_factory=lambda: ["out-of-date_apis", "calling_apis"],
         description="Path segments that exclude files from processing.",
     )
     # Single source of the worker default; ScannerService requires the value,

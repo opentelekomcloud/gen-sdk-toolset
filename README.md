@@ -183,11 +183,11 @@ individual fields via env / CLI) to tweak:
 [github]
 org = "opentelekomcloud-docs"
 branch = "main"
+api_url = "https://api.github.com"
 
 [scanner]
-rst_source_prefix = "api-ref/source/"
 api_ref_path = "api-ref/source"
-excluded_segments = ["out-of-date_apis"]
+excluded_segments = ["out-of-date_apis", "calling_apis"]
 max_workers = 8
 
 [output]
@@ -197,6 +197,9 @@ indent = 2
 [logging]
 level = "INFO"
 ```
+
+The RST file prefix (`api-ref/source/`) is derived from `api_ref_path` and is
+not a key of its own.
 
 ## Design decisions
 
