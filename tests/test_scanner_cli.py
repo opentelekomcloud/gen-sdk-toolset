@@ -293,3 +293,33 @@ def test_path_conflicting_flags_fail_before_settings(monkeypatch, extra) -> None
         scanner_main.main(["--path", ".", *extra])
 
     assert exc_info.value.code == scanner_main.EXIT_USAGE_ERROR
+
+
+def test_path_unreadable_file_fails_the_scan_instead_of_a_clean_report(
+    monkeypatch, tmp_path: Path, capsys, make_git_repo
+) -> None:
+    """A file the scan could not read must not end as "no errors found"."""
+    root = make_git_repo(
+        {"api-ref/source/doc_errors.rst": load_fixture("doc_checks/doc_errors.rst")}
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        scanner_main, "_load_settings_or_exit", lambda _path: _local_settings()
+    )
+    original = Path.read_bytes
+
+    def _deny_rst(self):
+        if self.suffix == ".rst":
+            raise PermissionError(13, "Permission denied", str(self))
+        return original(self)
+
+    monkeypatch.setattr(Path, "read_bytes", _deny_rst)
+
+    exit_code = scanner_main.main(["--path", str(root)])
+
+    assert exit_code == scanner_main.EXIT_RUNTIME_ERROR
+    assert "No documentation errors found." not in capsys.readouterr().out
+    saved = RepositoryScanResult.model_validate_json(
+        (tmp_path / "scan.json").read_text(encoding="utf-8")
+    )
+    assert "Cannot read api-ref/source/doc_errors.rst" in saved.failure_message

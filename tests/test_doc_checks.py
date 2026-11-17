@@ -229,3 +229,34 @@ def test_rows_are_ordered_by_number() -> None:
     findings = find_doc_errors(_result(*issues))
 
     assert [f.location for f in findings] == ["row 2", "row 9", "row 10"]
+
+
+@pytest.mark.parametrize("raw", ["null", "true", "42", '"hello"'])
+def test_valid_scalar_json_is_not_reported(raw) -> None:
+    """The parser keeps only objects and arrays in ``parsed`` and flags the
+    rest, but a scalar is valid JSON, not a documentation error."""
+    example = Example(raw=raw, language="json", parsed=None)
+    issue = Issue(code=IssueCode.EXAMPLE_INVALID_JSON, location="example 1")
+
+    findings = find_doc_errors(
+        _result(issue, section="example_response", examples=[example])
+    )
+
+    assert findings == []
+
+
+def test_scalar_example_does_not_shift_the_pairing() -> None:
+    examples = [
+        Example(raw="null", language="json", parsed=None),
+        Example(raw='{"a": 1,}', language="json", parsed=None),
+    ]
+    issues = [
+        Issue(code=IssueCode.EXAMPLE_INVALID_JSON, location="example 1"),
+        Issue(code=IssueCode.EXAMPLE_INVALID_JSON, location="example 2"),
+    ]
+
+    findings = find_doc_errors(
+        _result(*issues, section="example_response", examples=examples)
+    )
+
+    assert [(f.location, f.json_column) for f in findings] == [("example 2", 8)]

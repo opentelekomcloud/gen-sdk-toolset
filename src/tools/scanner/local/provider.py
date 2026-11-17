@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 from tools.scanner.interfaces import DocProvider, FileListing
-from tools.shared.exceptions import GenSdkError
+from tools.shared.exceptions import GenSdkError, ProviderError, ProviderErrorKind
 
 
 class LocalSourceError(GenSdkError):
@@ -53,9 +53,20 @@ class LocalDocProvider(DocProvider):
         return FileListing(paths=paths)
 
     def fetch_content(self, repo: str, path: str, branch: str) -> str:
+        try:
+            content = (self.root / path).read_bytes()
+        except OSError as e:
+            # A file that cannot be read means the scan did not see the whole
+            # copy: fail the scan instead of reporting a partial result.
+            raise ProviderError(
+                f"Cannot read {path}: {e}",
+                kind=_io_error_kind(e),
+                resource=path,
+                cause=e,
+            ) from e
         # A decode failure is a bad document, not a failed snapshot: let it
         # reach the scanner's per-document fallback, as the GitHub provider does.
-        return (self.root / path).read_bytes().decode("utf-8")
+        return content.decode("utf-8")
 
     def get_commit_hash(self, repo: str, branch: str) -> str | None:
         return self._git("rev-parse", "HEAD")
@@ -84,3 +95,11 @@ class LocalDocProvider(DocProvider):
                 f"{self.root} is not a usable git working copy: {message}"
             )
         return completed.stdout.strip()
+
+
+def _io_error_kind(error: OSError) -> ProviderErrorKind:
+    if isinstance(error, FileNotFoundError):
+        return ProviderErrorKind.not_found
+    if isinstance(error, PermissionError):
+        return ProviderErrorKind.permission_denied
+    return ProviderErrorKind.unexpected_response

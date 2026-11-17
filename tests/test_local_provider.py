@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from tools.scanner.local import LocalDocProvider, LocalSourceError
+from tools.shared.exceptions import ProviderError, ProviderErrorKind
 
 PREFIX = "api-ref/source/"
 
@@ -89,3 +90,28 @@ def test_undecodable_file_is_left_to_the_per_document_fallback(make_git_repo) ->
 
     with pytest.raises(UnicodeDecodeError):
         _provider(root).fetch_content("r", "api-ref/source/a.rst", "sha")
+
+
+def test_file_gone_after_listing_fails_the_read(make_git_repo) -> None:
+    root = make_git_repo({"api-ref/source/a.rst": "a"})
+    provider = _provider(root)
+
+    with pytest.raises(ProviderError) as exc_info:
+        provider.fetch_content("r", "api-ref/source/gone.rst", "sha")
+
+    assert exc_info.value.kind is ProviderErrorKind.not_found
+    assert exc_info.value.resource == "api-ref/source/gone.rst"
+
+
+def test_unreadable_file_fails_the_read(make_git_repo, monkeypatch) -> None:
+    root = make_git_repo({"api-ref/source/a.rst": "a"})
+
+    def _denied(self):
+        raise PermissionError(13, "Permission denied", str(self))
+
+    monkeypatch.setattr(Path, "read_bytes", _denied)
+
+    with pytest.raises(ProviderError) as exc_info:
+        _provider(root).fetch_content("r", "api-ref/source/a.rst", "sha")
+
+    assert exc_info.value.kind is ProviderErrorKind.permission_denied

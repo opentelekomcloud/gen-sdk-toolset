@@ -107,11 +107,15 @@ def _invalid_json_findings(
     broken = [e for e in section.examples if e.parsed is None and _expects_json(e)]
     for position, issue in enumerate(json_issues):
         example = broken[position] if position < len(broken) else None
-        error = _json_error(example) if example is not None else None
-        if error is None:
+        if example is None:
             message = "Example is not valid JSON."
             line = column = None
         else:
+            error = _json_error(example)
+            if error is None:
+                # Valid JSON the parser does not keep: a scalar such as
+                # null, true, 42 or "text". Not a documentation error.
+                continue
             message = (
                 f"Example is not valid JSON: {error.msg} "
                 f"(line {error.lineno}, column {error.colno})."
