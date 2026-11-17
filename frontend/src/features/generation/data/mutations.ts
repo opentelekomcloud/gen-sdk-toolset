@@ -1,5 +1,7 @@
 import { useMutation, useMutationState, useQueryClient } from "@tanstack/react-query";
-import { invalidateGenJobs, invalidateGenLayout, keys } from "../../scan/api/queries";
+import { apiFetch, isConflict, isNotFound } from "../../scan/api/client";
+import { invalidateFromGenLayout, invalidateGenJobs, invalidateGenLayout, keys } from "../../scan/api/queries";
+import type { Layout } from "../../../shared/api/types";
 import { useSession } from "../../../shared/auth/useSession";
 import {
   addResource,
@@ -16,6 +18,55 @@ import {
   testOtcSettings,
 } from "./mock";
 import type { OtcSettingsForm } from "./types";
+
+/**
+ * Start the preliminary grouping of a service (ADR-0056). The server runs it
+ * within the request and answers with the stored layout, which the page shows
+ * as it is: the grouping is never computed here (ADR-0073).
+ *
+ * Two refusals are answers, not failures. A `409` says the service has a
+ * layout already - someone else started the grouping (ADR-0072) - so the
+ * layout is read again. A `404` says it has left the /generation list, so the
+ * list is read again too. The page shows what they say. Anything else is a
+ * failure that stored nothing, so the start can simply be repeated (ADR-0061).
+ *
+ * The repo goes in with `mutate(repo)` and comes back with the answer: a page
+ * reused for another service while the start is under way hands this mutation
+ * its new options, so a name taken from them could file one service's layout
+ * under another's.
+ */
+export function useStartLayout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (repo: string): Promise<Layout | "taken" | "gone"> => {
+      try {
+        return await apiFetch<Layout>(`/generation/services/${encodeURIComponent(repo)}/layout`, { method: "POST" });
+      } catch (error) {
+        if (isConflict(error)) return "taken";
+        if (isNotFound(error)) return "gone";
+        throw error;
+      }
+    },
+    /* The start stays under way until the page has what to show, so the
+       button does not come back in between to be clicked again. */
+    onSuccess: async (stored, repo) => {
+      if (typeof stored === "object") {
+        /* The answer is the stored layout: shown as it is, and what it feeds
+           read again. A read of the layout still under way may hold an answer
+           from before the grouping; it is dropped, so it cannot land on top. */
+        await qc.cancelQueries({ queryKey: keys.genLayout(repo) });
+        qc.setQueryData(keys.genLayout(repo), stored);
+        await invalidateFromGenLayout(qc, repo);
+        return;
+      }
+      if (stored === "taken") {
+        await invalidateGenLayout(qc, repo);
+        return;
+      }
+      await Promise.all([invalidateGenLayout(qc, repo), qc.invalidateQueries({ queryKey: keys.genList() })]);
+    },
+  });
+}
 
 /** One change to the shared layout of a service, by resource, endpoint and version id. */
 export type LayoutEdit =
@@ -55,7 +106,7 @@ export function useEditLayout(name: string) {
           return resetVersion(name, edit.version);
       }
     },
-    onSettled: () => invalidateGenLayout(qc, name),
+    onSettled: () => void invalidateGenLayout(qc, name),
   });
 }
 
