@@ -1607,13 +1607,13 @@
         "type": "object"
       },
       "SpecClassItem": {
-        "description": "One class of the resource. TODO(ISS-0077): its fields, names and types.",
+        "description": "One class of the resource. TODO(ISS-0092): its fields, names and types.",
         "properties": {},
         "title": "SpecClassItem",
         "type": "object"
       },
       "SpecOperationItem": {
-        "description": "One operation of the resource. TODO(ISS-0076): its kind, method and endpoint.",
+        "description": "One operation of the resource. TODO(ISS-0091): its kind, method and endpoint.",
         "properties": {},
         "title": "SpecOperationItem",
         "type": "object"
