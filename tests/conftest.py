@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -77,3 +78,39 @@ def anti_ddos_direct_response_doc() -> str:
 @pytest.fixture
 def cce_inline_examples_doc() -> str:
     return load_fixture("style_a_cce_inline_examples.rst")
+
+
+def _git(root: Path, *args: str) -> None:
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=t",
+            *args,
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.fixture
+def make_git_repo(tmp_path: Path):
+    """Create a committed git working copy from ``{relative path: content}``."""
+
+    def _make(files: dict[str, str], name: str = "docs-repo") -> Path:
+        root = tmp_path / name
+        root.mkdir()
+        for relative, content in files.items():
+            target = root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+        _git(root, "init", "-q", "-b", "main")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-q", "--allow-empty", "-m", "init")
+        return root
+
+    return _make

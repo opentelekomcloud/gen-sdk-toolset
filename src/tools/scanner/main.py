@@ -1,4 +1,8 @@
-"""CLI entry point: scan one OTC docs repository and emit a JSON result."""
+"""CLI entry point: scan one OTC docs repository and emit a JSON result.
+
+With ``--path`` the repository is read from a local git working copy, and a
+markdown report of documentation errors is printed to stdout as well.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +15,11 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 
 from tools.config import Settings, load_settings
-from tools.scanner.factory import build_scanner
+from tools.scanner.doc_checks import find_doc_errors, render_markdown
+from tools.scanner.factory import build_local_scanner, build_scanner
+from tools.scanner.local import LocalDocProvider, LocalSourceError
+from tools.shared.ir import Service
+from tools.shared.scan import RepositoryScanResult
 
 # Exit codes
 EXIT_OK = 0
@@ -40,16 +48,25 @@ def _build_arg_parser() -> argparse.ArgumentParser:
             "Pass '-' to skip the file and emit the report to stdout instead."
         ),
     )
-    parser.add_argument(
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument(
         "--repo",
         metavar="OWNER/NAME",
-        required=True,
-        help="Repository to scan. Emits one RepositoryScanResult.",
+        help="GitHub repository to scan. Emits one RepositoryScanResult.",
+    )
+    target.add_argument(
+        "--path",
+        metavar="DIR",
+        help=(
+            "Local git working copy to scan, files as they are on disk. "
+            "Needs no GITHUB_TOKEN. Prints a markdown report of documentation "
+            "errors to stdout."
+        ),
     )
     parser.add_argument(
         "--branch",
         metavar="NAME",
-        help="Git branch to scan. Overrides [github].branch.",
+        help="Git branch to scan. Overrides [github].branch. Not with --path.",
     )
     parser.add_argument(
         "--stdout",
@@ -141,9 +158,19 @@ def _emit_report(
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _build_arg_parser().parse_args(argv)
+    arg_parser = _build_arg_parser()
+    args = arg_parser.parse_args(argv)
+    if args.path is not None:
+        # stdout carries the report, and a working copy has only its own branch.
+        if args.branch:
+            arg_parser.error("--branch cannot be used with --path")
+        if args.stdout or args.output == "-":
+            arg_parser.error("--path prints the report to stdout; write JSON to a file")
 
     settings = _load_settings_or_exit(args.config)
+    if args.path is not None:
+        return _scan_local(args, settings)
+
     setup_logging(_resolve_log_level(settings, args.verbose, args.quiet))
     logger = logging.getLogger("gen-sdk-toolset")
 
@@ -162,6 +189,51 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("Repo scan reported an error: %s", repo_result.failure_message)
         return EXIT_RUNTIME_ERROR
     return EXIT_OK
+
+
+def _scan_local(args: argparse.Namespace, settings: Settings) -> int:
+    setup_logging(_resolve_log_level(settings, args.verbose, args.quiet))
+    logger = logging.getLogger("gen-sdk-toolset")
+    root = Path(args.path)
+    try:
+        scanner = build_local_scanner(settings, root)
+        provider = scanner.doc_provider
+        if not isinstance(provider, LocalDocProvider):  # pragma: no cover
+            raise RuntimeError("build_local_scanner must wire a LocalDocProvider")
+        branch = provider.current_branch()
+        dirty = provider.has_uncommitted_changes(settings.scanner.api_ref_path)
+    except LocalSourceError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return EXIT_USAGE_ERROR
+
+    repo = provider.root.name
+    logger.info("Scanning local working copy %s (%s)", provider.root, branch)
+    repo_result = scanner.scan_repository(repo=repo, branch=branch)
+    _emit_report(
+        repo_result,
+        args.output or settings.output.path,
+        False,
+        settings.output.indent,
+        logger,
+    )
+    if repo_result.failure_message:
+        logger.error("Repo scan reported an error: %s", repo_result.failure_message)
+        return EXIT_RUNTIME_ERROR
+    print(_local_report(repo_result, repo=repo, dirty=dirty, settings=settings))
+    return EXIT_OK
+
+
+def _local_report(
+    result: RepositoryScanResult, *, repo: str, dirty: bool, settings: Settings
+) -> str:
+    if not isinstance(result.repository, Service) or not result.repository.documents:
+        return (
+            f"# API reference scan: {repo}\n\n"
+            f"No API reference found under `{settings.scanner.api_ref_path}`.\n"
+        )
+    return render_markdown(
+        find_doc_errors(result), repo=repo, commit=result.commit_hash, dirty=dirty
+    )
 
 
 if __name__ == "__main__":

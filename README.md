@@ -71,6 +71,9 @@ need from their environment and what they reach out to is in
 
 ## Scanner Usage
 
+To check documentation changes locally before a merge, see
+[docs/local-scan.md](docs/local-scan.md).
+
 ### Setup
 
 ```bash
@@ -111,7 +114,8 @@ uv run gen-sdk-scan --repo OWNER/NAME --output report.json --stdout
 uv run gen-sdk-scan --repo OWNER/NAME --config configs/staging.toml -v
 ```
 
-`--repo` is required and takes an `OWNER/NAME` slug. Scanning a whole
+One of `--repo` (GitHub, takes an `OWNER/NAME` slug) or `--path` (a local git
+working copy) is required. Scanning a whole
 organization is the panel's job, not the CLI's: it needs durable job state to
 resume after a rate limit, which a one-shot command cannot provide.
 
