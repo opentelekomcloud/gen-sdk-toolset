@@ -73,24 +73,35 @@ export function stubEmptyApi() {
 }
 
 export const FAILED = Symbol("the backend fails this request");
-const FAILURE = { error: { code: "internal_error", message: "down" } } satisfies ApiErrorEnvelope;
 /** The backend's answer that what was asked for does not exist - an answer, not a failure. */
 export const NOT_FOUND = Symbol("the backend answers 404");
-const MISSING = { error: { code: "not_found", message: "not found" } } satisfies ApiErrorEnvelope;
+/** The backend's answer that the state is already what the request would make - a 409, not a failure. */
+export const CONFLICT = Symbol("the backend answers 409");
+/** The backend's refusal of a role that may not do this - a 403. */
+export const FORBIDDEN = Symbol("the backend answers 403");
+
+/** Each answer a test names by a symbol, as the backend sends it: its status and its error envelope. */
+const NAMED_ANSWERS = new Map<symbol, { status: number; body: ApiErrorEnvelope }>([
+  [FAILED, { status: 500, body: { error: { code: "internal_error", message: "down" } } }],
+  [NOT_FOUND, { status: 404, body: { error: { code: "not_found", message: "not found" } } }],
+  [CONFLICT, { status: 409, body: { error: { code: "conflict", message: "already there" } } }],
+  [FORBIDDEN, { status: 403, body: { error: { code: "forbidden", message: "worker role required" } } }],
+]);
 
 /**
  * The backend, path by path: each request is answered with what `answers`
  * holds for its path at that moment - so a test breaks the backend by setting
- * a path to FAILED, has it answer 404 with NOT_FOUND, holds an answer back by
- * setting a promise there, or answers request by request through a function.
+ * a path to FAILED, has it answer 404, 409 or 403 with NOT_FOUND, CONFLICT or
+ * FORBIDDEN, holds an answer back by setting a promise there, or answers request
+ * by request through a function.
  */
 export function backend(answers: Record<string, unknown>) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const path = String(input).split("?")[0];
     const entry = answers[path];
     const answer = await (typeof entry === "function" ? entry() : entry);
-    if (answer === FAILED) return new Response(JSON.stringify(FAILURE), { status: 500 });
-    if (answer === NOT_FOUND) return new Response(JSON.stringify(MISSING), { status: 404 });
+    const named = typeof answer === "symbol" ? NAMED_ANSWERS.get(answer) : undefined;
+    if (named) return new Response(JSON.stringify(named.body), { status: named.status });
     return new Response(JSON.stringify(answer ?? null));
   });
   vi.stubGlobal("fetch", fetchMock);
