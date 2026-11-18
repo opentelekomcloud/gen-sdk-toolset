@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from tools.panel.core.db.base import Base
@@ -422,11 +422,22 @@ class Snapshot(Base):
         nullable=False,
     )
 
-    excluded_documents: Mapped[list[str]] = mapped_column(
-        ARRAY(sa.Text),
+    #: ``ExcludedDocument`` payloads: each path the scan left out, with its
+    #: reason and evidence. Rows stored before reasons were recorded hold
+    #: ``unrecorded`` and no evidence - their paths were kept, not reinterpreted.
+    excluded_documents: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
         nullable=False,
         default=list,
-        server_default=sa.text("'{}'::text[]"),
+        server_default=sa.text("'[]'::jsonb"),
+    )
+    #: ``ReviewCandidate`` payloads: counted pages with an unclear lifecycle
+    #: notice, kept visible for a person to decide on.
+    review_candidates: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=sa.text("'[]'::jsonb"),
     )
 
     documents_total: Mapped[int] = mapped_column(

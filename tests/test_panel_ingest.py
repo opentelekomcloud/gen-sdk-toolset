@@ -11,6 +11,11 @@ from datetime import UTC, datetime
 
 import pytest
 
+from tests.conftest import load_fixture
+from tests.test_scanner import FakeDocProvider, make_scanner
+from tools.config import ScannerSection
+from tools.scanner.exclusion import SEGMENTS_SETTING
+
 pytest.importorskip("sqlalchemy")
 pytest.importorskip("alembic")
 
@@ -43,13 +48,22 @@ from tools.shared.ir import (  # noqa: E402
 )
 from tools.shared.ir import Service as IrService  # noqa: E402
 from tools.shared.scan import (  # noqa: E402
+    ExcludedDocument,
+    ExclusionEvidence,
+    ExclusionReason,
     RepositoryInterruption,
     RepositoryInterruptionKind,
     RepositoryScanResult,
+    ReviewCandidate,
 )
 
 REPO = "opentelekomcloud-docs/ecs"
 COMMIT = "a" * 40
+RETIRED = ExcludedDocument(
+    path="api-ref/source/out-of-date_apis/old.rst",
+    reason=ExclusionReason.retired,
+    evidence=ExclusionEvidence(source=SEGMENTS_SETTING, text="out-of-date_apis"),
+)
 # The status_timestamps CHECK constraint: only queued has no started_at, and
 # only the terminal states carry finished_at.
 _TERMINAL = (JobStatus.done, JobStatus.failed)
@@ -111,7 +125,8 @@ def _result(
     repo: str = REPO,
     documents: list[Document] | None = None,
     commit_hash: str | None = COMMIT,
-    excluded: list[str] | None = None,
+    excluded: list[ExcludedDocument] | None = None,
+    candidates: list[ReviewCandidate] | None = None,
     scanner_version: str | None = None,
 ) -> RepositoryScanResult:
     fields = {} if scanner_version is None else {"scanner_version": scanner_version}
@@ -122,11 +137,8 @@ def _result(
         ),
         branch="main",
         commit_hash=commit_hash,
-        excluded_documents=(
-            ["api-ref/source/out-of-date_apis/old.rst"]
-            if excluded is None
-            else excluded
-        ),
+        excluded_documents=[RETIRED] if excluded is None else excluded,
+        review_candidates=candidates or [],
         **fields,
     )
 
@@ -166,8 +178,17 @@ def test_successful_ingest_persists_snapshot_and_completes_job(session_factory):
         )
         assert snapshot.document_schema_version == DOCUMENT_SCHEMA_VERSION
         assert snapshot.excluded_documents == [
-            "api-ref/source/out-of-date_apis/old.rst"
+            {
+                "path": "api-ref/source/out-of-date_apis/old.rst",
+                "reason": "retired",
+                "evidence": {
+                    "source": SEGMENTS_SETTING,
+                    "line": None,
+                    "text": "out-of-date_apis",
+                },
+            }
         ]
+        assert snapshot.review_candidates == []
 
         assert snapshot.documents_total == 2
         assert snapshot.endpoints_total == 1
@@ -291,6 +312,76 @@ def test_scan_without_documents_persists_an_empty_snapshot(session_factory):
         assert session.get(RepositoryScanJob, job_id).status is JobStatus.done
 
 
+_EXAMPLE_REPOS = {
+    "opentelekomcloud-docs/function-graph": {
+        "api-ref/source/examples/example_1_using_a_timer_trigger_to_periodically_"
+        "download_files_from_an_obs_bucket.rst": (
+            "functiongraph_example_1_timer_trigger.rst"
+        ),
+        "api-ref/source/examples/example_2_creating_a_function_by_uploading_code_"
+        "to_an_obs_bucket.rst": "functiongraph_example_2_function_from_obs.rst",
+        "api-ref/source/api/function_lifecycle_management/creating_a_function.rst": (
+            "functiongraph_creating_a_function.rst"
+        ),
+    },
+    "opentelekomcloud-docs/application-operations-management-2": {
+        "api-ref/source/examples/querying_details_about_a_specified_alarm_action_"
+        "rule.rst": "aom_example_alarm_action_rule.rst",
+    },
+    "opentelekomcloud-docs/cloud-search-service": {
+        "api-ref/source/examples/creating_a_pay-per-use_elasticsearch_cluster.rst": (
+            "css_example_pay_per_use_cluster.rst"
+        ),
+    },
+}
+
+
+def test_a_new_snapshot_records_the_example_guides_it_left_out(session_factory):
+    """Scanned with the deployed rules, the four tutorials under examples/ are
+    stored as excluded guides with their source paths and add no endpoint or
+    document; FunctionGraph's reference page is its one endpoint."""
+    settings = ScannerSection()
+    stored: dict[str, Snapshot] = {}
+    for repo, files in _EXAMPLE_REPOS.items():
+        _, job_id = _seed_running_job(session_factory, repo=repo)
+        fake = FakeDocProvider(
+            repos={repo: {path: load_fixture(name) for path, name in files.items()}}
+        )
+        result = make_scanner(
+            fake,
+            excluded_segments=settings.excluded_segments,
+            sample_repositories=settings.sample_repositories,
+        ).scan_repository(repo)
+        _ingest(job_id, result, repo=repo)
+
+    with session_factory() as session:
+        for snapshot in session.scalars(select(Snapshot).order_by(Snapshot.id)):
+            stored[snapshot.service.repo] = snapshot
+
+        guides = [
+            (repo, entry["path"])
+            for repo, snapshot in stored.items()
+            for entry in snapshot.excluded_documents
+            if entry["reason"] == "guide" and entry["evidence"]["text"] == "examples"
+        ]
+        assert guides == [
+            (repo, path)
+            for repo, files in _EXAMPLE_REPOS.items()
+            for path in files
+            if "/examples/" in path
+        ]
+        assert len(guides) == 4
+        assert {repo: s.endpoints_total for repo, s in stored.items()} == {
+            "opentelekomcloud-docs/function-graph": 1,
+            "opentelekomcloud-docs/application-operations-management-2": 0,
+            "opentelekomcloud-docs/cloud-search-service": 0,
+        }
+        paths = session.scalars(select(DocumentRecord.path)).all()
+        assert paths == [
+            "api-ref/source/api/function_lifecycle_management/creating_a_function.rst"
+        ]
+
+
 # ---------------------------------------------------------------------------
 # Snapshot deduplication (PS2-3)
 # ---------------------------------------------------------------------------
@@ -363,13 +454,36 @@ def test_an_unchanged_result_reuses_the_latest_snapshot(session_factory):
     [
         (_result(commit_hash="b" * 40), "commit"),
         (_result(documents=[make_endpoint()]), "analytics"),
+        (
+            _result(
+                excluded=[RETIRED.model_copy(update={"reason": ExclusionReason.guide})]
+            ),
+            "exclusion",
+        ),
+        (
+            _result(
+                candidates=[
+                    ReviewCandidate(
+                        path="api-ref/source/history.rst",
+                        evidence=ExclusionEvidence(
+                            source="api-ref/source/history.rst",
+                            line=7,
+                            text="The v1 endpoint is deprecated.",
+                        ),
+                    )
+                ]
+            ),
+            "candidate",
+        ),
     ],
-    ids=["commit", "analytics"],
+    ids=["commit", "analytics", "exclusion", "candidate"],
 )
 def test_a_changed_result_stores_a_new_snapshot(session_factory, second, differs_by):
-    """Any of the three compared fields moving is a new Snapshot. `analytics`
-    is the whole reading of the source, so a document count, a completeness or
-    a per-version breakdown changing all land here."""
+    """Any compared field moving is a new Snapshot. `analytics` is the whole
+    reading of the source, so a document count, a completeness or a
+    per-version breakdown changing all land here. The exclusions sit outside
+    it: the same path recorded for a new reason is still a different result,
+    or a rescan could never replace an old snapshot's reasons."""
     service_id, _first_job, second_job = _ingest_twice(
         session_factory, second, first=None
     )

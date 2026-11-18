@@ -16,13 +16,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
+
+from tools.shared.scan import ExclusionReason
 
 DEFAULT_CONFIG_PATH = "scan-config.toml"
 
@@ -38,12 +40,32 @@ class GitHubSection(BaseModel):
 
 class ScannerSection(BaseModel):
     api_ref_path: str = "api-ref/source"
-    excluded_segments: list[str] = Field(
-        default_factory=lambda: ["out-of-date_apis", "calling_apis"],
-        description="Path segments that exclude files from processing.",
+    excluded_segments: dict[str, ExclusionReason] = Field(
+        default_factory=lambda: {
+            "out-of-date_apis": ExclusionReason.retired,
+            "calling_apis": ExclusionReason.guide,
+            "examples": ExclusionReason.guide,
+            "faqs": ExclusionReason.guide,
+        },
+        description="Path segments that exclude files from processing, "
+        "each with the reason recorded for it.",
+    )
+    sample_repositories: list[str] = Field(
+        default_factory=lambda: ["opentelekomcloud-docs/sandbox"],
+        description="Repositories of sample material: every file is excluded.",
     )
     # Single source of the worker default; ScannerService requires the value,
     max_workers: int = Field(default=8, ge=1, le=64)
+
+    @field_validator("excluded_segments")
+    @classmethod
+    def reasons_are_decisions(
+        cls, segments: dict[str, ExclusionReason]
+    ) -> dict[str, ExclusionReason]:
+        # ``unrecorded`` describes a stored snapshot, not a rule a scan applies.
+        if ExclusionReason.unrecorded in segments.values():
+            raise ValueError("a segment cannot be excluded as 'unrecorded'")
+        return segments
 
     @property
     def rst_source_prefix(self) -> str:

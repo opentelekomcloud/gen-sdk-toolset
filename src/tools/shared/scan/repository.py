@@ -18,6 +18,8 @@ from pydantic import (
 from tools import __version__ as _SCANNER_VERSION
 from tools.shared.ir import Endpoint, Repository, Service
 
+from .exclusion import ExcludedDocument, ReviewCandidate
+
 
 class RepositoryInterruptionKind(enum.StrEnum):
     """Operational reasons why a repository scan stopped."""
@@ -46,7 +48,8 @@ class RepositoryScanResult(BaseModel):
     commit_hash: str | None = None
     scanner_version: str = _SCANNER_VERSION
 
-    excluded_documents: list[str] = Field(default_factory=list)
+    excluded_documents: list[ExcludedDocument] = Field(default_factory=list)
+    review_candidates: list[ReviewCandidate] = Field(default_factory=list)
 
     error: str | None = None
     interruption: RepositoryInterruption | None = None
@@ -71,12 +74,25 @@ class RepositoryScanResult(BaseModel):
         if self.error is not None and self.interruption is not None:
             raise ValueError("error and interruption cannot both be set")
 
+        excluded = [entry.path for entry in self.excluded_documents]
+        if len(excluded) != len(set(excluded)):
+            raise ValueError("excluded document paths must be unique")
+
         if not isinstance(self.repository, Service):
+            if self.review_candidates:
+                raise ValueError("review candidates need scanned documents")
             return self
 
         paths = [document.path for document in self.repository.documents]
         if len(paths) != len(set(paths)):
             raise ValueError("service document paths must be unique")
+        # A path is either counted or excluded: in both it would be counted
+        # and explained away at once.
+        if set(paths) & set(excluded):
+            raise ValueError("a path cannot be both a document and excluded")
+        # A candidate stays in coverage, so it must be one of the documents.
+        if not {candidate.path for candidate in self.review_candidates} <= set(paths):
+            raise ValueError("every review candidate must be a scanned document")
 
         for document in self.repository.documents:
             if document.scan_result is None:

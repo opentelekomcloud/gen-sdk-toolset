@@ -15,11 +15,15 @@ from tools.shared.ir import (
 )
 from tools.shared.scan import (
     DocumentScanResult,
+    ExcludedDocument,
+    ExclusionEvidence,
+    ExclusionReason,
     Issue,
     IssueCode,
     RepositoryInterruption,
     RepositoryInterruptionKind,
     RepositoryScanResult,
+    ReviewCandidate,
     SectionScanResult,
     SectionStatus,
 )
@@ -92,6 +96,7 @@ def test_repository_scan_result_restores_nested_service() -> None:
         "commit_hash": "a" * 40,
         "scanner_version": __version__,
         "excluded_documents": [],
+        "review_candidates": [],
         "error": None,
         "interruption": None,
     }
@@ -300,4 +305,101 @@ def test_interruption_kind_serializes_by_value() -> None:
     payload = result.model_dump(mode="json")
 
     assert payload["interruption"]["kind"] == "rate_limit"
+    assert RepositoryScanResult.model_validate(payload) == result
+
+
+# --- excluded documents and review candidates --- #
+
+_INTRO = "api-ref/source/intro.rst"
+_EVIDENCE = ExclusionEvidence(
+    source="api-ref/source/faqs", text="a page that answers a question"
+)
+
+
+def _service_with_intro() -> Service:
+    return Service(
+        repo="org/service",
+        documents=[Document(path=_INTRO, scan_result=DocumentScanResult())],
+    )
+
+
+def test_an_excluded_document_needs_evidence_unless_unrecorded() -> None:
+    with pytest.raises(ValidationError, match="evidence is required"):
+        ExcludedDocument(path="a.rst", reason=ExclusionReason.guide)
+    # An unrecorded entry only carries over a stored path; evidence would
+    # claim a decision nobody recorded.
+    with pytest.raises(ValidationError, match="evidence is required"):
+        ExcludedDocument(
+            path="a.rst", reason=ExclusionReason.unrecorded, evidence=_EVIDENCE
+        )
+    assert ExcludedDocument(path="a.rst", reason=ExclusionReason.unrecorded)
+
+
+def test_scan_result_rejects_duplicate_excluded_paths() -> None:
+    entry = ExcludedDocument(
+        path="a.rst", reason=ExclusionReason.guide, evidence=_EVIDENCE
+    )
+    with pytest.raises(ValidationError, match="excluded document paths"):
+        RepositoryScanResult(
+            repository=Service(repo="org/service"),
+            branch="main",
+            excluded_documents=[entry, entry],
+        )
+
+
+def test_a_path_is_either_a_document_or_excluded() -> None:
+    with pytest.raises(ValidationError, match="both a document and excluded"):
+        RepositoryScanResult(
+            repository=_service_with_intro(),
+            branch="main",
+            excluded_documents=[
+                ExcludedDocument(
+                    path=_INTRO, reason=ExclusionReason.guide, evidence=_EVIDENCE
+                )
+            ],
+        )
+
+
+def test_a_review_candidate_must_be_a_scanned_document() -> None:
+    candidate = ReviewCandidate(
+        path="api-ref/source/other.rst",
+        evidence=ExclusionEvidence(source=_INTRO, line=4, text="deprecated"),
+    )
+    with pytest.raises(ValidationError, match="must be a scanned document"):
+        RepositoryScanResult(
+            repository=_service_with_intro(),
+            branch="main",
+            review_candidates=[candidate],
+        )
+    with pytest.raises(ValidationError, match="need scanned documents"):
+        RepositoryScanResult(
+            repository=Repository(repo="org/repository"),
+            branch="main",
+            review_candidates=[candidate],
+        )
+
+
+def test_exclusions_and_candidates_survive_a_json_round_trip() -> None:
+    result = RepositoryScanResult(
+        repository=_service_with_intro(),
+        branch="main",
+        excluded_documents=[
+            ExcludedDocument(
+                path="api-ref/source/faqs/q.rst",
+                reason=ExclusionReason.guide,
+                evidence=_EVIDENCE,
+            ),
+            ExcludedDocument(path="old.rst", reason=ExclusionReason.unrecorded),
+        ],
+        review_candidates=[
+            ReviewCandidate(
+                path=_INTRO,
+                evidence=ExclusionEvidence(source=_INTRO, line=4, text="deprecated"),
+            )
+        ],
+    )
+
+    payload = json.loads(json.dumps(result.model_dump(mode="json")))
+
+    assert payload["excluded_documents"][0]["reason"] == "guide"
     assert RepositoryScanResult.model_validate(payload) == result
