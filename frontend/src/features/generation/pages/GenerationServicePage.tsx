@@ -232,7 +232,7 @@ function LayoutResourceRow({
 }) {
   const { t } = useI18n();
   const { state: fromList } = useLocation();
-  /* TODO(#205): "not connected" too, once the card has a target to choose. */
+  /* TODO(#205): "not connected" for a target that is not, ?target=ansible included. */
   const hold = layoutHold(
     resource.confirmed_by != null,
     resource.endpoints.map((e) => e.overall_status),
