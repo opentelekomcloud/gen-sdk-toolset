@@ -1,5 +1,4 @@
 import { Link } from "react-router";
-import type { GenTarget } from "../data/types";
 import type { Hold } from "../lib/layout";
 import { useI18n } from "../../../shared/i18n";
 
@@ -13,7 +12,6 @@ import { useI18n } from "../../../shared/i18n";
 export function HoldReason({
   hold,
   open = 0,
-  target,
   layoutTo,
   specTo,
   state,
@@ -21,7 +19,6 @@ export function HoldReason({
   hold: Hold | null;
   /** Fields of the resource whose problem nobody has decided yet. */
   open?: number;
-  target: GenTarget;
   layoutTo: string;
   /** The resource's spec, when the reason is shown away from it. */
   specTo?: string;
@@ -53,7 +50,7 @@ export function HoldReason({
       case "waitsOn":
         return t("gen.waitsOn", { base: hold.base });
       case "notConnected":
-        return t("gen.hold.notConnected", { target: target.label });
+        return t("gen.hold.notConnected", { target: hold.target });
     }
   })();
   return (

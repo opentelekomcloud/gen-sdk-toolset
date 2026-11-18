@@ -8,24 +8,44 @@ export type Hold =
   | { reason: "empty" }
   | { reason: "notOk"; n: number }
   | { reason: "waitsOn"; base: string }
-  | { reason: "notConnected" };
+  | { reason: "notConnected"; target: string };
+
+/** Why a resource cannot be generated, as far as its layout tells: the reasons that hold on every target. */
+export type LayoutHold = Extract<Hold, { reason: "confirm" | "empty" | "notOk" }>;
+
+/**
+ * The first reason, in this order, the layout of a resource holds it back, or
+ * null when it does not: it has to be confirmed, hold endpoints and every one
+ * of their documents `ok` (owner decision). It takes only what the stored
+ * layout and the mock both have - whether the resource is confirmed and the
+ * `overall_status` of each of its endpoints - so the card asks it of the
+ * server's layout, and `holdOf` of the mock's.
+ */
+export function layoutHold(confirmed: boolean, statuses: readonly string[]): LayoutHold | null {
+  if (!confirmed) return { reason: "confirm" };
+  if (statuses.length === 0) return { reason: "empty" };
+  const notOk = statuses.filter((s) => s !== "ok").length;
+  if (notOk > 0) return { reason: "notOk", n: notOk };
+  return null;
+}
 
 /**
  * The first reason, in this order, a resource cannot be generated on a target,
- * or null when it can. Its layout has to be confirmed, hold endpoints and every
- * one of their documents `ok` (owner decision); a target that builds on another
- * takes a resource only once it is merged there (owner decision), and only a
- * connected target generates at all. `base` is the base target's label.
+ * or null when it can. First what its layout holds it back by (`layoutHold`);
+ * then a target that builds on another takes a resource only once it is merged
+ * there (owner decision), and only a connected target generates at all.
+ * `base` is the base target's label, and `target` the label of this one.
  */
 export function holdOf(resource: GenResource, target: GenTarget, targets: GenTarget[]): Hold | null {
-  const notOk = resource.endpoints.filter((e) => e.status !== "ok").length;
-  if (resource.confirmedBy == null) return { reason: "confirm" };
-  if (resource.endpoints.length === 0) return { reason: "empty" };
-  if (notOk > 0) return { reason: "notOk", n: notOk };
+  const layout = layoutHold(
+    resource.confirmedBy != null,
+    resource.endpoints.map((e) => e.status),
+  );
+  if (layout) return layout;
   if (target.base != null && resource.jobs[target.base]?.status !== "merged") {
     return { reason: "waitsOn", base: targets.find((x) => x.id === target.base)?.label ?? target.base };
   }
-  if (!target.live) return { reason: "notConnected" };
+  if (!target.live) return { reason: "notConnected", target: target.label };
   return null;
 }
 

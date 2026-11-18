@@ -261,7 +261,7 @@ export function GenerationSpecPage() {
           <JobTag job={job} to={resultTo} state={toResult} />
         ) : (
           <div className="flex flex-wrap items-center gap-3">
-            <HoldReason hold={hold} open={open} target={target} layoutTo={pathTo(["layout"])} state={fromList} />
+            <HoldReason hold={hold} open={open} layoutTo={pathTo(["layout"])} state={fromList} />
             {canWrite && (
               <button
                 type="button"
