@@ -191,7 +191,8 @@ api_url = "https://api.github.com"
 
 [scanner]
 api_ref_path = "api-ref/source"
-excluded_segments = ["out-of-date_apis", "calling_apis"]
+excluded_segments = { "out-of-date_apis" = "retired", calling_apis = "guide", examples = "guide", faqs = "guide" }
+sample_repositories = ["opentelekomcloud-docs/sandbox"]
 max_workers = 8
 
 [output]

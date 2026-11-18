@@ -129,7 +129,13 @@ def _register(session_factory, repo: str = REPO) -> int:
 
 
 def _run_scan(
-    session_factory, repo: str = REPO, *, documents=None, commit_hash: str = COMMIT
+    session_factory,
+    repo: str = REPO,
+    *,
+    documents=None,
+    commit_hash: str = COMMIT,
+    excluded=(),
+    candidates=(),
 ) -> int:
     """Take a service through a running Job and a successful ingest."""
     with session_factory() as session:
@@ -154,6 +160,8 @@ def _run_scan(
         ),
         branch="main",
         commit_hash=commit_hash,
+        excluded_documents=list(excluded),
+        review_candidates=list(candidates),
     )
     ingest_service_result(job_id=job_id, service_repo=repo, result=result)
     return job_id
@@ -971,6 +979,42 @@ def test_export_returns_the_scanner_contract_as_a_download(scanned):
     from tools.shared.scan import RepositoryScanResult
 
     assert RepositoryScanResult.model_validate(payload).commit_hash == COMMIT
+
+
+def test_export_carries_each_exclusion_and_review_candidate(client, session_factory):
+    """What the scan left out, and why, travels with the report: the export is
+    the place a reviewer reads a snapshot's exclusions from."""
+    from tools.shared.scan import (
+        ExcludedDocument,
+        ExclusionEvidence,
+        ExclusionReason,
+        RepositoryScanResult,
+        ReviewCandidate,
+    )
+
+    excluded = ExcludedDocument(
+        path="api-ref/source/apis_unavailable_soon/backup.rst",
+        reason=ExclusionReason.retired,
+        evidence=ExclusionEvidence(
+            source="api-ref/source/apis_unavailable_soon", text="Unavailable Soon"
+        ),
+    )
+    candidate = ReviewCandidate(
+        path="api-ref/source/history.rst",
+        evidence=ExclusionEvidence(
+            source="api-ref/source/history.rst",
+            line=7,
+            text="The v1 response format is deprecated.",
+        ),
+    )
+    _register(session_factory)
+    _run_scan(session_factory, excluded=[excluded], candidates=[candidate])
+
+    payload = client.get(f"/api/scan/services/{REPO}/export").json()
+
+    exported = RepositoryScanResult.model_validate(payload)
+    assert exported.excluded_documents == [excluded]
+    assert exported.review_candidates == [candidate]
 
 
 def test_export_of_an_unscanned_service_is_a_404(client, session_factory):

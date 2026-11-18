@@ -18,16 +18,26 @@ api_url = "https://api.github.com"
 # Directory whose existence makes a repo eligible for scanning. The RST
 # file prefix (api-ref/source/) is derived from this with a trailing slash.
 api_ref_path = "api-ref/source"
-# Path segments that exclude files from processing: a file with any of these
-# as a directory in its path is not scanned and is listed in the result's
-# excluded_documents instead. Any page that is not part of a service's own
-# API, not only deprecated ones:
-#   out-of-date_apis  deprecated API versions
-#   calling_apis      the "Calling APIs" guide, whose example requests (mostly
-#                     to IAM) would otherwise be read as the service's endpoints
-# The list replaces the default rather than adding to it. A test keeps it equal
-# to config.py::ScannerSection, which a deployed panel scans with.
-excluded_segments = ["out-of-date_apis", "calling_apis"]
+# Path segments that exclude files from processing, each with the reason the
+# result records for it: a file with any of these as a directory in its path
+# is not scanned and is listed in the result's excluded_documents instead.
+# Any page that is not part of a service's own API, not only deprecated ones:
+#   out-of-date_apis  retired - deprecated API versions
+#   calling_apis      guide - the "Calling APIs" guide, whose example requests
+#                     (mostly to IAM) would otherwise be read as endpoints
+#   examples          guide - tutorials built from sample requests
+#   faqs              guide - questions and answers, not operations
+# Lifecycle labels in a path or a page (To Be Discarded, Deprecated, ...) are
+# recognized by the scanner itself and need no entry here.
+# The table replaces the default rather than adding to it. A test keeps it
+# equal to config.py::ScannerSection, which a deployed panel scans with.
+# SCANNER__EXCLUDED_SEGMENTS is merged into this table: it can add a segment
+# or change a reason, but not remove one. To drop a segment, pass a --config
+# file whose table leaves it out.
+excluded_segments = { "out-of-date_apis" = "retired", calling_apis = "guide", examples = "guide", faqs = "guide" }
+# Repositories of sample material rather than a service: every file is
+# excluded with the reason "sample". Kept equal to the default like the above.
+sample_repositories = ["opentelekomcloud-docs/sandbox"]
 # Concurrent file fetches per repo. Increase cautiously — too many will trip
 # GitHub's secondary rate limit.
 max_workers = 8
