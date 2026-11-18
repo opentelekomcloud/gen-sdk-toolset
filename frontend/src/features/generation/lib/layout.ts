@@ -10,16 +10,13 @@ export type Hold =
   | { reason: "waitsOn"; base: string }
   | { reason: "notConnected"; target: string };
 
-/** Why a resource cannot be generated, as far as its layout tells: the reasons that hold on every target. */
+/** The reasons a resource's layout holds it back by, on every target. */
 export type LayoutHold = Extract<Hold, { reason: "confirm" | "empty" | "notOk" }>;
 
 /**
- * The first reason, in this order, the layout of a resource holds it back, or
- * null when it does not: it has to be confirmed, hold endpoints and every one
- * of their documents `ok` (owner decision). It takes only what the stored
- * layout and the mock both have - whether the resource is confirmed and the
- * `overall_status` of each of its endpoints - so the card asks it of the
- * server's layout, and `holdOf` of the mock's.
+ * The first reason, in this order, the layout of a resource holds it back, or null.
+ *
+ * Takes plain values, as both the stored layout and the mock are asked.
  */
 export function layoutHold(confirmed: boolean, statuses: readonly string[]): LayoutHold | null {
   if (!confirmed) return { reason: "confirm" };
@@ -31,10 +28,9 @@ export function layoutHold(confirmed: boolean, statuses: readonly string[]): Lay
 
 /**
  * The first reason, in this order, a resource cannot be generated on a target,
- * or null when it can. First what its layout holds it back by (`layoutHold`);
- * then a target that builds on another takes a resource only once it is merged
- * there (owner decision), and only a connected target generates at all.
- * `base` is the base target's label, and `target` the label of this one.
+ * or null when it can. The layout's reasons come first (`layoutHold`); then a
+ * target that builds on another takes a resource only once it is merged there
+ * (owner decision), and only a connected target generates at all.
  */
 export function holdOf(resource: GenResource, target: GenTarget, targets: GenTarget[]): Hold | null {
   const layout = layoutHold(

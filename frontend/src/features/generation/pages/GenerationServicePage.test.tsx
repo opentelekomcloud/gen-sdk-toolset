@@ -719,7 +719,6 @@ describe("the resources of a stored layout on the card (ISS-0040)", () => {
       no_version: [endpoint({ id: 12 })],
     });
 
-  /** The card on the backend's `answers`, which a test may change between refreshes. */
   function card(answers: Record<string, unknown>) {
     answers[LIST] ??= generationList("billing-api");
     backend(answers);
@@ -731,10 +730,9 @@ describe("the resources of a stored layout on the card (ISS-0040)", () => {
   it("sums the layout up while no resource is confirmed, counting no endpoint left out of a resource (ADR-0062)", async () => {
     card({ [LAYOUT]: laidOut() });
 
-    // v3 holds no resource, and the unassigned and versionless endpoints are no resource
+    // v3 and the endpoints left out of a resource are not counted
     expect(await screen.findByText("3 resources in 2 versions, confirmation needed")).toBeInTheDocument();
     expect(within(centre()).getByRole("link", { name: "Edit layout" })).toHaveAttribute("href", "/generation/billing-api/layout");
-    // the summary stands in for the table, whose every row would say the same
     expect(within(centre()).queryByRole("group", { name: "invoices" })).toBeNull();
     expect(screen.queryByText("confirm the layout first")).toBeNull();
   });
@@ -801,7 +799,7 @@ describe("the resources of a stored layout on the card (ISS-0040)", () => {
     });
 
     const row = async (name: string) => screen.findByRole("group", { name });
-    // confirmed, with every endpoint recognized: nothing holds it here
+    // nothing holds it
     expect(within(await row("invoices")).queryByText(/first|empty|not recognized/)).toBeNull();
     const payments = await row("payments");
     expect(within(payments).getByText("confirm the layout first")).toBeInTheDocument();

@@ -172,7 +172,6 @@ export function GenerationServicePage() {
   );
 }
 
-/** The way from the centre of the card to the layout editor, as its header offers it (ADR-0062, ADR-0063). */
 function ToLayout({ layoutTo }: { layoutTo: string }) {
   const { t } = useI18n();
   const { state: fromList } = useLocation();
@@ -187,15 +186,7 @@ function ToLayout({ layoutTo }: { layoutTo: string }) {
   );
 }
 
-/**
- * The centre of a service with a stored layout. While no resource of it is
- * confirmed, its size and the way to the editor, where they are confirmed -
- * not a table whose every row would say the same (ADR-0062). Each resource is
- * confirmed on its own (ADR-0066), so once one is, the table of all of them;
- * an edit that takes the last confirmation back brings the summary back. The
- * endpoints left unassigned or without a version are no resource, and count
- * for neither number. With no resource at all, the editor is where to make one.
- */
+/** The centre of a card with a stored layout: the summary while no resource is confirmed (ADR-0062), else the table. */
 function LayoutResources({ layout, layoutTo }: { layout: Layout; layoutTo: string }) {
   const { t } = useI18n();
   const rows = layout.versions.flatMap((v) => v.resources.map((resource) => ({ version: v.api_version, resource })));
@@ -229,12 +220,7 @@ function LayoutResources({ layout, layoutTo }: { layout: Layout; layoutTo: strin
   );
 }
 
-/**
- * A resource of the stored layout: its name, version, endpoints and who
- * confirmed it, and why its layout holds it back. No Generate and no job: the
- * server has no generation data yet; ISS-0082 adds Generate for a confirmed
- * resource.
- */
+/** A resource of the stored layout, with why its layout holds it back. */
 function LayoutResourceRow({
   version,
   resource,
@@ -246,8 +232,7 @@ function LayoutResourceRow({
 }) {
   const { t } = useI18n();
   const { state: fromList } = useLocation();
-  /* TODO(#205): "not connected" as well, once the card has a target to choose
-     (ISS-0041). Until then it works on Python SDK, which is connected. */
+  /* TODO(#205): "not connected" too, once the card has a target to choose. */
   const hold = layoutHold(
     resource.confirmed_by != null,
     resource.endpoints.map((e) => e.overall_status),
