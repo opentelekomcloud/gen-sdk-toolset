@@ -1,8 +1,12 @@
-import { vi } from "vitest";
+import type { QueryClient } from "@tanstack/react-query";
+import { act, fireEvent, screen } from "@testing-library/react";
+import { expect, vi } from "vitest";
 import { generationResources, generationServices } from "../features/generation/data/mock";
 import type { GenerationServiceItem, Layout } from "../shared/api/types";
 import { keys } from "../features/scan/api/queries";
 import { layout, listedSeed } from "./fixtures";
+import { mockFails } from "./mockFails";
+import { refresh } from "./render";
 
 /**
  * The /generation list the prototype's mock stands for: each mock service with
@@ -53,4 +57,31 @@ export function answerStoredLayouts() {
     }),
   );
   return { others: () => [...others] };
+}
+
+/**
+ * A Retry on a page whose resources failed to refresh over the ones it shows
+ * joins the refresh already asking (ADR-0081, ADR-0084): the failure stays, not
+ * the stale resources, and no second request goes out. TanStack keeps the last
+ * answer through a failed refresh, which a cancelling refetch would act on. The
+ * page is open on `service`, on the mock behind `withMockFails`.
+ */
+export async function expectRetryJoinsResources(client: QueryClient, service: string) {
+  const queryKey = keys.genResources(service);
+  mockFails.resources = true;
+  await refresh(client, queryKey);
+  expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+
+  mockFails.resources = false;
+  mockFails.holdResources = true;
+  await act(async () => {
+    void client.refetchQueries({ queryKey });
+  });
+  const asked = mockFails.resourceCalls;
+
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await act(async () => {});
+
+  expect(screen.getByText("Failed to load service")).toBeInTheDocument();
+  expect(mockFails.resourceCalls).toBe(asked);
 }

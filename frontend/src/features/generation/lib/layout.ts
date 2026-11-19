@@ -26,6 +26,11 @@ export function layoutHold(confirmed: boolean, statuses: readonly string[]): Lay
   return null;
 }
 
+/** "not connected" for a target that does not generate yet, or null. */
+export function connectionHold(target: GenTarget): Extract<Hold, { reason: "notConnected" }> | null {
+  return target.live ? null : { reason: "notConnected", target: target.label };
+}
+
 /**
  * The first reason, in this order, a resource cannot be generated on a target,
  * or null when it can. The layout's reasons come first (`layoutHold`); then a
@@ -41,8 +46,7 @@ export function holdOf(resource: GenResource, target: GenTarget, targets: GenTar
   if (target.base != null && resource.jobs[target.base]?.status !== "merged") {
     return { reason: "waitsOn", base: targets.find((x) => x.id === target.base)?.label ?? target.base };
   }
-  if (!target.live) return { reason: "notConnected", target: target.label };
-  return null;
+  return connectionHold(target);
 }
 
 /** A field whose problem nobody has decided yet: its resource is not generated until someone does (owner decision). */

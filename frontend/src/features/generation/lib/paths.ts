@@ -18,6 +18,20 @@ export const generationPath = (name: string, rest: string[] = [], target: string
 export const servicePath = (name: string, target: GenTarget, defaultTarget: GenTarget, rest: string[] = []) =>
   generationPath(name, rest, target.id === defaultTarget.id ? null : target.id);
 
+/**
+ * The target a page works on: the one the address names, or the default - the
+ * first target - when it names none or one there is not (ADR-0055). Null when
+ * there is no target at all, which leaves a page nothing to show.
+ */
+export function chosenTarget(
+  targets: GenTarget[],
+  asked: string | null,
+): { target: GenTarget; defaultTarget: GenTarget } | null {
+  const [defaultTarget] = targets;
+  if (!defaultTarget) return null;
+  return { target: targets.find((x) => x.id === asked) ?? defaultTarget, defaultTarget };
+}
+
 /** Navigation state of a card opened from the list: the list's query, so the way back returns to it as it was left. */
 export interface FromList {
   listSearch: string;

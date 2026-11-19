@@ -1,5 +1,6 @@
 import { AlertTriangle, ArrowLeft, Loader2, RefreshCw, type LucideIcon } from "lucide-react";
 import { Link } from "react-router";
+import type { ReactNode } from "react";
 import { useRetry, type Retryable } from "../api/queries";
 import { useI18n } from "../../../shared/i18n";
 
@@ -130,6 +131,58 @@ export function ServiceLoading() {
   );
 }
 
+/** A service page with a card in place of its content: the way back, a line saying why, and what follows it. */
+function ServiceStateCard({
+  back,
+  backState,
+  label,
+  children,
+}: {
+  back: string;
+  backState?: unknown;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mx-auto max-w-6xl px-6 py-5">
+      <ServiceBackLink to={back} state={backState} />
+      <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
+        <AlertTriangle size={22} className="mx-auto mb-2 text-gray-400" />
+        <div className="mb-1 text-sm font-semibold text-gray-700">{label}</div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A service page that says `label` in place of its content, with a Retry: for a
+ * load that failed, or an answer that leaves the page nothing to show.
+ */
+export function ServiceRetryCard({
+  back,
+  backState,
+  label,
+  onRetry,
+}: {
+  back: string;
+  backState?: unknown;
+  label: string;
+  onRetry: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <ServiceStateCard back={back} backState={backState} label={label}>
+      <button type="button"
+        onClick={onRetry}
+        className="mx-auto mt-2 flex items-center gap-1 rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500"
+      >
+        <RefreshCw size={11} /> {t("service.retry")}
+      </button>
+    </ServiceStateCard>
+  );
+}
+
 /**
  * A service page whose data did not load: the way back, with its `backState`,
  * and a retry. A service the server does not know - `notFound`, its name - gets
@@ -147,25 +200,12 @@ export function ServiceLoadFailed({
   notFound?: string;
 }) {
   const { t } = useI18n();
+  if (notFound == null) {
+    return <ServiceRetryCard back={back} backState={backState} label={t("service.loadFailed")} onRetry={onRetry} />;
+  }
   return (
-    <div className="mx-auto max-w-6xl px-6 py-5">
-      <ServiceBackLink to={back} state={backState} />
-      <div className="rounded-xl border border-gray-200 bg-white p-10 text-center">
-        <AlertTriangle size={22} className="mx-auto mb-2 text-gray-400" />
-        <div className="mb-1 text-sm font-semibold text-gray-700">
-          {notFound != null ? t("service.notFound", { name: notFound }) : t("service.loadFailed")}
-        </div>
-        {notFound != null ? (
-          <div className="text-xs text-gray-500">{t("service.notFoundHint")}</div>
-        ) : (
-          <button type="button"
-            onClick={onRetry}
-            className="mx-auto mt-2 flex items-center gap-1 rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-gray-500"
-          >
-            <RefreshCw size={11} /> {t("service.retry")}
-          </button>
-        )}
-      </div>
-    </div>
+    <ServiceStateCard back={back} backState={backState} label={t("service.notFound", { name: notFound })}>
+      <div className="text-xs text-gray-500">{t("service.notFoundHint")}</div>
+    </ServiceStateCard>
   );
 }

@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
 import { backend, FAILED, refresh, renderPage } from "../../../test/render";
 import { generationList } from "../../../test/fixtures";
-import { mockSeeds } from "../../../test/generationMock";
+import { expectRetryJoinsResources, mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../../scan/api/queries";
 import {
@@ -47,6 +47,11 @@ vi.mock("react-oidc-context", () => ({
     signoutRedirect: vi.fn(),
   }),
 }));
+
+/* The mock's targets and resources, behind the switches some tests set (`mockFails`). */
+vi.mock("../data/mock", async (importOriginal) =>
+  (await import("../../../test/mockFails")).withMockFails(await importOriginal<typeof import("../data/mock")>()),
+);
 
 /* The mock lives in module memory, and the refreshes and generations below change it. */
 beforeEach(() => {
@@ -343,6 +348,28 @@ const LLM_ERROR = "LLM backend unavailable — ollama refused the connection aft
 const FAILED_HINT =
   "Nothing was written and no pull request was opened. The layout and its confirmations are untouched — retry once the LLM backend answers again.";
 const contactsJob = () => generationResources("customer-core").find((r) => r.id === "c_contacts")?.jobs.python;
+
+describe("a service without targets", () => {
+  it("says there is no target to generate for, and Retry asks for the targets again", async () => {
+    resultPage(undefined, [[keys.genTargets, []]]);
+
+    expect(await screen.findByText("No target to generate for")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to load service")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+    expect(screen.queryByText("No target to generate for")).toBeNull();
+  });
+});
+
+describe("a refresh of the resources that fails", () => {
+  it("joins a refresh of the resources already asking when Retry is clicked (ADR-0081, ADR-0084)", async () => {
+    const { client } = resultPage();
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+    await expectRetryJoinsResources(client, "billing-api");
+  });
+});
 
 describe("the result of contacts: its generation failed", () => {
   it("says the generation failed, what went wrong and that nothing was written, and offers to retry", async () => {
