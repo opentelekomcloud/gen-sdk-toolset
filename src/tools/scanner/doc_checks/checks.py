@@ -1,9 +1,10 @@
 """Narrow scanner diagnostics down to documentation errors.
 
-Every rule here was measured on the panel dump of 2026-11-09 against the
-manual review of each diagnostic (``tasks/2026-11-17-local-scan-tz.md``,
-section 4). A rule reads only the scan result: an issue's code, ``location``
-and ``details``, plus the document it belongs to.
+Most diagnostics only say that the scanner could not read something, which is
+as often a scanner gap as a fault in the page. Each rule here picks out a case
+that is a fault in the page, so an author can be shown it without the rest.
+A rule reads only the scan result: an issue's code, ``location``, ``details``
+and ``line``, plus the document it belongs to.
 """
 
 from __future__ import annotations
@@ -12,29 +13,18 @@ import json
 import re
 from collections.abc import Callable, Iterator
 
-from tools.scanner.parsers.docutils.patterns import EXAMPLE_HTTP_PREFIX_RE
+from tools.scanner.parsers.docutils.example import expects_json, json_candidate
+from tools.scanner.parsers.docutils.field_type import KNOWN_TYPE_WORDS
 from tools.shared.ir import Document, Endpoint, Example, Section, Service
 from tools.shared.scan import Issue, IssueCode, RepositoryScanResult
 
 from .finding import DocCheck, DocFinding
 
-# Words a Type cell is compared against to spot a misspelt type. Only the
-# longer ones take part: short words are too close to too many others.
-_PRIMITIVES = (
-    "string",
-    "integer",
-    "long",
-    "boolean",
-    "number",
-    "float",
-    "double",
-    "object",
-    "array",
-    "date",
-    "datetime",
-    "timestamp",
+# Only the longer type words are compared against: a short one is within two
+# edits of too many ordinary words.
+_COMPARED_TYPE_WORDS = tuple(
+    sorted(word for word in KNOWN_TYPE_WORDS if len(word) > 3 and " " not in word)
 )
-_KNOWN_TYPE_WORDS = frozenset({*_PRIMITIVES, "int", "bool", "map"})
 
 _TABLE_NUMBER_RE = re.compile(r"Table\s*\d+")
 _REFERENCE_MARKER_RE = re.compile(r"[A-Z_]*REFERENCE")
@@ -77,6 +67,12 @@ def _natural(value: str) -> tuple[tuple[int, int | str], ...]:
 
 
 def _document_findings(document: Document) -> Iterator[DocFinding]:
+    """Findings for one document.
+
+    nested_parent_not_found has no rule: a parent typed "Table N" leaves its
+    child table without a parent too, and that is the same edit as the Type
+    cell, which is already reported.
+    """
     if not isinstance(document, Endpoint):
         return
     for section in document.sections:
@@ -89,9 +85,6 @@ def _document_findings(document: Document) -> Iterator[DocFinding]:
             finding = rule(document.path, section.name.value, issue)
             if finding is not None:
                 yield finding
-    # A parent typed "Table N" also leaves its child table without a parent
-    # (nested_parent_not_found). Both come from the one Type cell, so only the
-    # Type finding is reported; nested_parent_not_found has no rule of its own.
 
 
 def _invalid_json_findings(
@@ -105,38 +98,27 @@ def _invalid_json_findings(
     are paired by position instead.
     """
     json_issues = [i for i in issues if i.code is IssueCode.EXAMPLE_INVALID_JSON]
-    if not json_issues:
-        return
-    broken = [e for e in section.examples if e.parsed is None and _expects_json(e)]
-    for position, issue in enumerate(json_issues):
-        example = broken[position] if position < len(broken) else None
-        if example is None:
-            message = "Example is not valid JSON."
-        else:
-            error = _json_error(example)
-            if error is None:
-                # Valid JSON the parser does not keep: a scalar such as
-                # null, true, 42 or "text". Not a documentation error.
-                continue
-            message = f"Example is not valid JSON: {error.msg}."
+    broken = [e for e in section.examples if e.parsed is None and expects_json(e)]
+    # The parser emits exactly one issue per broken example; a mismatch means
+    # that stopped being true, and must fail rather than drop a finding.
+    for issue, example in zip(json_issues, broken, strict=True):
+        error = _json_error(example)
+        if error is None:
+            # Valid JSON the parser does not keep: a scalar such as
+            # null, true, 42 or "text". Not a documentation error.
+            continue
         yield DocFinding(
             check=DocCheck.INVALID_JSON,
             path=path,
             section=section.name.value,
             location=issue.location,
-            message=message,
+            message=f"Example is not valid JSON: {error.msg}.",
             line=issue.line,
         )
 
 
-def _expects_json(example: Example) -> bool:
-    if example.language:
-        return example.language.lower() in {"json", "application/json"}
-    return example.raw.lstrip().startswith(("{", "["))
-
-
 def _json_error(example: Example) -> json.JSONDecodeError | None:
-    candidate = EXAMPLE_HTTP_PREFIX_RE.sub("", example.raw, count=1).strip()
+    candidate, _ = json_candidate(example.raw)
     try:
         json.loads(candidate)
     except json.JSONDecodeError as e:
@@ -183,12 +165,10 @@ def _classify_type(value: str) -> tuple[DocCheck | None, str]:
 
 def _near_primitive(value: str) -> str | None:
     word = value.lower()
-    if len(word) <= 3 or word in _KNOWN_TYPE_WORDS:
+    if len(word) <= 3 or word in KNOWN_TYPE_WORDS:
         return None
-    for primitive in _PRIMITIVES:
-        if _levenshtein(word, primitive) <= 2:
-            return primitive
-    return None
+    distance, closest = min((_levenshtein(word, t), t) for t in _COMPARED_TYPE_WORDS)
+    return closest if distance <= 2 else None
 
 
 def _is_prose(value: str) -> bool:

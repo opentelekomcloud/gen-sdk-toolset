@@ -204,7 +204,9 @@ def test_org_flag_is_rejected(monkeypatch) -> None:
     assert exc_info.value.code == scanner_main.EXIT_USAGE_ERROR
 
 
-# --- --path: scan a local working copy ---------------------------------------
+# --------------------------------------------------------------------------- #
+# --path: scan a local working copy
+# --------------------------------------------------------------------------- #
 
 
 def _local_settings() -> Settings:

@@ -256,7 +256,7 @@ def _extract_language(block: nodes.literal_block) -> str | None:
     )
 
 
-def _json_candidate(raw: str) -> tuple[str, int]:
+def json_candidate(raw: str) -> tuple[str, int]:
     """The text tried as JSON, and how many lines of ``raw`` precede it.
 
     A leading HTTP request line is dropped, then surrounding whitespace.
@@ -267,7 +267,7 @@ def _json_candidate(raw: str) -> tuple[str, int]:
 
 
 def _try_parse_json(raw: str) -> dict | list | None:
-    candidate, _ = _json_candidate(raw)
+    candidate, _ = json_candidate(raw)
     if not candidate:
         return None
     try:
@@ -288,7 +288,7 @@ def _example_json_issues(blocks: list[ExampleBlock]) -> list[Issue]:
             line=_json_error_line(block),
         )
         for index, block in enumerate(blocks, start=1)
-        if block.example.parsed is None and _expects_json(block.example)
+        if block.example.parsed is None and expects_json(block.example)
     ]
 
 
@@ -302,7 +302,7 @@ def _json_error_line(block: ExampleBlock) -> int | None:
     """
     if block.start_line is None:
         return None
-    candidate, skipped = _json_candidate(block.example.raw)
+    candidate, skipped = json_candidate(block.example.raw)
     try:
         json.loads(candidate)
     except json.JSONDecodeError as error:
@@ -310,15 +310,18 @@ def _json_error_line(block: ExampleBlock) -> int | None:
         if error.msg in _DELIMITER_ERRORS:
             position = len(candidate[:position].rstrip()) - 1
         return block.start_line + skipped + candidate.count("\n", 0, max(position, 0))
-    except ValueError:
-        pass
     return block.start_line
 
 
-def _expects_json(block: Example) -> bool:
-    if block.language:
-        return block.language.lower() in {"json", "application/json"}
-    return block.raw.lstrip().startswith(("{", "["))
+def expects_json(example: Example) -> bool:
+    """True when the example is meant to be JSON.
+
+    The language says so when the block declares one; otherwise the first
+    character does.
+    """
+    if example.language:
+        return example.language.lower() in {"json", "application/json"}
+    return example.raw.lstrip().startswith(("{", "["))
 
 
 def _create_example_section(

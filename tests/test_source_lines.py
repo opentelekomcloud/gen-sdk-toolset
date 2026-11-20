@@ -40,8 +40,12 @@ def _lines(source: str) -> list[int | None]:
     return [block_start_line(b) for b in doctree.findall(nodes.literal_block)]
 
 
+# --------------------------------------------------------------------------- #
+# Literal blocks
+# --------------------------------------------------------------------------- #
 def test_each_kind_of_block_starts_on_its_first_text_line() -> None:
-    """code-block in a list item, `::` literal, top-level `code`, nested `::`."""
+    """Would catch trusting docutils' node.line: it points after a code-block,
+    at a `::` block's first line, and is missing inside list items."""
     assert _lines(SOURCE) == [8, 14, 18, 24]
 
 
@@ -65,6 +69,9 @@ def test_block_outside_a_parsed_source_has_no_line() -> None:
     assert block_start_line(nodes.literal_block("{}", "{}")) is None
 
 
+# --------------------------------------------------------------------------- #
+# Table rows
+# --------------------------------------------------------------------------- #
 def test_table_rows_point_to_their_own_line() -> None:
     from tools.scanner.parsers.docutils.source_lines import row_line
 

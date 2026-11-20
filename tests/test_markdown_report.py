@@ -15,6 +15,9 @@ def _finding(path: str, location: str, message: str = "Broken.") -> DocFinding:
     )
 
 
+# --------------------------------------------------------------------------- #
+# Header
+# --------------------------------------------------------------------------- #
 def test_header_names_repo_commit_and_uncommitted_changes() -> None:
     report = render_markdown([], repo="vpc", commit="abc123", dirty=True)
 
@@ -30,6 +33,9 @@ def test_clean_working_copy_has_no_changes_line() -> None:
     assert "changes after this commit" not in report
 
 
+# --------------------------------------------------------------------------- #
+# Tables
+# --------------------------------------------------------------------------- #
 def test_one_table_per_file_in_the_given_order() -> None:
     findings = [
         _finding("api-ref/source/a.rst", "row 1"),

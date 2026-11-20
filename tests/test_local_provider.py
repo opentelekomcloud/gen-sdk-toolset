@@ -16,6 +16,9 @@ def _provider(root: Path) -> LocalDocProvider:
     return LocalDocProvider(root, prefix=PREFIX)
 
 
+# --------------------------------------------------------------------------- #
+# Listing and reading
+# --------------------------------------------------------------------------- #
 def test_lists_only_rst_files_under_the_prefix(make_git_repo) -> None:
     root = make_git_repo(
         {
@@ -40,7 +43,8 @@ def test_missing_prefix_lists_nothing(make_git_repo) -> None:
 
 
 def test_reads_the_working_tree_not_the_commit(make_git_repo) -> None:
-    """The local scan checks edits before they are committed."""
+    """Would catch reading the committed HEAD instead of the edits an author
+    runs the scan to check."""
     root = make_git_repo({"api-ref/source/a.rst": "committed"})
     (root / "api-ref/source/a.rst").write_text("edited", encoding="utf-8")
 
@@ -50,6 +54,9 @@ def test_reads_the_working_tree_not_the_commit(make_git_repo) -> None:
     assert provider.path_exists("r", "sha", "api-ref/source/") is True
 
 
+# --------------------------------------------------------------------------- #
+# The git working copy
+# --------------------------------------------------------------------------- #
 def test_commit_and_branch_come_from_head(make_git_repo) -> None:
     root = make_git_repo({"api-ref/source/a.rst": "a"})
     provider = _provider(root)
@@ -72,6 +79,9 @@ def test_uncommitted_changes_are_detected_under_the_path_only(make_git_repo) -> 
     assert provider.has_uncommitted_changes("api-ref/source") is True
 
 
+# --------------------------------------------------------------------------- #
+# Folders and files that cannot be read
+# --------------------------------------------------------------------------- #
 def test_folder_outside_git_is_rejected(tmp_path: Path) -> None:
     provider = _provider(tmp_path)
 

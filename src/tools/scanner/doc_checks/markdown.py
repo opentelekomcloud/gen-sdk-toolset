@@ -20,9 +20,10 @@ def render_markdown(
     commit: str | None,
     dirty: bool,
 ) -> str:
-    """Return the report: a header, then one table per file.
+    """Render ``findings`` for a person reading each file top to bottom.
 
-    ``findings`` are expected in the order :func:`find_doc_errors` returns them.
+    ``findings`` must be in :func:`find_doc_errors` order: a file's table is
+    built from consecutive findings, so an unsorted list splits it.
     """
     lines = [f"# API reference scan: {repo}", ""]
     if commit:

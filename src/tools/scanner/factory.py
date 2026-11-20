@@ -30,9 +30,19 @@ def build_scanner(settings: Settings) -> ScannerService:
     return _build_service(settings, build_doc_provider(settings))
 
 
-def build_local_scanner(settings: Settings, root: Path) -> ScannerService:
-    """Wire a scanner that reads one local git working copy; needs no token."""
-    provider = LocalDocProvider(root, prefix=settings.scanner.rst_source_prefix)
+def build_local_doc_provider(settings: Settings, root: Path) -> LocalDocProvider:
+    """Build the provider for one local git working copy; needs no token.
+
+    The CLI asks it about the working copy (branch, uncommitted edits) as well
+    as scanning through it, so it is built on its own like the GitHub one.
+    """
+    return LocalDocProvider(root, prefix=settings.scanner.rst_source_prefix)
+
+
+def build_local_scanner(
+    settings: Settings, provider: LocalDocProvider
+) -> ScannerService:
+    """Wire the local provider and parser into a :class:`ScannerService`."""
     return _build_service(settings, provider)
 
 

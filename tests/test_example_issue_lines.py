@@ -20,6 +20,9 @@ def _issue_line(raw: str, start_line: int | None) -> int | None:
     return issue.line
 
 
+# --------------------------------------------------------------------------- #
+# Line of the JSON error
+# --------------------------------------------------------------------------- #
 def test_trailing_comma_is_on_the_comma_line() -> None:
     assert _issue_line('{\n  "a": 1,\n}', start_line=100) == 101
 
@@ -39,6 +42,9 @@ def test_missing_delimiter_points_to_where_it_belongs(raw, expected) -> None:
     assert _issue_line(raw, start_line=100) == expected
 
 
+# --------------------------------------------------------------------------- #
+# Lines before the JSON
+# --------------------------------------------------------------------------- #
 def test_http_request_line_and_blank_lines_are_counted() -> None:
     raw = 'POST /v1/things\n\n{\n  "a": 1,\n}'
 

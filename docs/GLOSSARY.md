@@ -111,7 +111,7 @@ frontend read them.
 | `RepositoryScanResult` | `scan/repository.py` | The snapshot of one repository scan: the `repository` (or `Service`), `branch`, `commit_hash`, `scanner_version`, `excluded_documents`, plus failure fields. |
 | `DocumentScanResult` | `scan/document.py` | Per-document diagnostics. Currently one field: `failure_reason`, an `Issue` that gated the document. |
 | `SectionScanResult` | `scan/section.py` | Per-section diagnostics: `status`, `issues`, `unmatched_tables`, and the four field counters. |
-| `Issue` / `IssueCode` | `scan/issue.py` | One structured problem: a machine-readable `code`, an optional `location` and `details`. |
+| `Issue` / `IssueCode` | `scan/issue.py` | One structured problem: a machine-readable `code`, an optional `location` and `details`, and an optional `line` - the RST line of the problem where the parser knows it. |
 | `SectionStatus` | `scan/section.py` | `ok`, `partial`, `failed`, `missing`. |
 | `RepositoryInterruption` / `RepositoryInterruptionKind` | `scan/repository.py` | An operational reason the scan stopped: `rate_limit`, `authentication`, `permission_denied`, `repository_failure`. |
 
@@ -349,6 +349,8 @@ it in the layout tables above is a separate step.
 | **Excluded document** | A path skipped by configuration (`excluded_segments`, e.g. `out-of-date_apis`). Recorded in `excluded_documents` — skipping is a decision, so it is written down. |
 | **Truncated listing** | The provider returned a capped file tree. Surfaces as `FileListing.truncated` and fails the repository scan (`error`) — a capped tree means the pinned snapshot was never read in full. |
 | **Repository context** | Shared definitions resolved across a repository's documents before parsing individual files, so cross-file references can be followed. |
+| **Local scan** | `gen-sdk-scan --path DIR`: a scan of a local git working copy through `LocalDocProvider` (`scanner/local/`), files read as they are on disk and the result labelled with `HEAD`. A folder that cannot be scanned (missing, not a git working copy) is a `LocalSourceError`. |
+| **Documentation error** | A diagnostic narrowed to a fault in the page itself, for an author to fix. `DocCheck` names the check, `DocFinding` is one result (`scanner/doc_checks/`). Only the local scan's markdown report shows them; the scan result keeps every raw `Issue`. |
 
 ## Parser-internal vocabulary
 
@@ -361,6 +363,9 @@ because two of them sit uncomfortably close to contract names.
 | `SectionKind` | The role of a top-level heading inside an RST document: `uri`, `request`, `response`, `example_request`, `example_response`, `example_combined`, `status_codes`, `function`, `other`. |
 | `TableTarget` | Where a parsed table is routed when it is not an endpoint section: `nested_struct`, `generic_request`, `unmapped`. A table that matches none of them is reported as `UNMAPPED_TABLE` rather than dropped. |
 | `DocStyle` | Layout classification of a document: `style_a`, `s3_compatible`, `not_endpoint`. |
+| `ExampleBlock` | An extracted `Example` with the RST line its block starts on (`docutils/example.py`), so an invalid-JSON `Issue` can carry the line of the error. |
+| `TableRow.line` | The RST line of a parameter row (`docutils/table.py`), for the issues raised about that parameter. |
+| `KNOWN_TYPE_WORDS` | Every word a Type cell may hold on its own and be read as a type (`docutils/field_type.py`). A near-miss against it is reported as a misspelt type. |
 
 **`SectionName` is not `SectionKind`.** `SectionName` is the contract: the eight
 sections every `Endpoint` carries. `SectionKind` is the parser's reading of a

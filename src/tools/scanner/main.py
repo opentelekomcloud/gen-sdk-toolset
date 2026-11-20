@@ -16,8 +16,12 @@ from pydantic import BaseModel, ValidationError
 
 from tools.config import Settings, load_settings
 from tools.scanner.doc_checks import find_doc_errors, render_markdown
-from tools.scanner.factory import build_local_scanner, build_scanner
-from tools.scanner.local import LocalDocProvider, LocalSourceError
+from tools.scanner.factory import (
+    build_local_doc_provider,
+    build_local_scanner,
+    build_scanner,
+)
+from tools.scanner.local import LocalSourceError
 from tools.shared.ir import Service
 from tools.shared.scan import RepositoryScanResult
 
@@ -196,16 +200,14 @@ def _scan_local(args: argparse.Namespace, settings: Settings) -> int:
     logger = logging.getLogger("gen-sdk-toolset")
     root = Path(args.path)
     try:
-        scanner = build_local_scanner(settings, root)
-        provider = scanner.doc_provider
-        if not isinstance(provider, LocalDocProvider):  # pragma: no cover
-            raise RuntimeError("build_local_scanner must wire a LocalDocProvider")
+        provider = build_local_doc_provider(settings, root)
         branch = provider.current_branch()
         dirty = provider.has_uncommitted_changes(settings.scanner.api_ref_path)
     except LocalSourceError as e:
         print(f"error: {e}", file=sys.stderr)
         return EXIT_USAGE_ERROR
 
+    scanner = build_local_scanner(settings, provider)
     repo = provider.root.name
     logger.info("Scanning local working copy %s (%s)", provider.root, branch)
     repo_result = scanner.scan_repository(repo=repo, branch=branch)
