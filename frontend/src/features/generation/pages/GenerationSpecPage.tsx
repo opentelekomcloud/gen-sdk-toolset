@@ -2,10 +2,12 @@ import { useState } from "react";
 import { AlertTriangle, Check, ExternalLink, Play } from "lucide-react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import {
+  useGenerationLayout,
   useGenerationResources,
   useGenerationServices,
   useGenerationSpec,
   useGenerationTargets,
+  useMockGenerationSpec,
 } from "../data/queries";
 import { useChooseType, useStartGeneration } from "../data/mutations";
 import type { GenField, GenOperationKind } from "../data/types";
@@ -15,7 +17,7 @@ import { JobTag } from "../components/JobTag";
 import { LayoutBadge } from "../components/LayoutBadge";
 import { NoTargets } from "../components/NoTargets";
 import { PageNotFound } from "../components/PageNotFound";
-import { SHOW_GEN_RESULT } from "../flags";
+import { SHOW_GEN_JOBS, SHOW_GEN_RESULT } from "../flags";
 import { holdOf, undecided } from "../lib/layout";
 import { chosenTarget, listPath, servicePath, type FromSpec } from "../lib/paths";
 import {
@@ -24,6 +26,7 @@ import {
   ServiceLoadFailed,
   ServiceLoading,
 } from "../../scan/components/ServicePageStates";
+import { isNotFound } from "../../scan/api/client";
 import { mutationErrorKey } from "../../scan/lib/errors";
 import { fmtSnapshotAt } from "../../scan/lib/snapshot";
 import { methodCls } from "../../scan/styles";
@@ -182,8 +185,11 @@ function FieldRow({
  * the first reason beside it; a resource already generated on the target shows
  * its job instead, as on the card. The prototype's dependencies block is gone
  * (owner decision). The target rides along in the address.
+ *
+ * The prototype on the mock, by the mock's string id, behind `SHOW_GEN_JOBS`.
+ * TODO(#150): delete with the mock.
  */
-export function GenerationSpecPage() {
+function PrototypeSpecPage() {
   const { name = "", version = "", resource: id = "" } = useParams();
   const [searchParams] = useSearchParams();
   /* The list's state, when the card was opened from it: it goes back with the way back. */
@@ -194,7 +200,7 @@ export function GenerationSpecPage() {
   const targets = useGenerationTargets();
   const services = useGenerationServices();
   const resources = useGenerationResources(name);
-  const spec = useGenerationSpec(name, id);
+  const spec = useMockGenerationSpec(name, id);
   const choose = useChooseType(name, id);
   const generate = useStartGeneration(name, id);
   /* One problem open at a time, none at first - as in the prototype. */
@@ -403,6 +409,114 @@ export function GenerationSpecPage() {
           </section>
         );
       })}
+    </div>
+  );
+}
+
+/** The spec page: the server's, or the prototype while generation itself is switched on. */
+export function GenerationSpecPage() {
+  return SHOW_GEN_JOBS ? <PrototypeSpecPage /> : <ServerSpecPage />;
+}
+
+/**
+ * The spec of a resource of the stored layout, as the server builds it on every
+ * request (ADR-0115). The address names the resource by the layout's numeric id.
+ */
+function ServerSpecPage() {
+  const { name = "", version = "", resource = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  const { state: fromList } = useLocation();
+  const { t } = useI18n();
+  /* the route takes a number only, and answers anything else 422 */
+  const valid = /^[1-9][0-9]*$/.test(resource);
+  const id = Number(resource);
+  const targets = useGenerationTargets();
+  const layout = useGenerationLayout(name, { enabled: valid });
+  const spec = useGenerationSpec(name, version, id, { enabled: valid });
+  const targetsBlock = blockOf(targets);
+  const layoutBlock = blockOf(layout);
+  const specBlock = blockOf(spec);
+
+  const listTo = listPath(fromList);
+  /* TODO(ISS-0081): tell a missing resource, another version and an unconfirmed one apart. */
+  if (!valid || isNotFound(layout.error) || isNotFound(spec.error)) {
+    return <PageNotFound back={<ServiceBackLink to={listTo} state={fromList} />} />;
+  }
+  if (targetsBlock.failed || layoutBlock.failed || specBlock.failed) {
+    return (
+      <ServiceLoadFailed
+        back={listTo}
+        backState={fromList}
+        onRetry={() => {
+          if (targetsBlock.failed) void retryJoining(targets);
+          if (layoutBlock.failed) void retryJoining(layout);
+          if (specBlock.failed) void retryJoining(spec);
+        }}
+      />
+    );
+  }
+  if (!targetsBlock.data || !layoutBlock.data || !specBlock.data) return <ServiceLoading />;
+
+  const chosen = chosenTarget(targetsBlock.data, searchParams.get("target"));
+  if (!chosen) return <NoTargets back={listTo} backState={fromList} targets={targets} />;
+  const { target, defaultTarget } = chosen;
+  const back = (
+    <ServiceBackLink
+      to={servicePath(name, target, defaultTarget)}
+      state={fromList}
+      label={t("gen.spec.back", { name })}
+    />
+  );
+  const laid = layoutBlock.data.versions
+    .find((v) => v.api_version === version)
+    ?.resources.find((r) => r.id === id);
+  if (!laid) return <PageNotFound back={back} />;
+
+  const { operations, classes } = specBlock.data;
+  const summary = [
+    t("gen.spec.heading", { target: target.label }),
+    version,
+    t("gen.spec.operations", { n: operations.length }),
+    /* TODO(ISS-0091): count the operations by their kind. */
+    t("gen.spec.base", { n: 0 }),
+    t("gen.spec.custom", { n: 0 }),
+    t("gen.spec.classes", { n: classes.length }),
+  ].join(" · ");
+
+  return (
+    <div className="mx-auto max-w-6xl px-6 py-5">
+      {back}
+
+      <div className="mb-4">
+        <h1 className="font-mono text-xl font-semibold text-gray-900">
+          {name.replaceAll("-", "_")}.{laid.name}
+        </h1>
+        <div className="mt-1 text-xs text-gray-400">{summary}</div>
+      </div>
+
+      <section aria-label={t("gen.spec.ops")}>
+        <div className="mb-2 flex items-baseline gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t("gen.spec.ops")}</span>
+          <span className="text-[10px] text-gray-400">{t("gen.spec.ops.hint")}</span>
+        </div>
+        <div className="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <div className="grid grid-cols-12 gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            <div className="col-span-3">{t("gen.spec.ops.col.operation")}</div>
+            <div className="col-span-2">{t("gen.spec.ops.col.kind")}</div>
+            <div className="col-span-4">{t("gen.spec.ops.col.endpoint")}</div>
+            <div className="col-span-3">{t("gen.spec.ops.col.sdk")}</div>
+          </div>
+          {/* TODO(ISS-0091): a row for each operation. */}
+        </div>
+      </section>
+
+      <section aria-label={t("gen.spec.entities")}>
+        <div className="mb-2 flex items-baseline gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t("gen.spec.entities")}</span>
+          <span className="text-[10px] text-gray-400">{t("gen.spec.entities.hint")}</span>
+        </div>
+        {/* TODO(ISS-0092): a block for each class. */}
+      </section>
     </div>
   );
 }

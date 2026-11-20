@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
-import { renderPage } from "../../../test/render";
+import { backend, FAILED, NOT_FOUND, pollAgain, renderPage } from "../../../test/render";
+import { layout } from "../../../test/fixtures";
 import { keys } from "../../scan/api/queries";
 import { answerStoredLayouts, expectRetryJoinsResources, mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
@@ -27,10 +28,12 @@ const session = vi.hoisted(() => ({ token: "" }));
 
 /* These tests go through the prototype's list and the card's Generate, both behind flags, and Generate
    leads to the result while that page is switched on, which the tests drive unless they say otherwise. */
-const flags = vi.hoisted(() => ({ showGenResult: true }));
+const flags = vi.hoisted(() => ({ showGenResult: true, showGenJobs: true }));
 vi.mock("../flags", () => ({
   SHOW_GEN_STATE: true,
-  SHOW_GEN_JOBS: true,
+  get SHOW_GEN_JOBS() {
+    return flags.showGenJobs;
+  },
   get SHOW_GEN_RESULT() {
     return flags.showGenResult;
   },
@@ -63,6 +66,7 @@ beforeEach(() => {
 
 afterEach(() => {
   expect(api.others()).toEqual([]);
+  flags.showGenJobs = true;
   vi.unstubAllGlobals();
 });
 
@@ -981,5 +985,106 @@ describe("with the result page switched off (ADR-0086)", () => {
     expect(await screen.findByText("generating")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "generating" })).toBeNull();
     expect(location()).toBe("/generation/billing-api/spec/v2/v2_invoices");
+  });
+});
+
+describe("the spec of a resource of the stored layout (ISS-0074)", () => {
+  const LAYOUT = "/api/generation/services/billing-api/layout";
+  const SPEC = "/api/generation/services/billing-api/spec/v1/7";
+  const EMPTY_SPEC = { operations: [], classes: [] };
+
+  /* The page as it ships: generation itself switched off. */
+  beforeEach(() => {
+    flags.showGenJobs = false;
+  });
+
+  const laidOut = (name = "invoices") =>
+    layout({
+      versions: [
+        {
+          api_version: "v1",
+          resources: [{ id: 7, name, confirmed_by: null, confirmed_at: null, endpoints: [] }],
+          unassigned: [],
+        },
+      ],
+    });
+
+  function serverSpecPage(answers: Record<string, unknown>, path = "/generation/billing-api/spec/v1/7") {
+    const calls = backend(answers);
+    return { ...renderPage(<GenerationSpecPage />, { path, route: "/generation/:name/spec/:version/:resource" }), calls };
+  }
+
+  it("reads the spec from the server by the layout's numeric id, in its two sections (ADR-0088)", async () => {
+    const { calls } = serverSpecPage({ [LAYOUT]: laidOut(), [SPEC]: EMPTY_SPEC });
+
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Generation spec · Python SDK · v1 · 0 operations · 0 base · 0 custom · 0 classes"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Operations" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Entities" })).toBeInTheDocument();
+    expect(calls.calls(SPEC)).toBe(1);
+    // nothing of the mock's generation: no Generate, no job, no type to choose
+    expect(screen.queryByRole("button", { name: /^Generate/ })).toBeNull();
+    expect(screen.queryByText("Use this type")).toBeNull();
+  });
+
+  it("asks the server again with each poll, and shows what changed", async () => {
+    const answers: Record<string, unknown> = { [LAYOUT]: laidOut(), [SPEC]: EMPTY_SPEC };
+    const { client, calls } = serverSpecPage(answers);
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+
+    // renamed in the editor meanwhile
+    answers[LAYOUT] = laidOut("bills");
+    await pollAgain(client, keys.genLayout("billing-api"), keys.genSpec("billing-api", 7));
+
+    expect(await screen.findByRole("heading", { name: "billing_api.bills" })).toBeInTheDocument();
+    expect(calls.calls(SPEC)).toBe(2);
+  });
+
+  it("shows a spec that failed to load as a failure with Retry, and Retry asks again", async () => {
+    const answers: Record<string, unknown> = { [LAYOUT]: laidOut(), [SPEC]: FAILED };
+    serverSpecPage(answers);
+
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+
+    answers[SPEC] = EMPTY_SPEC;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+  });
+
+  it("shows a refresh that failed as a failure with Retry, not the spec before it (ADR-0081)", async () => {
+    const answers: Record<string, unknown> = { [LAYOUT]: laidOut(), [SPEC]: EMPTY_SPEC };
+    const { client } = serverSpecPage(answers);
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+
+    answers[SPEC] = FAILED;
+    await pollAgain(client, keys.genSpec("billing-api", 7));
+
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "billing_api.invoices" })).toBeNull();
+  });
+
+  it("does not open a resource the server does not have", async () => {
+    serverSpecPage({ [LAYOUT]: laidOut(), [SPEC]: NOT_FOUND });
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+  });
+
+  it("does not open a resource of another version than the layout's", async () => {
+    serverSpecPage(
+      { [LAYOUT]: laidOut(), "/api/generation/services/billing-api/spec/v2/7": EMPTY_SPEC },
+      "/generation/billing-api/spec/v2/7",
+    );
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+  });
+
+  it("does not ask the server for an address that names no numeric id", async () => {
+    const { calls } = serverSpecPage({ [LAYOUT]: laidOut() }, "/generation/billing-api/spec/v1/v1_invoices");
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(calls.calls(LAYOUT)).toBe(0);
   });
 });

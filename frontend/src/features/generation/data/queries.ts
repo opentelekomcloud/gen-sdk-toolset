@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch, qs } from "../../scan/api/client";
 import { blockOf, keys, retryJoining } from "../../scan/api/queries";
-import type { GenerationServiceItem, Layout } from "../../../shared/api/types";
+import type { GenerationServiceItem, Layout, ResourceSpec } from "../../../shared/api/types";
 import {
   generationAttention,
   generationResources,
@@ -79,8 +79,23 @@ export function useGenerationResources(name: string, { enabled = true }: { enabl
   return useQuery({ queryKey: keys.genResources(name), queryFn: async () => generationResources(name), enabled });
 }
 
-/** What one resource of a service will be generated as: its operations and classes, with the types chosen so far. */
-export function useGenerationSpec(name: string, resource: string) {
+/**
+ * What one resource of the stored layout will be generated as, built by the
+ * server on every request (ADR-0115). `enabled: false` holds it back.
+ */
+export function useGenerationSpec(name: string, version: string, id: number, { enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: keys.genSpec(name, id),
+    queryFn: () =>
+      apiFetch<ResourceSpec>(
+        `/generation/services/${encodeURIComponent(name)}/spec/${encodeURIComponent(version)}/${id}`,
+      ),
+    enabled,
+  });
+}
+
+/** The prototype's spec of a mock resource. TODO(#150): delete with the mock. */
+export function useMockGenerationSpec(name: string, resource: string) {
   return useQuery({ queryKey: keys.genSpec(name, resource), queryFn: async () => generationSpec(name, resource) });
 }
 

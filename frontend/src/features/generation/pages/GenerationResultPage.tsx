@@ -14,7 +14,7 @@ import {
 import { useLocation, useParams, useSearchParams } from "react-router";
 import {
   useGenerationResources,
-  useGenerationSpec,
+  useMockGenerationSpec,
   useGenerationTargets,
   useInGeneration,
   useOtcSettings,
@@ -352,7 +352,7 @@ function ResultPage() {
   const targets = useGenerationTargets();
   const access = useInGeneration(name);
   const resources = useGenerationResources(name);
-  const spec = useGenerationSpec(name, id);
+  const spec = useMockGenerationSpec(name, id);
   const settings = useOtcSettings();
   const refresh = useRefreshPullRequest(name, id);
   const retry = useStartGeneration(name, id);
