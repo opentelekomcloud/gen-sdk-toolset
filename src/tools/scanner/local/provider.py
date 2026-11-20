@@ -1,10 +1,8 @@
 """Read a documentation repository from a folder on disk.
 
-The folder must be a git working copy: the scan result is labelled with the
-``HEAD`` commit. File contents are read from the working tree as they are on
-disk, uncommitted edits included, because the local scan exists to check an
-author's edits before they are merged. :meth:`LocalDocProvider.has_uncommitted_changes`
-lets the report say when the contents differ from ``HEAD``.
+The result is labelled with ``HEAD``, but files are read from the working tree,
+uncommitted edits included: the local scan exists to check edits before they
+are merged.
 """
 
 from __future__ import annotations

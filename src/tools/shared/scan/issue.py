@@ -38,9 +38,8 @@ class IssueCode(StrEnum):
 class Issue(BaseModel):
     """A single problem encountered while processing a document.
 
-    ``line`` is the 1-based line in the RST file the problem is on, where the
-    parser knows it; ``None`` otherwise (and in payloads stored before it
-    existed).
+    ``line`` is ``None`` where the parser does not know the RST line, and in
+    payloads stored before the field existed.
     """
 
     model_config = ConfigDict(extra="forbid")

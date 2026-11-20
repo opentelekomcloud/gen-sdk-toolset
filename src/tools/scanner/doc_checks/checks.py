@@ -45,7 +45,6 @@ def find_doc_errors(result: RepositoryScanResult) -> list[DocFinding]:
         findings.extend(_document_findings(document))
     return sorted(
         findings,
-        # Top to bottom within a file; findings without a line go last.
         key=lambda f: (
             f.path,
             f.line is None,
@@ -67,11 +66,10 @@ def _natural(value: str) -> tuple[tuple[int, int | str], ...]:
 
 
 def _document_findings(document: Document) -> Iterator[DocFinding]:
-    """Findings for one document.
+    """Findings for one document; nested_parent_not_found deliberately has none.
 
-    nested_parent_not_found has no rule: a parent typed "Table N" leaves its
-    child table without a parent too, and that is the same edit as the Type
-    cell, which is already reported.
+    A parent typed "Table N" leaves its child table without a parent too, and
+    that is the same edit as the Type cell, which is already reported.
     """
     if not isinstance(document, Endpoint):
         return
@@ -199,7 +197,6 @@ def _path_param_finding(path: str, section: str, issue: Issue) -> DocFinding | N
 
 
 def _misspelt_placeholder(name: str, uri: str) -> str | None:
-    """The path placeholder ``name`` was most likely meant to be, if any."""
     normalized = _normalize(name)
     for placeholder in _PLACEHOLDER_RE.findall(uri.split("?", 1)[0]):
         if placeholder == name:

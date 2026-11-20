@@ -65,9 +65,8 @@ _PRIMITIVES: tuple[tuple[str, ParameterType], ...] = (
     ("object", ParameterType.OBJECT),
 )
 
-#: Every word a Type cell may hold on its own and be read as a type. A
-#: misspelt type is reported against these, so this list and the parser can
-#: never disagree about what counts as a type.
+#: Built from the tables above, so the misspelt-type check and the parser cannot
+#: disagree about what counts as a type.
 KNOWN_TYPE_WORDS: frozenset[str] = frozenset(
     {word for word, _ in _PRIMITIVES}
     | set(_ALIASES)

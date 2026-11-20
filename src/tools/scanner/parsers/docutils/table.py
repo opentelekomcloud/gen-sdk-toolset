@@ -52,7 +52,6 @@ class TableRow:
     parameter: Parameter
     ref_anchor: str | None = None
     description_anchors: tuple[str, ...] = ()
-    #: RST line of the row, so diagnostics about this parameter can point to it.
     line: int | None = None
 
 

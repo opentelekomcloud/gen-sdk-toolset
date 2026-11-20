@@ -21,7 +21,10 @@ _DELIMITER_ERRORS = frozenset({"Expecting ',' delimiter", "Expecting ':' delimit
 
 
 class ExampleBlock(NamedTuple):
-    """An extracted example and the RST line its block starts on."""
+    """An example with its block's start line, until its issues are built.
+
+    ``Example`` is a contract and carries no line; the issue does.
+    """
 
     example: Example
     start_line: int | None = None
@@ -293,12 +296,12 @@ def _example_json_issues(blocks: list[ExampleBlock]) -> list[Issue]:
 
 
 def _json_error_line(block: ExampleBlock) -> int | None:
-    """RST line of the JSON error in ``block``, or its first line.
+    """RST line of the JSON error in ``block``.
 
-    For a missing delimiter the JSON parser stops at the next token; the
-    delimiter belongs right after the previous one, which is often on the line
-    before. The block's first line is the answer when the JSON parses (a
-    scalar, which the parser does not keep) or is not JSON at all.
+    For a missing delimiter the JSON parser stops at the next token, often on
+    the next line, while the delimiter belongs right after the previous one. A
+    scalar parses but is still flagged, since ``parsed`` keeps only objects and
+    arrays; it gets the block's first line.
     """
     if block.start_line is None:
         return None

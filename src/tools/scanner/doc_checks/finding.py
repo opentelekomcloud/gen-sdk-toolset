@@ -21,10 +21,7 @@ class DocCheck(StrEnum):
 
 @dataclass(frozen=True)
 class DocFinding:
-    """A documentation error, located as precisely as the scan result allows.
-
-    ``line`` is the 1-based line in the RST file, when the scan result has one.
-    """
+    """A documentation error, located as precisely as the scan result allows."""
 
     check: DocCheck
     path: str

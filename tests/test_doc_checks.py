@@ -217,7 +217,6 @@ def test_invalid_json_pairs_issues_with_broken_examples_in_order() -> None:
         _result(*issues, section="example_response", examples=examples)
     )
 
-    # Each issue is paired with its own example: the reason follows the pair.
     assert [(f.line, f.location, f.message) for f in findings] == [
         (
             20,
