@@ -36,10 +36,15 @@ class IssueCode(StrEnum):
 
 
 class Issue(BaseModel):
-    """A single problem encountered while processing a document."""
+    """A single problem encountered while processing a document.
+
+    ``line`` is ``None`` where the parser does not know the RST line, and in
+    payloads stored before the field existed.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     code: IssueCode
     location: str | None = None
     details: str | None = None
+    line: int | None = None

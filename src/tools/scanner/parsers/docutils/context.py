@@ -17,6 +17,7 @@ from docutils.parsers.rst import roles
 
 from .patterns import SPHINX_ANCHOR_RE, SPHINX_LABEL_RE
 from .rst_nodes import first_authored_name
+from .source_lines import remember_source
 from .table import TableExtraction, extract_parameter_table
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,9 @@ def ensure_roles() -> None:
 
 def parse_doctree(content: str) -> nodes.document:
     ensure_roles()
-    return publish_doctree(content, settings_overrides=_SILENT_DOCUTILS_SETTINGS)
+    doctree = publish_doctree(content, settings_overrides=_SILENT_DOCUTILS_SETTINGS)
+    remember_source(doctree, content)
+    return doctree
 
 
 def build_repository_context(

@@ -18,9 +18,7 @@ def reconcile_path_parameters(
     if source is None and not placeholders:
         return []
 
-    documented = (
-        {parameter.name: parameter for parameter in source.parameters} if source else {}
-    )
+    documented = {row.parameter.name: row for row in source.rows} if source else {}
     primary_tables[SectionName.PATH_PARAMS] = _path_extraction(
         placeholders,
         documented,
@@ -31,7 +29,7 @@ def reconcile_path_parameters(
 
 def _path_extraction(
     placeholders: list[str],
-    documented: dict[str, Parameter],
+    documented: dict[str, TableRow],
     source: TableExtraction | None,
 ) -> TableExtraction:
     parameters = [
@@ -39,7 +37,9 @@ def _path_extraction(
             name=name,
             param_type=ParameterType.STRING,
             mandatory=True,
-            description=documented[name].description if name in documented else "",
+            description=(
+                documented[name].parameter.description if name in documented else ""
+            ),
         )
         for name in placeholders
     ]
@@ -66,7 +66,7 @@ def _path_extraction(
 def _path_parameter_issues(
     uri: str,
     placeholders: list[str],
-    documented: dict[str, Parameter],
+    documented: dict[str, TableRow],
 ) -> list[Issue]:
     placeholder_names = set(placeholders)
     return [
@@ -74,7 +74,8 @@ def _path_parameter_issues(
             code=IssueCode.PATH_PARAMETER_NOT_IN_URI,
             location=name,
             details=uri,
+            line=row.line,
         )
-        for name in documented
+        for name, row in documented.items()
         if name not in placeholder_names
     ]

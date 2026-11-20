@@ -6,7 +6,7 @@ import pytest
 
 from tools.config import Settings
 from tools.scanner.doc_checks import DocCheck, find_doc_errors
-from tools.scanner.factory import build_local_scanner
+from tools.scanner.factory import build_local_doc_provider, build_local_scanner
 from tools.shared.ir import (
     Endpoint,
     Example,
@@ -35,7 +35,8 @@ def scanned(make_git_repo) -> RepositoryScanResult:
             "api-ref/source/doc_refs.rst": load_fixture("doc_checks/doc_refs.rst"),
         }
     )
-    scanner = build_local_scanner(Settings(), root)
+    settings = Settings()
+    scanner = build_local_scanner(settings, build_local_doc_provider(settings, root))
     return scanner.scan_repository(repo=root.name, branch="main")
 
 
@@ -45,6 +46,9 @@ def _summary(findings) -> set[tuple[str, DocCheck, str | None, str | None]]:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Checks on scanned documents
+# --------------------------------------------------------------------------- #
 def test_each_check_names_its_error_in_a_scanned_document(scanned) -> None:
     findings = find_doc_errors(scanned)
 
@@ -66,8 +70,8 @@ def test_each_check_names_its_error_in_a_scanned_document(scanned) -> None:
 
 
 def test_table_number_type_is_one_finding_not_two(scanned) -> None:
-    """The child table of a "Table N" field also lacks a parent
-    (nested_parent_not_found); it is the same edit, so it is not reported."""
+    """Would catch reporting one Type cell twice: its child table also lacks a
+    parent (nested_parent_not_found), but that is the same edit."""
     raw_codes = [
         issue.code
         for doc in scanned.repository.documents
@@ -82,13 +86,15 @@ def test_table_number_type_is_one_finding_not_two(scanned) -> None:
     assert len(findings) == 8
 
 
-def test_invalid_json_points_inside_the_example(scanned) -> None:
+def test_invalid_json_points_to_the_rst_line(scanned) -> None:
     (finding,) = [
         f for f in find_doc_errors(scanned) if f.check is DocCheck.INVALID_JSON
     ]
 
-    assert (finding.json_line, finding.json_column) == (3, 15)
-    assert "line 3, column 15" in finding.message
+    assert finding.line == 65
+    assert finding.message == (
+        "Example is not valid JSON: Illegal trailing comma before end of object."
+    )
 
 
 def test_messages_quote_the_offending_value(scanned) -> None:
@@ -130,6 +136,9 @@ def _result(*issues: Issue, section: str = "body", examples=()) -> RepositorySca
     )
 
 
+# --------------------------------------------------------------------------- #
+# Diagnostics that are not documentation errors
+# --------------------------------------------------------------------------- #
 @pytest.mark.parametrize(
     "type_cell",
     [
@@ -185,8 +194,11 @@ def test_unread_valid_payload_is_not_reported() -> None:
     assert find_doc_errors(_result(issue, section="example_request")) == []
 
 
+# --------------------------------------------------------------------------- #
+# Invalid JSON: pairing issues with examples
+# --------------------------------------------------------------------------- #
 def test_invalid_json_pairs_issues_with_broken_examples_in_order() -> None:
-    """The issue index restarts per batch of examples, so pairing is by order.
+    """Would catch pairing by the ``example N`` index, which restarts per batch.
 
     Two batches were added to the section: [valid, broken] gave "example 2",
     then [broken] gave "example 1" again.
@@ -197,18 +209,21 @@ def test_invalid_json_pairs_issues_with_broken_examples_in_order() -> None:
         Example(raw='{"b" 2}', parsed=None),
     ]
     issues = [
-        Issue(code=IssueCode.EXAMPLE_INVALID_JSON, location="example 2"),
-        Issue(code=IssueCode.EXAMPLE_INVALID_JSON, location="example 1"),
+        Issue(code=IssueCode.EXAMPLE_INVALID_JSON, location="example 2", line=20),
+        Issue(code=IssueCode.EXAMPLE_INVALID_JSON, location="example 1", line=30),
     ]
 
     findings = find_doc_errors(
         _result(*issues, section="example_response", examples=examples)
     )
 
-    # Sorted by location, so the second batch comes first.
-    assert [(f.location, f.json_column) for f in findings] == [
-        ("example 1", 6),
-        ("example 2", 8),
+    assert [(f.line, f.location, f.message) for f in findings] == [
+        (
+            20,
+            "example 2",
+            "Example is not valid JSON: Illegal trailing comma before end of object.",
+        ),
+        (30, "example 1", "Example is not valid JSON: Expecting ':' delimiter."),
     ]
 
 
@@ -233,8 +248,8 @@ def test_rows_are_ordered_by_number() -> None:
 
 @pytest.mark.parametrize("raw", ["null", "true", "42", '"hello"'])
 def test_valid_scalar_json_is_not_reported(raw) -> None:
-    """The parser keeps only objects and arrays in ``parsed`` and flags the
-    rest, but a scalar is valid JSON, not a documentation error."""
+    """Would catch reporting valid JSON: the parser keeps only objects and
+    arrays in ``parsed`` and flags a scalar it cannot keep."""
     example = Example(raw=raw, language="json", parsed=None)
     issue = Issue(code=IssueCode.EXAMPLE_INVALID_JSON, location="example 1")
 
@@ -259,4 +274,29 @@ def test_scalar_example_does_not_shift_the_pairing() -> None:
         _result(*issues, section="example_response", examples=examples)
     )
 
-    assert [(f.location, f.json_column) for f in findings] == [("example 2", 8)]
+    assert [(f.location, f.message) for f in findings] == [
+        (
+            "example 2",
+            "Example is not valid JSON: Illegal trailing comma before end of object.",
+        ),
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# RST lines
+# --------------------------------------------------------------------------- #
+def test_every_finding_carries_the_issue_line(scanned) -> None:
+    lines = {
+        (f.path.rsplit("/", 1)[-1], f.check): f.line for f in find_doc_errors(scanned)
+    }
+
+    assert lines == {
+        ("doc_errors.rst", DocCheck.PATH_PARAM_SPELLING): 24,
+        ("doc_errors.rst", DocCheck.TYPE_PROSE): 35,
+        ("doc_errors.rst", DocCheck.TYPE_TABLE_NUMBER): 43,
+        ("doc_errors.rst", DocCheck.TYPE_NEAR_PRIMITIVE): 44,
+        ("doc_errors.rst", DocCheck.TYPE_REFERENCE_MARKER): 45,
+        ("doc_errors.rst", DocCheck.INVALID_JSON): 65,
+        ("doc_refs.rst", DocCheck.REF_WHOLE_PAGE): 34,
+        ("doc_refs.rst", DocCheck.EMPTY_CODE_BLOCK): 42,
+    }

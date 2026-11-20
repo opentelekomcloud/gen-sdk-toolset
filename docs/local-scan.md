@@ -28,12 +28,13 @@ diagnostics is written as well; it is for the toolset team.
 
 ## What it reports
 
-Each row gives the file, the section (`body`, `response`, `example_response`,
-…) and the place in it (`row 3`, a parameter name, `example 1`).
+Each row gives the RST line, the section (`body`, `response`,
+`example_response`, …) and the place in it (`row 3`, a parameter name,
+`example 1`).
 
 | Problem | Example |
 | --- | --- |
-| Example is not valid JSON (line and column inside the example) | trailing comma, missing comma, comment |
+| Example is not valid JSON | trailing comma, missing comma, comment |
 | Type is a table reference | `Table 3` instead of `Object` / `Array of objects` |
 | Type contains an internal marker | `REFERENCE`, `ARRAY_REFERENCE` |
 | Type column contains a description | `User token from IAM` |

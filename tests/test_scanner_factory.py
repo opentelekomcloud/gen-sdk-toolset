@@ -44,14 +44,16 @@ def test_build_scanner_requires_github_token():
 
 
 def test_build_local_scanner_needs_no_token(tmp_path):
-    from tools.scanner.factory import build_local_scanner
+    from tools.scanner.factory import build_local_doc_provider, build_local_scanner
     from tools.scanner.local import LocalDocProvider
 
     settings = Settings(github_token=None)
 
-    scanner = build_local_scanner(settings, tmp_path)
+    provider = build_local_doc_provider(settings, tmp_path)
+    scanner = build_local_scanner(settings, provider)
 
-    assert isinstance(scanner.doc_provider, LocalDocProvider)
-    assert scanner.doc_provider.root == tmp_path.resolve()
-    assert scanner.doc_provider.prefix == settings.scanner.rst_source_prefix
+    assert isinstance(provider, LocalDocProvider)
+    assert scanner.doc_provider is provider
+    assert provider.root == tmp_path.resolve()
+    assert provider.prefix == settings.scanner.rst_source_prefix
     assert scanner.api_ref_path == settings.scanner.api_ref_path.rstrip("/")

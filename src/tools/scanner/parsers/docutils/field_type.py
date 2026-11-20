@@ -65,6 +65,18 @@ _PRIMITIVES: tuple[tuple[str, ParameterType], ...] = (
     ("object", ParameterType.OBJECT),
 )
 
+#: Built from the tables above, so the misspelt-type check and the parser cannot
+#: disagree about what counts as a type.
+KNOWN_TYPE_WORDS: frozenset[str] = frozenset(
+    {word for word, _ in _PRIMITIVES}
+    | set(_ALIASES)
+    | {
+        kind.value.lower()
+        for kind in ParameterType
+        if kind is not ParameterType.UNKNOWN
+    }
+)
+
 #: `Array of strings`, `Array of booleans`, ... - the element the prose names.
 #: Plural or singular, because both spellings occur.
 _ELEMENT_WORDS: tuple[tuple[str, ParameterType], ...] = (
