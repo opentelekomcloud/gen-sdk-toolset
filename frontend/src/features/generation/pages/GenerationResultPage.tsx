@@ -21,11 +21,13 @@ import {
 } from "../data/queries";
 import { useLiveCall, useRefreshPullRequest, useStartGeneration } from "../data/mutations";
 import type { GenJobStatus, GenLiveResponse, GenOperation, GenState } from "../data/types";
+import { blockOf, retryJoining } from "../../scan/api/queries";
 import { HoldReason } from "../components/HoldReason";
+import { NoTargets } from "../components/NoTargets";
 import { PageNotFound } from "../components/PageNotFound";
 import { SHOW_GEN_RESULT } from "../flags";
 import { holdOf, undecided } from "../lib/layout";
-import { listPath, servicePath, type FromList, type FromSpec } from "../lib/paths";
+import { chosenTarget, listPath, servicePath, type FromList, type FromSpec } from "../lib/paths";
 import { pathParams } from "../lib/uri";
 import { GEN_STATE_CLS, genStateKey } from "../styles";
 import { StatusPill } from "../../scan/components/StatusPill";
@@ -361,6 +363,12 @@ function ResultPage() {
   const [runs, setRuns] = useState<Record<string, Run>>({});
   const [refused, setRefused] = useState<Error | null>(null);
 
+  /* Each block by the one rule (ADR-0081); a Retry joins a request already asking (ADR-0084). */
+  const targetsBlock = blockOf(targets);
+  const resourcesBlock = blockOf(resources);
+  const specBlock = blockOf(spec);
+  const settingsBlock = blockOf(settings);
+
   const listTo = listPath(fromList);
   const loading = <ServiceLoading />;
   const failed = (
@@ -369,23 +377,27 @@ function ResultPage() {
       backState={fromList}
       onRetry={() => {
         if (access.failed) access.retry();
-        for (const q of [targets, resources, spec, settings]) if (q.isError) void q.refetch();
+        if (targetsBlock.failed) void retryJoining(targets);
+        if (resourcesBlock.failed) void retryJoining(resources);
+        if (specBlock.failed) void retryJoining(spec);
+        if (settingsBlock.failed) void retryJoining(settings);
       }}
     />
   );
 
-  if (targets.isPending || access.pending) return loading;
-  if (targets.isError || access.failed) return failed;
+  if (targetsBlock.failed || access.failed) return failed;
+  if (targetsBlock.pending || access.pending) return loading;
   if (!access.listed) {
     return <PageNotFound back={<ServiceBackLink to={listTo} state={fromList} />} />;
   }
-  if (resources.isPending) return loading;
-  if (resources.isError) return failed;
+  if (resourcesBlock.failed) return failed;
+  if (resourcesBlock.pending) return loading;
 
-  const [defaultTarget] = targets.data;
-  const target = targets.data.find((x) => x.id === searchParams.get("target")) ?? defaultTarget;
+  const chosen = chosenTarget(targetsBlock.data, searchParams.get("target"));
+  if (!chosen) return <NoTargets back={listTo} backState={fromList} targets={targets} />;
+  const { target, defaultTarget } = chosen;
   const pathTo = (rest: string[] = []) => servicePath(name, target, defaultTarget, rest);
-  const resource = resources.data.find((r) => r.id === id && r.version === version);
+  const resource = resourcesBlock.data.find((r) => r.id === id && r.version === version);
   const job = resource?.jobs[target.id];
   const back =
     resource && fromSpec ? (
@@ -399,10 +411,10 @@ function ResultPage() {
     );
   /* never generated on this target: there is no result to show */
   if (!resource || !job) return <PageNotFound back={back} />;
-  if (spec.isPending || settings.isPending) return loading;
-  if (spec.isError || settings.isError) return failed;
+  if (specBlock.failed || settingsBlock.failed) return failed;
+  if (specBlock.pending || settingsBlock.pending) return loading;
 
-  const { operations, classes } = spec.data;
+  const { operations, classes } = specBlock.data;
   const pkg = name.replaceAll("-", "_");
   const jobState = JOB_STATE[job.status];
   const inReview = job.status === "done";
@@ -426,7 +438,7 @@ function ResultPage() {
             .filter(Boolean)
             .join(" · ");
   const live = operations.filter((o) => o.endpoint.method === "GET");
-  const hold = holdOf(resource, target, targets.data);
+  const hold = holdOf(resource, target, targetsBlock.data);
   const open = classes.reduce((n, c) => n + c.fields.filter(undecided).length, 0);
   const refusal = refresh.error ?? retry.error ?? refused;
 
@@ -597,7 +609,7 @@ function ResultPage() {
                   onInput={(group, param, value) => type(key, group, param, value)}
                   run={runs[key]}
                   onSend={() => send(op)}
-                  against={t("gen.live.against", { pkg, region: settings.data.region })}
+                  against={t("gen.live.against", { pkg, region: settingsBlock.data.region })}
                 />
               );
             })}

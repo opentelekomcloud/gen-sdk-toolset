@@ -7,9 +7,10 @@ import type { GenResource, GenTarget } from "../data/types";
 import type { Layout, LayoutResource } from "../../../shared/api/types";
 import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
+import { NoTargets } from "../components/NoTargets";
 import { PageNotFound } from "../components/PageNotFound";
-import { holdOf, layoutHold } from "../lib/layout";
-import { generationPath, listPath, servicePath } from "../lib/paths";
+import { connectionHold, holdOf, layoutHold } from "../lib/layout";
+import { chosenTarget, listPath, servicePath } from "../lib/paths";
 import { SHOW_GEN_JOBS } from "../flags";
 import { isNotFound } from "../../scan/api/client";
 import { mutationErrorKey } from "../../scan/lib/errors";
@@ -107,8 +108,9 @@ function CardHeader({ name, sub, layoutTo }: { name: string; sub?: string; layou
  *
  * Its centre follows the stored layout. A service without one gets the one
  * way to make it: "Generate layout" (ADR-0056). With one, its resources
- * (`LayoutResources`). The server has no generation data yet, so jobs,
- * coverage and Generate stay switched off (`SHOW_GEN_JOBS`).
+ * (`LayoutResources`), each with why it waits on the chosen target. Above it,
+ * the choice of target (ADR-0055). The server has no generation data yet, so
+ * jobs, coverage and Generate stay switched off (`SHOW_GEN_JOBS`).
  */
 export function GenerationServicePage() {
   const { name = "" } = useParams();
@@ -117,14 +119,20 @@ export function GenerationServicePage() {
   const { state: fromList } = useLocation();
   const { t } = useI18n();
   const access = useInGeneration(name);
+  /* The two targets, Python SDK first as the default (ADR-0055). */
+  const targets = useGenerationTargets();
+  const targetsBlock = blockOf(targets);
   /* Asked next to the list on the first load, and from then on only for a
      service of the list, as the layout page does (ADR-0078). The card on the
-     mock does not read it. */
+     mock does not read it. Its key holds no target: the layout is the same for
+     every one (ADR-0074). */
   const layout = useGenerationLayout(name, { enabled: !SHOW_GEN_JOBS && (access.pending || access.listed) });
-  const stored = blockOf(layout);
+  const layoutBlock = blockOf(layout);
   /* A 404 is the backend's word that the service is not in Generation (ADR-0086). */
   const gone = isNotFound(layout.error);
   const start = useStartLayout();
+  /* Without `?target=` - or with one no target has - Python SDK is chosen. */
+  const chosen = targetsBlock.data && chosenTarget(targetsBlock.data, searchParams.get("target"));
 
   const listTo = listPath(fromList);
   const back = <ServiceBackLink to={listTo} state={fromList} />;
@@ -134,7 +142,8 @@ export function GenerationServicePage() {
       backState={fromList}
       onRetry={() => {
         if (access.failed) access.retry();
-        if (stored.failed && !gone) void retryJoining(layout);
+        if (layoutBlock.failed && !gone) void retryJoining(layout);
+        if (targetsBlock.failed) void retryJoining(targets);
       }}
     />
   );
@@ -144,24 +153,29 @@ export function GenerationServicePage() {
   if (!access.listed) return <PageNotFound back={back} />;
   if (SHOW_GEN_JOBS) return <TargetCard name={name} back={back} />;
   if (gone) return <PageNotFound back={back} />;
-  if (stored.pending) return <ServiceLoading />;
-  if (stored.failed) return failed;
+  /* A block that failed shows so even while the other is still on the way. */
+  if (layoutBlock.failed || targetsBlock.failed) return failed;
+  if (layoutBlock.pending || targetsBlock.pending) return <ServiceLoading />;
 
-  /* the target the address names rides along into the layout, and back */
-  const layoutTo = generationPath(name, ["layout"], searchParams.get("target"));
+  if (!chosen) return <NoTargets back={listTo} backState={fromList} targets={targets} />;
+  const { target, defaultTarget } = chosen;
+
+  /* the chosen target rides along into the layout, and back */
+  const layoutTo = servicePath(name, target, defaultTarget, ["layout"]);
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
       {back}
       <CardHeader name={name} layoutTo={layoutTo} />
+      <TargetSwitcher name={name} targets={targetsBlock.data} target={target} defaultTarget={defaultTarget} />
       {/* The centre of the card, named so it can be found as the place of the resources. */}
       <section
         aria-label={t("gen.card.resources")}
         className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
       >
-        {layout.data.has_layout ? (
+        {layoutBlock.data.has_layout ? (
           /* No "Generate layout" once there is a layout: it changes only by
              editing it (ADR-0072). */
-          <LayoutResources layout={layout.data} layoutTo={layoutTo} />
+          <LayoutResources layout={layoutBlock.data} target={target} layoutTo={layoutTo} />
         ) : (
           <div className="flex justify-center px-4 py-10">
             <StartGrouping name={name} start={start} />
@@ -187,7 +201,7 @@ function ToLayout({ layoutTo }: { layoutTo: string }) {
 }
 
 /** The centre of a card with a stored layout: the summary while no resource is confirmed (ADR-0062), else the table. */
-function LayoutResources({ layout, layoutTo }: { layout: Layout; layoutTo: string }) {
+function LayoutResources({ layout, target, layoutTo }: { layout: Layout; target: GenTarget; layoutTo: string }) {
   const { t } = useI18n();
   const rows = layout.versions.flatMap((v) => v.resources.map((resource) => ({ version: v.api_version, resource })));
   const versions = layout.versions.filter((v) => v.resources.length > 0).length;
@@ -214,29 +228,40 @@ function LayoutResources({ layout, layoutTo }: { layout: Layout; layoutTo: strin
         {t("gen.card.col.resource")}
       </div>
       {rows.map(({ version, resource }) => (
-        <LayoutResourceRow key={resource.id} version={version} resource={resource} layoutTo={layoutTo} />
+        <LayoutResourceRow
+          key={resource.id}
+          version={version}
+          resource={resource}
+          target={target}
+          layoutTo={layoutTo}
+        />
       ))}
     </>
   );
 }
 
-/** A resource of the stored layout, with why its layout holds it back. */
+/**
+ * A resource of the stored layout, with why it is held back: first by its
+ * layout, then by the chosen target not being connected yet (ADR-0055).
+ */
 function LayoutResourceRow({
   version,
   resource,
+  target,
   layoutTo,
 }: {
   version: string;
   resource: LayoutResource;
+  target: GenTarget;
   layoutTo: string;
 }) {
   const { t } = useI18n();
   const { state: fromList } = useLocation();
-  /* TODO(#205): "not connected" for a target that is not, ?target=ansible included. */
-  const hold = layoutHold(
-    resource.confirmed_by != null,
-    resource.endpoints.map((e) => e.overall_status),
-  );
+  const hold =
+    layoutHold(
+      resource.confirmed_by != null,
+      resource.endpoints.map((e) => e.overall_status),
+    ) ?? connectionHold(target);
   const meta = [
     version,
     t("gen.card.endpoints", { n: resource.endpoints.length }),
@@ -294,6 +319,89 @@ function StartGrouping({ name, start }: { name: string; start: ReturnType<typeof
   );
 }
 
+/** How far a target's generation has got: its merged resources out of all. */
+interface Coverage {
+  merged: number;
+  total: number;
+}
+
+/**
+ * The targets of a service, one of them chosen: Python SDK by default, and
+ * Ansible modules, whose generation is not connected yet (ADR-0055). The
+ * choice rides in the address as `?target=`, the default left out, and each
+ * switch is a step of its own, so Back undoes it - choosing the target already
+ * chosen adds no step; the layout is the same for every target, so nothing of
+ * it is asked again (ADR-0074).
+ *
+ * `coverage` is what the card on generation data adds: each target's merged
+ * resources, its progress bar and what it waits on. Without it the switcher
+ * says only what it knows (`SHOW_GEN_JOBS`).
+ */
+function TargetSwitcher({
+  name,
+  targets,
+  target,
+  defaultTarget,
+  coverage,
+}: {
+  name: string;
+  targets: GenTarget[];
+  target: GenTarget;
+  defaultTarget: GenTarget;
+  coverage?: (x: GenTarget) => Coverage;
+}) {
+  const { t } = useI18n();
+  const { state: fromList } = useLocation();
+  const navigate = useNavigate();
+  /* What a target's card says under its name; null for nothing. */
+  const subOf = (x: GenTarget, covered: Coverage | undefined): string | null => {
+    if (!covered) return x.live ? null : t("gen.card.notConnected");
+    if (!x.live) {
+      const base = targets.find((y) => y.id === x.base)?.label;
+      return base ? t("gen.waitsOn", { base }) : t("gen.card.planned");
+    }
+    return covered.total
+      ? t("gen.card.merged", { n: covered.merged, total: covered.total })
+      : t("gen.card.noResources");
+  };
+  return (
+    /* Named as the choice it is, so its buttons are not read out on their own. */
+    <div role="group" aria-label={t("gen.card.targets")} className="mb-2.5 flex flex-wrap gap-2">
+      {targets.map((x) => {
+        const on = x.id === target.id;
+        const covered = coverage?.(x);
+        const sub = subOf(x, covered);
+        return (
+          <button
+            type="button"
+            key={x.id}
+            aria-pressed={on}
+            /* A switch is a step of its own; the target already chosen adds none,
+               and only tidies an address that names it otherwise. */
+            onClick={() => navigate(servicePath(name, x, defaultTarget), { replace: on, state: fromList })}
+            className={`min-w-0 flex-1 rounded-lg border px-2.5 py-2 text-left transition ${
+              on ? "border-brand bg-pink-50" : "border-gray-200 bg-white hover:border-gray-400"
+            }`}
+          >
+            <span className={`block text-[11px] font-semibold ${on ? "text-brand" : "text-gray-500"}`}>{x.label}</span>
+            {sub && (
+              <span className={`mt-[3px] block font-mono text-[11px] ${on ? "text-brand" : "text-gray-400"}`}>{sub}</span>
+            )}
+            {covered && (
+              <span className={`mt-1.5 block h-[3px] rounded-sm ${on ? "bg-pink-300" : "bg-gray-100"}`}>
+                <span
+                  className={`block h-[3px] rounded-sm ${on ? "bg-brand" : "bg-gray-300"}`}
+                  style={{ width: `${covered.total ? Math.round((covered.merged / covered.total) * 100) : 0}%` }}
+                />
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * The card on generation data, one target at a time - coverage of every
  * target, the resources with their state there, and Generate or the reason it
@@ -304,29 +412,32 @@ function StartGrouping({ name, start }: { name: string; start: ReturnType<typeof
 function TargetCard({ name, back }: { name: string; back: ReactNode }) {
   const [searchParams] = useSearchParams();
   const { state: fromList } = useLocation();
-  const navigate = useNavigate();
   const { t } = useI18n();
   const targets = useGenerationTargets();
   const resources = useGenerationResources(name);
+  /* Each block by the one rule (ADR-0081), as on the real page. */
+  const targetsBlock = blockOf(targets);
+  const resourcesBlock = blockOf(resources);
+  const chosen = targetsBlock.data && chosenTarget(targetsBlock.data, searchParams.get("target"));
 
-  const loading = <ServiceLoading />;
   const failed = (
     <ServiceLoadFailed
       back={listPath(fromList)}
       backState={fromList}
       onRetry={() => {
-        for (const q of [targets, resources]) if (q.isError) void q.refetch();
+        if (targetsBlock.failed) void retryJoining(targets);
+        if (resourcesBlock.failed) void retryJoining(resources);
       }}
     />
   );
 
-  if (targets.isPending || resources.isPending) return loading;
-  if (targets.isError || resources.isError) return failed;
+  if (targetsBlock.failed || resourcesBlock.failed) return failed;
+  if (targetsBlock.pending || resourcesBlock.pending) return <ServiceLoading />;
 
-  const [defaultTarget] = targets.data;
+  if (!chosen) return <NoTargets back={listPath(fromList)} backState={fromList} targets={targets} />;
   /* An unknown target falls back to the default, as in the prototype. */
-  const target = targets.data.find((x) => x.id === searchParams.get("target")) ?? defaultTarget;
-  const labelOf = (id: string | null) => targets.data.find((x) => x.id === id)?.label;
+  const { target, defaultTarget } = chosen;
+  const labelOf = (id: string | null) => targetsBlock.data.find((x) => x.id === id)?.label;
   const base = labelOf(target.base);
 
   return (
@@ -339,41 +450,16 @@ function TargetCard({ name, back }: { name: string; back: ReactNode }) {
         layoutTo={servicePath(name, target, defaultTarget, ["layout"])}
       />
 
-      <div className="mb-2.5 flex flex-wrap gap-2">
-        {targets.data.map((x) => {
-          const on = x.id === target.id;
-          const total = resources.data.length;
-          const merged = resources.data.filter((r) => r.jobs[x.id]?.status === "merged").length;
-          const xBase = labelOf(x.base);
-          const sub = !x.live
-            ? xBase
-              ? t("gen.waitsOn", { base: xBase })
-              : t("gen.card.planned")
-            : total
-              ? t("gen.card.merged", { n: merged, total })
-              : t("gen.card.noResources");
-          return (
-            <button
-              type="button"
-              key={x.id}
-              aria-pressed={on}
-              onClick={() => navigate(servicePath(name, x, defaultTarget), { replace: true, state: fromList })}
-              className={`min-w-0 flex-1 rounded-lg border px-2.5 py-2 text-left transition ${
-                on ? "border-brand bg-pink-50" : "border-gray-200 bg-white hover:border-gray-400"
-              }`}
-            >
-              <span className={`block text-[11px] font-semibold ${on ? "text-brand" : "text-gray-500"}`}>{x.label}</span>
-              <span className={`mt-[3px] block font-mono text-[11px] ${on ? "text-brand" : "text-gray-400"}`}>{sub}</span>
-              <span className={`mt-1.5 block h-[3px] rounded-sm ${on ? "bg-pink-300" : "bg-gray-100"}`}>
-                <span
-                  className={`block h-[3px] rounded-sm ${on ? "bg-brand" : "bg-gray-300"}`}
-                  style={{ width: `${total ? Math.round((merged / total) * 100) : 0}%` }}
-                />
-              </span>
-            </button>
-          );
+      <TargetSwitcher
+        name={name}
+        targets={targetsBlock.data}
+        target={target}
+        defaultTarget={defaultTarget}
+        coverage={(x) => ({
+          merged: resourcesBlock.data.filter((r) => r.jobs[x.id]?.status === "merged").length,
+          total: resourcesBlock.data.length,
         })}
-      </div>
+      />
       <div className="mb-4 text-[11px] leading-normal text-gray-500">
         {base
           ? t("gen.card.hint.base", { target: target.label, base })
@@ -387,16 +473,16 @@ function TargetCard({ name, back }: { name: string; back: ReactNode }) {
           <span>{t("gen.card.col.resource")}</span>
           <span className="ml-auto">{target.label}</span>
         </div>
-        {resources.data.map((r) => (
+        {resourcesBlock.data.map((r) => (
           <ResourceRow
             key={r.id}
             resource={r}
             target={target}
-            targets={targets.data}
+            targets={targetsBlock.data}
             pathTo={(rest) => servicePath(name, target, defaultTarget, rest)}
           />
         ))}
-        {resources.data.length === 0 && (
+        {resourcesBlock.data.length === 0 && (
           <div className="px-4 py-10 text-center text-sm text-gray-400">{t("gen.card.empty")}</div>
         )}
       </div>

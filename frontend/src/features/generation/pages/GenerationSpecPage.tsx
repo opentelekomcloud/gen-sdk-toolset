@@ -9,13 +9,15 @@ import {
 } from "../data/queries";
 import { useChooseType, useStartGeneration } from "../data/mutations";
 import type { GenField, GenOperationKind } from "../data/types";
+import { blockOf, retryJoining } from "../../scan/api/queries";
 import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
 import { LayoutBadge } from "../components/LayoutBadge";
+import { NoTargets } from "../components/NoTargets";
 import { PageNotFound } from "../components/PageNotFound";
 import { SHOW_GEN_RESULT } from "../flags";
 import { holdOf, undecided } from "../lib/layout";
-import { listPath, servicePath, type FromSpec } from "../lib/paths";
+import { chosenTarget, listPath, servicePath, type FromSpec } from "../lib/paths";
 import {
   RefusalBanner,
   ServiceBackLink,
@@ -198,6 +200,12 @@ export function GenerationSpecPage() {
   /* One problem open at a time, none at first - as in the prototype. */
   const [openIssue, setOpenIssue] = useState<string | null>(null);
 
+  /* Each block by the one rule (ADR-0081); a Retry joins a request already asking (ADR-0084). */
+  const targetsBlock = blockOf(targets);
+  const servicesBlock = blockOf(services);
+  const resourcesBlock = blockOf(resources);
+  const specBlock = blockOf(spec);
+
   const listTo = listPath(fromList);
   const loading = <ServiceLoading />;
   const failed = (
@@ -205,32 +213,36 @@ export function GenerationSpecPage() {
       back={listTo}
       backState={fromList}
       onRetry={() => {
-        for (const q of [targets, services, resources, spec]) if (q.isError) void q.refetch();
+        if (targetsBlock.failed) void retryJoining(targets);
+        if (servicesBlock.failed) void retryJoining(services);
+        if (resourcesBlock.failed) void retryJoining(resources);
+        if (specBlock.failed) void retryJoining(spec);
       }}
     />
   );
 
-  if (targets.isPending || services.isPending) return loading;
-  if (targets.isError || services.isError) return failed;
-  if (!services.data.some((s) => s.name === name)) {
+  if (targetsBlock.failed || servicesBlock.failed) return failed;
+  if (targetsBlock.pending || servicesBlock.pending) return loading;
+  if (!servicesBlock.data.some((s) => s.name === name)) {
     return <PageNotFound back={<ServiceBackLink to={listTo} state={fromList} />} />;
   }
-  if (resources.isPending) return loading;
-  if (resources.isError) return failed;
+  if (resourcesBlock.failed) return failed;
+  if (resourcesBlock.pending) return loading;
 
-  const [defaultTarget] = targets.data;
-  const target = targets.data.find((x) => x.id === searchParams.get("target")) ?? defaultTarget;
+  const chosen = chosenTarget(targetsBlock.data, searchParams.get("target"));
+  if (!chosen) return <NoTargets back={listTo} backState={fromList} targets={targets} />;
+  const { target, defaultTarget } = chosen;
   const pathTo = (rest: string[] = []) => servicePath(name, target, defaultTarget, rest);
   const back = <ServiceBackLink to={pathTo()} state={fromList} label={t("gen.spec.back", { name })} />;
-  const resource = resources.data.find((r) => r.id === id && r.version === version);
+  const resource = resourcesBlock.data.find((r) => r.id === id && r.version === version);
   if (!resource) return <PageNotFound back={back} />;
-  if (spec.isPending) return loading;
-  if (spec.isError) return failed;
+  if (specBlock.failed) return failed;
+  if (specBlock.pending) return loading;
 
-  const { operations, classes } = spec.data;
+  const { operations, classes } = specBlock.data;
   const open = classes.reduce((n, c) => n + c.fields.filter(undecided).length, 0);
   const job = resource.jobs[target.id];
-  const hold = holdOf(resource, target, targets.data);
+  const hold = holdOf(resource, target, targetsBlock.data);
   const resultTo = pathTo(["result", resource.version, resource.id]);
   const toResult = { ...fromList, fromSpec: true } satisfies FromSpec;
   const summary = [

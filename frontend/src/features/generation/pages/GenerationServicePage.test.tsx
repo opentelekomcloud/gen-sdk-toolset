@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation, useNavigate } from "react-router";
 import { backend, CONFLICT, FAILED, FORBIDDEN, later, NOT_FOUND, pollAgain, refresh, renderPage } from "../../../test/render";
+import { mockFails } from "../../../test/mockFails";
 import { endpoint, generationList, layout, listedSeed } from "../../../test/fixtures";
-import { mockSeeds } from "../../../test/generationMock";
+import { expectRetryJoinsResources, mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../../scan/api/queries";
 import { generationResources } from "../data/mock";
@@ -60,25 +61,15 @@ vi.mock("react-oidc-context", () => ({
   }),
 }));
 
-/* A layout that does not load, for the test that says so. */
-const fail = vi.hoisted(() => ({ resources: false }));
-
-vi.mock("../data/mock", async (importOriginal) => {
-  const mock = await importOriginal<typeof import("../data/mock")>();
-  return {
-    ...mock,
-    generationResources: (service: string) => {
-      if (fail.resources) throw new Error("layout store unavailable");
-      return mock.generationResources(service);
-    },
-  };
-});
+/* The mock's targets and resources, behind the switches some tests set (`mockFails`). */
+vi.mock("../data/mock", async (importOriginal) =>
+  (await import("../../../test/mockFails")).withMockFails(await importOriginal<typeof import("../data/mock")>()),
+);
 
 afterEach(() => {
   flags.showGenState = true;
   flags.showGenResult = true;
   flags.showGenJobs = true;
-  fail.resources = false;
   vi.unstubAllGlobals();
 });
 
@@ -497,7 +488,7 @@ describe("states the mock does not hold today", () => {
   });
 
   it("says the service did not load, rather than showing it empty", async () => {
-    fail.resources = true;
+    mockFails.resources = true;
     cardPage("/generation/ghost", [
       [keys.genTargets, TARGETS],
       listedSeed("ghost"),
@@ -509,6 +500,12 @@ describe("states the mock does not hold today", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+  });
+
+  it("joins a refresh of the resources already asking when Retry is clicked (ADR-0081, ADR-0084)", async () => {
+    const { client } = cardPage("/generation/billing-api");
+    expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
+    await expectRetryJoinsResources(client, "billing-api");
   });
 });
 
@@ -535,8 +532,7 @@ describe("the services the card opens for (ADR-0086)", () => {
       "href",
       "/generation/opentelekomcloud-docs%2Fecs/layout",
     );
-    // no target switcher, no coverage: the server has no generation data yet
-    expect(screen.queryByRole("button", { name: /^Python SDK/ })).toBeNull();
+    // no coverage: the server has no generation data yet
     expect(screen.queryByText(/^Generating /)).toBeNull();
   });
 
@@ -581,7 +577,7 @@ describe("the services the card opens for (ADR-0086)", () => {
 
   it("reads nothing of the mock for a service it holds: no job, no Generate", async () => {
     // a layout the mock cannot give would fail the card if it were still read
-    fail.resources = true;
+    mockFails.resources = true;
     cardPage("/generation/billing-api");
 
     expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
@@ -808,6 +804,50 @@ describe("the resources of a stored layout on the card (ISS-0040)", () => {
     expect(within(await row("credits")).getByText("2 endpoints not recognized in full")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
     expect(screen.queryByText(/in review|merged|running/)).toBeNull();
+  });
+
+  /** One resource for each reason its layout holds it back by, and one it does not hold back. */
+  const everyReason = () =>
+    layout({
+      versions: [
+        {
+          api_version: "v1",
+          resources: [
+            resource(1, "invoices", confirmedBy("ada@otc.test")),
+            resource(2, "payments", unconfirmed),
+            resource(3, "refunds", confirmedBy("ada@otc.test"), []),
+            resource(4, "credits", confirmedBy("ada@otc.test"), [endpoint({ id: 4, overall_status: "partial" })]),
+          ],
+          unassigned: [],
+        },
+      ],
+    });
+
+  it("says Ansible modules is not connected yet on a row its layout does not hold back (ADR-0055)", async () => {
+    backend({ [LIST]: generationList("billing-api"), [LAYOUT]: everyReason() });
+    renderPage(<GenerationServicePage />, { path: `${PATH}?target=ansible`, route: "/generation/:name" });
+
+    const row = async (name: string) => screen.findByRole("group", { name });
+    expect(within(await row("invoices")).getByText("Ansible modules not connected yet")).toBeInTheDocument();
+    // the layout's reason comes first, and is the only one said
+    expect(within(await row("payments")).getByText("confirm the layout first")).toBeInTheDocument();
+    expect(within(await row("refunds")).getByText("empty resource")).toBeInTheDocument();
+    expect(within(await row("credits")).getByText("1 endpoint not recognized in full")).toBeInTheDocument();
+    expect(screen.getAllByText("Ansible modules not connected yet")).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+  });
+
+  it("says so as soon as Ansible modules is chosen, and no more once Python SDK is again", async () => {
+    card({ [LAYOUT]: everyReason() });
+
+    const invoices = await screen.findByRole("group", { name: "invoices" });
+    expect(within(invoices).queryByText(/not connected/)).toBeNull();
+
+    fireEvent.click(targetButton("Ansible modules"));
+    expect(within(screen.getByRole("group", { name: "invoices" })).getByText("Ansible modules not connected yet")).toBeInTheDocument();
+
+    fireEvent.click(targetButton("Python SDK"));
+    expect(within(screen.getByRole("group", { name: "invoices" })).queryByText(/not connected/)).toBeNull();
   });
 
   it("brings the summary back once a refresh finds no confirmed resource left, and the table once one is again", async () => {
@@ -1051,5 +1091,215 @@ describe("the preliminary grouping of a service without a layout (ISS-0039)", ()
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(await screen.findByRole("button", { name: "Generate layout" })).toBeInTheDocument();
+  });
+});
+
+describe("the targets of a service in the list (ISS-0041)", () => {
+  const LIST = "/api/generation/services";
+  const LAYOUT = "/api/generation/services/opentelekomcloud-docs%2Fecs/layout";
+
+  /* The card as it ships: generation itself switched off. */
+  beforeEach(() => {
+    flags.showGenJobs = false;
+  });
+
+  /** The browser's Back. */
+  function Back() {
+    const navigate = useNavigate();
+    return (
+      <button type="button" onClick={() => navigate(-1)}>
+        back
+      </button>
+    );
+  }
+  const back = () => fireEvent.click(screen.getByRole("button", { name: "back" }));
+
+  /** The card of ecs at `path`, on a backend whose stored layout is `stored`, with the browser's Back next to it. */
+  async function ecsCard(path: string, stored = layout()) {
+    const api = backend({ [LIST]: generationList(ECS), [LAYOUT]: stored });
+    renderPage(
+      <>
+        <GenerationServicePage />
+        <Location />
+        <Back />
+      </>,
+      { path, route: "/generation/:name" },
+    );
+    expect(await screen.findByRole("heading", { name: ECS })).toBeInTheDocument();
+    return api;
+  }
+
+  /** Where every "Edit layout" leads - the header's, and the centre's while the layout waits for confirmation (ISS-0040). */
+  function editLayoutTo() {
+    const hrefs = screen.getAllByRole("link", { name: "Edit layout" }).map((a) => a.getAttribute("href"));
+    expect(new Set(hrefs).size).toBe(1);
+    return hrefs[0];
+  }
+
+  /** None of what needs generation data: no merged share, no base, no pull request repository, no hint. */
+  function expectNoGenerationData() {
+    expect(screen.queryByText(/merged/)).toBeNull();
+    expect(screen.queryByText("waits on Python SDK")).toBeNull();
+    expect(screen.queryByText(/is built on/)).toBeNull();
+    expect(screen.queryByText(/Pull requests for this edition/)).toBeNull();
+    expect(screen.queryByText(/the layout is already shared with it/)).toBeNull();
+  }
+
+  it("offers Python SDK, chosen, and Ansible modules, not connected yet (ADR-0055)", async () => {
+    await ecsCard("/generation/opentelekomcloud-docs%2Fecs");
+
+    expect(targetButton("Python SDK")).toHaveAttribute("aria-pressed", "true");
+    expect(targetButton("Python SDK")).toHaveTextContent(/^Python SDK$/);
+    expect(targetButton("Ansible modules")).toHaveAttribute("aria-pressed", "false");
+    expect(targetButton("Ansible modules")).toHaveTextContent("generation not connected yet");
+    expectNoGenerationData();
+  });
+
+  it("keeps the choice in the address, leaving the default out, and carries it into the layout", async () => {
+    await ecsCard("/generation/opentelekomcloud-docs%2Fecs");
+
+    fireEvent.click(targetButton("Ansible modules"));
+
+    expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs?target=ansible");
+    expect(targetButton("Ansible modules")).toHaveAttribute("aria-pressed", "true");
+    expect(editLayoutTo()).toBe("/generation/opentelekomcloud-docs%2Fecs/layout?target=ansible");
+
+    fireEvent.click(targetButton("Python SDK"));
+
+    expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs");
+    expect(editLayoutTo()).toBe("/generation/opentelekomcloud-docs%2Fecs/layout");
+  });
+
+  it("names the choice of target as one, so its buttons are not read out on their own", async () => {
+    await ecsCard("/generation/opentelekomcloud-docs%2Fecs");
+
+    const group = screen.getByRole("group", { name: "Target" });
+    expect(within(group).getAllByRole("button").map((b) => b.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
+  });
+
+  it("makes each switch a step of its own: Back returns to the target before it", async () => {
+    await ecsCard("/generation/opentelekomcloud-docs%2Fecs");
+
+    fireEvent.click(targetButton("Ansible modules"));
+    expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs?target=ansible");
+
+    back();
+
+    expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs");
+    expect(targetButton("Python SDK")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("adds no step for the target already chosen: one Back still returns to the target before it", async () => {
+    await ecsCard("/generation/opentelekomcloud-docs%2Fecs");
+    fireEvent.click(targetButton("Ansible modules"));
+
+    // clicked again, and again: still the same choice, and no step of its own
+    fireEvent.click(targetButton("Ansible modules"));
+    fireEvent.click(targetButton("Ansible modules"));
+    expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs?target=ansible");
+    expect(targetButton("Ansible modules")).toHaveAttribute("aria-pressed", "true");
+
+    back();
+
+    expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs");
+    expect(targetButton("Python SDK")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("tidies an address that names a target there is not, when its default is chosen, without a step", async () => {
+    await ecsCard("/generation/opentelekomcloud-docs%2Fecs?target=cobol");
+
+    fireEvent.click(targetButton("Python SDK"));
+    expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs");
+    expect(targetButton("Python SDK")).toHaveAttribute("aria-pressed", "true");
+
+    // the untidy address was replaced, not left behind: Back never returns to it
+    fireEvent.click(targetButton("Ansible modules"));
+    back();
+    back();
+    expect(location()).toBe("/generation/opentelekomcloud-docs%2Fecs");
+  });
+
+  it("opens on the target the address names", async () => {
+    await ecsCard("/generation/opentelekomcloud-docs%2Fecs?target=ansible");
+
+    expect(targetButton("Ansible modules")).toHaveAttribute("aria-pressed", "true");
+    expect(targetButton("Python SDK")).toHaveAttribute("aria-pressed", "false");
+    // on Ansible modules too, nothing of generation: neither its base nor that it is not connected
+    expectNoGenerationData();
+  });
+
+  it("opens on Python SDK for a target the address names that there is not", async () => {
+    await ecsCard("/generation/opentelekomcloud-docs%2Fecs?target=cobol");
+
+    expect(targetButton("Python SDK")).toHaveAttribute("aria-pressed", "true");
+    expect(editLayoutTo()).toBe("/generation/opentelekomcloud-docs%2Fecs/layout");
+  });
+
+  it("does not ask for the layout again on a switch: it is the same for every target (ADR-0074)", async () => {
+    const api = await ecsCard("/generation/opentelekomcloud-docs%2Fecs");
+    const centre = screen.getByRole("region", { name: "Resources" }).textContent;
+    const asked = api.calls(LAYOUT);
+
+    fireEvent.click(targetButton("Ansible modules"));
+
+    expect(targetButton("Ansible modules")).toHaveAttribute("aria-pressed", "true");
+    expect(api.calls(LAYOUT)).toBe(asked);
+    expect(screen.getByRole("region", { name: "Resources" }).textContent).toBe(centre);
+  });
+
+  it("says the service did not load when the targets fail, and Retry asks for them again", async () => {
+    mockFails.targets = true;
+    backend({ [LIST]: generationList(ECS), [LAYOUT]: layout() });
+    renderPage(<GenerationServicePage />, {
+      path: "/generation/opentelekomcloud-docs%2Fecs",
+      route: "/generation/:name",
+    });
+
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Python SDK/ })).toBeNull();
+
+    mockFails.targets = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("button", { name: /^Python SDK/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("Failed to load service")).toBeNull();
+  });
+
+  it("says there is no target to generate for when the targets come empty, and Retry asks again", async () => {
+    mockFails.noTargets = true;
+    backend({ [LIST]: generationList(ECS), [LAYOUT]: layout() });
+    renderPage(<GenerationServicePage />, {
+      path: "/generation/opentelekomcloud-docs%2Fecs",
+      route: "/generation/:name",
+    });
+
+    // not a load that failed, and not a blank page
+    expect(await screen.findByText("No target to generate for")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to load service")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Resources" })).toBeNull();
+
+    // the answer was empty, not failed - Retry still asks for the targets again
+    mockFails.noTargets = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("button", { name: /^Python SDK/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows a layout that failed while the targets are still on the way", async () => {
+    mockFails.holdTargets = true;
+    backend({ [LIST]: generationList(ECS), [LAYOUT]: FAILED });
+    renderPage(<GenerationServicePage />, {
+      path: "/generation/opentelekomcloud-docs%2Fecs",
+      route: "/generation/:name",
+    });
+
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+  });
+
+  it("offers the choice of target before there is a layout too", async () => {
+    await ecsCard("/generation/opentelekomcloud-docs%2Fecs", NO_LAYOUT);
+
+    expect(targetButton("Python SDK")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Generate layout" })).toBeInTheDocument();
   });
 });

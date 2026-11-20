@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
 import { renderPage } from "../../../test/render";
-import { answerStoredLayouts, mockSeeds } from "../../../test/generationMock";
+import { keys } from "../../scan/api/queries";
+import { answerStoredLayouts, expectRetryJoinsResources, mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
 import {
   chooseType,
@@ -46,6 +47,11 @@ vi.mock("react-oidc-context", () => ({
 }));
 
 /* The mock lives in module memory, and the choices and generations below change it. */
+/* The mock's targets and resources, behind the switches some tests set (`mockFails`). */
+vi.mock("../data/mock", async (importOriginal) =>
+  (await import("../../../test/mockFails")).withMockFails(await importOriginal<typeof import("../data/mock")>()),
+);
+
 /* The backend these suites expect: nothing beyond the stored layouts. */
 let api: ReturnType<typeof answerStoredLayouts>;
 
@@ -322,6 +328,32 @@ describe("the spec of invoices v1 on the in-memory mock", () => {
       "href",
       "/generation/billing-api?target=ansible",
     );
+  });
+});
+
+describe("a service without targets", () => {
+  it("says there is no target to generate for, and Retry asks for the targets again", async () => {
+    renderPage(<GenerationSpecPage />, {
+      path: "/generation/billing-api/spec/v1/v1_invoices",
+      route: "/generation/:name/spec/:version/:resource",
+      seed: [[keys.genTargets, []]],
+    });
+
+    expect(await screen.findByText("No target to generate for")).toBeInTheDocument();
+    expect(screen.queryByText("Failed to load service")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+    expect(screen.queryByText("No target to generate for")).toBeNull();
+  });
+});
+
+describe("a refresh of the resources that fails", () => {
+  it("joins a refresh of the resources already asking when Retry is clicked (ADR-0081, ADR-0084)", async () => {
+    const { client } = specPage();
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+    await expectRetryJoinsResources(client, "billing-api");
   });
 });
 

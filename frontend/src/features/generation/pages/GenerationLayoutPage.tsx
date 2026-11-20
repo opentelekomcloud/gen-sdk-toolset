@@ -24,7 +24,7 @@ import type { GenJobStatus, GenResource, GenTarget } from "../data/types";
 import { LayoutBadge } from "../components/LayoutBadge";
 import { PageNotFound } from "../components/PageNotFound";
 import { lockingJob, mergedEverywhere } from "../lib/layout";
-import { generationPath, listPath } from "../lib/paths";
+import { chosenTarget, generationPath, listPath, servicePath } from "../lib/paths";
 import {
   BlockFailed,
   RefusalBanner,
@@ -381,14 +381,16 @@ export function GenerationLayoutPage() {
   const { t } = useI18n();
   const { canWrite } = useSession();
   const targets = useGenerationTargets();
+  const targetsBlock = blockOf(targets);
   const access = useInGeneration(name);
   /* Asked next to the list on the first load, and from then on only for a
      service of the list: the backend answers 404 for any other, and a page not
      shown is not asked for (ADR-0078). */
   const layout = useGenerationLayout(name, { enabled: access.pending || access.listed });
-  const stored = blockOf(layout);
+  const layoutBlock = blockOf(layout);
   /* The editor's resources, which only a service with a layout has. */
   const resources = useGenerationResources(name, { enabled: layout.data?.has_layout === true });
+  const resourcesBlock = blockOf(resources);
   const edit = useEditLayout(name);
   /* The prototype's note next to the title: the layout of this service was edited in this session. */
   const edited = useLayoutEdited(name);
@@ -399,8 +401,13 @@ export function GenerationLayoutPage() {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [over, setOver] = useState<string | null>(null);
 
-  /* The way back to the card; the target the address names rides along (ADR-0063). */
-  const cardTo = generationPath(name, [], searchParams.get("target"));
+  /* The way back to the card; the target the address names rides along
+     (ADR-0063), chosen as the card chooses it - the default and one there is
+     not are left off. Until the targets are read - or while they failed, whose
+     last answer is not current (ADR-0081) - it rides along as it is. */
+  const asked = searchParams.get("target");
+  const chosen = targetsBlock.data && chosenTarget(targetsBlock.data, asked);
+  const cardTo = chosen ? servicePath(name, chosen.target, chosen.defaultTarget) : generationPath(name, [], asked);
   /* A 404 is the backend's word that the service is not in Generation, not a
      failure: the page turns into the one a direct address shows (ADR-0086). */
   const gone = isNotFound(layout.error);
@@ -412,8 +419,9 @@ export function GenerationLayoutPage() {
       backState={fromList}
       onRetry={() => {
         if (access.failed) access.retry();
-        if (stored.failed && !gone) void retryJoining(layout);
-        for (const q of [targets, resources]) if (q.isError) void q.refetch();
+        if (layoutBlock.failed && !gone) void retryJoining(layout);
+        if (targetsBlock.failed) void retryJoining(targets);
+        if (resourcesBlock.failed) void retryJoining(resources);
       }}
     />
   );
@@ -422,7 +430,7 @@ export function GenerationLayoutPage() {
      the layout does not replace the page under it, which stays with a warning
      instead (ADR-0081); the page was open, so the service was in the list and
      had a layout. */
-  const failedRefresh = gone ? null : access.failed ? access.query : stored.failed ? layout : null;
+  const failedRefresh = gone ? null : access.failed ? access.query : layoutBlock.failed ? layout : null;
   const keepEdit = failedRefresh !== null && renaming !== null;
   const notFound = <PageNotFound back={<ServiceBackLink to={listTo} state={fromList} />} />;
   if (access.pending) return loading;
@@ -431,8 +439,8 @@ export function GenerationLayoutPage() {
   if (gone) return notFound;
   if (access.failed && !keepEdit) return failed;
   if (!keepEdit && !access.listed) return notFound;
-  if (stored.pending) return loading;
-  if (stored.failed && !keepEdit) return failed;
+  if (layoutBlock.pending) return loading;
+  if (layoutBlock.failed && !keepEdit) return failed;
 
   /* No layout until the preliminary grouping has run: an empty state that
      leads to the service page, not a redirect (ADR-0086). */
@@ -440,16 +448,18 @@ export function GenerationLayoutPage() {
     return <NothingToEdit name={name} cardTo={cardTo} note={t("gen.layout.noLayout")} noLayout />;
   }
   /* Only the editor needs the targets: which job freezes a resource, and
-     which merged one has left. */
-  if (targets.isPending || resources.isPending) return loading;
-  if (targets.isError || resources.isError) return failed;
+     which merged one has left. With none, it still opens - the layout is the
+     same for every target (ADR-0074) - and nothing is frozen or has left;
+     the pages that generate say there is no target instead. */
+  if (targetsBlock.failed || resourcesBlock.failed) return failed;
+  if (targetsBlock.pending || resourcesBlock.pending) return loading;
   /* The backend has a layout the mock does not hold, so the editor has nothing
      of it to show - and saying "no layout" would be false.
      TODO(ISS-0042): the editor reads the stored layout, and this goes. */
-  if (!keepEdit && resources.data.length === 0) {
+  if (!keepEdit && resourcesBlock.data.length === 0) {
     return <NothingToEdit name={name} cardTo={cardTo} note={t("gen.layout.notShown")} noLayout={false} />;
   }
-  const all = resources.data;
+  const all = resourcesBlock.data;
   const versions = [...new Set(all.map((r) => r.version))];
   const endpoints = all.reduce((n, r) => n + r.endpoints.length, 0);
   const confirmed = all.filter((r) => r.confirmedBy != null).length;
@@ -509,7 +519,7 @@ export function GenerationLayoutPage() {
       {versions.map((version) => {
         const open = !closedVersions.has(version);
         const inVersion = all.filter((r) => r.version === version);
-        const shown = inVersion.filter((r) => !mergedEverywhere(r.jobs, targets.data));
+        const shown = inVersion.filter((r) => !mergedEverywhere(r.jobs, targetsBlock.data));
         const moved = inVersion.length - shown.length;
         return (
           <section
@@ -564,7 +574,7 @@ export function GenerationLayoutPage() {
                   <ResourceRow
                     key={r.id}
                     resource={r}
-                    targets={targets.data}
+                    targets={targetsBlock.data}
                     canWrite={canWrite}
                     open={!closedResources.has(r.id)}
                     onToggle={() => setClosedResources(toggled(closedResources, r.id))}

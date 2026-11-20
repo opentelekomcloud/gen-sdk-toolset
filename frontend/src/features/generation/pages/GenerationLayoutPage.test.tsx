@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router";
 import { alertNamed, backend, FAILED, later, NOT_FOUND, pollAgain, refresh, renderPage } from "../../../test/render";
+import { mockFails } from "../../../test/mockFails";
 import { generationList, layout, listedSeed } from "../../../test/fixtures";
-import { answerStoredLayouts, mockSeeds } from "../../../test/generationMock";
+import { answerStoredLayouts, expectRetryJoinsResources, mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../../scan/api/queries";
 import { generationResources, resetGenerationMock } from "../data/mock";
@@ -29,6 +30,11 @@ vi.mock("react-oidc-context", () => ({
     signoutRedirect: vi.fn(),
   }),
 }));
+
+/* The mock's targets and resources, behind the switches some tests set (`mockFails`). */
+vi.mock("../data/mock", async (importOriginal) =>
+  (await import("../../../test/mockFails")).withMockFails(await importOriginal<typeof import("../data/mock")>()),
+);
 
 /* The mock lives in module memory, and the edits below change it. */
 /* The backend these suites expect: nothing beyond the stored layouts. */
@@ -615,6 +621,28 @@ describe("the way in and out", () => {
       expect(link).toHaveAttribute("href", "/generation/billing-api?target=ansible");
     }
   });
+
+  it.each(["cobol", "python"])("leaves ?target=%s off the way back, as the card's own link does", async (target) => {
+    layoutPage(`/generation/billing-api/layout?target=${target}`);
+
+    for (const link of await screen.findAllByRole("link", { name: "Back to generation" })) {
+      expect(link).toHaveAttribute("href", "/generation/billing-api");
+    }
+  });
+
+  it("opens the editor without targets: the layout is the same for every one (ADR-0074)", async () => {
+    mockFails.noTargets = true;
+    layoutPage();
+
+    expect(await screen.findByText(/^Shared layout/)).toBeInTheDocument();
+    expect(screen.queryByText("No target to generate for")).toBeNull();
+  });
+
+  it("joins a refresh of the resources already asking when Retry is clicked (ADR-0081, ADR-0084)", async () => {
+    const { client } = layoutPage();
+    expect(await screen.findByText(/^Shared layout/)).toBeInTheDocument();
+    await expectRetryJoinsResources(client, "billing-api");
+  });
 });
 
 describe("other services on the mock", () => {
@@ -696,6 +724,26 @@ describe("other services on the mock", () => {
     expect(await screen.findByRole("link", { name: "Open the service page" })).toHaveAttribute(
       "href",
       "/generation/opentelekomcloud-docs%2Fecs?target=ansible",
+    );
+  });
+
+  it("reads the targets as they stand, not their answer before a failed refresh (ADR-0081)", async () => {
+    const ecs = "opentelekomcloud-docs/ecs";
+    // the default named in the address: the current targets leave it off, as the card does
+    const { client } = layoutPage("/generation/opentelekomcloud-docs%2Fecs/layout?target=python", [
+      listedSeed(ecs),
+      [keys.genLayout(ecs), layout({ has_layout: false, versions: [], no_version: [] })],
+    ]);
+    const serviceLink = () => screen.getByRole("link", { name: "Open the service page" });
+    await waitFor(() => expect(serviceLink()).toHaveAttribute("href", "/generation/opentelekomcloud-docs%2Fecs"));
+
+    // TanStack keeps the last targets through a failed refresh; not read as current, they
+    // decide nothing, and the address's target rides along as it is
+    mockFails.targets = true;
+    await refresh(client, keys.genTargets);
+
+    await waitFor(() =>
+      expect(serviceLink()).toHaveAttribute("href", "/generation/opentelekomcloud-docs%2Fecs?target=python"),
     );
   });
 
