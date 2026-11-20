@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation, useNavigate } from "react-router";
 import { backend, CONFLICT, FAILED, FORBIDDEN, later, NOT_FOUND, pollAgain, refresh, renderPage } from "../../../test/render";
-import { generationList, layout, listedSeed } from "../../../test/fixtures";
+import { endpoint, generationList, layout, listedSeed } from "../../../test/fixtures";
 import { mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../../scan/api/queries";
@@ -585,7 +585,8 @@ describe("the services the card opens for (ADR-0086)", () => {
     cardPage("/generation/billing-api");
 
     expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
-    expect(screen.getByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+    // the stored layout holds no resource; the mock's billing-api would have them
+    expect(screen.getByText("Nothing laid out for this service yet.")).toBeInTheDocument();
     expect(screen.queryByText("Failed to load service")).toBeNull();
     expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
     expect(screen.queryByText("in review · PR 131")).toBeNull();
@@ -680,6 +681,151 @@ describe("the services the card opens for (ADR-0086)", () => {
 
     expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
     expect(screen.queryByText("Page not found.")).toBeNull();
+  });
+});
+
+describe("the resources of a stored layout on the card (ISS-0040)", () => {
+  const LIST = "/api/generation/services";
+  const LAYOUT = "/api/generation/services/billing-api/layout";
+  const PATH = "/generation/billing-api";
+
+  /* The card as it ships: generation itself switched off. */
+  beforeEach(() => {
+    flags.showGenJobs = false;
+  });
+
+  const unconfirmed = { confirmed_by: null, confirmed_at: null };
+  const confirmedBy = (by: string) => ({ confirmed_by: by, confirmed_at: "2026-11-02T10:00:00Z" });
+  const resource = (id: number, name: string, confirmation: object, endpoints = [endpoint({ id })]) => ({
+    id,
+    name,
+    endpoints,
+    ...unconfirmed,
+    ...confirmation,
+  });
+
+  /** Two versions with resources, one with only an endpoint left unassigned, and one without a version. */
+  const laidOut = (first: object = unconfirmed) =>
+    layout({
+      versions: [
+        {
+          api_version: "v1",
+          resources: [resource(1, "invoices", first), resource(2, "payments", unconfirmed)],
+          unassigned: [endpoint({ id: 10 })],
+        },
+        { api_version: "v2", resources: [resource(3, "refunds", unconfirmed)], unassigned: [] },
+        { api_version: "v3", resources: [], unassigned: [endpoint({ id: 11 })] },
+      ],
+      no_version: [endpoint({ id: 12 })],
+    });
+
+  function card(answers: Record<string, unknown>) {
+    answers[LIST] ??= generationList("billing-api");
+    backend(answers);
+    return renderPage(<GenerationServicePage />, { path: PATH, route: "/generation/:name" });
+  }
+
+  const centre = () => screen.getByRole("region", { name: "Resources" });
+
+  it("sums the layout up while no resource is confirmed, counting no endpoint left out of a resource (ADR-0062)", async () => {
+    card({ [LAYOUT]: laidOut() });
+
+    // v3 and the endpoints left out of a resource are not counted
+    expect(await screen.findByText("3 resources in 2 versions, confirmation needed")).toBeInTheDocument();
+    expect(within(centre()).getByRole("link", { name: "Edit layout" })).toHaveAttribute("href", "/generation/billing-api/layout");
+    expect(within(centre()).queryByRole("group", { name: "invoices" })).toBeNull();
+    expect(screen.queryByText("confirm the layout first")).toBeNull();
+  });
+
+  it("says one resource in one version in the singular", async () => {
+    card({
+      [LAYOUT]: layout({
+        versions: [{ api_version: "v1", resources: [resource(1, "invoices", unconfirmed)], unassigned: [] }],
+      }),
+    });
+
+    expect(await screen.findByText("1 resource in 1 version, confirmation needed")).toBeInTheDocument();
+  });
+
+  it("leads into the editor from a layout that holds no resource at all", async () => {
+    card({ [LAYOUT]: layout({ versions: [{ api_version: "v1", resources: [], unassigned: [endpoint()] }] }) });
+
+    expect(await screen.findByText("Nothing laid out for this service yet.")).toBeInTheDocument();
+    expect(within(centre()).getByRole("link", { name: "Edit layout" })).toHaveAttribute("href", "/generation/billing-api/layout");
+    expect(screen.queryByText(/confirmation needed/)).toBeNull();
+  });
+
+  it("keeps the target the address names on the way into the editor", async () => {
+    backend({ [LIST]: generationList("billing-api"), [LAYOUT]: laidOut() });
+    renderPage(<GenerationServicePage />, { path: `${PATH}?target=ansible`, route: "/generation/:name" });
+
+    expect(await screen.findByText(/confirmation needed/)).toBeInTheDocument();
+    expect(within(centre()).getByRole("link", { name: "Edit layout" })).toHaveAttribute(
+      "href",
+      "/generation/billing-api/layout?target=ansible",
+    );
+  });
+
+  it("shows every resource once one is confirmed, each with its version, endpoints and confirmation", async () => {
+    card({ [LAYOUT]: laidOut(confirmedBy("ada@otc.test")) });
+
+    const invoices = await screen.findByRole("group", { name: "invoices" });
+    expect(within(invoices).getByText("v1 · 1 endpoint · layout confirmed by ada@otc.test")).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "payments" })).getByText("v1 · 1 endpoint · layout not confirmed yet")).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "refunds" })).getByText("v2 · 1 endpoint · layout not confirmed yet")).toBeInTheDocument();
+    expect(screen.queryByText(/confirmation needed/)).toBeNull();
+  });
+
+  it("says why each row is held back by its layout, and offers no Generate and no job", async () => {
+    card({
+      [LAYOUT]: layout({
+        versions: [
+          {
+            api_version: "v1",
+            resources: [
+              resource(1, "invoices", confirmedBy("ada@otc.test")),
+              resource(2, "payments", unconfirmed),
+              resource(3, "refunds", confirmedBy("ada@otc.test"), []),
+              resource(4, "credits", confirmedBy("ada@otc.test"), [
+                endpoint({ id: 4 }),
+                endpoint({ id: 5, overall_status: "partial" }),
+                endpoint({ id: 6, overall_status: "failed" }),
+              ]),
+            ],
+            unassigned: [],
+          },
+        ],
+      }),
+    });
+
+    const row = async (name: string) => screen.findByRole("group", { name });
+    // nothing holds it
+    expect(within(await row("invoices")).queryByText(/first|empty|not recognized/)).toBeNull();
+    const payments = await row("payments");
+    expect(within(payments).getByText("confirm the layout first")).toBeInTheDocument();
+    expect(within(payments).getByRole("link", { name: "edit layout" })).toHaveAttribute("href", "/generation/billing-api/layout");
+    expect(within(await row("refunds")).getByText("empty resource")).toBeInTheDocument();
+    expect(within(await row("credits")).getByText("2 endpoints not recognized in full")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+    expect(screen.queryByText(/in review|merged|running/)).toBeNull();
+  });
+
+  it("brings the summary back once a refresh finds no confirmed resource left, and the table once one is again", async () => {
+    const answers: Record<string, unknown> = { [LAYOUT]: laidOut(confirmedBy("ada@otc.test")) };
+    const { client } = card(answers);
+    expect(await screen.findByRole("group", { name: "invoices" })).toBeInTheDocument();
+
+    // an edit took the confirmation back (ADR-0066)
+    answers[LAYOUT] = laidOut();
+    await pollAgain(client, keys.genLayout("billing-api"));
+
+    expect(await screen.findByText("3 resources in 2 versions, confirmation needed")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "invoices" })).toBeNull();
+
+    answers[LAYOUT] = laidOut(confirmedBy("ada@otc.test"));
+    await pollAgain(client, keys.genLayout("billing-api"));
+
+    expect(await screen.findByRole("group", { name: "invoices" })).toBeInTheDocument();
   });
 });
 
@@ -782,7 +928,7 @@ describe("the preliminary grouping of a service without a layout (ISS-0039)", ()
 
     start.send(layout());
 
-    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+    expect(await screen.findByText("1 resource in 1 version, confirmation needed")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
     // the read and the start: the answer is shown as it is, not read again
     expect(api.calls(LAYOUT)).toBe(2);
@@ -800,7 +946,7 @@ describe("the preliminary grouping of a service without a layout (ISS-0039)", ()
     await pollAgain(api.client, keys.genLayout(ECS));
 
     fireEvent.click(screen.getByRole("button", { name: "Generate layout" }));
-    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+    expect(await screen.findByText("1 resource in 1 version, confirmation needed")).toBeInTheDocument();
 
     // the read from before the grouping was dropped: nothing is left under way that could land on top
     expect(api.client.getQueryState(keys.genLayout(ECS))?.fetchStatus).toBe("idle");
@@ -831,7 +977,7 @@ describe("the preliminary grouping of a service without a layout (ISS-0039)", ()
 
     expect(await screen.findByText("Grouping endpoints…")).toBeInTheDocument();
     again.send(layout());
-    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+    expect(await screen.findByText("1 resource in 1 version, confirmation needed")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
@@ -865,7 +1011,7 @@ describe("the preliminary grouping of a service without a layout (ISS-0039)", ()
 
     reread.send(layout());
 
-    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+    expect(await screen.findByText("1 resource in 1 version, confirmation needed")).toBeInTheDocument();
     expect(screen.queryByText("Failed to group endpoints")).toBeNull();
     expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
     expect(api.calls(LAYOUT)).toBe(3);
@@ -889,7 +1035,7 @@ describe("the preliminary grouping of a service without a layout (ISS-0039)", ()
     backend({ [LIST]: generationList(ECS), [LAYOUT]: layout() });
     renderPage(<GenerationServicePage />, { path: PATH, route: "/generation/:name" });
 
-    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
+    expect(await screen.findByText("1 resource in 1 version, confirmation needed")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
   });
 

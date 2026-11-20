@@ -557,7 +557,6 @@ function ResultPage() {
             <HoldReason
               hold={hold}
               open={open}
-              target={target}
               layoutTo={pathTo(["layout"])}
               specTo={pathTo(["spec", resource.version, resource.id])}
               state={fromList}

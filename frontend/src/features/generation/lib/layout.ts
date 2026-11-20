@@ -8,24 +8,40 @@ export type Hold =
   | { reason: "empty" }
   | { reason: "notOk"; n: number }
   | { reason: "waitsOn"; base: string }
-  | { reason: "notConnected" };
+  | { reason: "notConnected"; target: string };
+
+/** The reasons a resource's layout holds it back by, on every target. */
+export type LayoutHold = Extract<Hold, { reason: "confirm" | "empty" | "notOk" }>;
+
+/**
+ * The first reason, in this order, the layout of a resource holds it back, or null.
+ *
+ * Takes plain values, as both the stored layout and the mock are asked.
+ */
+export function layoutHold(confirmed: boolean, statuses: readonly string[]): LayoutHold | null {
+  if (!confirmed) return { reason: "confirm" };
+  if (statuses.length === 0) return { reason: "empty" };
+  const notOk = statuses.filter((s) => s !== "ok").length;
+  if (notOk > 0) return { reason: "notOk", n: notOk };
+  return null;
+}
 
 /**
  * The first reason, in this order, a resource cannot be generated on a target,
- * or null when it can. Its layout has to be confirmed, hold endpoints and every
- * one of their documents `ok` (owner decision); a target that builds on another
- * takes a resource only once it is merged there (owner decision), and only a
- * connected target generates at all. `base` is the base target's label.
+ * or null when it can. The layout's reasons come first (`layoutHold`); then a
+ * target that builds on another takes a resource only once it is merged there
+ * (owner decision), and only a connected target generates at all.
  */
 export function holdOf(resource: GenResource, target: GenTarget, targets: GenTarget[]): Hold | null {
-  const notOk = resource.endpoints.filter((e) => e.status !== "ok").length;
-  if (resource.confirmedBy == null) return { reason: "confirm" };
-  if (resource.endpoints.length === 0) return { reason: "empty" };
-  if (notOk > 0) return { reason: "notOk", n: notOk };
+  const layout = layoutHold(
+    resource.confirmedBy != null,
+    resource.endpoints.map((e) => e.status),
+  );
+  if (layout) return layout;
   if (target.base != null && resource.jobs[target.base]?.status !== "merged") {
     return { reason: "waitsOn", base: targets.find((x) => x.id === target.base)?.label ?? target.base };
   }
-  if (!target.live) return { reason: "notConnected" };
+  if (!target.live) return { reason: "notConnected", target: target.label };
   return null;
 }
 

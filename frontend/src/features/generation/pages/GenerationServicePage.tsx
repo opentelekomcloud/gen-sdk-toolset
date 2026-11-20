@@ -4,10 +4,11 @@ import type { ReactNode } from "react";
 import { useGenerationLayout, useGenerationResources, useGenerationTargets, useInGeneration } from "../data/queries";
 import { useStartLayout } from "../data/mutations";
 import type { GenResource, GenTarget } from "../data/types";
+import type { Layout, LayoutResource } from "../../../shared/api/types";
 import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
 import { PageNotFound } from "../components/PageNotFound";
-import { holdOf } from "../lib/layout";
+import { holdOf, layoutHold } from "../lib/layout";
 import { generationPath, listPath, servicePath } from "../lib/paths";
 import { SHOW_GEN_JOBS } from "../flags";
 import { isNotFound } from "../../scan/api/client";
@@ -69,7 +70,7 @@ function ResourceRow({
           <Play size={12} /> {t("gen.card.generate")}
         </Link>
       ) : (
-        <HoldReason hold={hold} target={target} layoutTo={pathTo(["layout"])} state={fromList} />
+        <HoldReason hold={hold} layoutTo={pathTo(["layout"])} state={fromList} />
       )}
     </div>
   );
@@ -105,9 +106,9 @@ function CardHeader({ name, sub, layoutTo }: { name: string; sub?: string; layou
  * PageNotFound (ADR-0081).
  *
  * Its centre follows the stored layout. A service without one gets the one
- * way to make it: "Generate layout" (ADR-0056). With one, its resources are
- * ISS-0040's. The server has no generation data yet, so jobs, coverage and
- * Generate stay switched off (`SHOW_GEN_JOBS`).
+ * way to make it: "Generate layout" (ADR-0056). With one, its resources
+ * (`LayoutResources`). The server has no generation data yet, so jobs,
+ * coverage and Generate stay switched off (`SHOW_GEN_JOBS`).
  */
 export function GenerationServicePage() {
   const { name = "" } = useParams();
@@ -146,11 +147,12 @@ export function GenerationServicePage() {
   if (stored.pending) return <ServiceLoading />;
   if (stored.failed) return failed;
 
+  /* the target the address names rides along into the layout, and back */
+  const layoutTo = generationPath(name, ["layout"], searchParams.get("target"));
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
       {back}
-      {/* the target the address names rides along into the layout, and back */}
-      <CardHeader name={name} layoutTo={generationPath(name, ["layout"], searchParams.get("target"))} />
+      <CardHeader name={name} layoutTo={layoutTo} />
       {/* The centre of the card, named so it can be found as the place of the resources. */}
       <section
         aria-label={t("gen.card.resources")}
@@ -158,14 +160,102 @@ export function GenerationServicePage() {
       >
         {layout.data.has_layout ? (
           /* No "Generate layout" once there is a layout: it changes only by
-             editing it (ADR-0072). TODO(ISS-0040): its resources go here. */
-          <div className="px-4 py-10 text-center text-sm text-gray-400">{t("gen.layout.notShown")}</div>
+             editing it (ADR-0072). */
+          <LayoutResources layout={layout.data} layoutTo={layoutTo} />
         ) : (
           <div className="flex justify-center px-4 py-10">
             <StartGrouping name={name} start={start} />
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function ToLayout({ layoutTo }: { layoutTo: string }) {
+  const { t } = useI18n();
+  const { state: fromList } = useLocation();
+  return (
+    <Link
+      to={layoutTo}
+      state={fromList}
+      className="inline-flex items-center gap-1.5 rounded border border-pink-300 bg-pink-50 px-3.5 py-2 text-sm font-semibold text-brand transition hover:border-brand"
+    >
+      <Folder size={14} /> {t("gen.card.editLayout")}
+    </Link>
+  );
+}
+
+/** The centre of a card with a stored layout: the summary while no resource is confirmed (ADR-0062), else the table. */
+function LayoutResources({ layout, layoutTo }: { layout: Layout; layoutTo: string }) {
+  const { t } = useI18n();
+  const rows = layout.versions.flatMap((v) => v.resources.map((resource) => ({ version: v.api_version, resource })));
+  const versions = layout.versions.filter((v) => v.resources.length > 0).length;
+
+  if (rows.length === 0 || rows.every(({ resource }) => resource.confirmed_by == null)) {
+    const text =
+      rows.length === 0
+        ? t("gen.card.empty")
+        : t("gen.card.summary", {
+            resources: t("gen.card.summary.resources", { n: rows.length }),
+            versions: t("gen.card.summary.versions", { n: versions }),
+          });
+    return (
+      <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+        <span className="text-sm text-gray-500">{text}</span>
+        <ToLayout layoutTo={layoutTo} />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+        {t("gen.card.col.resource")}
+      </div>
+      {rows.map(({ version, resource }) => (
+        <LayoutResourceRow key={resource.id} version={version} resource={resource} layoutTo={layoutTo} />
+      ))}
+    </>
+  );
+}
+
+/** A resource of the stored layout, with why its layout holds it back. */
+function LayoutResourceRow({
+  version,
+  resource,
+  layoutTo,
+}: {
+  version: string;
+  resource: LayoutResource;
+  layoutTo: string;
+}) {
+  const { t } = useI18n();
+  const { state: fromList } = useLocation();
+  /* TODO(#205): "not connected" for a target that is not, ?target=ansible included. */
+  const hold = layoutHold(
+    resource.confirmed_by != null,
+    resource.endpoints.map((e) => e.overall_status),
+  );
+  const meta = [
+    version,
+    t("gen.card.endpoints", { n: resource.endpoints.length }),
+    resource.confirmed_by != null
+      ? t("gen.card.confirmedBy", { by: resource.confirmed_by })
+      : t("gen.card.notConfirmed"),
+  ].join(" · ");
+
+  return (
+    <div
+      role="group"
+      aria-label={resource.name}
+      className="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-[11px] last:border-0"
+    >
+      <span className="flex min-w-[200px] flex-auto flex-col gap-[3px] overflow-hidden">
+        <span className="truncate font-mono text-sm text-gray-800">{resource.name}</span>
+        <span className="text-[11px] text-gray-400">{meta}</span>
+      </span>
+      <HoldReason hold={hold} layoutTo={layoutTo} state={fromList} />
     </div>
   );
 }
