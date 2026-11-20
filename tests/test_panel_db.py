@@ -24,6 +24,8 @@ from datetime import UTC, datetime
 
 import pytest
 
+from tools.scanner.exclusion import SEGMENTS_SETTING
+
 from .conftest import REPO_ROOT
 
 sa = pytest.importorskip("sqlalchemy")
@@ -61,6 +63,7 @@ from tools.shared.ir import (  # noqa: E402
 )
 from tools.shared.scan import (  # noqa: E402
     DocumentScanResult,
+    ExcludedDocument,
     Issue,
     IssueCode,
     SectionScanResult,
@@ -646,6 +649,78 @@ def test_last_scanned_at_backfill_starts_from_created_at(scratch_database):
     engine.dispose()
 
 
+def test_exclusion_reasons_keep_stored_paths_unrecorded(scratch_database):
+    """A stored Snapshot is immutable, so its excluded paths are carried over
+    as they were, in order, as ``unrecorded`` - reading a reason into an old
+    path would rewrite what that scan decided. Downgrading keeps the paths."""
+    url = scratch_database("panel_test_exclusion_reasons")
+    config = _alembic_config(url)
+    engine = create_engine(url)
+    revision = "07707d4e971f"
+    paths = [
+        "api-ref/source/out-of-date_apis/old.rst",
+        "api-ref/source/calling_apis/authentication.rst",
+    ]
+
+    command.upgrade(config, f"{revision}-1")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text("""
+            INSERT INTO service (repo, name, branch)
+                VALUES ('org/ecs', 'ecs', 'main');
+            INSERT INTO job (service_id, kind, status, started_at, finished_at)
+                SELECT id, 'scan', 'done', now(), now() FROM service;
+            """)
+        )
+        # Bound on its own: a statement with parameters cannot carry others.
+        connection.execute(
+            sa.text("""
+            INSERT INTO snapshot (service_id, source_job_id, branch, commit_hash,
+                    scanner_version, document_schema_version, analytics,
+                    excluded_documents)
+                SELECT s.id, j.id, 'main', repeat('a', 40), '0.1.0', '1',
+                    '{}'::jsonb, CAST(:paths AS text[])
+                FROM service s JOIN job j ON j.service_id = s.id
+            """),
+            {"paths": paths},
+        )
+        connection.execute(
+            sa.text("""
+            INSERT INTO job (service_id, kind, status, started_at, finished_at)
+                SELECT id, 'scan', 'done', now(), now() FROM service;
+            INSERT INTO snapshot (service_id, source_job_id, branch, commit_hash,
+                    scanner_version, document_schema_version, analytics)
+                SELECT s.id, max(j.id), 'main', repeat('b', 40), '0.1.0', '1',
+                    '{}'::jsonb
+                FROM service s JOIN job j ON j.service_id = s.id
+                GROUP BY s.id;
+            """)
+        )
+
+    command.upgrade(config, revision)
+    with engine.begin() as connection:
+        rows = connection.execute(
+            sa.text(
+                "SELECT excluded_documents, review_candidates FROM snapshot ORDER BY id"
+            )
+        ).all()
+    assert rows[0] == (
+        [{"path": path, "reason": "unrecorded", "evidence": None} for path in paths],
+        [],
+    )
+    assert rows[1] == ([], [])
+    for stored in rows[0][0]:
+        assert ExcludedDocument.model_validate(stored).reason == "unrecorded"
+
+    command.downgrade(config, f"{revision}-1")
+    with engine.begin() as connection:
+        restored = connection.execute(
+            sa.text("SELECT excluded_documents FROM snapshot ORDER BY id")
+        ).scalars()
+        assert list(restored) == [paths, []]
+    engine.dispose()
+
+
 # ---------------------------------------------------------------------------
 # Model tests
 # ---------------------------------------------------------------------------
@@ -764,7 +839,17 @@ def test_only_one_active_scan_job_per_service(db_session):
 
 def test_snapshot_interruption_and_exclusions_survive(db_session):
     _, job, snapshot = make_snapshot(db_session)
-    snapshot.excluded_documents = ["api-ref/source/out-of-date_apis/old.rst"]
+    snapshot.excluded_documents = [
+        {
+            "path": "api-ref/source/out-of-date_apis/old.rst",
+            "reason": "retired",
+            "evidence": {
+                "source": SEGMENTS_SETTING,
+                "line": None,
+                "text": "out-of-date_apis",
+            },
+        }
+    ]
     job.interruption = {
         "kind": "rate_limit",
         "repository": "opentelekomcloud-docs/ecs",
@@ -778,9 +863,13 @@ def test_snapshot_interruption_and_exclusions_survive(db_session):
     assert stored_job.interruption["kind"] == "rate_limit"
     assert stored_job.interruption["reset_time"] == 1789000000
     stored_snapshot = db_session.get(Snapshot, snapshot.id)
-    assert stored_snapshot.excluded_documents == [
+    assert stored_snapshot.excluded_documents[0]["path"] == (
         "api-ref/source/out-of-date_apis/old.rst"
-    ]
+    )
+    assert stored_snapshot.excluded_documents[0]["reason"] == "retired"
+    assert stored_snapshot.excluded_documents[0]["evidence"]["text"] == (
+        "out-of-date_apis"
+    )
 
 
 def test_active_snapshot_link_set_null_on_delete(db_session):
