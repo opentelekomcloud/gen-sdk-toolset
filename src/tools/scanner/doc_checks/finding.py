@@ -23,8 +23,7 @@ class DocCheck(StrEnum):
 class DocFinding:
     """A documentation error, located as precisely as the scan result allows.
 
-    ``json_line`` / ``json_column`` are set only for :attr:`DocCheck.INVALID_JSON`
-    and point inside the example, not inside the RST file.
+    ``line`` is the 1-based line in the RST file, when the scan result has one.
     """
 
     check: DocCheck
@@ -32,5 +31,4 @@ class DocFinding:
     section: str | None
     location: str | None
     message: str
-    json_line: int | None = None
-    json_column: int | None = None
+    line: int | None = None

@@ -88,7 +88,7 @@ def _resolve(
         match = _lookup_target(row, state=state)
         if match is None:
             continue
-        table = _target_table(match, param, visiting=visiting, issues=state.issues)
+        table = _target_table(match, row, visiting=visiting, issues=state.issues)
         if table is None:
             continue
 
@@ -117,7 +117,7 @@ def _attach_and_recurse(
         param.element_type = ParameterType.OBJECT
     _resolve(
         [
-            TableRow(child, source.ref_anchor, source.description_anchors)
+            TableRow(child, source.ref_anchor, source.description_anchors, source.line)
             for child, source in zip(children, table.rows)
         ],
         state,
@@ -218,19 +218,20 @@ def _lookup_anchor(
 
 def _target_table(
     match: _TargetMatch,
-    param: Parameter,
+    row: TableRow,
     *,
     visiting: frozenset[str],
     issues: list[Issue],
 ) -> TableExtraction | None:
+    param, line = row.parameter, row.line
     if match.target.kind is RefKind.NON_TABLE or match.target.table is None:
-        _flag(issues, IssueCode.NESTED_REF_NOT_A_TABLE, param, match.reference)
+        _flag(issues, IssueCode.NESTED_REF_NOT_A_TABLE, param, match.reference, line)
         return None
     if not match.target.table.parameters:
-        _flag(issues, IssueCode.NESTED_TABLE_EMPTY, param, match.reference)
+        _flag(issues, IssueCode.NESTED_TABLE_EMPTY, param, match.reference, line)
         return None
     if match.reference in visiting:
-        _flag(issues, IssueCode.NESTED_CIRCULAR_REF, param, match.reference)
+        _flag(issues, IssueCode.NESTED_CIRCULAR_REF, param, match.reference, line)
         return None
     return match.target.table
 
@@ -263,5 +264,11 @@ def _is_external(anchor: str, doc_id: str | None) -> bool:
     return anchor.split("__", 1)[0] != doc_id
 
 
-def _flag(issues: list[Issue], code: IssueCode, param: Parameter, anchor: str) -> None:
-    issues.append(Issue(code=code, location=param.name, details=anchor))
+def _flag(
+    issues: list[Issue],
+    code: IssueCode,
+    param: Parameter,
+    anchor: str,
+    line: int | None = None,
+) -> None:
+    issues.append(Issue(code=code, location=param.name, details=anchor, line=line))

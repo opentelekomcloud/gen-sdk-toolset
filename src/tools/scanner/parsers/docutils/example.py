@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import NamedTuple
 
 from docutils import nodes
 
@@ -11,7 +12,19 @@ from tools.shared.scan import Issue, IssueCode, SectionScanResult, SectionStatus
 
 from .diagnostics import ISSUE_DETAILS_MAX
 from .patterns import EXAMPLE_HTTP_PREFIX_RE
+from .source_lines import block_start_line
 from .types import SectionKind
+
+#: JSON errors the parser reports at the token after the missing delimiter,
+#: which is often on the next line.
+_DELIMITER_ERRORS = frozenset({"Expecting ',' delimiter", "Expecting ':' delimiter"})
+
+
+class ExampleBlock(NamedTuple):
+    """An extracted example and the RST line its block starts on."""
+
+    example: Example
+    start_line: int | None = None
 
 
 def process_example_section(
@@ -122,7 +135,7 @@ def process_inline_examples(
     return leftover
 
 
-def extract_examples(section: nodes.section) -> list[Example]:
+def extract_examples(section: nodes.section) -> list[ExampleBlock]:
     """Return every code or literal block inside a section."""
     visited: set[int] = set()
     blocks = _extract_from_lists(section, visited)
@@ -130,8 +143,10 @@ def extract_examples(section: nodes.section) -> list[Example]:
     return blocks
 
 
-def _extract_from_lists(section: nodes.section, visited: set[int]) -> list[Example]:
-    blocks: list[Example] = []
+def _extract_from_lists(
+    section: nodes.section, visited: set[int]
+) -> list[ExampleBlock]:
+    blocks: list[ExampleBlock] = []
     for item in section.findall(nodes.list_item):
         label = _extract_item_label(item)
         for code in item.findall(nodes.literal_block):
@@ -142,8 +157,10 @@ def _extract_from_lists(section: nodes.section, visited: set[int]) -> list[Examp
     return blocks
 
 
-def _extract_sequential(section: nodes.section, visited: set[int]) -> list[Example]:
-    blocks: list[Example] = []
+def _extract_sequential(
+    section: nodes.section, visited: set[int]
+) -> list[ExampleBlock]:
+    blocks: list[ExampleBlock] = []
     current_label: str | None = None
     for node in section.findall(nodes.Element):
         if isinstance(node, nodes.paragraph):
@@ -157,14 +174,14 @@ def _extract_sequential(section: nodes.section, visited: set[int]) -> list[Examp
 
 
 def split_combined_examples(
-    blocks: list[Example],
-) -> tuple[list[Example], list[Example], list[Issue]]:
-    request: list[Example] = []
-    response: list[Example] = []
+    blocks: list[ExampleBlock],
+) -> tuple[list[ExampleBlock], list[ExampleBlock], list[Issue]]:
+    request: list[ExampleBlock] = []
+    response: list[ExampleBlock] = []
     guessed = False
 
     for block in blocks:
-        label = (block.label or "").lower()
+        label = (block.example.label or "").lower()
         if "response" in label:
             response.append(block)
         else:
@@ -186,7 +203,7 @@ def split_combined_examples(
 def add_examples_to_section(
     sections: dict[SectionName, Section],
     name: SectionName,
-    blocks: list[Example],
+    blocks: list[ExampleBlock],
     *,
     extra_issues: list[Issue] | None = None,
 ) -> None:
@@ -194,12 +211,13 @@ def add_examples_to_section(
         return
 
     issues = [*_example_json_issues(blocks), *(extra_issues or [])]
+    examples = [block.example for block in blocks]
     existing = sections.get(name)
     if existing is not None:
-        _extend_example_section(existing, blocks, issues)
+        _extend_example_section(existing, examples, issues)
         return
 
-    sections[name] = _create_example_section(name, blocks, issues)
+    sections[name] = _create_example_section(name, examples, issues)
 
 
 def _extract_item_label(item: nodes.list_item) -> str | None:
@@ -217,14 +235,15 @@ def _is_example_label(text: str) -> bool:
     )
 
 
-def _make_example(block: nodes.literal_block, *, label: str | None) -> Example:
+def _make_example(block: nodes.literal_block, *, label: str | None) -> ExampleBlock:
     raw = block.astext()
-    return Example(
+    example = Example(
         raw=raw,
         language=_extract_language(block),
         parsed=_try_parse_json(raw),
         label=label,
     )
+    return ExampleBlock(example, block_start_line(block))
 
 
 def _extract_language(block: nodes.literal_block) -> str | None:
@@ -237,8 +256,18 @@ def _extract_language(block: nodes.literal_block) -> str | None:
     )
 
 
+def _json_candidate(raw: str) -> tuple[str, int]:
+    """The text tried as JSON, and how many lines of ``raw`` precede it.
+
+    A leading HTTP request line is dropped, then surrounding whitespace.
+    """
+    without_prefix = EXAMPLE_HTTP_PREFIX_RE.sub("", raw, count=1)
+    start = len(raw) - len(without_prefix.lstrip())
+    return raw[start:].rstrip(), raw.count("\n", 0, start)
+
+
 def _try_parse_json(raw: str) -> dict | list | None:
-    candidate = EXAMPLE_HTTP_PREFIX_RE.sub("", raw, count=1).strip()
+    candidate, _ = _json_candidate(raw)
     if not candidate:
         return None
     try:
@@ -250,16 +279,40 @@ def _try_parse_json(raw: str) -> dict | list | None:
     return None
 
 
-def _example_json_issues(blocks: list[Example]) -> list[Issue]:
+def _example_json_issues(blocks: list[ExampleBlock]) -> list[Issue]:
     return [
         Issue(
             code=IssueCode.EXAMPLE_INVALID_JSON,
             location=f"example {index}",
-            details=(block.label or "")[:ISSUE_DETAILS_MAX] or None,
+            details=(block.example.label or "")[:ISSUE_DETAILS_MAX] or None,
+            line=_json_error_line(block),
         )
         for index, block in enumerate(blocks, start=1)
-        if block.parsed is None and _expects_json(block)
+        if block.example.parsed is None and _expects_json(block.example)
     ]
+
+
+def _json_error_line(block: ExampleBlock) -> int | None:
+    """RST line of the JSON error in ``block``, or its first line.
+
+    For a missing delimiter the JSON parser stops at the next token; the
+    delimiter belongs right after the previous one, which is often on the line
+    before. The block's first line is the answer when the JSON parses (a
+    scalar, which the parser does not keep) or is not JSON at all.
+    """
+    if block.start_line is None:
+        return None
+    candidate, skipped = _json_candidate(block.example.raw)
+    try:
+        json.loads(candidate)
+    except json.JSONDecodeError as error:
+        position = error.pos
+        if error.msg in _DELIMITER_ERRORS:
+            position = len(candidate[:position].rstrip()) - 1
+        return block.start_line + skipped + candidate.count("\n", 0, max(position, 0))
+    except ValueError:
+        pass
+    return block.start_line
 
 
 def _expects_json(block: Example) -> bool:

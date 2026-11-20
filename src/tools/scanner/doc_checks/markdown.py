@@ -43,11 +43,12 @@ def render_markdown(
         lines += [
             f"## {path}",
             "",
-            "| Section | Where | Problem |",
-            "| --- | --- | --- |",
+            "| Line | Section | Where | Problem |",
+            "| --- | --- | --- | --- |",
         ]
         lines += [
-            f"| {_cell(f.section)} | {_cell(f.location)} | {_cell(f.message)} |"
+            f"| {_cell(str(f.line) if f.line else None)} | {_cell(f.section)} "
+            f"| {_cell(f.location)} | {_cell(f.message)} |"
             for f in group
         ]
         lines.append("")

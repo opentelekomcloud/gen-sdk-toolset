@@ -704,14 +704,17 @@ def test_two_body_tables_merge(
 # produce an issue and degrade the section.
 # --------------------------------------------------------------------------- #
 def test_example_extend_invalid_json_degrades() -> None:
-    from tools.scanner.parsers.docutils.example import add_examples_to_section
+    from tools.scanner.parsers.docutils.example import (
+        ExampleBlock,
+        add_examples_to_section,
+    )
 
     results: dict = {}
     # First call creates the section from a valid JSON example → OK.
     add_examples_to_section(
         results,
         SectionName.EXAMPLE_REQUEST,
-        [Example(raw='{"a": 1}', parsed={"a": 1})],
+        [ExampleBlock(Example(raw='{"a": 1}', parsed={"a": 1}))],
     )
     assert results[SectionName.EXAMPLE_REQUEST].scan_result.status is SectionStatus.OK
 
@@ -719,7 +722,7 @@ def test_example_extend_invalid_json_degrades() -> None:
     add_examples_to_section(
         results,
         SectionName.EXAMPLE_REQUEST,
-        [Example(raw='{"a": ...}', parsed=None)],
+        [ExampleBlock(Example(raw='{"a": ...}', parsed=None))],
     )
     sec = results[SectionName.EXAMPLE_REQUEST]
     assert len(sec.examples) == 2
@@ -728,13 +731,16 @@ def test_example_extend_invalid_json_degrades() -> None:
 
 
 def test_non_json_example_does_not_degrade() -> None:
-    from tools.scanner.parsers.docutils.example import add_examples_to_section
+    from tools.scanner.parsers.docutils.example import (
+        ExampleBlock,
+        add_examples_to_section,
+    )
 
     results: dict = {}
     add_examples_to_section(
         results,
         SectionName.EXAMPLE_REQUEST,
-        [Example(raw="GET /v1/items", language="text")],
+        [ExampleBlock(Example(raw="GET /v1/items", language="text"))],
     )
 
     section = results[SectionName.EXAMPLE_REQUEST]

@@ -43,7 +43,7 @@ def test_one_table_per_file_in_the_given_order() -> None:
     assert report.index("## api-ref/source/a.rst") < report.index(
         "## api-ref/source/b.rst"
     )
-    assert report.count("| Section | Where | Problem |") == 2
+    assert report.count("| Line | Section | Where | Problem |") == 2
     assert "Commit:" not in report
 
 
@@ -53,3 +53,23 @@ def test_cells_cannot_break_the_table() -> None:
     report = render_markdown([finding], repo="vpc", commit=None, dirty=False)
 
     assert "| body | row 1 | Type `a\\|b` is odd. |" in report
+
+
+def test_line_column_shows_the_rst_line_or_a_dash() -> None:
+    with_line = DocFinding(
+        check=DocCheck.TYPE_PROSE,
+        path="x.rst",
+        section="body",
+        location="row 1",
+        message="Broken.",
+        line=12,
+    )
+    without_line = _finding("x.rst", "row 2")
+
+    report = render_markdown(
+        [with_line, without_line], repo="vpc", commit=None, dirty=False
+    )
+
+    assert "| Line | Section | Where | Problem |" in report
+    assert "| 12 | body | row 1 | Broken. |" in report
+    assert "| — | body | row 2 | Broken. |" in report

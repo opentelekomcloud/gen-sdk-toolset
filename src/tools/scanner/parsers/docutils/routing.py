@@ -29,6 +29,7 @@ from .section import (
     classify_table_title,
     default_table_section,
 )
+from .source_lines import block_start_line
 from .status_code import StatusCodeExtraction, extract_status_code_table
 from .table import ExtractionMetrics, TableExtraction, extract_parameter_table
 from .types import SectionKind, TableTarget
@@ -408,6 +409,7 @@ def _report_unread_blocks(
                 code=IssueCode.UNMAPPED_BLOCK,
                 location=f"{kind.value} block {index}",
                 details=_block_preview(block),
+                line=block_start_line(block),
             )
         )
 

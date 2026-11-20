@@ -55,8 +55,11 @@ def find_doc_errors(result: RepositoryScanResult) -> list[DocFinding]:
         findings.extend(_document_findings(document))
     return sorted(
         findings,
+        # Top to bottom within a file; findings without a line go last.
         key=lambda f: (
             f.path,
+            f.line is None,
+            f.line or 0,
             f.section or "",
             _natural(f.location or ""),
             f.check.value,
@@ -109,26 +112,20 @@ def _invalid_json_findings(
         example = broken[position] if position < len(broken) else None
         if example is None:
             message = "Example is not valid JSON."
-            line = column = None
         else:
             error = _json_error(example)
             if error is None:
                 # Valid JSON the parser does not keep: a scalar such as
                 # null, true, 42 or "text". Not a documentation error.
                 continue
-            message = (
-                f"Example is not valid JSON: {error.msg} "
-                f"(line {error.lineno}, column {error.colno})."
-            )
-            line, column = error.lineno, error.colno
+            message = f"Example is not valid JSON: {error.msg}."
         yield DocFinding(
             check=DocCheck.INVALID_JSON,
             path=path,
             section=section.name.value,
             location=issue.location,
             message=message,
-            json_line=line,
-            json_column=column,
+            line=issue.line,
         )
 
 
@@ -158,6 +155,7 @@ def _type_finding(path: str, section: str, issue: Issue) -> DocFinding | None:
         section=section,
         location=issue.location,
         message=message,
+        line=issue.line,
     )
 
 
@@ -216,6 +214,7 @@ def _path_param_finding(path: str, section: str, issue: Issue) -> DocFinding | N
             f"Parameter `{name}` does not match the path placeholder "
             f"`{{{placeholder}}}`."
         ),
+        line=issue.line,
     )
 
 
@@ -251,6 +250,7 @@ def _ref_page_finding(path: str, section: str, issue: Issue) -> DocFinding | Non
             f"Field `{issue.location}` links to a whole page (`{anchor}`) "
             "instead of a table."
         ),
+        line=issue.line,
     )
 
 
@@ -263,6 +263,7 @@ def _code_block_finding(path: str, section: str, issue: Issue) -> DocFinding | N
         section=section,
         location=issue.location,
         message="Empty or broken code-block directive.",
+        line=issue.line,
     )
 
 

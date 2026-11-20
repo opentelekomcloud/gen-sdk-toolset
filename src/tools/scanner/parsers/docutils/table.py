@@ -36,6 +36,7 @@ from .rst_nodes import (
     first_ref_target,
     header_preview,
 )
+from .source_lines import row_line
 
 
 @dataclass
@@ -51,6 +52,8 @@ class TableRow:
     parameter: Parameter
     ref_anchor: str | None = None
     description_anchors: tuple[str, ...] = ()
+    #: RST line of the row, so diagnostics about this parameter can point to it.
+    line: int | None = None
 
 
 @dataclass
@@ -143,6 +146,7 @@ def _append_parameter_row(
                 code=IssueCode.UNKNOWN_TYPE_FORMAT,
                 location=f"row {row_idx}",
                 details=type_raw[:ISSUE_DETAILS_MAX],
+                line=param_row.line,
             )
         )
     else:
@@ -194,6 +198,7 @@ def _extract_parameter_row(
                 if parameter.supports_children
                 else ()
             ),
+            line=row_line(row),
         ),
         type_raw,
     )
