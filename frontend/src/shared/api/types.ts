@@ -43,6 +43,7 @@ export type GenerationServiceItem = Schemas["GenerationServiceItem"];
 export type Layout = Schemas["LayoutResponse"];
 export type LayoutVersion = Schemas["LayoutVersionItem"];
 export type LayoutResource = Schemas["LayoutResourceItem"];
+export type ResourceSpec = Schemas["ResourceSpecResponse"];
 export type AddResourceRequest = Schemas["AddResourceRequest"];
 export type RenameResourceRequest = Schemas["RenameResourceRequest"];
 export type MoveEndpointRequest = Schemas["MoveEndpointRequest"];
