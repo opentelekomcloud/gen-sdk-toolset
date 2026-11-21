@@ -38,6 +38,41 @@ const KIND_CLS: Record<GenOperationKind, string> = {
   custom: "border-purple-200 bg-purple-50 text-purple-700",
 };
 
+function SectionTitle({ label, hint }: { label: string; hint: string }) {
+  return (
+    <div className="mb-2 flex items-baseline gap-2">
+      <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{label}</span>
+      <span className="text-[10px] text-gray-400">{hint}</span>
+    </div>
+  );
+}
+
+function OperationColumns() {
+  const { t } = useI18n();
+  return (
+    <div className="grid grid-cols-12 gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+      <div className="col-span-3">{t("gen.spec.ops.col.operation")}</div>
+      <div className="col-span-2">{t("gen.spec.ops.col.kind")}</div>
+      <div className="col-span-4">{t("gen.spec.ops.col.endpoint")}</div>
+      <div className="col-span-3">{t("gen.spec.ops.col.sdk")}</div>
+    </div>
+  );
+}
+
+function specSummary(
+  t: ReturnType<typeof useI18n>["t"],
+  n: { target: string; version: string; operations: number; base: number; custom: number; classes: number },
+) {
+  return [
+    t("gen.spec.heading", { target: n.target }),
+    n.version,
+    t("gen.spec.operations", { n: n.operations }),
+    t("gen.spec.base", { n: n.base }),
+    t("gen.spec.custom", { n: n.custom }),
+    t("gen.spec.classes", { n: n.classes }),
+  ].join(" · ");
+}
+
 /**
  * A field of a class, and under it - when opened - its problem: what is wrong,
  * the documents it comes from, the types to choose from and who chose one.
@@ -186,8 +221,7 @@ function FieldRow({
  * its job instead, as on the card. The prototype's dependencies block is gone
  * (owner decision). The target rides along in the address.
  *
- * The prototype on the mock, by the mock's string id, behind `SHOW_GEN_JOBS`.
- * TODO(#150): delete with the mock.
+ * TODO(#150): the prototype behind `SHOW_GEN_JOBS`; delete with the mock.
  */
 function PrototypeSpecPage() {
   const { name = "", version = "", resource: id = "" } = useParams();
@@ -251,14 +285,14 @@ function PrototypeSpecPage() {
   const hold = holdOf(resource, target, targetsBlock.data);
   const resultTo = pathTo(["result", resource.version, resource.id]);
   const toResult = { ...fromList, fromSpec: true } satisfies FromSpec;
-  const summary = [
-    t("gen.spec.heading", { target: target.label }),
-    resource.version,
-    t("gen.spec.operations", { n: operations.length }),
-    t("gen.spec.base", { n: operations.filter((o) => o.kind === "base").length }),
-    t("gen.spec.custom", { n: operations.filter((o) => o.kind === "custom").length }),
-    t("gen.spec.classes", { n: classes.length }),
-  ].join(" · ");
+  const summary = specSummary(t, {
+    target: target.label,
+    version: resource.version,
+    operations: operations.length,
+    base: operations.filter((o) => o.kind === "base").length,
+    custom: operations.filter((o) => o.kind === "custom").length,
+    classes: classes.length,
+  });
   const refusal = [generate, choose].find((m) => m.isError);
 
   return (
@@ -310,17 +344,9 @@ function PrototypeSpecPage() {
         />
       )}
 
-      <div className="mb-2 flex items-baseline gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t("gen.spec.ops")}</span>
-        <span className="text-[10px] text-gray-400">{t("gen.spec.ops.hint")}</span>
-      </div>
+      <SectionTitle label={t("gen.spec.ops")} hint={t("gen.spec.ops.hint")} />
       <div className="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="grid grid-cols-12 gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-          <div className="col-span-3">{t("gen.spec.ops.col.operation")}</div>
-          <div className="col-span-2">{t("gen.spec.ops.col.kind")}</div>
-          <div className="col-span-4">{t("gen.spec.ops.col.endpoint")}</div>
-          <div className="col-span-3">{t("gen.spec.ops.col.sdk")}</div>
-        </div>
+        <OperationColumns />
         {operations.map(({ endpoint, kind, sdkMethod }) => (
           <div
             key={endpoint.id}
@@ -366,10 +392,7 @@ function PrototypeSpecPage() {
         ))}
       </div>
 
-      <div className="mb-2 flex items-baseline gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t("gen.spec.entities")}</span>
-        <span className="text-[10px] text-gray-400">{t("gen.spec.entities.hint")}</span>
-      </div>
+      <SectionTitle label={t("gen.spec.entities")} hint={t("gen.spec.entities.hint")} />
       {classes.map((c) => {
         const toDecide = c.fields.filter(undecided).length;
         return (
@@ -413,15 +436,10 @@ function PrototypeSpecPage() {
   );
 }
 
-/** The spec page: the server's, or the prototype while generation itself is switched on. */
 export function GenerationSpecPage() {
   return SHOW_GEN_JOBS ? <PrototypeSpecPage /> : <ServerSpecPage />;
 }
 
-/**
- * The spec of a resource of the stored layout, as the server builds it on every
- * request (ADR-0115). The address names the resource by the layout's numeric id.
- */
 function ServerSpecPage() {
   const { name = "", version = "", resource = "" } = useParams();
   const [searchParams] = useSearchParams();
@@ -473,15 +491,15 @@ function ServerSpecPage() {
   if (!laid) return <PageNotFound back={back} />;
 
   const { operations, classes } = specBlock.data;
-  const summary = [
-    t("gen.spec.heading", { target: target.label }),
+  const summary = specSummary(t, {
+    target: target.label,
     version,
-    t("gen.spec.operations", { n: operations.length }),
+    operations: operations.length,
     /* TODO(ISS-0091): count the operations by their kind. */
-    t("gen.spec.base", { n: 0 }),
-    t("gen.spec.custom", { n: 0 }),
-    t("gen.spec.classes", { n: classes.length }),
-  ].join(" · ");
+    base: 0,
+    custom: 0,
+    classes: classes.length,
+  });
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-5">
@@ -495,26 +513,15 @@ function ServerSpecPage() {
       </div>
 
       <section aria-label={t("gen.spec.ops")}>
-        <div className="mb-2 flex items-baseline gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t("gen.spec.ops")}</span>
-          <span className="text-[10px] text-gray-400">{t("gen.spec.ops.hint")}</span>
-        </div>
+        <SectionTitle label={t("gen.spec.ops")} hint={t("gen.spec.ops.hint")} />
         <div className="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="grid grid-cols-12 gap-3 border-b border-gray-200 bg-gray-50 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-            <div className="col-span-3">{t("gen.spec.ops.col.operation")}</div>
-            <div className="col-span-2">{t("gen.spec.ops.col.kind")}</div>
-            <div className="col-span-4">{t("gen.spec.ops.col.endpoint")}</div>
-            <div className="col-span-3">{t("gen.spec.ops.col.sdk")}</div>
-          </div>
+          <OperationColumns />
           {/* TODO(ISS-0091): a row for each operation. */}
         </div>
       </section>
 
       <section aria-label={t("gen.spec.entities")}>
-        <div className="mb-2 flex items-baseline gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{t("gen.spec.entities")}</span>
-          <span className="text-[10px] text-gray-400">{t("gen.spec.entities.hint")}</span>
-        </div>
+        <SectionTitle label={t("gen.spec.entities")} hint={t("gen.spec.entities.hint")} />
         {/* TODO(ISS-0092): a block for each class. */}
       </section>
     </div>

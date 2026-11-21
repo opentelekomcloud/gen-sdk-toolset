@@ -993,7 +993,6 @@ describe("the spec of a resource of the stored layout (ISS-0074)", () => {
   const SPEC = "/api/generation/services/billing-api/spec/v1/7";
   const EMPTY_SPEC = { operations: [], classes: [] };
 
-  /* The page as it ships: generation itself switched off. */
   beforeEach(() => {
     flags.showGenJobs = false;
   });

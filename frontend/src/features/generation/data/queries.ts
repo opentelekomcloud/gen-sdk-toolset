@@ -79,10 +79,7 @@ export function useGenerationResources(name: string, { enabled = true }: { enabl
   return useQuery({ queryKey: keys.genResources(name), queryFn: async () => generationResources(name), enabled });
 }
 
-/**
- * What one resource of the stored layout will be generated as, built by the
- * server on every request (ADR-0115). `enabled: false` holds it back.
- */
+/** A resource's spec, built by the server on every request (ADR-0115). */
 export function useGenerationSpec(name: string, version: string, id: number, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: keys.genSpec(name, id),
@@ -94,7 +91,7 @@ export function useGenerationSpec(name: string, version: string, id: number, { e
   });
 }
 
-/** The prototype's spec of a mock resource. TODO(#150): delete with the mock. */
+/** TODO(#150): delete with the mock. */
 export function useMockGenerationSpec(name: string, resource: string) {
   return useQuery({ queryKey: keys.genSpec(name, resource), queryFn: async () => generationSpec(name, resource) });
 }
