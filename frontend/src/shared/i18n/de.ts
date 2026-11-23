@@ -328,6 +328,7 @@ export const de: Record<keyof typeof en, string> = {
   "gen.layout.notShown": "Dieser Service hat ein Layout, das hier noch nicht angezeigt werden kann.",
   "gen.layout.footer": "Bestätigte Ressourcen sind für jede Ausgabe bereit.",
   "gen.spec.back": "Layout von {name}",
+  "gen.spec.notConfirmed": "Ressource nicht bestätigt",
   "gen.spec.heading": "Generierungsspezifikation · {target}",
   "gen.spec.operations": "{n} Operation|{n} Operationen",
   "gen.spec.base": "{n} Basis",

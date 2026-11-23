@@ -827,24 +827,48 @@
         "type": "string"
       },
       "ResourceSpecResponse": {
-        "description": "The specification of one resource: its Operations and Entities sections.\n\nBuilt on every request (ADR-0115); there is no separate list of problem\nfields - they are shown at the fields of ``classes`` (ADR-0088).",
+        "description": "The specification of one resource: its Operations and Entities sections.\n\nBuilt on every request (ADR-0115); there is no separate list of problem\nfields - they are shown at the fields of ``classes`` (ADR-0088). Both\nsections are null while the resource is not confirmed (ADR-0087).",
         "properties": {
           "classes": {
-            "items": {
-              "$ref": "#/components/schemas/SpecClassItem"
-            },
-            "title": "Classes",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SpecClassItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classes"
+          },
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
           },
           "operations": {
-            "items": {
-              "$ref": "#/components/schemas/SpecOperationItem"
-            },
-            "title": "Operations",
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SpecOperationItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operations"
           }
         },
         "required": [
+          "name",
+          "confirmed",
           "operations",
           "classes"
         ],
@@ -2108,7 +2132,7 @@
     },
     "/api/generation/services/{repo}/spec/{version}/{resource_id}": {
       "get": {
-        "description": "The specification of one resource of a service on the Generation list.\n\nBuilt on every request, so it follows the current layout and the active\nSnapshot (ADR-0115). A repository off that list, or a resource its layout\nlacks, answers 404. TODO(ISS-0081): ``version`` is not checked yet, nor is\nwhether the resource is confirmed.",
+        "description": "The specification of one resource of a service on the Generation list.\n\nBuilt on every request, so it follows the current layout and the active\nSnapshot (ADR-0115). A repository off that list, or a resource its layout\nlacks in ``version``, answers 404 (ADR-0087).",
         "operationId": "get_resource_spec_api_generation_services__repo__spec__version___resource_id__get",
         "parameters": [
           {

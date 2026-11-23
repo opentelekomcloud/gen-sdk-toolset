@@ -80,10 +80,9 @@ def get_resource_spec(
 
     Built on every request, so it follows the current layout and the active
     Snapshot (ADR-0115). A repository off that list, or a resource its layout
-    lacks, answers 404. TODO(ISS-0081): ``version`` is not checked yet, nor is
-    whether the resource is confirmed.
+    lacks in ``version``, answers 404 (ADR-0087).
     """
-    spec = resource_spec(db, generation_service(db, repo), resource_id)
+    spec = resource_spec(db, generation_service(db, repo), version, resource_id)
     if spec is None:
         raise HTTPException(status_code=404, detail="Resource not found")
     return ResourceSpecResponse.from_spec(spec)

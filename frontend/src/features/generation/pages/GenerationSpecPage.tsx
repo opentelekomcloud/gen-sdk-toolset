@@ -2,7 +2,6 @@ import { useState } from "react";
 import { AlertTriangle, Check, ExternalLink, Play } from "lucide-react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import {
-  useGenerationLayout,
   useGenerationResources,
   useGenerationServices,
   useGenerationSpec,
@@ -16,6 +15,7 @@ import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
 import { LayoutBadge } from "../components/LayoutBadge";
 import { NoTargets } from "../components/NoTargets";
+import { PageMessage } from "../components/PageMessage";
 import { PageNotFound } from "../components/PageNotFound";
 import { SHOW_GEN_JOBS, SHOW_GEN_RESULT } from "../flags";
 import { holdOf, undecided } from "../lib/layout";
@@ -447,50 +447,55 @@ function ServerSpecPage() {
   const { t } = useI18n();
   /* the route takes a number only, and answers anything else 422 */
   const valid = /^[1-9][0-9]*$/.test(resource);
-  const id = Number(resource);
   const targets = useGenerationTargets();
-  const layout = useGenerationLayout(name, { enabled: valid });
-  const spec = useGenerationSpec(name, version, id, { enabled: valid });
+  const spec = useGenerationSpec(name, version, Number(resource), { enabled: valid });
   const targetsBlock = blockOf(targets);
-  const layoutBlock = blockOf(layout);
   const specBlock = blockOf(spec);
 
   const listTo = listPath(fromList);
-  /* TODO(ISS-0081): tell a missing resource, another version and an unconfirmed one apart. */
-  if (!valid || isNotFound(layout.error) || isNotFound(spec.error)) {
+  if (!valid || isNotFound(spec.error)) {
     return <PageNotFound back={<ServiceBackLink to={listTo} state={fromList} />} />;
   }
-  if (targetsBlock.failed || layoutBlock.failed || specBlock.failed) {
+  if (targetsBlock.failed || specBlock.failed) {
     return (
       <ServiceLoadFailed
         back={listTo}
         backState={fromList}
         onRetry={() => {
           if (targetsBlock.failed) void retryJoining(targets);
-          if (layoutBlock.failed) void retryJoining(layout);
           if (specBlock.failed) void retryJoining(spec);
         }}
       />
     );
   }
-  if (!targetsBlock.data || !layoutBlock.data || !specBlock.data) return <ServiceLoading />;
+  if (!targetsBlock.data || !specBlock.data) return <ServiceLoading />;
 
   const chosen = chosenTarget(targetsBlock.data, searchParams.get("target"));
   if (!chosen) return <NoTargets back={listTo} backState={fromList} targets={targets} />;
   const { target, defaultTarget } = chosen;
-  const back = (
-    <ServiceBackLink
-      to={servicePath(name, target, defaultTarget)}
-      state={fromList}
-      label={t("gen.spec.back", { name })}
-    />
-  );
-  const laid = layoutBlock.data.versions
-    .find((v) => v.api_version === version)
-    ?.resources.find((r) => r.id === id);
-  if (!laid) return <PageNotFound back={back} />;
+  const cardTo = servicePath(name, target, defaultTarget);
+  const back = <ServiceBackLink to={cardTo} state={fromList} label={t("gen.spec.back", { name })} />;
 
-  const { operations, classes } = specBlock.data;
+  const { confirmed, operations, classes } = specBlock.data;
+  if (!confirmed || !operations || !classes) {
+    return (
+      <PageMessage
+        back={back}
+        note={t("gen.spec.notConfirmed")}
+        link={{ to: servicePath(name, target, defaultTarget, ["layout"]), label: t("gen.card.editLayout") }}
+      />
+    );
+  }
+  if (!target.live) {
+    return (
+      <PageMessage
+        back={back}
+        note={t("gen.hold.notConnected", { target: target.label })}
+        link={{ to: cardTo, label: t("gen.layout.toCard") }}
+      />
+    );
+  }
+
   const summary = specSummary(t, {
     target: target.label,
     version,
@@ -507,7 +512,7 @@ function ServerSpecPage() {
 
       <div className="mb-4">
         <h1 className="font-mono text-xl font-semibold text-gray-900">
-          {name.replaceAll("-", "_")}.{laid.name}
+          {name.replaceAll("-", "_")}.{specBlock.data.name}
         </h1>
         <div className="mt-1 text-xs text-gray-400">{summary}</div>
       </div>

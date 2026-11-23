@@ -1841,26 +1841,51 @@ def _spec(resource_id: int, repo: str = REPO, version: str = "v1") -> str:
     return f"/api/generation/services/{repo}/spec/{version}/{resource_id}"
 
 
-def test_spec_has_operations_and_classes_and_nothing_else(laid_out, session_factory):
-    servers = _place(session_factory, "servers", [LIST_SERVERS, CREATE_SERVER])
+def test_spec_of_a_confirmed_resource_has_its_name_and_both_sections(
+    laid_out, session_factory
+):
+    servers = _place(
+        session_factory, "servers", [LIST_SERVERS, CREATE_SERVER], confirmed_by="val"
+    )
 
     response = laid_out.get(_spec(servers))
 
     assert response.status_code == 200
-    assert response.json() == {"operations": [], "classes": []}
+    assert response.json() == {
+        "name": "servers",
+        "confirmed": True,
+        "operations": [],
+        "classes": [],
+    }
+
+
+def test_spec_of_an_unconfirmed_resource_has_no_sections(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+
+    response = laid_out.get(_spec(servers))
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "name": "servers",
+        "confirmed": False,
+        "operations": None,
+        "classes": None,
+    }
 
 
 def test_spec_is_built_by_a_function_callable_outside_the_route(
     laid_out, session_factory
 ):
     """The generation job builds its model with the same function (ADR-0114)."""
-    servers = _place(session_factory, "servers", [CREATE_SERVER])
+    servers = _place(session_factory, "servers", [CREATE_SERVER], confirmed_by="val")
 
     with session_factory() as session:
         service = session.scalars(select(Service).where(Service.repo == REPO)).one()
-        spec = resource_spec(session, service, servers)
+        spec = resource_spec(session, service, "v1", servers)
 
-    assert spec == ResourceSpec(operations=[], classes=[])
+    assert spec == ResourceSpec(
+        name="servers", confirmed=True, operations=[], classes=[]
+    )
 
 
 def test_spec_of_a_resource_the_layout_lacks_is_not_found(laid_out, session_factory):
@@ -1872,6 +1897,15 @@ def test_spec_of_a_resource_the_layout_lacks_is_not_found(laid_out, session_fact
     assert response.json() == {
         "error": {"code": "not_found", "message": "Resource not found"}
     }
+
+
+def test_spec_of_a_resource_of_another_version_is_not_found(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER], confirmed_by="val")
+
+    response = laid_out.get(_spec(servers, version="v2"))
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == "Resource not found"
 
 
 def test_spec_of_another_services_resource_is_not_found(laid_out, session_factory):
