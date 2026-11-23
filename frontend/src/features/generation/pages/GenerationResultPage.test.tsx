@@ -454,7 +454,7 @@ describe("the result of contacts: its generation failed", () => {
       ...spec,
       classes: [{ ...contact, fields: contact.fields.map((f) => (f.name === "name" ? { ...f, issue } : f)) }],
     };
-    panel(CONTACTS, [[keys.genSpec("customer-core", "c_contacts"), open]]);
+    panel(CONTACTS, [[keys.genMockSpec("customer-core", "c_contacts"), open]]);
 
     expect(await screen.findByText("decide the highlighted field first")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry generation" })).toBeDisabled();

@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { Route, Routes, useLocation } from "react-router";
+import { Route, Routes, useLocation, useNavigate } from "react-router";
 import { backend, FAILED, NOT_FOUND, pollAgain, renderPage } from "../../../test/render";
 import { keys } from "../../scan/api/queries";
 import { answerStoredLayouts, expectRetryJoinsResources, mockSeeds } from "../../../test/generationMock";
@@ -997,9 +998,24 @@ describe("the spec of a resource of the stored layout (ISS-0074, ISS-0081)", () 
     flags.showGenJobs = false;
   });
 
-  function serverSpecPage(answers: Record<string, unknown>, path = PATH) {
+  function serverSpecPage(answers: Record<string, unknown>, path = PATH, extra?: ReactNode) {
     const api = backend(answers);
-    return { ...renderPage(<GenerationSpecPage />, { path, route: "/generation/:name/spec/:version/:resource" }), api };
+    const page = (
+      <>
+        <GenerationSpecPage />
+        {extra}
+      </>
+    );
+    return { ...renderPage(page, { path, route: "/generation/:name/spec/:version/:resource" }), api };
+  }
+
+  function GoTo({ to }: { to: string }) {
+    const navigate = useNavigate();
+    return (
+      <button type="button" onClick={() => navigate(to)}>
+        go
+      </button>
+    );
   }
 
   it("reads the spec from the server alone, in its two sections (ADR-0088)", async () => {
@@ -1023,7 +1039,7 @@ describe("the spec of a resource of the stored layout (ISS-0074, ISS-0081)", () 
     expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
 
     answers[SPEC] = confirmed("bills");
-    await pollAgain(client, keys.genSpec("billing-api", 7));
+    await pollAgain(client, keys.genSpec("billing-api", "v1", 7));
 
     expect(await screen.findByRole("heading", { name: "billing_api.bills" })).toBeInTheDocument();
     expect(api.calls(SPEC)).toBe(2);
@@ -1047,7 +1063,7 @@ describe("the spec of a resource of the stored layout (ISS-0074, ISS-0081)", () 
     expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
 
     answers[SPEC] = FAILED;
-    await pollAgain(client, keys.genSpec("billing-api", 7));
+    await pollAgain(client, keys.genSpec("billing-api", "v1", 7));
 
     expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "billing_api.invoices" })).toBeNull();
@@ -1057,6 +1073,17 @@ describe("the spec of a resource of the stored layout (ISS-0074, ISS-0081)", () 
     serverSpecPage({ [SPEC]: NOT_FOUND });
 
     expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+  });
+
+  it("asks the server again when the address moves to another version of the same id", async () => {
+    const V2 = "/api/generation/services/billing-api/spec/v2/7";
+    const { api } = serverSpecPage({ [SPEC]: confirmed(), [V2]: NOT_FOUND }, PATH, <GoTo to="/generation/billing-api/spec/v2/7" />);
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "go" }));
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(api.calls(V2)).toBe(1);
   });
 
   it("does not ask the server for an address that names no numeric id", async () => {
@@ -1091,7 +1118,7 @@ describe("the spec of a resource of the stored layout (ISS-0074, ISS-0081)", () 
     expect(await screen.findByText("Resource not confirmed")).toBeInTheDocument();
 
     answers[SPEC] = NOT_FOUND;
-    await pollAgain(client, keys.genSpec("billing-api", 7));
+    await pollAgain(client, keys.genSpec("billing-api", "v1", 7));
 
     expect(await screen.findByText("Page not found.")).toBeInTheDocument();
   });
@@ -1102,7 +1129,7 @@ describe("the spec of a resource of the stored layout (ISS-0074, ISS-0081)", () 
     expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
 
     answers[SPEC] = unconfirmed;
-    await pollAgain(client, keys.genSpec("billing-api", 7));
+    await pollAgain(client, keys.genSpec("billing-api", "v1", 7));
 
     expect(await screen.findByText("Resource not confirmed")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "billing_api.invoices" })).toBeNull();

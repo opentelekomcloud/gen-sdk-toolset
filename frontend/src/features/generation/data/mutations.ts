@@ -137,7 +137,7 @@ export function useChooseType(name: string, resource: string) {
   const { name: by } = useSession();
   return useMutation({
     mutationFn: async ({ cls, field, type }: TypeChoice) => chooseType(name, resource, cls, field, type, by),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.genSpec(name, resource) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: keys.genMockSpec(name, resource) }),
   });
 }
 
