@@ -1,22 +1,14 @@
 import { useMutation, useMutationState, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, isConflict, isNotFound } from "../../scan/api/client";
-import { invalidateFromGenLayout, invalidateGenJobs, invalidateGenLayout, keys } from "../../scan/api/queries";
-import type { Layout } from "../../../shared/api/types";
+import { invalidateGenJobs, invalidateGenLayout, keys, showGenLayout } from "../../scan/api/queries";
+import type {
+  AddResourceRequest,
+  Layout,
+  MoveEndpointRequest,
+  RenameResourceRequest,
+} from "../../../shared/api/types";
 import { useSession } from "../../../shared/auth/useSession";
-import {
-  addResource,
-  chooseType,
-  confirmResource,
-  liveCall,
-  moveEndpoint,
-  refreshPullRequest,
-  renameResource,
-  resetResource,
-  resetVersion,
-  saveOtcSettings,
-  startGeneration,
-  testOtcSettings,
-} from "./mock";
+import { chooseType, liveCall, refreshPullRequest, saveOtcSettings, startGeneration, testOtcSettings } from "./mock";
 import type { OtcSettingsForm } from "./types";
 
 /**
@@ -51,12 +43,7 @@ export function useStartLayout() {
        button does not come back in between to be clicked again. */
     onSuccess: async (stored, repo) => {
       if (typeof stored === "object") {
-        /* The answer is the stored layout: shown as it is, and what it feeds
-           read again. A read of the layout still under way may hold an answer
-           from before the grouping; it is dropped, so it cannot land on top. */
-        await qc.cancelQueries({ queryKey: keys.genLayout(repo) });
-        qc.setQueryData(keys.genLayout(repo), stored);
-        await invalidateFromGenLayout(qc, repo);
+        await showGenLayout(qc, repo, stored);
         return;
       }
       if (stored === "taken") {
@@ -68,52 +55,74 @@ export function useStartLayout() {
   });
 }
 
-/** One change to the shared layout of a service, by resource, endpoint and version id. */
+/**
+ * One of the edits the server takes (ADR-0064): a resource is named by its
+ * `id`, which a rename keeps, and an endpoint by its document `path`. There is
+ * no delete, and nothing sends an endpoint back to "unassigned" or "no version".
+ */
 export type LayoutEdit =
-  | { kind: "rename"; resource: string; name: string }
-  | { kind: "move"; endpoint: string; to: string }
-  | { kind: "add"; version: string }
-  | { kind: "confirm"; resource: string }
-  | { kind: "resetResource"; resource: string }
-  | { kind: "resetVersion"; version: string };
+  | { kind: "add"; version: string; name: string }
+  | { kind: "rename"; resource: number; name: string }
+  | { kind: "move"; path: string; to: number };
+
+/** The request of an edit: where it goes, and what it sends. */
+function editRequest(repo: string, edit: LayoutEdit): { path: string; body: unknown } {
+  const layout = `/generation/services/${encodeURIComponent(repo)}/layout`;
+  switch (edit.kind) {
+    case "add":
+      return {
+        path: `${layout}/resources`,
+        body: { api_version: edit.version, name: edit.name } satisfies AddResourceRequest,
+      };
+    case "rename":
+      return { path: `${layout}/resources/${edit.resource}/rename`, body: { name: edit.name } satisfies RenameResourceRequest };
+    case "move":
+      return {
+        path: `${layout}/endpoints/move`,
+        body: { path: edit.path, resource_id: edit.to } satisfies MoveEndpointRequest,
+      };
+  }
+}
 
 /**
- * Edits of a service's layout. Nothing changes on screen before the mock has
- * answered, so there is nothing to roll back: a refusal comes back as the
- * mutation's error, and the layout is fetched again either way. A confirmation
- * records the signed-in user; the mock records when (owner decision). The edits
- * are kept for the session, for `useLayoutEdited`.
+ * Edits of a service's stored layout, each answered with the whole layout.
+ * Nothing changes on screen before the server has answered, so there is
+ * nothing to roll back. The answer is shown as it is, and what the layout feeds
+ * is read again. A refusal leaves the layout unchanged on the server and comes
+ * back as the mutation's error; it says the page may be behind - a name taken
+ * meanwhile, a resource or an endpoint gone - so the layout is read again too.
+ * The caller sends one edit at a time, while none is under way: the answers of
+ * two at once could arrive out of order, the older shown over the newer.
+ *
+ * The repo goes in with `mutate`, and the answer is filed under it rather than
+ * under the hook's `name`: a page reused for another service while an edit is
+ * under way must not file one service's layout under another's. The edits that
+ * went through are kept for the session, for `useLayoutEdited`.
  */
 export function useEditLayout(name: string) {
   const qc = useQueryClient();
-  const { name: by } = useSession();
   return useMutation({
     mutationKey: keys.genLayoutEdit(name),
     gcTime: Infinity,
-    mutationFn: async (edit: LayoutEdit) => {
-      switch (edit.kind) {
-        case "rename":
-          return renameResource(name, edit.resource, edit.name);
-        case "move":
-          return moveEndpoint(name, edit.endpoint, edit.to);
-        case "add":
-          return addResource(name, edit.version);
-        case "confirm":
-          return confirmResource(name, edit.resource, by);
-        case "resetResource":
-          return resetResource(name, edit.resource);
-        case "resetVersion":
-          return resetVersion(name, edit.version);
-      }
+    /* The answer goes to the layout's cache here, not into the mutation's
+       data: an edit is kept for the session, and keeps no copy of a layout. */
+    mutationFn: async ({ repo, edit }: { repo: string; edit: LayoutEdit }): Promise<void> => {
+      const { path, body } = editRequest(repo, edit);
+      await showGenLayout(qc, repo, await apiFetch<Layout>(path, { method: "POST", body: JSON.stringify(body) }));
     },
-    onSettled: () => void invalidateGenLayout(qc, name),
+    /* Not awaited: the refusal is the page's to show now, not once the layout
+       has been read again - a slow read would hold it back and keep the edit
+       under way. */
+    onError: (_error, { repo }) => {
+      void invalidateGenLayout(qc, repo);
+    },
   });
 }
 
 /**
  * Whether an edit of the service's layout went through in this session: the
- * prototype's note, kept per service until the panel reloads - as long as the
- * mock keeps the edits - however often the page is left.
+ * prototype's note, kept per service until the panel reloads, however often
+ * the page is left.
  */
 export function useLayoutEdited(name: string) {
   return useMutationState({ filters: { mutationKey: keys.genLayoutEdit(name), exact: true, status: "success" } }).length > 0;

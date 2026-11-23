@@ -265,7 +265,7 @@ export function GenerationSpecPage() {
             <h1 className="font-mono text-xl font-semibold text-gray-900">
               {name.replaceAll("-", "_")}.{resource.name}
             </h1>
-            <LayoutBadge resource={resource} />
+            <LayoutBadge confirmed={resource.confirmedBy != null} origin={resource.origin} />
           </div>
           <div className="mt-1 text-xs text-gray-400">{summary}</div>
         </div>

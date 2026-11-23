@@ -1,25 +1,44 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { Route, Routes, useLocation } from "react-router";
-import { alertNamed, backend, FAILED, later, NOT_FOUND, pollAgain, refresh, renderPage } from "../../../test/render";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { Link, Route, Routes, useLocation } from "react-router";
+import {
+  alertNamed,
+  backend,
+  CONFLICT,
+  FAILED,
+  FORBIDDEN,
+  later,
+  NOT_FOUND,
+  pollAgain,
+  refresh,
+  renderPage,
+} from "../../../test/render";
 import { mockFails } from "../../../test/mockFails";
-import { generationList, layout, listedSeed } from "../../../test/fixtures";
-import { answerStoredLayouts, expectRetryJoinsResources, mockSeeds } from "../../../test/generationMock";
+import { endpoint, generationList, layout } from "../../../test/fixtures";
+import { expectRetryJoinsResources } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../../scan/api/queries";
-import { generationResources, resetGenerationMock } from "../data/mock";
+import { generationResources, generationTargets, resetGenerationMock } from "../data/mock";
+import type { Layout, LayoutResource } from "../../../shared/api/types";
 import { GenerationLayoutPage } from "./GenerationLayoutPage";
 import { GenerationListPage } from "./GenerationListPage";
 import { GenerationServicePage } from "./GenerationServicePage";
 
-/* Every service of the mock with endpoints is in the server's list, with a stored layout. */
-const MOCK = mockSeeds();
-
 /** The session the mocked provider hands back; each test sets the roles. */
 const session = vi.hoisted(() => ({ token: "" }));
 
-/* These tests go through the prototype's list and the card's generation, both behind flags. */
-vi.mock("../flags", () => ({ SHOW_GEN_STATE: true, SHOW_GEN_RESULT: true, SHOW_GEN_JOBS: true }));
+/* The flags as the panel ships them, unless a test switches one on. */
+const flags = vi.hoisted(() => ({ showGenJobs: false, showLayoutOrigin: false }));
+vi.mock("../flags", () => ({
+  SHOW_GEN_STATE: false,
+  SHOW_GEN_RESULT: false,
+  get SHOW_GEN_JOBS() {
+    return flags.showGenJobs;
+  },
+  get SHOW_LAYOUT_ORIGIN() {
+    return flags.showLayoutOrigin;
+  },
+}));
 
 vi.mock("react-oidc-context", () => ({
   useAuth: () => ({
@@ -36,20 +55,83 @@ vi.mock("../data/mock", async (importOriginal) =>
   (await import("../../../test/mockFails")).withMockFails(await importOriginal<typeof import("../data/mock")>()),
 );
 
-/* The mock lives in module memory, and the edits below change it. */
-/* The backend these suites expect: nothing beyond the stored layouts. */
-let api: ReturnType<typeof answerStoredLayouts>;
-
 beforeEach(() => {
   resetGenerationMock();
-  api = answerStoredLayouts();
+  flags.showGenJobs = false;
+  flags.showLayoutOrigin = false;
   session.token = tokenWithRoles("worker");
 });
 
 afterEach(() => {
-  expect(api.others()).toEqual([]);
   vi.unstubAllGlobals();
 });
+
+const LIST = "/api/generation/services";
+const LAYOUT = "/api/generation/services/billing-api/layout";
+const ADD = `${LAYOUT}/resources`;
+const rename = (id: number) => `${LAYOUT}/resources/${id}/rename`;
+const MOVE = `${LAYOUT}/endpoints/move`;
+
+const unconfirmed = { confirmed_by: null, confirmed_at: null };
+
+const LIST_INVOICES = endpoint({
+  id: 1,
+  path: "invoices/list-invoices.rst",
+  title: "List invoices of a project",
+  uri: "/v1/billing/invoices",
+});
+const SHOW_INVOICE = endpoint({
+  id: 2,
+  path: "invoices/show-invoice.rst",
+  title: "Query invoice details",
+  uri: "/v1/billing/invoices/{invoice_id}",
+});
+const LIST_PAYMENTS = endpoint({ id: 3, path: "payments/list-payments.rst", title: "List payments", uri: "/v1/billing/payments" });
+const QUOTAS = endpoint({
+  id: 4,
+  path: "quotas/show-quotas.rst",
+  title: "Query billing quotas",
+  uri: "/v1/billing/quotas",
+  overall_status: "partial",
+});
+const EXPORT_V2 = endpoint({
+  id: 5,
+  path: "v2/invoices/export-invoices.rst",
+  title: "Export invoices as CSV",
+  method: "POST",
+  uri: "/v2/billing/invoices/export",
+});
+/* In no resource of v1: its URI has no constant segment after the version. */
+const HEALTH = endpoint({ id: 6, path: "health/check.rst", title: "Check the service", uri: "/v1" });
+/* With no version: the scanner found none. */
+const VERSIONS = endpoint({ id: 7, path: "versions/list-versions.rst", title: "List API versions", uri: "/" });
+
+const INVOICES: LayoutResource = {
+  id: 1,
+  name: "invoices",
+  confirmed_by: "valeriia",
+  confirmed_at: "2026-08-11T13:58:00Z",
+  endpoints: [LIST_INVOICES, SHOW_INVOICE],
+};
+const PAYMENTS: LayoutResource = { id: 2, name: "payments", ...unconfirmed, endpoints: [LIST_PAYMENTS] };
+const MISC: LayoutResource = { id: 3, name: "misc", ...unconfirmed, endpoints: [QUOTAS] };
+const INVOICES_V2: LayoutResource = { id: 4, name: "invoices", ...unconfirmed, endpoints: [EXPORT_V2] };
+
+/** billing-api as the server stores it: two versions, v1 with an endpoint in no resource, and one endpoint with no version. */
+function billing({
+  v1 = [INVOICES, PAYMENTS, MISC],
+  v2 = [INVOICES_V2],
+  unassigned = [HEALTH],
+  noVersion = [VERSIONS],
+}: { v1?: LayoutResource[]; v2?: LayoutResource[]; unassigned?: typeof HEALTH[]; noVersion?: typeof HEALTH[] } = {}): Layout {
+  return layout({
+    versions: [
+      { api_version: "v1", resources: v1, unassigned },
+      { api_version: "v2", resources: v2, unassigned: [] },
+    ],
+    no_version: noVersion,
+  });
+}
 
 /** Where the page navigated to. */
 function Location() {
@@ -57,58 +139,88 @@ function Location() {
   return <output data-testid="location">{pathname + search}</output>;
 }
 
-function layoutPage(path = "/generation/billing-api/layout", seed?: [readonly unknown[], unknown][]) {
-  return renderPage(
+/**
+ * The layout page of billing-api on a backend that lists it and stores
+ * `billing()`; `answers` adds to that or replaces it, and stays the test's to
+ * change - the backend answers what it holds at the moment of each request.
+ * `seed` holds what the mock would answer otherwise.
+ */
+function editor(
+  answers: Record<string, unknown> = {},
+  path = "/generation/billing-api/layout",
+  seed: [readonly unknown[], unknown][] = [],
+) {
+  const all: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: billing(), ...answers };
+  const api = backend(all);
+  const rendered = renderPage(
     <>
       <GenerationLayoutPage />
       <Location />
     </>,
-    { path, route: "/generation/:name/layout", seed: [...MOCK, ...(seed ?? [])] },
+    { path, route: "/generation/:name/layout", seed },
   );
+  return { ...rendered, api, answers: all };
 }
 
 const version = (id: string) => screen.getByRole("region", { name: id });
 const resource = (versionId: string, name: string) => within(version(versionId)).getByRole("group", { name });
-/** An endpoint's row, by its document's title: a GET and a POST can share one URI. */
+/** An endpoint's row, by its document's title. */
 const endpointRow = (title: string) => screen.getByText(title).closest("[draggable]") as HTMLElement;
 const button = (scope: HTMLElement, name: string | RegExp) => within(scope).getByRole("button", { name });
+const nameField = (label = "Rename resource") => screen.getByRole("textbox", { name: label });
 
-/** Drag an endpoint onto a resource, as the browser fires it. */
+/** Drag an endpoint onto a resource or a list, as the browser fires it. */
 function dragTo(title: string, target: HTMLElement) {
   fireEvent.dragStart(endpointRow(title));
   fireEvent.dragOver(target);
   fireEvent.drop(target);
 }
 
-describe("the billing-api layout on the in-memory mock", () => {
-  it("shows every version with its resources and endpoints, the summary and the way back", async () => {
-    layoutPage();
+/** Let a request the page might have sent go out and come back. */
+const settle = () => act(async () => {});
+
+describe("the stored layout in the editor (ISS-0042)", () => {
+  it("shows every version with its resources and endpoints, the unassigned and no version lists, the summary and the way back", async () => {
+    editor();
 
     expect(screen.getByText("Loading service…")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
     expect(screen.getByText("needs confirmation")).toBeInTheDocument();
+    // every endpoint counts: in a resource, unassigned, or with no version
     expect(
-      screen.getByText("Shared layout · 2 versions · 4 resources · 12 endpoints · 1 of 4 resources confirmed"),
+      screen.getByText("Shared layout · 2 versions · 4 resources · 7 endpoints · 1 of 4 resources confirmed"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/This layout is shared by every target/)).toBeInTheDocument();
-    expect(within(version("v1")).getByText("3 resources · 10 endpoints")).toBeInTheDocument();
-    expect(within(version("v2")).getByText("1 resource · 2 endpoints")).toBeInTheDocument();
+    expect(within(version("v1")).getByText("3 resources · 4 endpoints")).toBeInTheDocument();
+    expect(within(version("v2")).getByText("1 resource · 1 endpoint")).toBeInTheDocument();
 
     const invoices = resource("v1", "invoices");
-    expect(within(invoices).getByText("4 endpoints")).toBeInTheDocument();
-    expect(within(invoices).getByText("confirmed")).toBeInTheDocument();
-    expect(within(invoices).getByText(/^confirmed by valeriia · \d\d\/\d\d\/2026, \d\d:\d\d$/)).toBeInTheDocument();
-    expect(within(resource("v1", "payments")).getByText("auto")).toBeInTheDocument();
-    expect(within(resource("v1", "misc")).getByText("auto")).toBeInTheDocument();
-    expect(within(resource("v2", "invoices")).getByText("new")).toBeInTheDocument();
+    expect(within(invoices).getByText("2 endpoints")).toBeInTheDocument();
+    expect(within(invoices).getByText("List invoices of a project")).toBeInTheDocument();
+    expect(within(invoices).getByText("Query invoice details")).toBeInTheDocument();
+    expect(resource("v2", "invoices")).toBeInTheDocument();
 
     const quotas = endpointRow("Query billing quotas");
     expect(within(quotas).getByText("GET")).toBeInTheDocument();
     expect(within(quotas).getByText("/v1/billing/quotas")).toBeInTheDocument();
-    expect(within(quotas).getByTitle("Open this document in the repository at the scanned commit")).toHaveAttribute(
-      "href",
-      "https://github.com/opentelekomcloud-docs/billing-api/blob/mockcommit/api-ref/source/quotas/show-quotas.rst",
+    expect(within(quotas).getByText("partial")).toHaveAttribute(
+      "title",
+      "Not recognized in full — a resource holding this endpoint cannot be generated. It can be dragged to another resource.",
     );
+    expect(within(resource("v1", "misc")).getByText("Query billing quotas")).toBeInTheDocument();
+
+    const unassigned = within(version("v1")).getByRole("group", { name: "Unassigned" });
+    expect(within(unassigned).getByText("Check the service")).toBeInTheDocument();
+    expect(within(unassigned).getByText("In no resource yet — drag each into a resource of v1.")).toBeInTheDocument();
+    // v2 has nothing unassigned
+    expect(within(version("v2")).queryByRole("group", { name: "Unassigned" })).toBeNull();
+
+    const noVersion = screen.getByRole("region", { name: "No version" });
+    expect(within(noVersion).getByText("List API versions")).toBeInTheDocument();
+    expect(
+      within(noVersion).getByText(
+        "The scanner found no API version for these — drag each into a resource of the version it belongs to.",
+      ),
+    ).toBeInTheDocument();
 
     const back = screen.getAllByRole("link", { name: "Back to generation" });
     expect(back).toHaveLength(2);
@@ -116,452 +228,876 @@ describe("the billing-api layout on the in-memory mock", () => {
     expect(screen.queryByText("Layout edited · saved on the service")).toBeNull();
   });
 
-  it("freezes the resource in review on Python SDK, and says why", async () => {
-    layoutPage();
+  it("shows each resource's confirmation from confirmed_by and confirmed_at, and offers no Confirm here", async () => {
+    editor();
 
-    const invoices = (await screen.findAllByRole("group", { name: "invoices" }))[0];
-    expect(within(invoices).getByText("in review · Python SDK")).toHaveAttribute(
-      "title",
-      "Generated for Python SDK and waiting for review — the shared layout is frozen until that pull request is merged or closed.",
-    );
-    expect(within(invoices).queryByRole("button", { name: "Confirm layout" })).toBeNull();
-    expect(within(invoices).queryByRole("button", { name: "Rename resource" })).toBeNull();
-    expect(within(invoices).queryByRole("button", { name: "Reset to auto" })).toBeNull();
-    expect(endpointRow("Query invoice details")).toHaveAttribute("draggable", "false");
-
-    // the other resources stay editable
-    const payments = resource("v1", "payments");
-    expect(button(payments, "Confirm layout")).toBeInTheDocument();
-    expect(button(payments, "Rename resource")).toBeInTheDocument();
-    expect(button(payments, "Reset to auto")).toBeInTheDocument();
-    expect(endpointRow("List payments")).toHaveAttribute("draggable", "true");
-
-    // and nothing lands in the frozen one
-    dragTo("List payments", invoices);
-
-    expect(within(invoices).getByText("4 endpoints")).toBeInTheDocument();
-    expect(within(resource("v1", "payments")).getByText("List payments")).toBeInTheDocument();
-    expect(generationResources("billing-api").find((r) => r.id === "v1_payments")?.endpoints).toHaveLength(3);
+    const invoices = await within(await screen.findByRole("region", { name: "v1" })).findByRole("group", { name: "invoices" });
+    expect(within(invoices).getByText("confirmed")).toBeInTheDocument();
+    expect(within(invoices).getByText(/^confirmed by valeriia · \d\d\/\d\d\/2026, \d\d:\d\d$/)).toBeInTheDocument();
+    expect(within(resource("v1", "payments")).getByText("layout not confirmed yet")).toBeInTheDocument();
+    expect(within(resource("v1", "payments")).queryByText("confirmed")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm layout" })).toBeNull();
+    // nor does the page's note ask for one
+    expect(screen.getByText(/once confirmed, each edition inherits it/)).toBeInTheDocument();
+    expect(screen.queryByText(/confirm it once/)).toBeNull();
   });
 
-  it("marks the endpoint whose document is not recognized in full, and lets it be moved", async () => {
-    layoutPage();
+  it("says the layout is confirmed once every resource is", async () => {
+    editor({ [LAYOUT]: billing({ v1: [INVOICES], v2: [{ ...INVOICES_V2, confirmed_by: "ivan", confirmed_at: "2026-08-12T08:00:00Z" }] }) });
 
-    await screen.findByRole("heading", { name: "billing-api" });
-    const quotas = endpointRow("Query billing quotas");
-    expect(within(quotas).getByText("partial")).toHaveAttribute(
+    expect(await screen.findByText("layout confirmed")).toBeInTheDocument();
+    expect(screen.getByText(/· 2 of 2 resources confirmed$/)).toBeInTheDocument();
+  });
+
+  it("shows none of what the stored layout does not hold: no origin, no job, nothing hidden", async () => {
+    // the mock has billing-api's invoices in review on Python SDK, and its names as auto or new
+    editor();
+
+    await screen.findByRole("region", { name: "v1" });
+    await settle();
+    // the mock is not even asked
+    expect(mockFails.resourceCalls).toBe(0);
+    expect(screen.queryByText("auto")).toBeNull();
+    expect(screen.queryByText("new")).toBeNull();
+    expect(screen.queryByText(/in review/)).toBeNull();
+    expect(button(resource("v1", "invoices"), "Rename resource")).toBeInTheDocument();
+    expect(endpointRow("List invoices of a project")).toHaveAttribute("draggable", "true");
+  });
+
+  it("names an endpoint without a title by its document's path, and one without a method or URI with a dash", async () => {
+    const bare = endpoint({ id: 8, path: "misc/undocumented.rst", title: null, method: null, uri: null });
+    editor({ [LAYOUT]: billing({ noVersion: [bare] }) });
+
+    await screen.findByText("misc/undocumented.rst");
+    const row = endpointRow("misc/undocumented.rst");
+    expect(within(row).getAllByText("—")).toHaveLength(2);
+  });
+
+  it("shows a document status the panel has no words for as the backend sends it", async () => {
+    const odd = endpoint({ id: 8, path: "odd.rst", title: "An odd document", overall_status: "skipped" });
+    editor({ [LAYOUT]: billing({ v2: [{ ...INVOICES_V2, endpoints: [EXPORT_V2, odd] }] }) });
+
+    await screen.findByText("An odd document");
+    expect(within(endpointRow("An odd document")).getByText("skipped")).toHaveAttribute(
       "title",
       "Not recognized in full — a resource holding this endpoint cannot be generated. It can be dragged to another resource.",
     );
-    expect(quotas).toHaveAttribute("draggable", "true");
-    expect(within(endpointRow("List credit notes")).queryByText("partial")).toBeNull();
-    expect(screen.getAllByText("partial")).toHaveLength(1);
   });
 
-  it("moves an endpoint by dragging it onto another resource, across versions too", async () => {
-    layoutPage();
+  it("says a layout that holds nothing so, rather than showing an empty page", async () => {
+    editor({ [LAYOUT]: layout({ versions: [], no_version: [] }) });
 
-    await screen.findByRole("heading", { name: "billing-api" });
-    dragTo("Query billing quotas", resource("v1", "payments"));
-
-    expect(await within(resource("v1", "payments")).findByText("Query billing quotas")).toBeInTheDocument();
-    expect(within(resource("v1", "payments")).getByText("4 endpoints")).toBeInTheDocument();
-    expect(within(resource("v1", "misc")).getByText("2 endpoints")).toBeInTheDocument();
-    // moving does not confirm
-    expect(within(resource("v1", "payments")).getByText("auto")).toBeInTheDocument();
-    expect(screen.getByText("Layout edited · saved on the service")).toBeInTheDocument();
-
-    dragTo("Export invoices as CSV", resource("v1", "misc"));
-
-    expect(await within(resource("v1", "misc")).findByText("Export invoices as CSV")).toBeInTheDocument();
-    expect(within(version("v2")).getByText("1 resource · 1 endpoint")).toBeInTheDocument();
-  });
-
-  it("renames a resource once the name passes, without confirming it", async () => {
-    layoutPage();
-
-    await screen.findByRole("region", { name: "v1" });
-    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
-    const input = screen.getByRole("textbox", { name: "Rename resource" });
-    expect(input).toHaveValue("payments");
-
-    fireEvent.change(input, { target: { value: "Bad Name" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(
-      screen.getByText("Package name: lowercase latin, digits and underscores, starting with a letter."),
-    ).toBeInTheDocument();
-
-    fireEvent.change(input, { target: { value: "misc" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(screen.getByText("A resource with this name already exists in v1.")).toBeInTheDocument();
-
-    fireEvent.change(input, { target: { value: " charges " } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    const charges = await within(version("v1")).findByRole("group", { name: "charges" });
-    expect(screen.queryByRole("textbox")).toBeNull();
-    expect(within(charges).getByText("auto")).toBeInTheDocument();
-    expect(button(charges, "Confirm layout")).toBeInTheDocument();
-    expect(screen.getByText(/· 1 of 4 resources confirmed$/)).toBeInTheDocument();
-  });
-
-  it("takes a name another version already has, and drops a rename on Escape or Cancel", async () => {
-    layoutPage();
-
-    await screen.findByRole("heading", { name: "billing-api" });
-    fireEvent.click(button(resource("v2", "invoices"), "Rename resource"));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "payments" } });
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
-
-    expect(await within(version("v2")).findByRole("group", { name: "payments" })).toBeInTheDocument();
-
-    fireEvent.click(button(resource("v1", "misc"), "Rename resource"));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "notes" } });
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
-    expect(screen.queryByRole("textbox")).toBeNull();
-
-    fireEvent.click(button(resource("v1", "misc"), "Rename resource"));
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("textbox")).toBeNull();
-    expect(resource("v1", "misc")).toBeInTheDocument();
-  });
-
-  it("confirms a resource with the button, recording who and when", async () => {
-    layoutPage();
-
-    await screen.findByRole("heading", { name: "billing-api" });
-    fireEvent.click(button(resource("v1", "payments"), "Confirm layout"));
-
-    const payments = resource("v1", "payments");
-    expect(await within(payments).findByText("confirmed")).toBeInTheDocument();
-    expect(within(payments).getByText(/^confirmed by ada@otc\.test · \d\d\/\d\d\/\d{4}, \d\d:\d\d$/)).toBeInTheDocument();
-    expect(within(payments).queryByRole("button", { name: "Confirm layout" })).toBeNull();
-    expect(screen.getByText(/· 2 of 4 resources confirmed$/)).toBeInTheDocument();
-
-    const recorded = generationResources("billing-api").find((r) => r.id === "v1_payments");
-    expect(recorded?.confirmedBy).toBe("ada@otc.test");
-    expect(Date.now() - Date.parse(recorded?.confirmedAt ?? "")).toBeLessThan(60_000);
-  });
-
-  it("makes an empty resource at the end of its version, which nobody has confirmed", async () => {
-    layoutPage();
-
-    await screen.findByRole("heading", { name: "billing-api" });
-    fireEvent.click(button(version("v1"), "New resource"));
-
-    const made = await within(version("v1")).findByRole("group", { name: "new_resource_1" });
-    expect(within(made).getByText("0 endpoints")).toBeInTheDocument();
-    expect(within(made).getByText("new")).toBeInTheDocument();
-    expect(within(made).getByText("Empty resource — drag endpoints here.")).toBeInTheDocument();
-    expect(button(made, "Confirm layout")).toBeInTheDocument();
-    expect(within(version("v1")).getByText("4 resources · 10 endpoints")).toBeInTheDocument();
-    expect(screen.getByText(/· 5 resources · 12 endpoints · 1 of 5 resources confirmed$/)).toBeInTheDocument();
-    expect(within(version("v1")).getAllByRole("group").at(-1)).toBe(made);
-
-    fireEvent.click(button(version("v1"), "New resource"));
-
-    expect(await within(version("v1")).findByRole("group", { name: "new_resource_2" })).toBeInTheDocument();
-  });
-
-  it("resets a resource to the scanner's layout, and an endpoint moved into it goes home", async () => {
-    layoutPage();
-
-    await screen.findByRole("heading", { name: "billing-api" });
-    dragTo("Query billing quotas", resource("v1", "payments"));
-    await within(resource("v1", "payments")).findByText("Query billing quotas");
-    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "charges" } });
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
-    const charges = await within(version("v1")).findByRole("group", { name: "charges" });
-
-    fireEvent.click(button(charges, "Reset to auto"));
-
-    const payments = await within(version("v1")).findByRole("group", { name: "payments" });
-    expect(within(payments).getByText("3 endpoints")).toBeInTheDocument();
-    expect(within(resource("v1", "misc")).getByText("Query billing quotas")).toBeInTheDocument();
-    expect(within(resource("v1", "misc")).getByText("3 endpoints")).toBeInTheDocument();
-  });
-
-  it("leaves a resource made by hand as it is on its reset: the scanner's layout has no such resource", async () => {
-    layoutPage();
-
-    await screen.findByRole("heading", { name: "billing-api" });
-    fireEvent.click(button(version("v1"), "New resource"));
-    const made = await within(version("v1")).findByRole("group", { name: "new_resource_1" });
-    dragTo("List credit notes", made);
-    await within(resource("v1", "new_resource_1")).findByText("List credit notes");
-
-    fireEvent.click(button(resource("v1", "new_resource_1"), "Reset to auto"));
-    // edits go through in the order they are made: once the confirmation shows, the reset has been through
-    fireEvent.click(button(resource("v1", "new_resource_1"), "Confirm layout"));
-
-    expect(await within(resource("v1", "new_resource_1")).findByText("confirmed")).toBeInTheDocument();
-    expect(within(resource("v1", "new_resource_1")).getByText("List credit notes")).toBeInTheDocument();
-    expect(within(resource("v1", "misc")).getByText("2 endpoints")).toBeInTheDocument();
-    expect(screen.queryByText("That did not go through")).toBeNull();
-  });
-
-  it("resets a version: names, endpoints and confirmations come back, resources made by hand go", async () => {
-    layoutPage();
-
-    await screen.findByRole("heading", { name: "billing-api" });
-    fireEvent.click(button(resource("v1", "payments"), "Confirm layout"));
-    await within(resource("v1", "payments")).findByText("confirmed");
-    fireEvent.click(button(resource("v1", "misc"), "Rename resource"));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "notes" } });
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
-    await within(version("v1")).findByRole("group", { name: "notes" });
-    fireEvent.click(button(version("v1"), "New resource"));
-    const made = await within(version("v1")).findByRole("group", { name: "new_resource_1" });
-    dragTo("List payments", made);
-    await within(resource("v1", "new_resource_1")).findByText("List payments");
-    dragTo("List invoices (v2)", resource("v1", "notes"));
-    await within(resource("v1", "notes")).findByText("List invoices (v2)");
-
-    // the version's own button, ahead of its resources' ones
-    fireEvent.click(within(version("v1")).getAllByRole("button", { name: "Reset to auto" })[0]);
-
-    expect(await within(version("v1")).findByRole("group", { name: "misc" })).toBeInTheDocument();
-    expect(within(version("v1")).queryByRole("group", { name: "new_resource_1" })).toBeNull();
-    expect(within(version("v1")).queryByRole("group", { name: "notes" })).toBeNull();
-    const payments = resource("v1", "payments");
-    expect(within(payments).getByText("auto")).toBeInTheDocument();
-    expect(button(payments, "Confirm layout")).toBeInTheDocument();
-    expect(within(payments).getByText("List payments")).toBeInTheDocument();
-    // the endpoint from v2 is back in v2, and the frozen resource did not move
-    expect(within(resource("v2", "invoices")).getByText("List invoices (v2)")).toBeInTheDocument();
-    expect(within(resource("v1", "invoices")).getByText("in review · Python SDK")).toBeInTheDocument();
-    expect(
-      screen.getByText("Shared layout · 2 versions · 4 resources · 12 endpoints · 1 of 4 resources confirmed"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("Nothing laid out for this service yet.")).toBeInTheDocument();
+    // nothing is confirmed of a layout of no resources, and "0 of 0" is not said
+    expect(screen.getByText("Shared layout · 0 versions · 0 resources · 0 endpoints")).toBeInTheDocument();
+    expect(screen.getByText("needs confirmation")).toBeInTheDocument();
   });
 
   it("folds a version and a resource", async () => {
-    layoutPage();
+    editor();
+    await screen.findByRole("region", { name: "v1" });
 
-    await screen.findByRole("heading", { name: "billing-api" });
     fireEvent.click(button(resource("v1", "payments"), "payments"));
-
-    expect(screen.queryByText("Update payment method")).toBeNull();
-    expect(button(resource("v1", "payments"), "payments")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("List payments")).toBeNull();
     expect(screen.getByText("Query billing quotas")).toBeInTheDocument();
 
     fireEvent.click(button(version("v1"), "v1"));
+    expect(within(version("v1")).queryByRole("group")).toBeNull();
+    expect(within(version("v2")).getByRole("group", { name: "invoices" })).toBeInTheDocument();
+  });
+
+  it("keeps a version open while a name is typed in it, so its field is never folded away", async () => {
+    editor();
+    await screen.findByRole("region", { name: "v1" });
+
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    expect(button(version("v1"), "v1")).toBeDisabled();
+    fireEvent.click(button(version("v1"), "v1"));
+    expect(nameField()).toHaveValue("charges");
+    // another version still folds
+    fireEvent.click(button(version("v2"), "v2"));
+    expect(within(version("v2")).queryByRole("group")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(button(version("v1"), "v1")).toBeEnabled();
+  });
+
+  it("opens a folded version to ask for a new resource there, and folds it again once the name is dropped", async () => {
+    editor();
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(version("v1"), "v1"));
+    expect(within(version("v1")).queryByRole("group")).toBeNull();
+
+    fireEvent.click(button(version("v1"), "New resource"));
+
+    expect(nameField("Name of the new resource")).toBeVisible();
+    expect(button(version("v1"), "v1")).toHaveAttribute("aria-expanded", "true");
+    expect(button(version("v1"), "v1")).toBeDisabled();
+
+    fireEvent.keyDown(nameField("Name of the new resource"), { key: "Escape" });
 
     expect(within(version("v1")).queryByRole("group")).toBeNull();
-    expect(within(version("v1")).getByText("3 resources · 10 endpoints")).toBeInTheDocument();
-    expect(resource("v2", "invoices")).toBeInTheDocument();
+    expect(button(version("v1"), "v1")).toHaveAttribute("aria-expanded", "false");
+  });
 
-    fireEvent.click(button(version("v1"), "v1"));
+  it("offers no reset of a resource or of a version: nothing goes back to the grouping (ADR-0064)", async () => {
+    editor();
+    await screen.findByRole("region", { name: "v1" });
 
-    expect(resource("v1", "misc")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Reset/ })).toBeNull();
+    expect(screen.queryByTitle(/Reset/)).toBeNull();
   });
 });
 
-describe("the customer-core layout on the in-memory mock", () => {
-  const customerCore = "/generation/customer-core/layout";
+describe("renaming a resource", () => {
+  it("renames it on the server and shows the layout the server answered with, without reading it again", async () => {
+    const renamed = billing({ v1: [INVOICES, { ...PAYMENTS, name: "charges" }, MISC] });
+    const { api, client } = editor({ [rename(2)]: renamed });
+    await screen.findByRole("region", { name: "v1" });
+    const reads = api.calls(LAYOUT);
 
-  it("shows what is left to lay out in v1, and says the merged resource moved on", async () => {
-    layoutPage(customerCore);
-
-    expect(await screen.findByRole("heading", { name: "customer-core" })).toBeInTheDocument();
-    // the merged resource still counts at the top, not in its version
-    expect(screen.getByText("needs confirmation")).toBeInTheDocument();
-    expect(
-      screen.getByText("Shared layout · 1 version · 3 resources · 8 endpoints · 2 of 3 resources confirmed"),
-    ).toBeInTheDocument();
-    expect(within(version("v1")).getByText("2 resources · 4 endpoints")).toBeInTheDocument();
-    expect(within(version("v1")).getByText("1 resource fully merged — moved to Maintenance")).toBeInTheDocument();
-    // the prototype's way into Maintenance is gone with the tab (owner decision)
-    expect(screen.queryByRole("button", { name: /moved to Maintenance/ })).toBeNull();
-    expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
-    expect(screen.queryByText("List customers")).toBeNull();
-    expect(within(version("v1")).getAllByRole("group").map((g) => g.getAttribute("aria-label"))).toEqual([
-      "contacts",
-      "addresses",
-    ]);
-
-    // ivan confirmed contacts before generating it (owner decision)
-    const contacts = resource("v1", "contacts");
-    expect(within(contacts).getByText("2 endpoints")).toBeInTheDocument();
-    expect(within(contacts).getByText("confirmed")).toBeInTheDocument();
-    expect(within(contacts).getByText(/^confirmed by ivan · \d\d\/\d\d\/2026, \d\d:\d\d$/)).toBeInTheDocument();
-    expect(within(contacts).getByText("List contacts of a customer")).toBeInTheDocument();
-    expect(within(contacts).getByText("Add a contact")).toBeInTheDocument();
-
-    const addresses = resource("v1", "addresses");
-    expect(within(addresses).getByText("2 endpoints")).toBeInTheDocument();
-    expect(within(addresses).getByText("new")).toBeInTheDocument();
-    expect(within(addresses).queryByText(/^confirmed by/)).toBeNull();
-    const patch = endpointRow("Update an address");
-    expect(within(patch).getByText("PATCH")).toBeInTheDocument();
-    expect(within(patch).getByText("/v1/customers/{customer_id}/addresses/{address_id}")).toBeInTheDocument();
-    expect(within(patch).getByTitle("Open this document in the repository at the scanned commit")).toHaveAttribute(
-      "href",
-      "https://github.com/opentelekomcloud-docs/customer-core/blob/mockcommit/api-ref/source/addresses/update-address.rst",
-    );
-    for (const scope of [contacts, addresses]) {
-      for (const name of ["Rename resource", "Reset to auto"]) {
-        expect(button(scope, name)).toBeInTheDocument();
-      }
-    }
-    expect(within(contacts).queryByRole("button", { name: "Confirm layout" })).toBeNull();
-    expect(button(addresses, "Confirm layout")).toBeInTheDocument();
-    // every document of customer-core is recognized in full
-    expect(screen.queryByTitle(/^Not recognized in full/)).toBeNull();
-
-    for (const link of screen.getAllByRole("link", { name: "Back to generation" })) {
-      expect(link).toHaveAttribute("href", "/generation/customer-core");
-    }
-  });
-
-  it("shows a failed job without freezing the resource", async () => {
-    layoutPage(customerCore);
-
-    const contacts = await within(await screen.findByRole("region", { name: "v1" })).findByRole("group", {
-      name: "contacts",
-    });
-    expect(within(contacts).getByText("failed · Python SDK")).toHaveAttribute(
-      "title",
-      "The last Python SDK job failed and wrote nothing — the layout stays editable, retry from the error screen.",
-    );
-    expect(button(contacts, "Rename resource")).toBeInTheDocument();
-    expect(button(contacts, "Reset to auto")).toBeInTheDocument();
-    expect(endpointRow("Add a contact")).toHaveAttribute("draggable", "true");
-    expect(within(resource("v1", "addresses")).getByText("new")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
-  });
-
-  it("hides the merged resource whatever target the card was on: hiding goes by the connected targets", async () => {
-    layoutPage(`${customerCore}?target=ansible`);
-
-    expect(
-      await within(await screen.findByRole("region", { name: "v1" })).findByText("2 resources · 4 endpoints"),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
-    expect(within(resource("v1", "contacts")).getByText("failed · Python SDK")).toBeInTheDocument();
-    for (const link of screen.getAllByRole("link", { name: "Back to generation" })) {
-      expect(link).toHaveAttribute("href", "/generation/customer-core?target=ansible");
-    }
-  });
-
-  it("moves an endpoint between the resources left, the failed one too", async () => {
-    layoutPage(customerCore);
-
-    await screen.findByRole("heading", { name: "customer-core" });
-    expect(endpointRow("Add a contact")).toHaveAttribute("draggable", "true");
-    dragTo("List addresses", resource("v1", "contacts"));
-
-    const contacts = resource("v1", "contacts");
-    expect(await within(contacts).findByText("List addresses")).toBeInTheDocument();
-    expect(within(contacts).getByText("3 endpoints")).toBeInTheDocument();
-    expect(within(resource("v1", "addresses")).getByText("1 endpoint")).toBeInTheDocument();
-    expect(within(version("v1")).getByText("2 resources · 4 endpoints")).toBeInTheDocument();
-    expect(within(contacts).getByText("failed · Python SDK")).toBeInTheDocument();
-    expect(generationResources("customer-core").find((r) => r.id === "c_contacts")?.endpoints.map((e) => e.id)).toEqual(
-      ["c5", "c6", "c7"],
-    );
-  });
-
-  it("takes the merged resource's name as taken in its version, though it is not shown", async () => {
-    layoutPage(customerCore);
-
-    await screen.findByRole("heading", { name: "customer-core" });
-    fireEvent.click(button(resource("v1", "contacts"), "Rename resource"));
-    fireEvent.change(screen.getByRole("textbox", { name: "Rename resource" }), { target: { value: "customers" } });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    expect(nameField()).toHaveValue("payments");
+    fireEvent.change(nameField(), { target: { value: " charges " } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
+    expect(await within(version("v1")).findByRole("group", { name: "charges" })).toBeInTheDocument();
+    expect(api.sent(rename(2))).toEqual([{ name: "charges" }]);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(within(version("v1")).queryByRole("group", { name: "payments" })).toBeNull();
+    expect(screen.getByText("Layout edited · saved on the service")).toBeInTheDocument();
+    expect(api.calls(LAYOUT)).toBe(reads);
+    // the edit is kept for that note, without a copy of the layout
+    const kept = client.getMutationCache().getAll();
+    expect(kept.map((m) => m.state.status)).toEqual(["success"]);
+    expect(kept[0].state.data).toBeUndefined();
+  });
+
+  it("drops the confirmation the server dropped on a rename (ADR-0068)", async () => {
+    const renamed = billing({ v1: [{ ...INVOICES, name: "bills", ...unconfirmed }, PAYMENTS, MISC] });
+    editor({ [rename(1)]: renamed });
+    await screen.findByRole("region", { name: "v1" });
+
+    fireEvent.click(button(resource("v1", "invoices"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "bills" } });
+    fireEvent.keyDown(nameField(), { key: "Enter" });
+
+    const bills = await within(version("v1")).findByRole("group", { name: "bills" });
+    expect(within(bills).getByText("layout not confirmed yet")).toBeInTheDocument();
+  });
+
+  it("refuses a name that is not a package name, before anything goes out (ADR-0065)", async () => {
+    const { api } = editor();
+    await screen.findByRole("region", { name: "v1" });
+
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    for (const name of ["Charges", "1charges", "char-ges", ""]) {
+      fireEvent.change(nameField(), { target: { value: name } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect(
+        screen.getByText("Package name: lowercase latin, digits and underscores, starting with a letter."),
+      ).toBeInTheDocument();
+    }
+    // typing clears it
+    fireEvent.change(nameField(), { target: { value: "charge" } });
+    expect(screen.queryByText(/^Package name/)).toBeNull();
+    await settle();
+    expect(api.sent(rename(2))).toEqual([]);
+  });
+
+  it("refuses a name its version already has, and takes one only another version has (ADR-0065)", async () => {
+    const { api } = editor({ [rename(4)]: billing({ v2: [{ ...INVOICES_V2, name: "payments" }] }) });
+    await screen.findByRole("region", { name: "v1" });
+
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "misc" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByText("A resource with this name already exists in v1.")).toBeInTheDocument();
-    expect(generationResources("customer-core").find((r) => r.id === "c_contacts")?.name).toBe("contacts");
-    expect(screen.queryByText("Layout edited · saved on the service")).toBeNull();
+    await settle();
+    expect(api.sent(rename(2))).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    // payments is v1's: v2 may have one too
+    fireEvent.click(button(resource("v2", "invoices"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "payments" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await within(version("v2")).findByRole("group", { name: "payments" })).toBeInTheDocument();
+    expect(api.sent(rename(4))).toEqual([{ name: "payments" }]);
   });
 
-  it("confirms the new resource next to the failed one; the failed job stays shown and the layout is confirmed", async () => {
-    layoutPage(customerCore);
+  it("sends nothing for the name it already has, and drops a rename on Escape or Cancel", async () => {
+    const { api } = editor();
+    await screen.findByRole("region", { name: "v1" });
 
-    await screen.findByRole("heading", { name: "customer-core" });
-    expect(screen.getByText("needs confirmation")).toBeInTheDocument();
-    fireEvent.click(button(resource("v1", "addresses"), "Confirm layout"));
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.queryByRole("textbox")).toBeNull();
 
-    const addresses = resource("v1", "addresses");
-    expect(await within(addresses).findByText("confirmed")).toBeInTheDocument();
-    expect(within(addresses).getByText(/^confirmed by ada@otc\.test · \d\d\/\d\d\/\d{4}, \d\d:\d\d$/)).toBeInTheDocument();
-    expect(within(addresses).queryByRole("button", { name: "Confirm layout" })).toBeNull();
-    expect(screen.getByText("layout confirmed")).toBeInTheDocument();
-    expect(
-      screen.getByText("Shared layout · 1 version · 3 resources · 8 endpoints · 3 of 3 resources confirmed"),
-    ).toBeInTheDocument();
-    expect(within(resource("v1", "contacts")).getByText("failed · Python SDK")).toBeInTheDocument();
-    const recorded = generationResources("customer-core");
-    expect(recorded.map((r) => r.confirmedBy)).toEqual(["ivan", "ivan", "ada@otc.test"]);
-    expect(recorded.find((r) => r.id === "c_contacts")?.jobs.python?.status).toBe("failed");
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    fireEvent.keyDown(nameField(), { key: "Escape" });
+    expect(screen.queryByRole("textbox")).toBeNull();
+
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("textbox")).toBeNull();
+
+    await settle();
+    expect(api.calls(rename(2))).toBe(0);
+    expect(resource("v1", "payments")).toBeInTheDocument();
   });
 
-  it("resets v1 around the merged resource: the one from new docs stays, the one made by hand goes", async () => {
-    layoutPage(customerCore);
+  it("sends one rename while it is under way, however often it is saved", async () => {
+    const answer = later();
+    const { api } = editor({ [rename(2)]: answer.arrived });
+    await screen.findByRole("region", { name: "v1" });
 
-    await screen.findByRole("heading", { name: "customer-core" });
-    fireEvent.click(button(resource("v1", "addresses"), "Confirm layout"));
-    await within(resource("v1", "addresses")).findByText("confirmed");
-    fireEvent.click(button(resource("v1", "addresses"), "Rename resource"));
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "postal" } });
-    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
-    await within(version("v1")).findByRole("group", { name: "postal" });
-    dragTo("Add a contact", resource("v1", "postal"));
-    await within(resource("v1", "postal")).findByText("Add a contact");
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.keyDown(nameField(), { key: "Enter" });
+
+    answer.send(billing({ v1: [INVOICES, { ...PAYMENTS, name: "charges" }, MISC] }));
+
+    expect(await within(version("v1")).findByRole("group", { name: "charges" })).toBeInTheDocument();
+    expect(api.calls(rename(2))).toBe(1);
+  });
+
+  it("opens no other name field while a save is under way, so its answer closes only its own", async () => {
+    const answer = later();
+    editor({ [rename(2)]: answer.arrived });
+    await screen.findByRole("region", { name: "v1" });
+
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(button(resource("v1", "misc"), "Rename resource")).toBeDisabled();
+    expect(button(version("v1"), "New resource")).toBeDisabled();
     fireEvent.click(button(version("v1"), "New resource"));
-    await within(version("v1")).findByRole("group", { name: "new_resource_1" });
+    expect(screen.queryByRole("textbox")).toBeNull();
 
-    // the version's own button, ahead of its resources' ones
-    fireEvent.click(within(version("v1")).getAllByRole("button", { name: "Reset to auto" })[0]);
+    answer.send(billing({ v1: [INVOICES, { ...PAYMENTS, name: "charges" }, MISC] }));
 
-    expect(await within(version("v1")).findByRole("group", { name: "addresses" })).toBeInTheDocument();
-    expect(within(version("v1")).queryByRole("group", { name: "new_resource_1" })).toBeNull();
-    expect(within(version("v1")).queryByRole("group", { name: "postal" })).toBeNull();
-    // the confirmation given here goes with the rest; the one recorded before stays
-    const addresses = resource("v1", "addresses");
-    expect(within(addresses).getByText("new")).toBeInTheDocument();
-    expect(within(addresses).queryByText(/^confirmed by/)).toBeNull();
-    expect(button(addresses, "Confirm layout")).toBeInTheDocument();
-    expect(within(addresses).getByText("2 endpoints")).toBeInTheDocument();
-    const contacts = resource("v1", "contacts");
-    expect(within(contacts).getByText(/^confirmed by ivan · /)).toBeInTheDocument();
-    expect(within(contacts).getByText("Add a contact")).toBeInTheDocument();
-    expect(within(contacts).getByText("failed · Python SDK")).toBeInTheDocument();
-    // the merged resource is left as it was, and still out of sight
-    expect(within(version("v1")).getByText("1 resource fully merged — moved to Maintenance")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "customers" })).toBeNull();
-    const customers = generationResources("customer-core").find((r) => r.id === "c_customers");
-    expect(customers?.endpoints).toHaveLength(4);
-    expect(customers?.confirmedBy).toBe("ivan");
-    expect(
-      screen.getByText("Shared layout · 1 version · 3 resources · 8 endpoints · 2 of 3 resources confirmed"),
-    ).toBeInTheDocument();
+    expect(await within(version("v1")).findByRole("group", { name: "charges" })).toBeInTheDocument();
+    expect(button(version("v1"), "New resource")).toBeEnabled();
+    expect(button(resource("v1", "misc"), "Rename resource")).toBeEnabled();
+  });
+});
+
+describe("adding a resource", () => {
+  it("asks for its name as a rename does, and adds it on the server to the version it was asked in", async () => {
+    const refunds: LayoutResource = { id: 5, name: "refunds", ...unconfirmed, endpoints: [] };
+    const { api } = editor({ [ADD]: billing({ v1: [INVOICES, PAYMENTS, MISC, refunds] }) });
+    await screen.findByRole("region", { name: "v1" });
+
+    fireEvent.click(button(version("v1"), "New resource"));
+    expect(nameField("Name of the new resource")).toHaveValue("");
+    // a second field is not offered while one is open
+    expect(within(version("v1")).queryByRole("button", { name: "New resource" })).toBeNull();
+    fireEvent.change(nameField("Name of the new resource"), { target: { value: "refunds" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const added = await within(version("v1")).findByRole("group", { name: "refunds" });
+    expect(api.sent(ADD)).toEqual([{ api_version: "v1", name: "refunds" }]);
+    expect(within(added).getByText("Empty resource — drag endpoints here.")).toBeInTheDocument();
+    expect(within(added).getByText("layout not confirmed yet")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.getByText("Layout edited · saved on the service")).toBeInTheDocument();
+  });
+
+  it("checks the new name as a rename's: a package name, and free in its version", async () => {
+    const { api } = editor({ [ADD]: billing({ v2: [INVOICES_V2, { id: 5, name: "payments", ...unconfirmed, endpoints: [] }] }) });
+    await screen.findByRole("region", { name: "v1" });
+
+    fireEvent.click(button(version("v1"), "New resource"));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText(/^Package name/)).toBeInTheDocument();
+    fireEvent.change(nameField("Name of the new resource"), { target: { value: "payments" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByText("A resource with this name already exists in v1.")).toBeInTheDocument();
+    fireEvent.keyDown(nameField("Name of the new resource"), { key: "Escape" });
+    await settle();
+    expect(api.calls(ADD)).toBe(0);
+
+    fireEvent.click(button(version("v2"), "New resource"));
+    fireEvent.change(nameField("Name of the new resource"), { target: { value: "payments" } });
+    fireEvent.keyDown(nameField("Name of the new resource"), { key: "Enter" });
+
+    expect(await within(version("v2")).findByRole("group", { name: "payments" })).toBeInTheDocument();
+    expect(api.sent(ADD)).toEqual([{ api_version: "v2", name: "payments" }]);
+  });
+
+  it("opens no other name field while one is open: the name typed is saved or dropped first (ADR-0083)", async () => {
+    editor();
+    await screen.findByRole("region", { name: "v1" });
+
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+
+    expect(button(version("v2"), "New resource")).toBeDisabled();
+    expect(button(resource("v1", "misc"), "Rename resource")).toBeDisabled();
+    fireEvent.click(button(version("v2"), "New resource"));
+    fireEvent.click(button(resource("v1", "misc"), "Rename resource"));
+    expect(screen.getAllByRole("textbox")).toHaveLength(1);
+    expect(nameField()).toHaveValue("charges");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(button(version("v2"), "New resource")).toBeEnabled();
+    expect(button(resource("v1", "misc"), "Rename resource")).toBeEnabled();
+  });
+});
+
+describe("a refusal of the server", () => {
+  it("says why a rename was refused, keeps the name typed, and reads the layout again, shown once the name is dropped (ADR-0083)", async () => {
+    const { api, answers } = editor({ [rename(2)]: CONFLICT });
+    await screen.findByRole("region", { name: "v1" });
+    const reads = api.calls(LAYOUT);
+    // someone else took "charges" meanwhile
+    answers[LAYOUT] = billing({ v1: [INVOICES, PAYMENTS, { ...MISC, name: "charges" }] });
+
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("That could not be done right now")).toBeInTheDocument();
+    expect(screen.getByText("already there")).toBeInTheDocument();
+    expect(nameField()).toHaveValue("charges");
+    // the layout read again differs: said so, not shown under the name being typed
+    expect(await screen.findByText("Data changed")).toBeInTheDocument();
+    expect(api.calls(LAYOUT)).toBe(reads + 1);
+    expect(resource("v1", "misc")).toBeInTheDocument();
+    expect(screen.queryByText("Layout edited · saved on the service")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    // the query client hands the reset on in its next tick
+    await waitFor(() => expect(screen.queryByText("That could not be done right now")).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(resource("v1", "charges")).toBeInTheDocument();
+    expect(screen.queryByText("Data changed")).toBeNull();
+  });
+
+  it("says why at once, while the layout is still being read again", async () => {
+    const reread = later();
+    const { answers } = editor({ [rename(2)]: CONFLICT });
+    await screen.findByRole("region", { name: "v1" });
+    answers[LAYOUT] = () => reread.arrived;
+
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("That could not be done right now")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+
+    reread.send(billing());
+    await settle();
+    expect(screen.queryByText("Data changed")).toBeNull();
+  });
+
+  it.each([
+    [NOT_FOUND, "That did not go through"],
+    [FAILED, "That did not go through"],
+    [FORBIDDEN, "Your role does not allow that"],
+  ])("says so for a move answered %s", async (refusal, title) => {
+    const { api } = editor({ [MOVE]: refusal });
+    await screen.findByRole("region", { name: "v1" });
+
+    dragTo("List payments", resource("v1", "misc"));
+
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(api.calls(MOVE)).toBe(1);
+    // the layout stays as the server has it
+    expect(within(resource("v1", "payments")).getByText("List payments")).toBeInTheDocument();
+  });
+});
+
+describe("moving an endpoint (ADR-0064)", () => {
+  it("moves one into another resource of its version, and shows the layout the server answered with", async () => {
+    const moved = billing({ v1: [INVOICES, { ...PAYMENTS, endpoints: [] }, { ...MISC, endpoints: [QUOTAS, LIST_PAYMENTS] }] });
+    const { api } = editor({ [MOVE]: moved });
+    await screen.findByRole("region", { name: "v1" });
+
+    dragTo("List payments", resource("v1", "misc"));
+
+    await waitFor(() => expect(within(resource("v1", "misc")).getByText("List payments")).toBeInTheDocument());
+    expect(api.sent(MOVE)).toEqual([{ path: "payments/list-payments.rst", resource_id: 3 }]);
+    expect(within(resource("v1", "payments")).getByText("Empty resource — drag endpoints here.")).toBeInTheDocument();
+    expect(screen.getByText("Layout edited · saved on the service")).toBeInTheDocument();
+  });
+
+  it("moves one endpoint at a time: nothing is dragged while a move is under way", async () => {
+    const answer = later();
+    const moved = billing({ v1: [INVOICES, { ...PAYMENTS, endpoints: [] }, { ...MISC, endpoints: [QUOTAS, LIST_PAYMENTS] }] });
+    const { api } = editor({ [MOVE]: answer.arrived });
+    await screen.findByRole("region", { name: "v1" });
+
+    dragTo("List payments", resource("v1", "misc"));
+
+    await waitFor(() => expect(endpointRow("Check the service")).toHaveAttribute("draggable", "false"));
+    expect(endpointRow("Query billing quotas")).toHaveAttribute("draggable", "false");
+    expect(endpointRow("List API versions")).toHaveAttribute("draggable", "false");
+    dragTo("Check the service", resource("v1", "misc"));
+    await settle();
+    expect(api.calls(MOVE)).toBe(1);
+
+    answer.send(moved);
+
+    await waitFor(() => expect(within(resource("v1", "misc")).getByText("List payments")).toBeInTheDocument());
+    expect(endpointRow("Check the service")).toHaveAttribute("draggable", "true");
+  });
+
+  it("moves one out of its version's unassigned list into a resource of that version", async () => {
+    const moved = billing({ v1: [INVOICES, PAYMENTS, { ...MISC, endpoints: [QUOTAS, HEALTH] }], unassigned: [] });
+    const { api } = editor({ [MOVE]: moved });
+    await screen.findByRole("region", { name: "v1" });
+
+    dragTo("Check the service", resource("v1", "misc"));
+
+    await waitFor(() => expect(within(resource("v1", "misc")).getByText("Check the service")).toBeInTheDocument());
+    expect(api.sent(MOVE)).toEqual([{ path: "health/check.rst", resource_id: 3 }]);
+    expect(within(version("v1")).queryByRole("group", { name: "Unassigned" })).toBeNull();
+  });
+
+  it("moves one with no version into a resource of any version", async () => {
+    const moved = billing({ v2: [{ ...INVOICES_V2, endpoints: [EXPORT_V2, VERSIONS] }], noVersion: [] });
+    const { api } = editor({ [MOVE]: moved });
+    await screen.findByRole("region", { name: "v1" });
+
+    dragTo("List API versions", resource("v2", "invoices"));
+
+    await waitFor(() => expect(within(resource("v2", "invoices")).getByText("List API versions")).toBeInTheDocument());
+    expect(api.sent(MOVE)).toEqual([{ path: "versions/list-versions.rst", resource_id: 4 }]);
+    expect(screen.queryByRole("region", { name: "No version" })).toBeNull();
+  });
+
+  it("moves none across versions, from a resource or from the unassigned list", async () => {
+    const { api } = editor();
+    await screen.findByRole("region", { name: "v1" });
+
+    dragTo("List payments", resource("v2", "invoices"));
+    dragTo("Check the service", resource("v2", "invoices"));
+    dragTo("Export invoices as CSV", resource("v1", "invoices"));
+
+    await settle();
+    expect(api.calls(MOVE)).toBe(0);
+    expect(within(resource("v1", "payments")).getByText("List payments")).toBeInTheDocument();
+  });
+
+  it("drops nothing into a list: nothing goes back to unassigned or to no version", async () => {
+    const { api } = editor();
+    await screen.findByRole("region", { name: "v1" });
+
+    dragTo("List payments", within(version("v1")).getByRole("group", { name: "Unassigned" }));
+    dragTo("List payments", screen.getByRole("region", { name: "No version" }));
+    dragTo("Check the service", screen.getByRole("region", { name: "No version" }));
+
+    await settle();
+    expect(api.calls(MOVE)).toBe(0);
+  });
+
+  it("sends nothing for an endpoint dropped back into the resource it is in", async () => {
+    const { api } = editor();
+    await screen.findByRole("region", { name: "v1" });
+
+    dragTo("List payments", resource("v1", "payments"));
+
+    await settle();
+    expect(api.calls(MOVE)).toBe(0);
+  });
+
+  it("drops the confirmations the server dropped on a move: both resources it touched (ADR-0068)", async () => {
+    const moved = billing({
+      v1: [{ ...INVOICES, endpoints: [LIST_INVOICES], ...unconfirmed }, { ...PAYMENTS, endpoints: [LIST_PAYMENTS, SHOW_INVOICE] }, MISC],
+    });
+    editor({ [MOVE]: moved });
+    await screen.findByRole("region", { name: "v1" });
+
+    dragTo("Query invoice details", resource("v1", "payments"));
+
+    await waitFor(() => expect(within(resource("v1", "payments")).getByText("Query invoice details")).toBeInTheDocument());
+    expect(within(resource("v1", "invoices")).getByText("layout not confirmed yet")).toBeInTheDocument();
+    expect(screen.getByText(/· 0 of 4 resources confirmed$/)).toBeInTheDocument();
+  });
+});
+
+describe("the layout changing under a name being typed (ADR-0083)", () => {
+  /** billing-api with "charges" being typed as the new name of payments. */
+  async function typing() {
+    const opened = editor();
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    return opened;
+  }
+
+  it("keeps the layout the name was asked on, says the data changed, and shows the layout as it is on Refresh", async () => {
+    const { client, answers } = await typing();
+    // a rescan took payments away, and someone renamed misc
+    answers[LAYOUT] = billing({ v1: [INVOICES, { ...MISC, name: "quotas" }] });
+    await refresh(client, keys.genLayout("billing-api"));
+
+    expect(await screen.findByText("Data changed")).toBeInTheDocument();
+    expect(nameField()).toHaveValue("charges");
+    expect(resource("v1", "misc")).toBeInTheDocument();
+    expect(within(version("v1")).queryByRole("group", { name: "quotas" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(resource("v1", "quotas")).toBeInTheDocument();
+    expect(within(version("v1")).queryByRole("group", { name: "payments" })).toBeNull();
+    expect(screen.queryByText("Data changed")).toBeNull();
+  });
+
+  it("says nothing when a refresh finds the layout as it was", async () => {
+    const { client, api } = await typing();
+    const reads = api.calls(LAYOUT);
+
+    await refresh(client, keys.genLayout("billing-api"));
+
+    await waitFor(() => expect(api.calls(LAYOUT)).toBe(reads + 1));
+    await settle();
+    expect(screen.queryByText("Data changed")).toBeNull();
+    expect(nameField()).toHaveValue("charges");
+  });
+
+  it("says nothing of the user's own save while what the layout feeds is still read again", async () => {
+    flags.showGenJobs = true;
+    editor({ [rename(2)]: billing({ v1: [INVOICES, { ...PAYMENTS, name: "charges" }, MISC] }) });
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    // the answer is in, and the save stays under way while the resources are read again
+    mockFails.holdResources = true;
+    const asked = mockFails.resourceCalls;
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mockFails.resourceCalls).toBe(asked + 1));
+    await settle();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.queryByText("Data changed")).toBeNull();
+  });
+
+  it("drags nothing while a name is typed: no edit of the user's changes the layout under it", async () => {
+    const { api } = await typing();
+
+    for (const title of ["List payments", "Check the service", "List API versions"]) {
+      expect(endpointRow(title)).toHaveAttribute("draggable", "false");
+    }
+    dragTo("Check the service", resource("v1", "misc"));
+    await settle();
+    expect(api.calls(MOVE)).toBe(0);
+    expect(nameField()).toHaveValue("charges");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(endpointRow("Check the service")).toHaveAttribute("draggable", "true");
+  });
+
+  it("reads the layout again on Refresh, rather than showing the read the message was about", async () => {
+    const { client, api, answers } = await typing();
+    answers[LAYOUT] = billing({ v1: [INVOICES, PAYMENTS, { ...MISC, name: "quotas" }] });
+    await refresh(client, keys.genLayout("billing-api"));
+    expect(await screen.findByText("Data changed")).toBeInTheDocument();
+    const reads = api.calls(LAYOUT);
+    const lists = api.calls(LIST);
+    // changed once more since that read
+    answers[LAYOUT] = billing({ v1: [INVOICES, PAYMENTS, { ...MISC, name: "limits" }] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await within(version("v1")).findByRole("group", { name: "limits" })).toBeInTheDocument();
+    expect(api.calls(LAYOUT)).toBe(reads + 1);
+    // the list said nothing new: it is not asked again
+    await settle();
+    expect(api.calls(LIST)).toBe(lists);
+  });
+
+  it("announces the change, and says Refresh loads the page as it is now", async () => {
+    const { client, answers } = await typing();
+    answers[LAYOUT] = billing({ v1: [INVOICES, PAYMENTS, { ...MISC, name: "quotas" }] });
+    await refresh(client, keys.genLayout("billing-api"));
+
+    const notice = (await screen.findByText("Data changed")).closest("[role=status]");
+    expect(notice).not.toBeNull();
+    expect(notice).toHaveTextContent("Refresh drops the unsaved name and loads the page as it is now.");
   });
 });
 
 describe("a viewer", () => {
   it("reads the layout, but is offered no way to change it", async () => {
     session.token = tokenWithRoles("viewer");
-    layoutPage();
+    const { api } = editor();
 
     expect(await screen.findByText(/^Shared layout · 2 versions/)).toBeInTheDocument();
     expect(resource("v1", "payments")).toBeInTheDocument();
     expect(screen.getByText("partial")).toBeInTheDocument();
-    for (const name of ["Confirm layout", "Rename resource", "Reset to auto", "New resource"]) {
+    expect(screen.getByRole("region", { name: "No version" })).toBeInTheDocument();
+    for (const name of ["Rename resource", "New resource"]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
-    expect(endpointRow("List payments")).toHaveAttribute("draggable", "false");
+    for (const title of ["List payments", "Check the service", "List API versions"]) {
+      expect(endpointRow(title)).toHaveAttribute("draggable", "false");
+    }
 
     dragTo("List payments", resource("v1", "misc"));
 
-    expect(within(resource("v1", "misc")).queryByText("List payments")).toBeNull();
+    await settle();
+    expect(api.calls(MOVE)).toBe(0);
+  });
+});
+
+describe("what the server has no data for yet, switched on", () => {
+  it("shows where each resource came from, as the mock has it (SHOW_LAYOUT_ORIGIN)", async () => {
+    flags.showLayoutOrigin = true;
+    const refunds: LayoutResource = { id: 5, name: "refunds", ...unconfirmed, endpoints: [] };
+    editor({ [LAYOUT]: billing({ v1: [INVOICES, PAYMENTS, MISC, refunds] }) });
+
+    await screen.findByRole("region", { name: "v1" });
+    expect(within(resource("v1", "payments")).getByText("auto")).toBeInTheDocument();
+    expect(within(resource("v1", "misc")).getByText("auto")).toBeInTheDocument();
+    expect(within(resource("v2", "invoices")).getByText("new")).toBeInTheDocument();
+    // a confirmed resource says that instead, and one the mock does not hold says nothing
+    expect(within(resource("v1", "invoices")).getByText("confirmed")).toBeInTheDocument();
+    expect(within(resource("v1", "refunds")).queryByText(/^(auto|new)$/)).toBeNull();
+    // nothing of the jobs: that is the other flag
+    expect(screen.queryByText(/in review/)).toBeNull();
+  });
+
+  it("freezes the resource in review on Python SDK, says why, and takes nothing into it (SHOW_GEN_JOBS)", async () => {
+    flags.showGenJobs = true;
+    const { api } = editor();
+
+    const invoices = await within(await screen.findByRole("region", { name: "v1" })).findByRole("group", { name: "invoices" });
+    expect(within(invoices).getByText("in review · Python SDK")).toHaveAttribute(
+      "title",
+      "Generated for Python SDK and waiting for review — the shared layout is frozen until that pull request is merged or closed.",
+    );
+    expect(within(invoices).queryByRole("button", { name: "Rename resource" })).toBeNull();
+    expect(endpointRow("List invoices of a project")).toHaveAttribute("draggable", "false");
+    // v2's invoices is another resource, with no job
+    expect(within(resource("v2", "invoices")).queryByText(/in review/)).toBeNull();
+
+    dragTo("List payments", invoices);
+
+    await settle();
+    expect(api.calls(MOVE)).toBe(0);
+  });
+
+  it("freezes a resource that is generating, says why, and takes nothing into it (SHOW_GEN_JOBS)", async () => {
+    flags.showGenJobs = true;
+    const running = generationResources("billing-api").map((r) =>
+      r.id === "v1_payments" ? { ...r, jobs: { python: { status: "running" as const, pr: null } } } : r,
+    );
+    const { api } = editor({}, undefined, [[keys.genResources("billing-api"), running]]);
+
+    const payments = await within(await screen.findByRole("region", { name: "v1" })).findByRole("group", { name: "payments" });
+    expect(within(payments).getByText("generating · Python SDK")).toHaveAttribute(
+      "title",
+      "A Python SDK job is running — the shared layout is frozen until it finishes.",
+    );
+    expect(within(payments).queryByRole("button", { name: "Rename resource" })).toBeNull();
+    expect(endpointRow("List payments")).toHaveAttribute("draggable", "false");
+
+    dragTo("Query billing quotas", payments);
+
+    await settle();
+    expect(api.calls(MOVE)).toBe(0);
+  });
+
+  it("shows a failed job without freezing the resource (SHOW_GEN_JOBS)", async () => {
+    flags.showGenJobs = true;
+    const CORE = "/api/generation/services/customer-core/layout";
+    const contacts: LayoutResource = { id: 9, name: "contacts", ...unconfirmed, endpoints: [endpoint({ id: 9, title: "List contacts" })] };
+    editor(
+      { [LIST]: generationList("customer-core"), [CORE]: layout({ versions: [{ api_version: "v1", resources: [contacts], unassigned: [] }] }) },
+      "/generation/customer-core/layout",
+    );
+
+    const row = await within(await screen.findByRole("region", { name: "v1" })).findByRole("group", { name: "contacts" });
+    expect(within(row).getByText("failed · Python SDK")).toBeInTheDocument();
+    expect(button(row, "Rename resource")).toBeInTheDocument();
+    expect(endpointRow("List contacts")).toHaveAttribute("draggable", "true");
+  });
+
+  it("leaves out a resource merged on every connected target, says it moved on, and keeps its name taken (SHOW_GEN_JOBS)", async () => {
+    flags.showGenJobs = true;
+    const HUB = "/api/generation/services/notifications-hub/layout";
+    const topics: LayoutResource = { id: 7, name: "topics", ...unconfirmed, endpoints: [endpoint({ id: 7, path: "t.rst" })] };
+    const subscriptions: LayoutResource = { id: 8, name: "subscriptions", ...unconfirmed, endpoints: [endpoint({ id: 8, path: "s.rst" })] };
+    const { api } = editor(
+      {
+        [LIST]: generationList("notifications-hub"),
+        [HUB]: layout({ versions: [{ api_version: "v1", resources: [topics, subscriptions], unassigned: [] }] }),
+      },
+      "/generation/notifications-hub/layout",
+    );
+
+    expect(await screen.findByText("1 resource fully merged — moved to Maintenance")).toBeInTheDocument();
+    expect(within(version("v1")).getByText("1 resource · 1 endpoint")).toBeInTheDocument();
+    // the summary counts what the page shows, as the version does
+    expect(screen.getByText(/ · 1 resource · 1 endpoint · 0 of 1 resources confirmed$/)).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "topics" })).toBeNull();
+
+    fireEvent.click(button(resource("v1", "subscriptions"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "topics" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(screen.getByText("A resource with this name already exists in v1.")).toBeInTheDocument();
+    await settle();
+    expect(api.calls(`${HUB}/resources/8/rename`)).toBe(0);
+  });
+
+  it("keeps the jobs as they were under a name being typed, and says they changed (SHOW_GEN_JOBS, ADR-0083)", async () => {
+    flags.showGenJobs = true;
+    const { client } = editor();
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+
+    // a generation of misc starts meanwhile
+    const running = generationResources("billing-api").map((r) =>
+      r.id === "v1_misc" ? { ...r, jobs: { python: { status: "running" as const, pr: null } } } : r,
+    );
+    act(() => client.setQueryData(keys.genResources("billing-api"), running));
+
+    expect(await screen.findByText("Data changed")).toBeInTheDocument();
+    expect(within(resource("v1", "misc")).queryByText("generating · Python SDK")).toBeNull();
+    expect(nameField()).toHaveValue("charges");
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(within(resource("v1", "misc")).getByText("generating · Python SDK")).toBeInTheDocument();
+  });
+
+  it("says nothing when the jobs and targets are read again as they were (SHOW_GEN_JOBS, SHOW_LAYOUT_ORIGIN)", async () => {
+    flags.showGenJobs = true;
+    flags.showLayoutOrigin = true;
+    const { client } = editor();
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    const asked = mockFails.resourceCalls;
+
+    await pollAgain(client, keys.genTargets, keys.genResources("billing-api"));
+
+    expect(mockFails.resourceCalls).toBe(asked + 1);
+    expect(screen.queryByText("Data changed")).toBeNull();
+    expect(nameField()).toHaveValue("charges");
+  });
+
+  it("keeps the targets as they were under a name being typed, and says they changed (SHOW_GEN_JOBS, ADR-0083)", async () => {
+    flags.showGenJobs = true;
+    const { client } = editor();
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+
+    // the Python SDK target is taken away meanwhile
+    act(() => client.setQueryData(keys.genTargets, generationTargets().filter((x) => x.id !== "python")));
+
+    expect(await screen.findByText("Data changed")).toBeInTheDocument();
+    expect(within(resource("v1", "invoices")).getByText("in review · Python SDK")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(within(resource("v1", "invoices")).queryByText("in review · Python SDK")).toBeNull();
+  });
+
+  it("keeps a name being typed through a failed refresh of the jobs, with a warning (SHOW_GEN_JOBS, ADR-0081)", async () => {
+    flags.showGenJobs = true;
+    const { client } = editor();
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+
+    mockFails.resources = true;
+    await refresh(client, keys.genResources("billing-api"));
+
+    expect(await alertNamed("Could not refresh this layout. Your unsaved name is kept.")).toBeInTheDocument();
+    expect(nameField()).toHaveValue("charges");
+    expect(screen.queryByText("Failed to load service")).toBeNull();
+    expect(screen.queryByText("Data changed")).toBeNull();
+
+    // without a name being typed, the failure takes the page (ADR-0081)
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+  });
+
+  describe("the header, counting what the page shows (SHOW_GEN_JOBS)", () => {
+    const HUB = "/api/generation/services/notifications-hub/layout";
+    const confirmedBy = { confirmed_by: "valeriia", confirmed_at: "2026-08-11T13:58:00Z" };
+    /* The mock has topics merged on every connected target: the page leaves it out. */
+    const topics: LayoutResource = { id: 7, name: "topics", ...unconfirmed, endpoints: [endpoint({ id: 7, path: "t.rst" })] };
+    const subscriptions: LayoutResource = {
+      id: 8,
+      name: "subscriptions",
+      ...confirmedBy,
+      endpoints: [endpoint({ id: 8, path: "s.rst" })],
+    };
+    const hub = (resources: LayoutResource[]) =>
+      editor(
+        { [LIST]: generationList("notifications-hub"), [HUB]: layout({ versions: [{ api_version: "v1", resources, unassigned: [] }] }) },
+        "/generation/notifications-hub/layout",
+      );
+
+    it("says the layout is confirmed when every resource shown is, whatever one moved on was", async () => {
+      flags.showGenJobs = true;
+      hub([topics, subscriptions]);
+
+      expect(await screen.findByText("1 resource fully merged — moved to Maintenance")).toBeInTheDocument();
+      expect(screen.getByText(/ · 1 resource · 1 endpoint · 1 of 1 resources confirmed$/)).toBeInTheDocument();
+      expect(screen.getByText("layout confirmed")).toBeInTheDocument();
+    });
+
+    it("says the layout is confirmed when every resource has moved on, with no \"0 of 0\"", async () => {
+      flags.showGenJobs = true;
+      hub([topics]);
+
+      expect(await screen.findByText("1 resource fully merged — moved to Maintenance")).toBeInTheDocument();
+      expect(screen.getByText("Shared layout · 1 version · 0 resources · 0 endpoints")).toBeInTheDocument();
+      expect(screen.getByText("layout confirmed")).toBeInTheDocument();
+    });
+  });
+
+  it("shows a failure, not the editor, while the targets fail (SHOW_GEN_JOBS)", async () => {
+    flags.showGenJobs = true;
+    mockFails.targets = true;
+    editor();
+
+    expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "v1" })).toBeNull();
+  });
+
+  it("joins a refresh of the resources already asking when Retry is clicked (ADR-0081, ADR-0084)", async () => {
+    flags.showGenJobs = true;
+    const { client } = editor();
+    expect(await screen.findByRole("region", { name: "v1" })).toBeInTheDocument();
+    await expectRetryJoinsResources(client, "billing-api");
   });
 });
 
 describe("the way in and out", () => {
+  const CORE = "/api/generation/services/customer-core/layout";
+
   /** The list, the card and the layout under their own routes, so each can be left for the next. */
   function panel(path: string) {
+    backend({
+      [LIST]: generationList("billing-api", "customer-core"),
+      [LAYOUT]: billing(),
+      [CORE]: layout(),
+      [rename(2)]: billing({ v1: [INVOICES, { ...PAYMENTS, name: "charges" }, MISC] }),
+    });
     return renderPage(
       <>
         <Routes>
@@ -571,13 +1107,13 @@ describe("the way in and out", () => {
         </Routes>
         <Location />
       </>,
-      { path, route: "*", seed: MOCK },
+      { path, route: "*" },
     );
   }
   const location = () => screen.getByTestId("location").textContent;
 
-  it("goes from the card to the layout and back, and the card still leads back to the list it came from", async () => {
-    panel("/generation?filter=review");
+  it("goes from the list to the card, on to the layout and back", async () => {
+    panel("/generation");
 
     fireEvent.click(await screen.findByText("billing-api"));
     fireEvent.click(await screen.findByRole("link", { name: "Edit layout" }));
@@ -588,101 +1124,105 @@ describe("the way in and out", () => {
     fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
 
     expect(location()).toBe("/generation/billing-api");
-    expect(await screen.findByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation?filter=review");
+    expect(await screen.findByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation");
   });
 
   it("keeps the note that the layout was edited once the layout is left, for that service only", async () => {
     panel("/generation/billing-api/layout");
 
-    await screen.findByText(/^Shared layout · 2 versions/);
-    fireEvent.click(button(version("v1"), "New resource"));
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Layout edited · saved on the service")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
     fireEvent.click(await screen.findByRole("link", { name: "Edit layout" }));
 
-    expect(await screen.findByText(/^Shared layout · 2 versions · 5 resources/)).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "charges" })).toBeInTheDocument();
     expect(screen.getByText("Layout edited · saved on the service")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
     fireEvent.click(await screen.findByRole("link", { name: "All services" }));
     fireEvent.click(await screen.findByText("customer-core"));
-    fireEvent.click(await screen.findByRole("link", { name: "Edit layout" }));
+    fireEvent.click((await screen.findAllByRole("link", { name: "Edit layout" }))[0]);
 
-    expect(await screen.findByText(/^Shared layout · 1 version/)).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "cloudservers" })).toBeInTheDocument();
     expect(location()).toBe("/generation/customer-core/layout");
     expect(screen.queryByText("Layout edited · saved on the service")).toBeNull();
   });
 
-  it("keeps the card's target on the way back", async () => {
-    layoutPage("/generation/billing-api/layout?target=ansible");
+  it("drops a name being typed when the page is reused for another service: its layout is not the other's", async () => {
+    const contacts: LayoutResource = { id: 9, name: "contacts", ...unconfirmed, endpoints: [endpoint({ id: 9, title: "List contacts" })] };
+    backend({
+      [LIST]: generationList("billing-api", "customer-core"),
+      [LAYOUT]: billing(),
+      [CORE]: layout({ versions: [{ api_version: "v1", resources: [contacts], unassigned: [] }] }),
+    });
+    renderPage(
+      <>
+        <GenerationLayoutPage />
+        <Link to="/generation/customer-core/layout">customer-core</Link>
+      </>,
+      { path: "/generation/billing-api/layout", route: "/generation/:name/layout" },
+    );
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
 
+    fireEvent.click(screen.getByRole("link", { name: "customer-core" }));
+
+    expect(await screen.findByRole("group", { name: "contacts" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "payments" })).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("keeps the card's target on the way back", async () => {
+    editor({}, "/generation/billing-api/layout?target=ansible");
+
+    await screen.findByRole("region", { name: "v1" });
     for (const link of await screen.findAllByRole("link", { name: "Back to generation" })) {
       expect(link).toHaveAttribute("href", "/generation/billing-api?target=ansible");
     }
   });
 
   it.each(["cobol", "python"])("leaves ?target=%s off the way back, as the card's own link does", async (target) => {
-    layoutPage(`/generation/billing-api/layout?target=${target}`);
+    editor({}, `/generation/billing-api/layout?target=${target}`);
 
+    await screen.findByRole("region", { name: "v1" });
     for (const link of await screen.findAllByRole("link", { name: "Back to generation" })) {
-      expect(link).toHaveAttribute("href", "/generation/billing-api");
+      await waitFor(() => expect(link).toHaveAttribute("href", "/generation/billing-api"));
     }
   });
 
   it("opens the editor without targets: the layout is the same for every one (ADR-0074)", async () => {
     mockFails.noTargets = true;
-    layoutPage();
+    editor();
 
-    expect(await screen.findByText(/^Shared layout/)).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "v1" })).toBeInTheDocument();
     expect(screen.queryByText("No target to generate for")).toBeNull();
   });
 
-  it("joins a refresh of the resources already asking when Retry is clicked (ADR-0081, ADR-0084)", async () => {
-    const { client } = layoutPage();
-    expect(await screen.findByText(/^Shared layout/)).toBeInTheDocument();
-    await expectRetryJoinsResources(client, "billing-api");
+  it("opens the editor while the targets fail, taking the address's target along as it is", async () => {
+    mockFails.targets = true;
+    editor({}, "/generation/billing-api/layout?target=python");
+
+    expect(await screen.findByRole("region", { name: "v1" })).toBeInTheDocument();
+    expect(screen.queryByText("Failed to load service")).toBeNull();
+    expect(screen.getAllByRole("link", { name: "Back to generation" })[0]).toHaveAttribute(
+      "href",
+      "/generation/billing-api?target=python",
+    );
   });
 });
 
-describe("other services on the mock", () => {
-  it("leaves out a resource merged on every connected target, and says it moved on", async () => {
-    layoutPage("/generation/notifications-hub/layout");
-
-    expect(
-      await screen.findByText("Shared layout · 1 version · 2 resources · 5 endpoints · 1 of 2 resources confirmed"),
-    ).toBeInTheDocument();
-    expect(within(version("v1")).getByText("1 resource · 2 endpoints")).toBeInTheDocument();
-    expect(within(version("v1")).getByText("1 resource fully merged — moved to Maintenance")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "topics" })).toBeNull();
-    expect(resource("v1", "subscriptions")).toBeInTheDocument();
-  });
-
-  it("lays out device-mgmt, scanned in part, from its documents, and marks the ones not recognized in full", async () => {
-    layoutPage("/generation/device-mgmt/layout");
-
-    expect(
-      await screen.findByText("Shared layout · 1 version · 6 resources · 31 endpoints · 0 of 6 resources confirmed"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("needs confirmation")).toBeInTheDocument();
-    expect(within(version("v2")).getAllByText("auto")).toHaveLength(6);
-    // the scan mock has 18 of its documents ok, 9 partial and 4 failed
-    expect(screen.getAllByText("partial")).toHaveLength(9);
-    expect(screen.getAllByText("failed")).toHaveLength(4);
-    const shadow = endpointRow("Query a device shadow");
-    expect(within(shadow).getByText("failed")).toHaveAttribute(
-      "title",
-      "Not recognized in full — a resource holding this endpoint cannot be generated. It can be dragged to another resource.",
-    );
-    expect(shadow).toHaveAttribute("draggable", "true");
-  });
+describe("no layout to edit", () => {
+  const ecs = "opentelekomcloud-docs/ecs";
+  const ECS_LAYOUT = "/api/generation/services/opentelekomcloud-docs%2Fecs/layout";
+  const NO_LAYOUT = layout({ has_layout: false, versions: [], no_version: [] });
 
   it("says there is no layout yet before the grouping has run, and leads to the service page (ADR-0086)", async () => {
-    const ecs = "opentelekomcloud-docs/ecs";
-    layoutPage("/generation/opentelekomcloud-docs%2Fecs/layout", [
-      listedSeed(ecs),
-      [keys.genLayout(ecs), layout({ has_layout: false, versions: [], no_version: [] })],
-    ]);
+    editor({ [LIST]: generationList(ecs), [ECS_LAYOUT]: NO_LAYOUT }, "/generation/opentelekomcloud-docs%2Fecs/layout");
 
     expect(await screen.findByRole("heading", { name: ecs })).toBeInTheDocument();
     expect(screen.getByText("No layout yet. Its resources appear here once the service is grouped.")).toBeInTheDocument();
@@ -701,25 +1241,8 @@ describe("other services on the mock", () => {
     expect(screen.queryByText(/^Shared layout/)).toBeNull();
   });
 
-  it("says a stored layout the editor cannot show yet, rather than that there is none", async () => {
-    const ecs = "opentelekomcloud-docs/ecs";
-    layoutPage("/generation/opentelekomcloud-docs%2Fecs/layout", [listedSeed(ecs), [keys.genLayout(ecs), layout()]]);
-
-    expect(await screen.findByText("This service has a layout, but it cannot be shown here yet.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open the service page" })).toHaveAttribute(
-      "href",
-      "/generation/opentelekomcloud-docs%2Fecs",
-    );
-    expect(screen.queryByText("No layout yet. Its resources appear here once the service is grouped.")).toBeNull();
-    expect(screen.queryByText("no layout yet")).toBeNull();
-  });
-
   it("carries the target the address names on the way to the service page", async () => {
-    const ecs = "opentelekomcloud-docs/ecs";
-    layoutPage("/generation/opentelekomcloud-docs%2Fecs/layout?target=ansible", [
-      listedSeed(ecs),
-      [keys.genLayout(ecs), layout({ has_layout: false, versions: [], no_version: [] })],
-    ]);
+    editor({ [LIST]: generationList(ecs), [ECS_LAYOUT]: NO_LAYOUT }, "/generation/opentelekomcloud-docs%2Fecs/layout?target=ansible");
 
     expect(await screen.findByRole("link", { name: "Open the service page" })).toHaveAttribute(
       "href",
@@ -728,12 +1251,11 @@ describe("other services on the mock", () => {
   });
 
   it("reads the targets as they stand, not their answer before a failed refresh (ADR-0081)", async () => {
-    const ecs = "opentelekomcloud-docs/ecs";
     // the default named in the address: the current targets leave it off, as the card does
-    const { client } = layoutPage("/generation/opentelekomcloud-docs%2Fecs/layout?target=python", [
-      listedSeed(ecs),
-      [keys.genLayout(ecs), layout({ has_layout: false, versions: [], no_version: [] })],
-    ]);
+    const { client } = editor(
+      { [LIST]: generationList(ecs), [ECS_LAYOUT]: NO_LAYOUT },
+      "/generation/opentelekomcloud-docs%2Fecs/layout?target=python",
+    );
     const serviceLink = () => screen.getByRole("link", { name: "Open the service page" });
     await waitFor(() => expect(serviceLink()).toHaveAttribute("href", "/generation/opentelekomcloud-docs%2Fecs"));
 
@@ -746,91 +1268,19 @@ describe("other services on the mock", () => {
       expect(serviceLink()).toHaveAttribute("href", "/generation/opentelekomcloud-docs%2Fecs?target=python"),
     );
   });
-
-  it("takes the backend's word that there is no layout, whatever the mock holds", async () => {
-    layoutPage("/generation/billing-api/layout", [
-      [keys.genLayout("billing-api"), layout({ has_layout: false, versions: [], no_version: [] })],
-    ]);
-
-    expect(await screen.findByText("No layout yet. Its resources appear here once the service is grouped.")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "v1" })).toBeNull();
-  });
-
-  it("does not open a service that is not in Generation", async () => {
-    layoutPage("/generation/sms-gateway/layout");
-
-    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation");
-  });
-});
-
-describe("states the mock does not hold today", () => {
-  it("freezes a resource that is generating", async () => {
-    const running = generationResources("billing-api").map((r) =>
-      r.id === "v1_payments" ? { ...r, jobs: { python: { status: "running" as const, pr: null } } } : r,
-    );
-    layoutPage("/generation/billing-api/layout", [[keys.genResources("billing-api"), running]]);
-
-    const payments = await within(await screen.findByRole("region", { name: "v1" })).findByRole("group", {
-      name: "payments",
-    });
-    expect(within(payments).getByText("generating · Python SDK")).toHaveAttribute(
-      "title",
-      "A Python SDK job is running — the shared layout is frozen until it finishes.",
-    );
-    expect(within(payments).queryByRole("button", { name: "Confirm layout" })).toBeNull();
-    expect(endpointRow("List payments")).toHaveAttribute("draggable", "false");
-  });
-
-  it("says why an edit was refused, and shows the layout as it is", async () => {
-    // the page believes invoices is free and unconfirmed; the mock has it in review
-    const stale = generationResources("billing-api").map((r) =>
-      r.id === "v1_invoices" ? { ...r, confirmedBy: null, confirmedAt: null, jobs: {} } : r,
-    );
-    layoutPage("/generation/billing-api/layout", [[keys.genResources("billing-api"), stale]]);
-
-    const invoices = (await screen.findAllByRole("group", { name: "invoices" }))[0];
-    fireEvent.click(button(invoices, "Confirm layout"));
-
-    expect(await screen.findByText("That did not go through")).toBeInTheDocument();
-    expect(
-      screen.getByText("The layout of invoices is frozen: it is generating, in review or merged"),
-    ).toBeInTheDocument();
-    expect(await within(resource("v1", "invoices")).findByText("in review · Python SDK")).toBeInTheDocument();
-    expect(screen.queryByText("Layout edited · saved on the service")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-
-    // the query client hands the reset on in its next tick
-    await waitFor(() => expect(screen.queryByText("That did not go through")).toBeNull());
-  });
 });
 
 describe("the services the layout opens for (ADR-0086)", () => {
-  const LIST = "/api/generation/services";
-  const LAYOUT = "/api/generation/services/billing-api/layout";
-
-  it("does not open a service without endpoints, which the server never lists (ADR-0087)", async () => {
-    layoutPage("/generation/tariff-catalog/layout");
-
-    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "tariff-catalog" })).toBeNull();
-  });
-
-  it("does not open a service of the mock that the server's list does not hold", async () => {
-    layoutPage("/generation/billing-api/layout", [listedSeed("customer-core")]);
+  it("does not open a service that the server's list does not hold", async () => {
+    editor({ [LIST]: generationList("customer-core") });
 
     expect(await screen.findByText("Page not found.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "billing-api" })).toBeNull();
+    expect(screen.getByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation");
   });
 
   it("turns into the page a direct address shows once a refresh no longer lists the service", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
-    backend(answers);
-    const { client } = renderPage(<GenerationLayoutPage />, {
-      path: "/generation/billing-api/layout",
-      route: "/generation/:name/layout",
-    });
+    const { client, answers } = editor();
     expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
 
     answers[LIST] = [];
@@ -841,12 +1291,7 @@ describe("the services the layout opens for (ADR-0086)", () => {
   });
 
   it("shows a failed refresh of the list as a failure with Retry, not as Page not found", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
-    backend(answers);
-    const { client } = renderPage(<GenerationLayoutPage />, {
-      path: "/generation/billing-api/layout",
-      route: "/generation/:name/layout",
-    });
+    const { client, answers } = editor();
     expect(await screen.findByRole("heading", { name: "billing-api" })).toBeInTheDocument();
 
     answers[LIST] = FAILED;
@@ -862,21 +1307,16 @@ describe("the services the layout opens for (ADR-0086)", () => {
   });
 
   it("keeps a name being typed through a failed refresh of the list, with a warning and Retry", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
-    backend(answers);
-    const { client } = renderPage(<GenerationLayoutPage />, {
-      path: "/generation/billing-api/layout",
-      route: "/generation/:name/layout",
-    });
-    await screen.findByRole("heading", { name: "billing-api" });
+    const { client, answers } = editor();
+    await screen.findByRole("region", { name: "v1" });
     fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
-    fireEvent.change(screen.getByRole("textbox", { name: "Rename resource" }), { target: { value: "charges" } });
+    fireEvent.change(nameField(), { target: { value: "charges" } });
 
     answers[LIST] = FAILED;
     await refresh(client, keys.genList());
 
     const warning = await alertNamed("Could not refresh this layout. Your unsaved name is kept.");
-    expect(screen.getByRole("textbox", { name: "Rename resource" })).toHaveValue("charges");
+    expect(nameField()).toHaveValue("charges");
     expect(screen.queryByText("Failed to load service")).toBeNull();
     expect(screen.queryByText("Page not found.")).toBeNull();
 
@@ -884,13 +1324,12 @@ describe("the services the layout opens for (ADR-0086)", () => {
     fireEvent.click(within(warning).getByRole("button", { name: "Retry" }));
 
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(screen.getByRole("textbox", { name: "Rename resource" })).toHaveValue("charges");
+    expect(nameField()).toHaveValue("charges");
   });
 
   it("asks for the layout next to the list, not after it", async () => {
     const list = later();
-    const api = backend({ [LIST]: list.arrived, [LAYOUT]: layout() });
-    renderPage(<GenerationLayoutPage />, { path: "/generation/billing-api/layout", route: "/generation/:name/layout" });
+    const { api } = editor({ [LIST]: list.arrived });
 
     await waitFor(() => expect(api.calls(LAYOUT)).toBe(1));
     expect(api.calls(LIST)).toBe(1);
@@ -900,12 +1339,7 @@ describe("the services the layout opens for (ADR-0086)", () => {
   });
 
   it("turns into the page a direct address shows when the layout answers 404, though the list still holds it", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
-    backend(answers);
-    const { client } = renderPage(<GenerationLayoutPage />, {
-      path: "/generation/billing-api/layout",
-      route: "/generation/:name/layout",
-    });
+    const { client, answers } = editor();
     expect(await screen.findByRole("region", { name: "v1" })).toBeInTheDocument();
 
     // excluded between the list's answer and the layout's (ADR-0086)
@@ -916,32 +1350,56 @@ describe("the services the layout opens for (ADR-0086)", () => {
     expect(screen.queryByText("Failed to load service")).toBeNull();
   });
 
-  it("turns into the page a direct address shows when the layout answers 404 as the list fails, a name being typed", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
-    backend(answers);
-    const { client } = renderPage(<GenerationLayoutPage />, {
-      path: "/generation/billing-api/layout",
-      route: "/generation/:name/layout",
-    });
+  it("keeps a name being typed when the layout answers 404 as the list fails, and shows Page not found on Refresh (ADR-0082)", async () => {
+    const { client, api, answers } = editor();
     await screen.findByRole("region", { name: "v1" });
     fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
-    fireEvent.change(screen.getByRole("textbox", { name: "Rename resource" }), { target: { value: "charges" } });
+    fireEvent.change(nameField(), { target: { value: "charges" } });
 
     // one round of the periodic refresh: the list fails, and the layout says the service is gone
     answers[LIST] = FAILED;
     answers[LAYOUT] = NOT_FOUND;
     await pollAgain(client, keys.genList(), keys.genLayout("billing-api"));
 
-    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(await screen.findByText("Data changed")).toBeInTheDocument();
+    expect(nameField()).toHaveValue("charges");
+    expect(screen.queryByText("Page not found.")).toBeNull();
     expect(screen.queryByText("Could not refresh this layout. Your unsaved name is kept.")).toBeNull();
+    const reads = api.calls(LAYOUT);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    // a service that has left is not asked for again
+    await settle();
+    expect(api.calls(LAYOUT)).toBe(reads);
+  });
+
+  it("keeps a name being typed when a refresh no longer lists the service, and shows Page not found on Refresh (ADR-0082)", async () => {
+    const { client, api, answers } = editor();
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(version("v1"), "New resource"));
+    fireEvent.change(nameField("Name of the new resource"), { target: { value: "refunds" } });
+
+    answers[LIST] = generationList("customer-core");
+    await refresh(client, keys.genList());
+
+    expect(await screen.findByText("Data changed")).toBeInTheDocument();
+    expect(nameField("Name of the new resource")).toHaveValue("refunds");
+    expect(resource("v1", "payments")).toBeInTheDocument();
+    // a service that has left takes no edit: nothing is sent to be refused
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    fireEvent.keyDown(nameField("Name of the new resource"), { key: "Enter" });
+    await settle();
+    expect(api.calls(ADD)).toBe(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
   });
 
   it("stops asking for the layout of a repo off the list, which the backend answers 404", async () => {
-    const api = backend({ [LIST]: generationList("customer-core"), [LAYOUT]: NOT_FOUND });
-    const { client } = renderPage(<GenerationLayoutPage />, {
-      path: "/generation/billing-api/layout",
-      route: "/generation/:name/layout",
-    });
+    const { client, api } = editor({ [LIST]: generationList("customer-core"), [LAYOUT]: NOT_FOUND });
     expect(await screen.findByText("Page not found.")).toBeInTheDocument();
     const asked = api.calls(LAYOUT);
 
@@ -952,43 +1410,38 @@ describe("the services the layout opens for (ADR-0086)", () => {
   });
 
   it("shows a layout that failed to load as a failure with Retry, not as Page not found or as no layout", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: FAILED };
-    backend(answers);
-    renderPage(<GenerationLayoutPage />, { path: "/generation/billing-api/layout", route: "/generation/:name/layout" });
+    const { answers } = editor({ [LAYOUT]: FAILED });
 
     expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
     expect(screen.queryByText("Page not found.")).toBeNull();
     expect(screen.queryByText("No layout yet. Its resources appear here once the service is grouped.")).toBeNull();
 
-    answers[LAYOUT] = layout();
+    answers[LAYOUT] = billing();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(await screen.findByRole("region", { name: "v1" })).toBeInTheDocument();
   });
 
-  it("shows a failed refresh of the layout as a failure, and keeps a name being typed through it", async () => {
-    const answers: Record<string, unknown> = { [LIST]: generationList("billing-api"), [LAYOUT]: layout() };
-    backend(answers);
-    const { client } = renderPage(<GenerationLayoutPage />, {
-      path: "/generation/billing-api/layout",
-      route: "/generation/:name/layout",
-    });
+  it("shows a failed refresh of the layout as a failure, and keeps the layout and a name being typed through it", async () => {
+    const { client, answers } = editor();
     await screen.findByRole("region", { name: "v1" });
     fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
-    fireEvent.change(screen.getByRole("textbox", { name: "Rename resource" }), { target: { value: "charges" } });
+    fireEvent.change(nameField(), { target: { value: "charges" } });
 
     answers[LAYOUT] = FAILED;
     await refresh(client, keys.genLayout("billing-api"));
 
     const warning = await alertNamed("Could not refresh this layout. Your unsaved name is kept.");
-    expect(screen.getByRole("textbox", { name: "Rename resource" })).toHaveValue("charges");
+    expect(nameField()).toHaveValue("charges");
     expect(screen.queryByText("Failed to load service")).toBeNull();
+    // the layout last read stays under the name being typed
+    expect(within(resource("v1", "invoices")).getByText("List invoices of a project")).toBeInTheDocument();
 
-    answers[LAYOUT] = layout();
+    answers[LAYOUT] = billing();
     fireEvent.click(within(warning).getByRole("button", { name: "Retry" }));
 
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-    expect(screen.getByRole("textbox", { name: "Rename resource" })).toHaveValue("charges");
+    expect(nameField()).toHaveValue("charges");
 
     // without a name being typed, a failed refresh replaces the layout (ADR-0081)
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -997,5 +1450,18 @@ describe("the services the layout opens for (ADR-0086)", () => {
 
     expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "v1" })).toBeNull();
+  });
+
+  it("keeps the name of a resource being added through a failed refresh of the layout", async () => {
+    const { client, answers } = editor();
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(version("v1"), "New resource"));
+    fireEvent.change(nameField("Name of the new resource"), { target: { value: "refunds" } });
+
+    answers[LAYOUT] = FAILED;
+    await refresh(client, keys.genLayout("billing-api"));
+
+    expect(await alertNamed("Could not refresh this layout. Your unsaved name is kept.")).toBeInTheDocument();
+    expect(nameField("Name of the new resource")).toHaveValue("refunds");
   });
 });

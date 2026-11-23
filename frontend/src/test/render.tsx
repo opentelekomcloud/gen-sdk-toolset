@@ -93,10 +93,11 @@ const NAMED_ANSWERS = new Map<symbol, { status: number; body: ApiErrorEnvelope }
  * holds for its path at that moment - so a test breaks the backend by setting
  * a path to FAILED, has it answer 404, 409 or 403 with NOT_FOUND, CONFLICT or
  * FORBIDDEN, holds an answer back by setting a promise there, or answers request
- * by request through a function.
+ * by request through a function. `calls` counts the requests to a path, and
+ * `sent` gives the body of each one that had one, as JSON.
  */
 export function backend(answers: Record<string, unknown>) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn<typeof fetch>(async (input) => {
     const path = String(input).split("?")[0];
     const entry = answers[path];
     const answer = await (typeof entry === "function" ? entry() : entry);
@@ -105,7 +106,11 @@ export function backend(answers: Record<string, unknown>) {
     return new Response(JSON.stringify(answer ?? null));
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { calls: (path: string) => fetchMock.mock.calls.filter(([input]) => String(input).split("?")[0] === path).length };
+  const to = (path: string) => fetchMock.mock.calls.filter(([input]) => String(input).split("?")[0] === path);
+  return {
+    calls: (path: string) => to(path).length,
+    sent: (path: string): unknown[] => to(path).flatMap(([, init]) => (init?.body ? [JSON.parse(String(init.body))] : [])),
+  };
 }
 
 /** A refresh, as the periodic one or an invalidation runs it. */

@@ -19,26 +19,52 @@ export function ServiceBackLink({ to, state, label }: { to: string; state?: unkn
 }
 
 /**
+ * A warning above a page's content: its `title`, what it says, and the one
+ * thing to do about it. It comes up on its own - a refusal, a change someone
+ * else made - so it is announced.
+ */
+export function NoticeBanner({
+  title,
+  children,
+  action,
+  onAction,
+}: {
+  title: string;
+  children: ReactNode;
+  action: string;
+  onAction: () => void;
+}) {
+  return (
+    <div
+      role="status"
+      className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800"
+    >
+      <AlertTriangle size={14} className="mt-px shrink-0 text-amber-500" />
+      <div className="min-w-0">
+        <span className="font-semibold">{title}</span>
+        {" — "}
+        {children}
+      </div>
+      <button type="button"
+        onClick={onAction}
+        className="ml-auto shrink-0 rounded border border-amber-300 px-2 py-1 font-medium text-amber-800 transition hover:border-amber-500 hover:bg-white"
+      >
+        {action}
+      </button>
+    </div>
+  );
+}
+
+/**
  * A refused mutation changes nothing on screen, so say why it did not take:
  * `title` is the line for the case, `message` the refusal's own wording.
  */
 export function RefusalBanner({ title, message, onDismiss }: { title: string; message: string; onDismiss: () => void }) {
   const { t } = useI18n();
   return (
-    <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
-      <AlertTriangle size={14} className="mt-px shrink-0 text-amber-500" />
-      <div className="min-w-0">
-        <span className="font-semibold">{title}</span>
-        {" — "}
-        <span className="font-mono">{message}</span>
-      </div>
-      <button type="button"
-        onClick={onDismiss}
-        className="ml-auto shrink-0 rounded border border-amber-300 px-2 py-1 font-medium text-amber-800 transition hover:border-amber-500 hover:bg-white"
-      >
-        {t("snap.dismiss")}
-      </button>
-    </div>
+    <NoticeBanner title={title} action={t("snap.dismiss")} onAction={onDismiss}>
+      <span className="font-mono">{message}</span>
+    </NoticeBanner>
   );
 }
 
