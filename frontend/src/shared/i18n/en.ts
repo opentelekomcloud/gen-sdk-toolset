@@ -293,7 +293,7 @@ export const en = {
   "gen.layout.pill.noLayout": "no layout yet",
   "gen.layout.pill.confirmed": "layout confirmed",
   "gen.layout.pill.unconfirmed": "needs confirmation",
-  "gen.layout.edited": "Layout edited · saved on the service",
+  "gen.layout.edited": "Changes saved on the service",
   "gen.layout.info":
     "This layout is shared by every target — once confirmed, each edition inherits it. Automatic grouping can be wrong on inconsistent docs; edits are stored on the service and survive a rescan.",
   "gen.layout.moved":
@@ -316,6 +316,9 @@ export const en = {
     "The last {target} job failed and wrote nothing — the layout stays editable, retry from the error screen.",
   "gen.layout.confirmedNote": "confirmed by {by} · {at}",
   "gen.layout.confirm": "Confirm layout",
+  "gen.layout.confirm.empty": "No endpoint to confirm yet — drag endpoints here first.",
+  "gen.layout.confirm.notOk":
+    "{n} endpoint is not ok — move or fix it before confirming.|{n} endpoints are not ok — move or fix them before confirming.",
   "gen.layout.rename": "Rename resource",
   "gen.layout.save": "Save",
   "gen.layout.cancel": "Cancel",

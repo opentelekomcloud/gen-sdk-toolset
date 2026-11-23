@@ -225,10 +225,10 @@ describe("the stored layout in the editor (ISS-0042)", () => {
     const back = screen.getAllByRole("link", { name: "Back to generation" });
     expect(back).toHaveLength(2);
     for (const link of back) expect(link).toHaveAttribute("href", "/generation/billing-api");
-    expect(screen.queryByText("Layout edited · saved on the service")).toBeNull();
+    expect(screen.queryByText("Changes saved on the service")).toBeNull();
   });
 
-  it("shows each resource's confirmation from confirmed_by and confirmed_at, and offers no Confirm here", async () => {
+  it("shows each resource's confirmation from confirmed_by and confirmed_at, and offers no Confirm for a confirmed one", async () => {
     editor();
 
     const invoices = await within(await screen.findByRole("region", { name: "v1" })).findByRole("group", { name: "invoices" });
@@ -236,10 +236,12 @@ describe("the stored layout in the editor (ISS-0042)", () => {
     expect(within(invoices).getByText(/^confirmed by valeriia · \d\d\/\d\d\/2026, \d\d:\d\d$/)).toBeInTheDocument();
     expect(within(resource("v1", "payments")).getByText("layout not confirmed yet")).toBeInTheDocument();
     expect(within(resource("v1", "payments")).queryByText("confirmed")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Confirm layout" })).toBeNull();
-    // nor does the page's note ask for one
+    expect(within(invoices).queryByRole("button", { name: "Confirm layout" })).toBeNull();
+    expect(button(resource("v1", "payments"), "Confirm layout")).toBeEnabled();
+    // a Confirm for each resource only: none for a version or the whole layout (ADR-0066)
+    expect(screen.getAllByRole("button", { name: "Confirm layout" })).toHaveLength(3);
+    expect(within(version("v1")).getAllByRole("button", { name: "Confirm layout" })).toHaveLength(2);
     expect(screen.getByText(/once confirmed, each edition inherits it/)).toBeInTheDocument();
-    expect(screen.queryByText(/confirm it once/)).toBeNull();
   });
 
   it("says the layout is confirmed once every resource is", async () => {
@@ -366,7 +368,7 @@ describe("renaming a resource", () => {
     expect(api.sent(rename(2))).toEqual([{ name: "charges" }]);
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(within(version("v1")).queryByRole("group", { name: "payments" })).toBeNull();
-    expect(screen.getByText("Layout edited · saved on the service")).toBeInTheDocument();
+    expect(screen.getByText("Changes saved on the service")).toBeInTheDocument();
     expect(api.calls(LAYOUT)).toBe(reads);
     // the edit is kept for that note, without a copy of the layout
     const kept = client.getMutationCache().getAll();
@@ -510,7 +512,7 @@ describe("adding a resource", () => {
     expect(within(added).getByText("Empty resource — drag endpoints here.")).toBeInTheDocument();
     expect(within(added).getByText("layout not confirmed yet")).toBeInTheDocument();
     expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.getByText("Layout edited · saved on the service")).toBeInTheDocument();
+    expect(screen.getByText("Changes saved on the service")).toBeInTheDocument();
   });
 
   it("checks the new name as a rename's: a package name, and free in its version", async () => {
@@ -574,7 +576,7 @@ describe("a refusal of the server", () => {
     expect(await screen.findByText("Data changed")).toBeInTheDocument();
     expect(api.calls(LAYOUT)).toBe(reads + 1);
     expect(resource("v1", "misc")).toBeInTheDocument();
-    expect(screen.queryByText("Layout edited · saved on the service")).toBeNull();
+    expect(screen.queryByText("Changes saved on the service")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     // the query client hands the reset on in its next tick
@@ -632,7 +634,7 @@ describe("moving an endpoint (ADR-0064)", () => {
     await waitFor(() => expect(within(resource("v1", "misc")).getByText("List payments")).toBeInTheDocument());
     expect(api.sent(MOVE)).toEqual([{ path: "payments/list-payments.rst", resource_id: 3 }]);
     expect(within(resource("v1", "payments")).getByText("Empty resource — drag endpoints here.")).toBeInTheDocument();
-    expect(screen.getByText("Layout edited · saved on the service")).toBeInTheDocument();
+    expect(screen.getByText("Changes saved on the service")).toBeInTheDocument();
   });
 
   it("moves one endpoint at a time: nothing is dragged while a move is under way", async () => {
@@ -834,6 +836,115 @@ describe("the layout changing under a name being typed (ADR-0083)", () => {
   });
 });
 
+describe("confirming a resource (ADR-0066, ADR-0067)", () => {
+  const confirm = (id: number) => `${LAYOUT}/resources/${id}/confirm`;
+  const byAda = { confirmed_by: "ada@otc.test", confirmed_at: "2026-11-20T09:00:00Z" };
+
+  it("confirms the one resource on the server, sending nothing, and shows the answer: the others as they were", async () => {
+    const { api } = editor({ [confirm(2)]: billing({ v1: [INVOICES, { ...PAYMENTS, ...byAda }, MISC] }) });
+    await screen.findByRole("region", { name: "v1" });
+
+    fireEvent.click(button(resource("v1", "payments"), "Confirm layout"));
+
+    expect(await within(resource("v1", "payments")).findByText(/^confirmed by ada@otc\.test · /)).toBeInTheDocument();
+    expect(api.calls(confirm(2))).toBe(1);
+    expect(api.sent(confirm(2))).toEqual([]);
+    expect(within(resource("v1", "payments")).queryByRole("button", { name: "Confirm layout" })).toBeNull();
+    expect(within(resource("v1", "invoices")).getByText(/^confirmed by valeriia · /)).toBeInTheDocument();
+    expect(within(resource("v1", "misc")).getByText("layout not confirmed yet")).toBeInTheDocument();
+    expect(within(resource("v2", "invoices")).getByText("layout not confirmed yet")).toBeInTheDocument();
+    expect(screen.getByText(/· 2 of 4 resources confirmed$/)).toBeInTheDocument();
+    // a confirmation is saved on the service as an edit is
+    expect(screen.getByText("Changes saved on the service")).toBeInTheDocument();
+  });
+
+  it("keeps Confirm unavailable for a resource with an endpoint that is not ok, says why, and blocks no other (ADR-0067)", async () => {
+    const { api } = editor();
+    await screen.findByRole("region", { name: "v1" });
+
+    const misc = resource("v1", "misc");
+    const confirmMisc = button(misc, "Confirm layout");
+    expect(confirmMisc).toBeDisabled();
+    expect(confirmMisc).toHaveAccessibleDescription("1 endpoint is not ok — move or fix it before confirming.");
+    expect(button(resource("v1", "payments"), "Confirm layout")).toBeEnabled();
+    expect(button(resource("v2", "invoices"), "Confirm layout")).toBeEnabled();
+
+    fireEvent.click(confirmMisc);
+    await settle();
+    expect(api.calls(confirm(3))).toBe(0);
+  });
+
+  it("counts every endpoint that is not ok", async () => {
+    const failed = endpoint({ id: 8, path: "quotas/delete-quota.rst", title: "Delete a quota", overall_status: "failed" });
+    editor({ [LAYOUT]: billing({ v1: [INVOICES, PAYMENTS, { ...MISC, endpoints: [QUOTAS, failed, LIST_PAYMENTS] }] }) });
+    await screen.findByRole("region", { name: "v1" });
+
+    expect(button(resource("v1", "misc"), "Confirm layout")).toHaveAccessibleDescription(
+      "2 endpoints are not ok — move or fix them before confirming.",
+    );
+  });
+
+  it("keeps Confirm unavailable for a resource without endpoints, and says why", async () => {
+    const refunds: LayoutResource = { id: 5, name: "refunds", ...unconfirmed, endpoints: [] };
+    editor({ [LAYOUT]: billing({ v1: [INVOICES, PAYMENTS, MISC, refunds] }) });
+    await screen.findByRole("region", { name: "v1" });
+
+    const confirmRefunds = button(resource("v1", "refunds"), "Confirm layout");
+    expect(confirmRefunds).toBeDisabled();
+    expect(confirmRefunds).toHaveAccessibleDescription("No endpoint to confirm yet — drag endpoints here first.");
+  });
+
+  it("says why the server refused, in its own words, and reads the layout again", async () => {
+    const refusal = "Resource payments has 1 endpoint(s) that are not ok: payments/list-payments.rst";
+    const { api } = editor({
+      [confirm(2)]: () =>
+        new Response(JSON.stringify({ error: { code: "conflict", message: refusal } }), { status: 409 }),
+    });
+    await screen.findByRole("region", { name: "v1" });
+    const reads = api.calls(LAYOUT);
+
+    fireEvent.click(button(resource("v1", "payments"), "Confirm layout"));
+
+    expect(await screen.findByText("That could not be done right now")).toBeInTheDocument();
+    expect(screen.getByText(refusal)).toBeInTheDocument();
+    await waitFor(() => expect(api.calls(LAYOUT)).toBe(reads + 1));
+    expect(within(resource("v1", "payments")).getByText("layout not confirmed yet")).toBeInTheDocument();
+    expect(screen.queryByText("Changes saved on the service")).toBeNull();
+  });
+
+  it("confirms nothing while another edit is under way or a name is typed: one edit at a time", async () => {
+    const answer = later();
+    const { api } = editor({ [MOVE]: answer.arrived });
+    await screen.findByRole("region", { name: "v1" });
+
+    dragTo("Check the service", resource("v1", "payments"));
+    await waitFor(() => expect(button(resource("v1", "payments"), "Confirm layout")).toBeDisabled());
+    answer.send(billing({ v1: [INVOICES, { ...PAYMENTS, endpoints: [LIST_PAYMENTS, HEALTH] }, MISC], unassigned: [] }));
+    await waitFor(() => expect(button(resource("v1", "payments"), "Confirm layout")).toBeEnabled());
+
+    fireEvent.click(button(version("v2"), "New resource"));
+    expect(button(resource("v1", "payments"), "Confirm layout")).toBeDisabled();
+    await settle();
+    expect(api.calls(confirm(2))).toBe(0);
+  });
+
+  it("takes the confirmations from the server's answer to an edit, those it keeps too (ADR-0068)", async () => {
+    // the server dropped payments' confirmation on the move, and kept invoices'
+    const confirmed = billing({ v1: [INVOICES, { ...PAYMENTS, ...byAda }, MISC] });
+    const moved = billing({ v1: [INVOICES, { ...PAYMENTS, endpoints: [LIST_PAYMENTS, HEALTH] }, MISC], unassigned: [] });
+    editor({ [LAYOUT]: confirmed, [MOVE]: moved });
+    await screen.findByRole("region", { name: "v1" });
+    expect(within(resource("v1", "payments")).getByText(/^confirmed by ada@otc\.test · /)).toBeInTheDocument();
+
+    dragTo("Check the service", resource("v1", "payments"));
+
+    await waitFor(() => expect(within(resource("v1", "payments")).getByText("Check the service")).toBeInTheDocument());
+    expect(within(resource("v1", "payments")).getByText("layout not confirmed yet")).toBeInTheDocument();
+    expect(button(resource("v1", "payments"), "Confirm layout")).toBeEnabled();
+    expect(within(resource("v1", "invoices")).getByText(/^confirmed by valeriia · /)).toBeInTheDocument();
+  });
+});
+
 describe("a viewer", () => {
   it("reads the layout, but is offered no way to change it", async () => {
     session.token = tokenWithRoles("viewer");
@@ -843,7 +954,7 @@ describe("a viewer", () => {
     expect(resource("v1", "payments")).toBeInTheDocument();
     expect(screen.getByText("partial")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "No version" })).toBeInTheDocument();
-    for (const name of ["Rename resource", "New resource"]) {
+    for (const name of ["Rename resource", "New resource", "Confirm layout"]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
     for (const title of ["List payments", "Check the service", "List API versions"]) {
@@ -907,6 +1018,7 @@ describe("what the server has no data for yet, switched on", () => {
       "A Python SDK job is running — the shared layout is frozen until it finishes.",
     );
     expect(within(payments).queryByRole("button", { name: "Rename resource" })).toBeNull();
+    expect(within(payments).queryByRole("button", { name: "Confirm layout" })).toBeNull();
     expect(endpointRow("List payments")).toHaveAttribute("draggable", "false");
 
     dragTo("Query billing quotas", payments);
@@ -1127,20 +1239,20 @@ describe("the way in and out", () => {
     expect(await screen.findByRole("link", { name: "All services" })).toHaveAttribute("href", "/generation");
   });
 
-  it("keeps the note that the layout was edited once the layout is left, for that service only", async () => {
+  it("keeps the note that changes were saved once the layout is left, for that service only", async () => {
     panel("/generation/billing-api/layout");
 
     await screen.findByRole("region", { name: "v1" });
     fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
     fireEvent.change(nameField(), { target: { value: "charges" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText("Layout edited · saved on the service")).toBeInTheDocument();
+    expect(await screen.findByText("Changes saved on the service")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
     fireEvent.click(await screen.findByRole("link", { name: "Edit layout" }));
 
     expect(await screen.findByRole("group", { name: "charges" })).toBeInTheDocument();
-    expect(screen.getByText("Layout edited · saved on the service")).toBeInTheDocument();
+    expect(screen.getByText("Changes saved on the service")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
     fireEvent.click(await screen.findByRole("link", { name: "All services" }));
@@ -1149,7 +1261,7 @@ describe("the way in and out", () => {
 
     expect(await screen.findByRole("group", { name: "cloudservers" })).toBeInTheDocument();
     expect(location()).toBe("/generation/customer-core/layout");
-    expect(screen.queryByText("Layout edited · saved on the service")).toBeNull();
+    expect(screen.queryByText("Changes saved on the service")).toBeNull();
   });
 
   it("drops a name being typed when the page is reused for another service: its layout is not the other's", async () => {
