@@ -1,4 +1,4 @@
-import { useMutation, useMutationState, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useMutationState, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, isConflict, isNotFound } from "../../scan/api/client";
 import { invalidateGenJobs, invalidateGenLayout, keys, showGenLayout } from "../../scan/api/queries";
 import type {
@@ -99,8 +99,9 @@ function editRequest(repo: string, edit: LayoutEdit): { path: string; body?: unk
  * back as the mutation's error; it says the page may be behind - a name taken
  * meanwhile, a resource or an endpoint gone, an endpoint no longer `ok` - so
  * the layout is read again too.
- * The caller sends one edit at a time, while none is under way: the answers of
- * two at once could arrive out of order, the older shown over the newer.
+ * The caller sends one edit at a time, while none is under way - by
+ * `useLayoutEditing`, not by this mutation's own state: the answers of two at
+ * once could arrive out of order, the older shown over the newer.
  *
  * The repo goes in with `mutate`, and the answer is filed under it rather than
  * under the hook's `name`: a page reused for another service while an edit is
@@ -126,6 +127,16 @@ export function useEditLayout(name: string) {
       void invalidateGenLayout(qc, repo);
     },
   });
+}
+
+/**
+ * Whether an edit of the service's layout is under way, whichever page sent
+ * it: a page left and opened again has a mutation of its own, which knows
+ * nothing of the one still under way, whose late answer would be shown over
+ * an edit sent since.
+ */
+export function useLayoutEditing(name: string) {
+  return useIsMutating({ mutationKey: keys.genLayoutEdit(name), exact: true }) > 0;
 }
 
 /**

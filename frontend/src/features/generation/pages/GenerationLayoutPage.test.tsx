@@ -190,7 +190,8 @@ describe("the stored layout in the editor (ISS-0042)", () => {
     expect(
       screen.getByText("Shared layout · 2 versions · 4 resources · 7 endpoints · 1 of 4 resources confirmed"),
     ).toBeInTheDocument();
-    expect(within(version("v1")).getByText("3 resources · 4 endpoints")).toBeInTheDocument();
+    // a version counts its unassigned endpoints too, as the summary does
+    expect(within(version("v1")).getByText("3 resources · 5 endpoints")).toBeInTheDocument();
     expect(within(version("v2")).getByText("1 resource · 1 endpoint")).toBeInTheDocument();
 
     const invoices = resource("v1", "invoices");
@@ -461,6 +462,8 @@ describe("renaming a resource", () => {
     fireEvent.change(nameField(), { target: { value: "charges" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
+    // the answer closes the field: nothing typed after Save would be kept
+    expect(nameField()).toHaveAttribute("readonly");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     fireEvent.keyDown(nameField(), { key: "Enter" });
 
@@ -497,7 +500,8 @@ describe("renaming a resource", () => {
 describe("adding a resource", () => {
   it("asks for its name as a rename does, and adds it on the server to the version it was asked in", async () => {
     const refunds: LayoutResource = { id: 5, name: "refunds", ...unconfirmed, endpoints: [] };
-    const { api } = editor({ [ADD]: billing({ v1: [INVOICES, PAYMENTS, MISC, refunds] }) });
+    const answer = later();
+    const { api } = editor({ [ADD]: answer.arrived });
     await screen.findByRole("region", { name: "v1" });
 
     fireEvent.click(button(version("v1"), "New resource"));
@@ -506,6 +510,8 @@ describe("adding a resource", () => {
     expect(within(version("v1")).queryByRole("button", { name: "New resource" })).toBeNull();
     fireEvent.change(nameField("Name of the new resource"), { target: { value: "refunds" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(nameField("Name of the new resource")).toHaveAttribute("readonly"));
+    answer.send(billing({ v1: [INVOICES, PAYMENTS, MISC, refunds] }));
 
     const added = await within(version("v1")).findByRole("group", { name: "refunds" });
     expect(api.sent(ADD)).toEqual([{ api_version: "v1", name: "refunds" }]);
@@ -572,6 +578,8 @@ describe("a refusal of the server", () => {
     expect(await screen.findByText("That could not be done right now")).toBeInTheDocument();
     expect(screen.getByText("already there")).toBeInTheDocument();
     expect(nameField()).toHaveValue("charges");
+    // the name kept is the user's to change again
+    expect(nameField()).not.toHaveAttribute("readonly");
     // the layout read again differs: said so, not shown under the name being typed
     expect(await screen.findByText("Data changed")).toBeInTheDocument();
     expect(api.calls(LAYOUT)).toBe(reads + 1);
@@ -1287,6 +1295,42 @@ describe("the way in and out", () => {
     expect(await screen.findByRole("group", { name: "contacts" })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "payments" })).toBeNull();
     expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("changes nothing on a layout opened again while an edit sent before is under way: its answer is not shown over a newer one", async () => {
+    const answer = later();
+    backend({ [LIST]: generationList("billing-api"), [LAYOUT]: billing(), [rename(2)]: answer.arrived });
+    renderPage(
+      <Routes>
+        <Route path="generation/:name" element={<GenerationServicePage />} />
+        <Route path="generation/:name/layout" element={<GenerationLayoutPage />} />
+      </Routes>,
+      { path: "/generation/billing-api/layout", route: "*" },
+    );
+    await screen.findByRole("region", { name: "v1" });
+    fireEvent.click(button(resource("v1", "payments"), "Rename resource"));
+    fireEvent.change(nameField(), { target: { value: "charges" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
+
+    fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
+    fireEvent.click(await screen.findByRole("link", { name: "Edit layout" }));
+
+    await screen.findByRole("region", { name: "v1" });
+    // no name is open on this page: what holds it is the edit the last one sent
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(button(version("v1"), "New resource")).toBeDisabled();
+    expect(button(resource("v1", "misc"), "Rename resource")).toBeDisabled();
+    expect(button(resource("v1", "payments"), "Confirm layout")).toBeDisabled();
+    expect(endpointRow("Check the service")).toHaveAttribute("draggable", "false");
+
+    answer.send(billing({ v1: [INVOICES, { ...PAYMENTS, name: "charges" }, MISC] }));
+
+    expect(await within(version("v1")).findByRole("group", { name: "charges" })).toBeInTheDocument();
+    expect(button(version("v1"), "New resource")).toBeEnabled();
+    expect(button(resource("v1", "misc"), "Rename resource")).toBeEnabled();
+    expect(button(resource("v1", "charges"), "Confirm layout")).toBeEnabled();
+    expect(endpointRow("Check the service")).toHaveAttribute("draggable", "true");
   });
 
   it("keeps the card's target on the way back", async () => {

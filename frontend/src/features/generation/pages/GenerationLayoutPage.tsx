@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useParams, useSearchParams } from "react-router";
 import { useGenerationLayout, useGenerationResources, useGenerationTargets, useInGeneration } from "../data/queries";
-import { useEditLayout, useLayoutEdited, type LayoutEdit } from "../data/mutations";
+import { useEditLayout, useLayoutEdited, useLayoutEditing, type LayoutEdit } from "../data/mutations";
 import type { GenJobStatus, GenOrigin, GenResource, GenTarget } from "../data/types";
 import { LayoutBadge } from "../components/LayoutBadge";
 import { PageNotFound } from "../components/PageNotFound";
@@ -108,13 +108,18 @@ interface Generated {
   origin: GenOrigin | null;
 }
 
-/** The name field of a rename or of a resource being added: Enter or Save takes it, Escape or Cancel drops it. */
+/**
+ * The name field of a rename or of a resource being added: Enter or Save takes
+ * it, Escape or Cancel drops it. While its save is under way it takes no more
+ * typing: the answer closes it, and what was typed since would be lost.
+ */
 function NameField({
   label,
   naming,
   setNaming,
   save,
   saveOff,
+  saving,
 }: {
   label: string;
   naming: Naming;
@@ -122,6 +127,8 @@ function NameField({
   save: () => void;
   /** No save now: one is under way, or the service has left (ADR-0082). */
   saveOff: boolean;
+  /** An edit is under way. */
+  saving: boolean;
 }) {
   const { t } = useI18n();
   return (
@@ -130,6 +137,7 @@ function NameField({
         <input
           aria-label={label}
           value={naming.value}
+          readOnly={saving}
           autoFocus
           onChange={(e) => setNaming({ ...naming, value: e.target.value, error: null })}
           onKeyDown={(e) => {
@@ -237,6 +245,7 @@ interface RowProps {
   onConfirm: () => void;
   saveName: () => void;
   saveOff: boolean;
+  saving: boolean;
   dragging: Dragging;
 }
 
@@ -254,6 +263,7 @@ function ResourceRow({
   onConfirm,
   saveName,
   saveOff,
+  saving,
   dragging,
 }: RowProps) {
   const { t, locale } = useI18n();
@@ -304,7 +314,14 @@ function ResourceRow({
           <Folder size={14} className="text-gray-400" />
         </button>
         {naming ? (
-          <NameField label={t("gen.layout.rename")} naming={naming} setNaming={setNaming} save={saveName} saveOff={saveOff} />
+          <NameField
+            label={t("gen.layout.rename")}
+            naming={naming}
+            setNaming={setNaming}
+            save={saveName}
+            saveOff={saveOff}
+            saving={saving}
+          />
         ) : (
           <span className="flex min-w-[200px] flex-auto flex-col gap-0.5 overflow-hidden">
             <span className="truncate font-mono text-sm text-gray-800">{resource.name}</span>
@@ -547,6 +564,8 @@ function LayoutEditor({ name }: { name: string }) {
   const resources = useGenerationResources(name, { enabled: fromMock && layout.data?.has_layout === true });
   const resourcesBlock = blockOf(resources);
   const edit = useEditLayout(name);
+  /* An edit of this service under way, this page's or one a page left since sent. */
+  const editing = useLayoutEditing(name);
   /* The prototype's note next to the title: changes to this service's layout - an edit or a confirmation - were saved in this session. */
   const edited = useLayoutEdited(name);
   /* Everything starts open, as in the prototype. */
@@ -604,7 +623,7 @@ function LayoutEditor({ name }: { name: string }) {
   const keepEdit = failedRefresh !== null && naming !== null;
   const changed =
     naming !== null &&
-    !edit.isPending &&
+    !editing &&
     (vanished ||
       naming.layout !== layout.data ||
       (SHOW_GEN_JOBS && naming.targets !== targets.data) ||
@@ -671,7 +690,7 @@ function LayoutEditor({ name }: { name: string }) {
      is dragged, no name is saved and no name field opens; while a name is typed
      nothing is dragged. So the only answer that can come in under a name is its
      own save's, which closes it; a refused one leaves it open. */
-  const saveOff = edit.isPending || vanished;
+  const saveOff = editing || vanished;
   const apply = (change: LayoutEdit) =>
     edit.mutate({ repo: name, edit: change }, { onSuccess: () => setNaming(null) });
   /* A name is asked on the layout as it is shown. */
@@ -693,7 +712,7 @@ function LayoutEditor({ name }: { name: string }) {
     if (!vanished) void retryJoining(layout);
   };
   const dragging: Dragging = {
-    busy: edit.isPending || naming !== null,
+    busy: editing || naming !== null,
     drag,
     setDrag,
     over,
@@ -792,7 +811,9 @@ function LayoutEditor({ name }: { name: string }) {
               </button>
               <span className="font-mono text-xs tabular-nums text-gray-400">
                 {t("gen.layout.resources", { n: shown.length })} ·{" "}
-                {t("gen.card.endpoints", { n: shown.reduce((n, r) => n + r.endpoints.length, 0) })}
+                {t("gen.card.endpoints", {
+                  n: shown.reduce((n, r) => n + r.endpoints.length, 0) + unassigned.length,
+                })}
               </span>
               {moved > 0 && (
                 <span className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-px text-[10px] font-semibold text-violet-700">
@@ -831,6 +852,7 @@ function LayoutEditor({ name }: { name: string }) {
                     onConfirm={() => apply({ kind: "confirm", resource: r.id })}
                     saveName={saveName}
                     saveOff={saveOff}
+                    saving={editing}
                     dragging={dragging}
                   />
                 ))}
@@ -843,6 +865,7 @@ function LayoutEditor({ name }: { name: string }) {
                       setNaming={setNaming}
                       save={saveName}
                       saveOff={saveOff}
+                      saving={editing}
                     />
                   </div>
                 )}
