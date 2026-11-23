@@ -77,11 +77,10 @@ interface LaidOut {
 /**
  * The layout the scanner proposed for every service in Generation - the scan
  * mock's services with scan status `scanned` or `partial` (owner decision) -
- * with the confirmations recorded before. "Reset to auto" goes back to it. The
- * prototype has no layout for device-mgmt, which it does not have in Generation:
- * it is given one (owner decision) from its 31 documents in the scan mock, with
- * their statuses there - 18 ok, 9 partial, 4 failed. tariff-catalog has no
- * endpoints, so no layout.
+ * with the confirmations recorded before. The prototype has no layout for
+ * device-mgmt, which it does not have in Generation: it is given one (owner
+ * decision) from its 31 documents in the scan mock, with their statuses there -
+ * 18 ok, 9 partial, 4 failed. tariff-catalog has no endpoints, so no layout.
  */
 const AUTO: Record<string, LaidOut[]> = {
   "billing-api": [
@@ -389,19 +388,12 @@ const AUTO: Record<string, LaidOut[]> = {
 const src = (service: string, file: string) =>
   `https://github.com/opentelekomcloud-docs/${service}/blob/mockcommit/api-ref/source/${file}`;
 
-interface Placed extends Endpoint {
-  /** The resource the scanner put the endpoint in. */
-  home: string;
-  /** Its place in the scanner's layout of the service. */
-  order: number;
-}
-
 /** Every endpoint of a service, by id. */
-const ENDPOINTS: Record<string, Map<string, Placed>> = Object.fromEntries(
-  Object.entries(AUTO).map(([service, resources]) => {
-    const placed = resources.flatMap((r) => r.endpoints.map((e) => ({ ...e, home: r.id })));
-    return [service, new Map(placed.map((e, order) => [e.id, { ...e, order }]))];
-  }),
+const ENDPOINTS: Record<string, Map<string, Endpoint>> = Object.fromEntries(
+  Object.entries(AUTO).map(([service, resources]) => [
+    service,
+    new Map(resources.flatMap((r) => r.endpoints.map((e) => [e.id, e] as const))),
+  ]),
 );
 
 /** A resource as it is laid out now. */
@@ -519,8 +511,6 @@ const seedChoices = () =>
 
 /** The layout of every service as it is now: the scanner's, edited. */
 let layout = seed();
-/** Resources made by hand so far, for their ids. */
-let made = 0;
 /** The jobs as they are now: the seed, and the generations started since. */
 let jobs = seedJobs();
 /** The number of the last job started here: they count on from 2101, past the prototype's seed. */
@@ -535,7 +525,6 @@ let settings = seedSettings();
 /** Back to the seed. Tests share this module's memory, so each one that edits starts here. */
 export function resetGenerationMock() {
   layout = seed();
-  made = 0;
   jobs = seedJobs();
   lastJob = 2100;
   choices = seedChoices();
@@ -586,7 +575,7 @@ function resourceOf(service: string, id: string): Laid {
   return r;
 }
 
-function endpointOf(service: string, id: string): Placed {
+function endpointOf(service: string, id: string): Endpoint {
   const endpoint = ENDPOINTS[service]?.get(id);
   if (!endpoint) throw new Error(`${service} has no endpoint ${id}`);
   return endpoint;
@@ -670,7 +659,7 @@ export function generationAttention(): AttentionRule[] {
   ].filter((r) => r.count > 0);
 }
 
-// --- Layout edits ----------------------------------------------------------
+// --- Layout confirmation ---------------------------------------------------
 
 /** Generating, in review, or merged on every connected target: the layout of the resource must not change. */
 function frozen(r: Laid): boolean {
@@ -685,47 +674,6 @@ function editable(service: string, id: string): Laid {
   return r;
 }
 
-const fromScanner = (service: string, id: string) => AUTO[service]?.find((r) => r.id === id);
-
-/** A new name; the page has checked it. It does not confirm the resource (owner decision). */
-export function renameResource(service: string, id: string, name: string) {
-  editable(service, id).name = name;
-}
-
-/** An endpoint to the end of another resource, in this version or another, as in the prototype. */
-export function moveEndpoint(service: string, endpoint: string, to: string) {
-  const from = layoutOf(service).find((r) => r.endpoints.includes(endpoint));
-  if (!from) throw new Error(`${service} has no endpoint ${endpoint}`);
-  const into = editable(service, to);
-  if (from === into) return;
-  editable(service, from.id);
-  from.endpoints = from.endpoints.filter((e) => e !== endpoint);
-  into.endpoints.push(endpoint);
-}
-
-/**
- * An empty resource made by hand, after the last one of its version. It is not
- * confirmed - confirming takes the button (owner decision), where the prototype
- * made it confirmed - so it is `new` until someone does.
- */
-export function addResource(service: string, version: string) {
-  const resources = layoutOf(service);
-  const last = resources.findLastIndex((r) => r.version === version);
-  if (last < 0) throw new Error(`${service} has no version ${version}`);
-  const taken = new Set(resources.filter((r) => r.version === version).map((r) => r.name));
-  let n = 1;
-  while (taken.has(`new_resource_${n}`)) n++;
-  resources.splice(last + 1, 0, {
-    id: `new_${version}_${++made}`,
-    version,
-    name: `new_resource_${n}`,
-    origin: "new",
-    endpoints: [],
-    confirmedBy: null,
-    confirmedAt: null,
-  });
-}
-
 /** The confirmation, with who gives it and when (owner decision). */
 export function confirmResource(service: string, id: string, by: string) {
   const r = editable(service, id);
@@ -733,66 +681,6 @@ export function confirmResource(service: string, id: string, by: string) {
   if (r.confirmedBy != null) throw new Error(`${r.name} is already confirmed by ${r.confirmedBy}`);
   r.confirmedBy = by;
   r.confirmedAt = new Date().toISOString();
-}
-
-/**
- * Put the scanner's layout back on `reset`: each resource gets its name, its
- * endpoints and its confirmation as the scanner's layout has them - the
- * prototype restores a resource from `AUTO_STRUCTURE` whole. An endpoint is only
- * ever moved, never dropped: one that sits in a reset resource but belongs
- * elsewhere goes back to where the scanner put it. A frozen resource neither
- * gives nor takes, so what it holds stays where it is.
- */
-function putBack(service: string, reset: Laid[]) {
-  const resources = layoutOf(service);
-  const resetting = new Set(reset);
-  const byId = new Map(resources.map((r) => [r.id, r]));
-  const placed = resources.flatMap((holder) => holder.endpoints.map((id) => ({ id, holder })));
-  for (const { id, holder } of placed) {
-    /* the scanner's resources are never removed, so an endpoint's home is always there */
-    const home = byId.get(endpointOf(service, id).home) as Laid;
-    if (home === holder || !(resetting.has(home) || resetting.has(holder)) || frozen(home) || frozen(holder)) continue;
-    holder.endpoints = holder.endpoints.filter((e) => e !== id);
-    home.endpoints.push(id);
-  }
-  for (const r of reset) {
-    const auto = fromScanner(service, r.id);
-    if (!auto) continue;
-    r.name = auto.name;
-    r.confirmedBy = auto.confirmed?.by ?? null;
-    r.confirmedAt = auto.confirmed?.at ?? null;
-    r.endpoints.sort((a, b) => endpointOf(service, a).order - endpointOf(service, b).order);
-  }
-}
-
-/** One resource back to the scanner's layout. One made by hand is not in it, so
- *  nothing changes there, as in the prototype. */
-export function resetResource(service: string, id: string) {
-  const r = editable(service, id);
-  if (fromScanner(service, id)) putBack(service, [r]);
-}
-
-/**
- * A version back to the scanner's layout, but for its frozen resources. The
- * resources made by hand in it go, as in the prototype - each once nothing is
- * left in it: an endpoint that could not go home stays, and so does a resource
- * that has a job.
- */
-export function resetVersion(service: string, version: string) {
-  const resources = layoutOf(service);
-  const inVersion = resources.filter((r) => r.version === version);
-  if (!inVersion.length) throw new Error(`${service} has no version ${version}`);
-  putBack(
-    service,
-    inVersion.filter((r) => !frozen(r)),
-  );
-  layout[service] = resources.filter(
-    (r) =>
-      r.version !== version ||
-      fromScanner(service, r.id) != null ||
-      r.endpoints.length > 0 ||
-      Object.keys(jobsOf(r.id)).length > 0,
-  );
 }
 
 // --- Generation spec -------------------------------------------------------
