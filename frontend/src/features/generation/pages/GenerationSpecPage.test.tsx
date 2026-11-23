@@ -844,7 +844,7 @@ describe("the way in and out", () => {
     );
   }
 
-  /* The layout editor confirms nothing yet (TODO(#207)): each resource is confirmed on the mock, as the card reads it. */
+  /* The editor confirms on the server, while the card and the spec still read the mock (TODO(#150)): each resource is confirmed on the mock, where the card reads it. */
 
   it("opens confirmed payments from the card, decides its field and starts the generation", async () => {
     confirmResource("billing-api", "v1_payments", "valeriia");

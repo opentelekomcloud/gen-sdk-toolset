@@ -295,7 +295,7 @@ export const de: Record<keyof typeof en, string> = {
   "gen.layout.pill.noLayout": "noch kein Layout",
   "gen.layout.pill.confirmed": "Layout bestätigt",
   "gen.layout.pill.unconfirmed": "Bestätigung nötig",
-  "gen.layout.edited": "Layout bearbeitet · am Service gespeichert",
+  "gen.layout.edited": "Änderungen am Service gespeichert",
   "gen.layout.info":
     "Dieses Layout ist allen Zielen gemeinsam — einmal bestätigt, übernimmt es jede Ausgabe. Die automatische Gruppierung kann bei uneinheitlichen Docs danebenliegen; Änderungen werden am Service gespeichert und überstehen einen Rescan.",
   "gen.layout.moved":
@@ -318,6 +318,9 @@ export const de: Record<keyof typeof en, string> = {
     "Der letzte Job für {target} ist fehlgeschlagen und hat nichts geschrieben — das Layout bleibt bearbeitbar; wiederholen lässt er sich auf der Fehlerseite.",
   "gen.layout.confirmedNote": "bestätigt von {by} · {at}",
   "gen.layout.confirm": "Layout bestätigen",
+  "gen.layout.confirm.empty": "Noch kein Endpunkt zu bestätigen — zuerst Endpunkte hierher ziehen.",
+  "gen.layout.confirm.notOk":
+    "{n} Endpunkt ist nicht ok — vor dem Bestätigen verschieben oder beheben.|{n} Endpunkte sind nicht ok — vor dem Bestätigen verschieben oder beheben.",
   "gen.layout.rename": "Ressource umbenennen",
   "gen.layout.save": "Speichern",
   "gen.layout.cancel": "Abbrechen",

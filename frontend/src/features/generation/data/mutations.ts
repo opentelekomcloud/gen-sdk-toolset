@@ -56,17 +56,20 @@ export function useStartLayout() {
 }
 
 /**
- * One of the edits the server takes (ADR-0064): a resource is named by its
- * `id`, which a rename keeps, and an endpoint by its document `path`. There is
- * no delete, and nothing sends an endpoint back to "unassigned" or "no version".
+ * One of the edits the server takes (ADR-0064), or the confirmation of one
+ * resource (ADR-0066): a resource is named by its `id`, which a rename keeps,
+ * and an endpoint by its document `path`. There is no delete, nothing sends an
+ * endpoint back to "unassigned" or "no version", and nothing confirms a version
+ * or the whole layout.
  */
 export type LayoutEdit =
   | { kind: "add"; version: string; name: string }
   | { kind: "rename"; resource: number; name: string }
-  | { kind: "move"; path: string; to: number };
+  | { kind: "move"; path: string; to: number }
+  | { kind: "confirm"; resource: number };
 
-/** The request of an edit: where it goes, and what it sends. */
-function editRequest(repo: string, edit: LayoutEdit): { path: string; body: unknown } {
+/** The request of an edit: where it goes, and what it sends - a confirmation sends nothing. */
+function editRequest(repo: string, edit: LayoutEdit): { path: string; body?: unknown } {
   const layout = `/generation/services/${encodeURIComponent(repo)}/layout`;
   switch (edit.kind) {
     case "add":
@@ -81,16 +84,21 @@ function editRequest(repo: string, edit: LayoutEdit): { path: string; body: unkn
         path: `${layout}/endpoints/move`,
         body: { path: edit.path, resource_id: edit.to } satisfies MoveEndpointRequest,
       };
+    case "confirm":
+      return { path: `${layout}/resources/${edit.resource}/confirm` };
   }
 }
 
 /**
- * Edits of a service's stored layout, each answered with the whole layout.
+ * Edits of a service's stored layout and confirmations of its resources, each
+ * answered with the whole layout - and with it the confirmations the edit
+ * dropped (ADR-0068), which the page takes as they are rather than working out.
  * Nothing changes on screen before the server has answered, so there is
  * nothing to roll back. The answer is shown as it is, and what the layout feeds
  * is read again. A refusal leaves the layout unchanged on the server and comes
  * back as the mutation's error; it says the page may be behind - a name taken
- * meanwhile, a resource or an endpoint gone - so the layout is read again too.
+ * meanwhile, a resource or an endpoint gone, an endpoint no longer `ok` - so
+ * the layout is read again too.
  * The caller sends one edit at a time, while none is under way: the answers of
  * two at once could arrive out of order, the older shown over the newer.
  *
@@ -108,7 +116,8 @@ export function useEditLayout(name: string) {
        data: an edit is kept for the session, and keeps no copy of a layout. */
     mutationFn: async ({ repo, edit }: { repo: string; edit: LayoutEdit }): Promise<void> => {
       const { path, body } = editRequest(repo, edit);
-      await showGenLayout(qc, repo, await apiFetch<Layout>(path, { method: "POST", body: JSON.stringify(body) }));
+      const init: RequestInit = body === undefined ? { method: "POST" } : { method: "POST", body: JSON.stringify(body) };
+      await showGenLayout(qc, repo, await apiFetch<Layout>(path, init));
     },
     /* Not awaited: the refusal is the page's to show now, not once the layout
        has been read again - a slow read would hold it back and keep the edit
@@ -120,9 +129,10 @@ export function useEditLayout(name: string) {
 }
 
 /**
- * Whether an edit of the service's layout went through in this session: the
- * prototype's note, kept per service until the panel reloads, however often
- * the page is left.
+ * Whether an edit of the service's layout or a confirmation of one of its
+ * resources went through in this session: the prototype's note that changes
+ * were saved on the service, kept per service until the panel reloads, however
+ * often the page is left.
  */
 export function useLayoutEdited(name: string) {
   return useMutationState({ filters: { mutationKey: keys.genLayoutEdit(name), exact: true, status: "success" } }).length > 0;

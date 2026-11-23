@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { movable, nameProblem } from "./layout";
+import { confirmBlock, movable, nameProblem } from "./layout";
 
 describe("nameProblem (ADR-0065)", () => {
   it.each(["invoices", "v2_invoices", "a", "r_1"])("takes the package name %s", (name) => {
@@ -36,5 +36,23 @@ describe("movable (ADR-0064)", () => {
   it("moves an endpoint without a version into any version", () => {
     expect(movable({ resource: null, version: null }, invoices)).toBe(true);
     expect(movable({ resource: null, version: null }, { id: 9, version: "v3" })).toBe(true);
+  });
+});
+
+describe("confirmBlock (ADR-0067)", () => {
+  const ep = (overall_status: string) => ({ overall_status });
+
+  it("lets a resource whose endpoints are all ok be confirmed", () => {
+    expect(confirmBlock([ep("ok")])).toBeNull();
+    expect(confirmBlock([ep("ok"), ep("ok")])).toBeNull();
+  });
+
+  it("blocks a resource with no endpoint", () => {
+    expect(confirmBlock([])).toEqual({ reason: "empty" });
+  });
+
+  it("blocks a resource with any endpoint that is not ok, and counts them, whatever the status", () => {
+    expect(confirmBlock([ep("ok"), ep("partial")])).toEqual({ reason: "notOk", notOk: 1 });
+    expect(confirmBlock([ep("failed"), ep("unsupported"), ep("ok"), ep("skipped")])).toEqual({ reason: "notOk", notOk: 3 });
   });
 });

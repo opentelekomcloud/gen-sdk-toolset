@@ -112,3 +112,18 @@ export function movable(from: EndpointSource, to: { id: number; version: string 
   if (from.resource === to.id) return false;
   return from.version === null || from.version === to.version;
 }
+
+/**
+ * Why a resource cannot be confirmed (ADR-0067), the server's own rule held
+ * here to say so before the request goes out: it has no endpoint, or `notOk`
+ * of its endpoints are not `ok`. Null for a resource that can be. The layout
+ * read shows only the endpoints of the active snapshot, the ones the server
+ * checks; the server checks again, and its `409` says so in a banner.
+ */
+export type ConfirmBlock = { reason: "empty" } | { reason: "notOk"; notOk: number };
+
+export function confirmBlock(endpoints: readonly { overall_status: string }[]): ConfirmBlock | null {
+  if (endpoints.length === 0) return { reason: "empty" };
+  const notOk = endpoints.filter((e) => e.overall_status !== "ok").length;
+  return notOk > 0 ? { reason: "notOk", notOk } : null;
+}

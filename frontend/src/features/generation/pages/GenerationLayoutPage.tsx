@@ -1,6 +1,7 @@
-import { useState, type DragEvent, type ReactNode } from "react";
+import { useId, useState, type DragEvent, type ReactNode } from "react";
 import {
   AlertTriangle,
+  Check,
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
@@ -20,7 +21,7 @@ import { useEditLayout, useLayoutEdited, type LayoutEdit } from "../data/mutatio
 import type { GenJobStatus, GenOrigin, GenResource, GenTarget } from "../data/types";
 import { LayoutBadge } from "../components/LayoutBadge";
 import { PageNotFound } from "../components/PageNotFound";
-import { lockingJob, mergedEverywhere, movable, nameProblem, type EndpointSource } from "../lib/layout";
+import { confirmBlock, lockingJob, mergedEverywhere, movable, nameProblem, type EndpointSource } from "../lib/layout";
 import { chosenTarget, generationPath, listPath, servicePath } from "../lib/paths";
 import { SHOW_GEN_JOBS, SHOW_LAYOUT_ORIGIN } from "../flags";
 import {
@@ -233,6 +234,7 @@ interface RowProps {
   naming: Naming | null;
   setNaming: (n: Naming | null) => void;
   onRename: () => void;
+  onConfirm: () => void;
   saveName: () => void;
   saveOff: boolean;
   dragging: Dragging;
@@ -249,11 +251,13 @@ function ResourceRow({
   naming,
   setNaming,
   onRename,
+  onConfirm,
   saveName,
   saveOff,
   dragging,
 }: RowProps) {
   const { t, locale } = useI18n();
+  const hintId = useId();
   const { drag, setDrag, over, setOver, move } = dragging;
   const { jobs, origin } = generated;
   const lock = jobs && lockingJob(jobs, targets);
@@ -266,6 +270,9 @@ function ResourceRow({
       : null;
   const editable = canWrite && !lock;
   const confirmed = resource.confirmed_by != null;
+  /* Why it cannot be confirmed, if it cannot (ADR-0067): its own endpoints
+     only, so nothing here blocks another resource. */
+  const block = confirmed ? null : confirmBlock(resource.endpoints);
   const JobIcon = shown && JOB_ICON[shown.status];
   const accepts = drag != null && editable && movable(drag.from, { id: resource.id, version });
   const isOver = over === resource.id;
@@ -326,7 +333,27 @@ function ResourceRow({
             </span>
           </span>
         )}
-        {/* TODO(#207): the Confirm control (`gen.layout.confirm`) goes here, on the server's confirm route. */}
+        {/* Each resource on its own (ADR-0066): there is no Confirm for a version or the whole layout. */}
+        {editable && !confirmed && !naming && (
+          <span className="flex shrink-0 items-center gap-1.5">
+            {block && (
+              <span id={hintId} className="text-[11px] text-amber-700">
+                {block.reason === "empty"
+                  ? t("gen.layout.confirm.empty")
+                  : t("gen.layout.confirm.notOk", { n: block.notOk })}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={dragging.busy || block !== null}
+              aria-describedby={block ? hintId : undefined}
+              className="inline-flex items-center gap-1.5 rounded border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition hover:border-emerald-400 disabled:opacity-50"
+            >
+              <Check size={12} /> {t("gen.layout.confirm")}
+            </button>
+          </span>
+        )}
         {editable && !naming && (
           <button
             type="button"
@@ -407,7 +434,7 @@ function EndpointList({
 /**
  * The top of the layout page: the way back to the service page, the repo with
  * the state of its layout, and what the editor adds - its summary and the note
- * that it was edited.
+ * that changes were saved on the service.
  */
 function LayoutHeader({
   name,
@@ -482,10 +509,12 @@ const toggled = <T,>(set: ReadonlySet<T>, id: T) => {
  * version with its resources and their endpoints, the endpoints of the version
  * in no resource ("unassigned"), and the endpoints with no version at all. Here
  * a resource is renamed, one is added - its name asked for as a rename asks -
- * and an endpoint is dragged into a resource where the move is allowed
- * (ADR-0064). Each edit is the server's: the page shows the layout it answers
- * with, and a refusal in a banner. Nothing deletes a resource or resets the
- * layout. The target in the address only rides along to the card and back.
+ * an endpoint is dragged into a resource where the move is allowed (ADR-0064),
+ * and a resource is confirmed on its own, once its endpoints allow it
+ * (ADR-0066, ADR-0067). Each edit is the server's: the page shows the layout
+ * it answers with, and a refusal in a banner. Nothing deletes a resource or
+ * resets the layout. The target in the address only rides along to the card
+ * and back.
  *
  * It opens for a service in the /generation list (ADR-0086). Whether the
  * service has a layout is the backend's answer (`has_layout`); without one the
@@ -518,7 +547,7 @@ function LayoutEditor({ name }: { name: string }) {
   const resources = useGenerationResources(name, { enabled: fromMock && layout.data?.has_layout === true });
   const resourcesBlock = blockOf(resources);
   const edit = useEditLayout(name);
-  /* The prototype's note next to the title: the layout of this service was edited in this session. */
+  /* The prototype's note next to the title: changes to this service's layout - an edit or a confirmation - were saved in this session. */
   const edited = useLayoutEdited(name);
   /* Everything starts open, as in the prototype. */
   const [closedVersions, setClosedVersions] = useState<ReadonlySet<string>>(new Set());
@@ -799,6 +828,7 @@ function LayoutEditor({ name }: { name: string }) {
                     naming={naming?.resource === r.id ? naming : null}
                     setNaming={setNaming}
                     onRename={() => ask(r.id, version, r.name)}
+                    onConfirm={() => apply({ kind: "confirm", resource: r.id })}
                     saveName={saveName}
                     saveOff={saveOff}
                     dragging={dragging}

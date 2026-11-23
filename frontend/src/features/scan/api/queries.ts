@@ -47,7 +47,7 @@ export const keys = {
   /** Prefix for the generation specs of every resource of a service — invalidation target. */
   genSpecs: (name: string) => ["generation", "spec", name] as const,
   genSpec: (name: string, resource: string) => ["generation", "spec", name, resource] as const,
-  /** Mutation key of a service's layout edits; the edits that went through say it was edited. */
+  /** Mutation key of a service's layout edits and confirmations; those that went through say changes were saved. */
   genLayoutEdit: (name: string) => ["generation", "layout-edit", name] as const,
   /** The OTC tenant the panel's live calls go to - served from the Generation mock too. */
   otcSettings: ["settings", "otc"] as const,

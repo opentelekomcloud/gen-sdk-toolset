@@ -92,15 +92,17 @@ const NAMED_ANSWERS = new Map<symbol, { status: number; body: ApiErrorEnvelope }
  * The backend, path by path: each request is answered with what `answers`
  * holds for its path at that moment - so a test breaks the backend by setting
  * a path to FAILED, has it answer 404, 409 or 403 with NOT_FOUND, CONFLICT or
- * FORBIDDEN, holds an answer back by setting a promise there, or answers request
- * by request through a function. `calls` counts the requests to a path, and
- * `sent` gives the body of each one that had one, as JSON.
+ * FORBIDDEN, holds an answer back by setting a promise there, answers request
+ * by request through a function, or sends a `Response` of its own - a refusal
+ * with the server's own message, say. `calls` counts the requests to a path,
+ * and `sent` gives the body of each one that had one, as JSON.
  */
 export function backend(answers: Record<string, unknown>) {
   const fetchMock = vi.fn<typeof fetch>(async (input) => {
     const path = String(input).split("?")[0];
     const entry = answers[path];
     const answer = await (typeof entry === "function" ? entry() : entry);
+    if (answer instanceof Response) return answer;
     const named = typeof answer === "symbol" ? NAMED_ANSWERS.get(answer) : undefined;
     if (named) return new Response(JSON.stringify(named.body), { status: named.status });
     return new Response(JSON.stringify(answer ?? null));
