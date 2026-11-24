@@ -1021,6 +1021,45 @@ describe("the spec of a resource of the stored layout (ISS-0074, ISS-0081)", () 
     expect(screen.queryByRole("button", { name: /^Generate/ })).toBeNull();
   });
 
+  it("shows each operation with its kind, endpoint, SDK call and document, and counts the kinds", async () => {
+    const operation = (path: string, kind: string, name: string | null, method: string, uri: string, missing_name: string | null = null) => ({
+      path,
+      kind,
+      name,
+      missing_name,
+      method,
+      uri,
+      title: path,
+      source_url: `https://github.com/opentelekomcloud-docs/billing-api/blob/abc/${path}`,
+    });
+    serverSpecPage({
+      [SPEC]: {
+        ...confirmed(),
+        operations: [
+          operation("list.rst", "list", "list", "GET", "/v1/invoices"),
+          operation("export.rst", "custom", "export", "POST", "/v1/invoices/export"),
+          operation("root.rst", "custom", null, "GET", "/v1", "no_segment"),
+        ],
+      },
+    });
+
+    const list = await screen.findByRole("group", { name: "list.rst" });
+    expect(within(list).getByText("base")).toBeInTheDocument();
+    expect(within(list).getByText("invoices.list()")).toBeInTheDocument();
+    expect(within(list).getByText("/v1/invoices")).toBeInTheDocument();
+    expect(within(list).getByRole("link")).toHaveAttribute(
+      "href",
+      "https://github.com/opentelekomcloud-docs/billing-api/blob/abc/list.rst",
+    );
+    expect(within(screen.getByRole("group", { name: "export.rst" })).getByText("custom")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("group", { name: "root.rst" })).getByText("— nothing in the URI to name it by"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Generation spec · Python SDK · v1 · 3 operations · 1 base · 2 custom · 0 classes"),
+    ).toBeInTheDocument();
+  });
+
   it("asks the server again with each poll, and shows what changed", async () => {
     const answers: Record<string, unknown> = { [SPEC]: confirmed() };
     const { client, api } = serverSpecPage(answers);

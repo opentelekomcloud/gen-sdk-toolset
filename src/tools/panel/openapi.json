@@ -430,6 +430,19 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "HttpMethod": {
+        "enum": [
+          "GET",
+          "POST",
+          "PUT",
+          "PATCH",
+          "DELETE",
+          "HEAD",
+          "OPTIONS"
+        ],
+        "title": "HttpMethod",
+        "type": "string"
+      },
       "IneligibleRepositoryResponse": {
         "description": "One repository discovery checked and found to have no API reference.\n\nDistinct from an excluded service: nobody decided this, a lookup did, and\nit reverses itself the moment the repository gains the path. ``checked_at``\nis what makes the row readable - without the date, \"ineligible\" carries no\nhint of how stale the finding is.",
         "properties": {
@@ -717,6 +730,16 @@
         "title": "LayoutVersionItem",
         "type": "object"
       },
+      "MissingName": {
+        "description": "Why the rule proposes no name for an operation (ADR-0120).",
+        "enum": [
+          "same_call",
+          "name_conflict",
+          "no_segment"
+        ],
+        "title": "MissingName",
+        "type": "string"
+      },
       "MoveEndpointRequest": {
         "description": "Body for moving one endpoint into a resource of the layout.\n\nThe endpoint is named by its document ``path``, as the layout stores it: a\ndocument id changes with every scan, the path does not.",
         "properties": {
@@ -735,6 +758,18 @@
         ],
         "title": "MoveEndpointRequest",
         "type": "object"
+      },
+      "OperationKind": {
+        "enum": [
+          "get",
+          "list",
+          "create",
+          "update",
+          "delete",
+          "custom"
+        ],
+        "title": "OperationKind",
+        "type": "string"
       },
       "ParameterResponse": {
         "description": "One parameter row, nested exactly as the scan recorded it.\n\n`param_type` is the kind and `element_type` what an array holds; the UI\njoins them back into `Array<String>`. Sending only the kind would show\nevery array as `Array` and lose what the documentation actually said.",
@@ -1637,8 +1672,69 @@
         "type": "object"
       },
       "SpecOperationItem": {
-        "description": "One operation of the resource. TODO(ISS-0091): its kind, method and endpoint.",
-        "properties": {},
+        "description": "One operation: its default kind and name, and its document (ADR-0091).",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/OperationKind"
+          },
+          "method": {
+            "$ref": "#/components/schemas/HttpMethod"
+          },
+          "missing_name": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MissingName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "uri": {
+            "title": "Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "kind",
+          "name",
+          "missing_name",
+          "method",
+          "uri",
+          "title",
+          "source_url"
+        ],
         "title": "SpecOperationItem",
         "type": "object"
       },

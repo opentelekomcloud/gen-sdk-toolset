@@ -82,7 +82,10 @@ def get_resource_spec(
     Snapshot (ADR-0115). A repository off that list, or a resource its layout
     lacks in ``version``, answers 404 (ADR-0087).
     """
-    spec = resource_spec(db, generation_service(db, repo), version, resource_id)
+    service = generation_service(db, repo)
+    spec = resource_spec(db, service, version, resource_id)
     if spec is None:
         raise HTTPException(status_code=404, detail="Resource not found")
-    return ResourceSpecResponse.from_spec(spec)
+    return ResourceSpecResponse.from_spec(
+        spec, repo=service.repo, commit_hash=service.active_snapshot.commit_hash
+    )

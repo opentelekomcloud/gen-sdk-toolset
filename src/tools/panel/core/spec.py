@@ -14,7 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tools.panel.core.db.models import Resource, Service
-from tools.panel.core.operations import SpecOperation
+from tools.panel.core.layout import resource_endpoints
+from tools.panel.core.operations import SpecOperation, propose_operations
 
 
 @dataclass(frozen=True)
@@ -48,9 +49,11 @@ def resource_spec(
     )
     if resource is None:
         return None
+    endpoints = resource_endpoints(db, service, resource)
+    proposed = {op.path: op for op in propose_operations(endpoints)}
     return ResourceSpec(
         name=resource.name,
         confirmed=resource.confirmed_by is not None,
-        operations=[],
+        operations=[proposed[e.path] for e in endpoints],
         classes=[],
     )

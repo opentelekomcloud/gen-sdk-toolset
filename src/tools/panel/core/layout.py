@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session, selectinload, undefer
 
-from tools.panel.core.analytics import OverallStatus
+from tools.panel.core.analytics import OverallStatus, document_from_payload
 from tools.panel.core.db.models import (
     DocumentRecord,
     Layout,
@@ -29,7 +29,7 @@ from tools.panel.core.db.models import (
     Service,
 )
 from tools.panel.core.grouping import group_endpoints, has_api_version
-from tools.shared.ir import ENDPOINT_KIND
+from tools.shared.ir import ENDPOINT_KIND, Endpoint
 
 logger = logging.getLogger(__name__)
 
@@ -274,16 +274,38 @@ def endpoint_statuses(
     the resource, and only those - a stored path the active Snapshot lacks is
     not shown, so nothing about it can be checked or confirmed.
     """
-    placed = select(ResourceEndpoint.path).where(
-        ResourceEndpoint.service_id == service.id,
-        ResourceEndpoint.resource_id == resource.id,
-    )
     rows = db.execute(
         _active_endpoints(service)
         .with_only_columns(DocumentRecord.path, DocumentRecord.overall_status)
-        .where(DocumentRecord.path.in_(placed))
+        .where(DocumentRecord.path.in_(_placed(service, resource)))
     ).all()
     return {path: status for path, status in rows}
+
+
+def resource_endpoints(
+    db: Session, service: Service, resource: Resource
+) -> list[Endpoint]:
+    """The endpoints of ``resource`` that :func:`service_layout` shows, in its order."""
+    records = db.scalars(
+        _active_endpoints(service)
+        .options(undefer(DocumentRecord.payload))
+        .where(DocumentRecord.path.in_(_placed(service, resource)))
+    ).all()
+    return [_endpoint(record) for record in _ordered(records)]
+
+
+def _placed(service: Service, resource: Resource) -> Select[tuple[str]]:
+    return select(ResourceEndpoint.path).where(
+        ResourceEndpoint.service_id == service.id,
+        ResourceEndpoint.resource_id == resource.id,
+    )
+
+
+def _endpoint(record: DocumentRecord) -> Endpoint:
+    document = document_from_payload(record.payload)
+    if not isinstance(document, Endpoint):
+        raise TypeError(f"{record.path} is stored as an endpoint but is not one")
+    return document
 
 
 def _active_endpoints(service: Service) -> Select[tuple[DocumentRecord]]:

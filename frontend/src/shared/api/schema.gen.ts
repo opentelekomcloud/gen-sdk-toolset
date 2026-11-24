@@ -814,6 +814,11 @@ export interface components {
             status: "ok" | "degraded";
         };
         /**
+         * HttpMethod
+         * @enum {string}
+         */
+        HttpMethod: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+        /**
          * IneligibleRepositoryResponse
          * @description One repository discovery checked and found to have no API reference.
          *
@@ -925,6 +930,12 @@ export interface components {
             unassigned: components["schemas"]["DocumentListItem"][];
         };
         /**
+         * MissingName
+         * @description Why the rule proposes no name for an operation (ADR-0120).
+         * @enum {string}
+         */
+        MissingName: "same_call" | "name_conflict" | "no_segment";
+        /**
          * MoveEndpointRequest
          * @description Body for moving one endpoint into a resource of the layout.
          *
@@ -937,6 +948,11 @@ export interface components {
             /** Resource Id */
             resource_id: number;
         };
+        /**
+         * OperationKind
+         * @enum {string}
+         */
+        OperationKind: "get" | "list" | "create" | "update" | "delete" | "custom";
         /**
          * ParameterResponse
          * @description One parameter row, nested exactly as the scan recorded it.
@@ -1251,9 +1267,23 @@ export interface components {
         SpecClassItem: Record<string, never>;
         /**
          * SpecOperationItem
-         * @description One operation of the resource. TODO(ISS-0091): its kind, method and endpoint.
+         * @description One operation: its default kind and name, and its document (ADR-0091).
          */
-        SpecOperationItem: Record<string, never>;
+        SpecOperationItem: {
+            kind: components["schemas"]["OperationKind"];
+            method: components["schemas"]["HttpMethod"];
+            missing_name: components["schemas"]["MissingName"] | null;
+            /** Name */
+            name: string | null;
+            /** Path */
+            path: string;
+            /** Source Url */
+            source_url: string;
+            /** Title */
+            title: string | null;
+            /** Uri */
+            uri: string;
+        };
         /**
          * StartScanResponse
          * @description Returned immediately when a scan Job is queued.

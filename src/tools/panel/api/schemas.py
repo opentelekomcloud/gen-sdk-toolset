@@ -24,6 +24,7 @@ from tools.panel.core.db.models import (
 )
 from tools.panel.core.grouping import RESOURCE_NAME_PATTERN
 from tools.panel.core.layout import LayoutVersion, PlacedResource, ServiceLayout
+from tools.panel.core.operations import MissingName, OperationKind, SpecOperation
 from tools.panel.core.service_state import (
     RescanReason,
     ScanStatus,
@@ -34,7 +35,7 @@ from tools.panel.core.service_state import (
     status_documents,
 )
 from tools.panel.core.spec import ResourceSpec
-from tools.shared.ir import Endpoint, SectionName
+from tools.shared.ir import Endpoint, HttpMethod, SectionName
 
 #: Every section name the UI renders, so a service scanned before a section
 #: existed still gets the full strip instead of a ragged one.
@@ -642,7 +643,33 @@ class LayoutResponse(BaseModel):
 
 
 class SpecOperationItem(BaseModel):
-    """One operation of the resource. TODO(ISS-0091): its kind, method and endpoint."""
+    """One operation: its default kind and name, and its document (ADR-0091)."""
+
+    path: str
+    kind: OperationKind
+    name: str | None
+    missing_name: MissingName | None
+    method: HttpMethod
+    uri: str
+    title: str | None
+    source_url: str
+
+    @classmethod
+    def from_operation(
+        cls, operation: SpecOperation, *, repo: str, commit_hash: str
+    ) -> SpecOperationItem:
+        return cls(
+            path=operation.path,
+            kind=operation.kind,
+            name=operation.name,
+            missing_name=operation.missing_name,
+            method=operation.endpoint.method,
+            uri=operation.endpoint.uri,
+            title=operation.endpoint.title,
+            source_url=source_url(
+                repo=repo, commit_hash=commit_hash, path=operation.path
+            ),
+        )
 
 
 class SpecClassItem(BaseModel):
@@ -663,11 +690,18 @@ class ResourceSpecResponse(BaseModel):
     classes: list[SpecClassItem] | None
 
     @classmethod
-    def from_spec(cls, spec: ResourceSpec) -> ResourceSpecResponse:
+    def from_spec(
+        cls, spec: ResourceSpec, *, repo: str, commit_hash: str
+    ) -> ResourceSpecResponse:
         return cls(
             name=spec.name,
             confirmed=spec.confirmed,
-            operations=[SpecOperationItem() for _ in spec.operations]
+            operations=[
+                SpecOperationItem.from_operation(
+                    operation, repo=repo, commit_hash=commit_hash
+                )
+                for operation in spec.operations
+            ]
             if spec.confirmed
             else None,
             classes=[SpecClassItem() for _ in spec.classes] if spec.confirmed else None,

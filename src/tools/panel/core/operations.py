@@ -6,7 +6,7 @@ import keyword
 import re
 from collections import Counter, defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from tools.panel.core.grouping import uri_segments
@@ -47,13 +47,13 @@ class SpecOperation:
     """One operation per source document, with its default kind and name.
 
     ``name`` is None exactly when ``missing_name`` says why.
-    TODO(ISS-0091): attach the source endpoint and expose it on the spec page.
     """
 
     path: str
     kind: OperationKind
     name: str | None
     missing_name: MissingName | None = None
+    endpoint: Endpoint = field(compare=False, kw_only=True)
 
 
 _CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
@@ -180,8 +180,11 @@ def propose_operations(endpoints: Sequence[Endpoint]) -> list[SpecOperation]:
             if path not in keep or len(keep) > 1:
                 names[path], missing[path] = None, MissingName.name_conflict
 
+    by_path = {e.path: e for e in endpoints}
     return [
-        SpecOperation(path, kinds[path], names[path], missing.get(path))
+        SpecOperation(
+            path, kinds[path], names[path], missing.get(path), endpoint=by_path[path]
+        )
         for path in sorted(segments)
     ]
 

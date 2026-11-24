@@ -62,6 +62,7 @@ from tools.panel.core.db.models import (  # noqa: E402
 from tools.panel.core.grouping import group_endpoints  # noqa: E402
 from tools.panel.core.ingest import ingest_service_result  # noqa: E402
 from tools.panel.core.layout import listed_versions  # noqa: E402
+from tools.panel.core.operations import propose_operations  # noqa: E402
 from tools.panel.core.spec import ResourceSpec, resource_spec  # noqa: E402
 from tools.shared.ir import Document, HttpMethod  # noqa: E402
 from tools.shared.ir import Service as IrService  # noqa: E402
@@ -1851,12 +1852,51 @@ def test_spec_of_a_confirmed_resource_has_its_name_and_both_sections(
     response = laid_out.get(_spec(servers))
 
     assert response.status_code == 200
+    # in the layout's order, not the rule's
     assert response.json() == {
         "name": "servers",
         "confirmed": True,
-        "operations": [],
+        "operations": [
+            _operation(LIST_SERVERS, "get_servers"),
+            _operation(CREATE_SERVER, "post_servers"),
+        ],
         "classes": [],
     }
+
+
+def _operation(endpoint, name, *, kind="custom", missing_name=None) -> dict:
+    return {
+        "path": endpoint.path,
+        "kind": kind,
+        "name": name,
+        "missing_name": missing_name,
+        "method": endpoint.method.value,
+        "uri": endpoint.uri,
+        "title": endpoint.title,
+        "source_url": f"https://github.com/{REPO}/blob/{COMMIT}/{endpoint.path}",
+    }
+
+
+def test_spec_lists_an_operation_without_a_name_with_its_reason(
+    laid_out, session_factory
+):
+    project = _place(session_factory, "project", [PROJECT_INFO], confirmed_by="val")
+
+    operations = laid_out.get(_spec(project)).json()["operations"]
+
+    assert operations == [_operation(PROJECT_INFO, None, missing_name="no_segment")]
+
+
+def test_spec_leaves_out_an_endpoint_the_active_snapshot_lacks(
+    laid_out, session_factory
+):
+    servers = _place(
+        session_factory, "servers", [CREATE_SERVER, VPC_ONLY], confirmed_by="val"
+    )
+
+    operations = laid_out.get(_spec(servers)).json()["operations"]
+
+    assert [operation["path"] for operation in operations] == [CREATE_SERVER.path]
 
 
 def test_spec_of_an_unconfirmed_resource_has_no_sections(laid_out, session_factory):
@@ -1884,7 +1924,10 @@ def test_spec_is_built_by_a_function_callable_outside_the_route(
         spec = resource_spec(session, service, "v1", servers)
 
     assert spec == ResourceSpec(
-        name="servers", confirmed=True, operations=[], classes=[]
+        name="servers",
+        confirmed=True,
+        operations=propose_operations([CREATE_SERVER]),
+        classes=[],
     )
 
 
