@@ -1,8 +1,8 @@
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { Route, Routes, useLocation } from "react-router";
+import { Route, Routes, useLocation, useNavigate } from "react-router";
 import { backend, FAILED, NOT_FOUND, pollAgain, renderPage } from "../../../test/render";
-import { layout } from "../../../test/fixtures";
 import { keys } from "../../scan/api/queries";
 import { answerStoredLayouts, expectRetryJoinsResources, mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
@@ -976,33 +976,38 @@ describe("with the result page switched off (ADR-0086)", () => {
   });
 });
 
-describe("the spec of a resource of the stored layout (ISS-0074)", () => {
-  const LAYOUT = "/api/generation/services/billing-api/layout";
+describe("the spec of a resource of the stored layout (ISS-0074, ISS-0081)", () => {
   const SPEC = "/api/generation/services/billing-api/spec/v1/7";
-  const EMPTY_SPEC = { operations: [], classes: [] };
+  const PATH = "/generation/billing-api/spec/v1/7";
+  const confirmed = (name = "invoices") => ({ name, confirmed: true, operations: [], classes: [] });
+  const unconfirmed = { name: "invoices", confirmed: false, operations: null, classes: null };
 
   beforeEach(() => {
     flags.showGenJobs = false;
   });
 
-  const laidOut = (name = "invoices") =>
-    layout({
-      versions: [
-        {
-          api_version: "v1",
-          resources: [{ id: 7, name, confirmed_by: null, confirmed_at: null, endpoints: [] }],
-          unassigned: [],
-        },
-      ],
-    });
-
-  function serverSpecPage(answers: Record<string, unknown>, path = "/generation/billing-api/spec/v1/7") {
-    const calls = backend(answers);
-    return { ...renderPage(<GenerationSpecPage />, { path, route: "/generation/:name/spec/:version/:resource" }), calls };
+  function serverSpecPage(answers: Record<string, unknown>, path = PATH, extra?: ReactNode) {
+    const api = backend(answers);
+    const page = (
+      <>
+        <GenerationSpecPage />
+        {extra}
+      </>
+    );
+    return { ...renderPage(page, { path, route: "/generation/:name/spec/:version/:resource" }), api };
   }
 
-  it("reads the spec from the server by the layout's numeric id, in its two sections (ADR-0088)", async () => {
-    const { calls } = serverSpecPage({ [LAYOUT]: laidOut(), [SPEC]: EMPTY_SPEC });
+  function GoTo({ to }: { to: string }) {
+    const navigate = useNavigate();
+    return (
+      <button type="button" onClick={() => navigate(to)}>
+        go
+      </button>
+    );
+  }
+
+  it("reads the spec from the server alone, in its two sections (ADR-0088)", async () => {
+    const { api } = serverSpecPage({ [SPEC]: confirmed() });
 
     expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
     expect(
@@ -1010,68 +1015,111 @@ describe("the spec of a resource of the stored layout (ISS-0074)", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Operations" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Entities" })).toBeInTheDocument();
-    expect(calls.calls(SPEC)).toBe(1);
-    // nothing of the mock's generation: no Generate, no job, no type to choose
+    expect(api.calls(SPEC)).toBe(1);
+    expect(api.calls("/api/generation/services/billing-api/layout")).toBe(0);
+    // nothing of the mock's generation
     expect(screen.queryByRole("button", { name: /^Generate/ })).toBeNull();
-    expect(screen.queryByText("Use this type")).toBeNull();
   });
 
   it("asks the server again with each poll, and shows what changed", async () => {
-    const answers: Record<string, unknown> = { [LAYOUT]: laidOut(), [SPEC]: EMPTY_SPEC };
-    const { client, calls } = serverSpecPage(answers);
+    const answers: Record<string, unknown> = { [SPEC]: confirmed() };
+    const { client, api } = serverSpecPage(answers);
     expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
 
-    // renamed in the editor meanwhile
-    answers[LAYOUT] = laidOut("bills");
-    await pollAgain(client, keys.genLayout("billing-api"), keys.genSpec("billing-api", 7));
+    answers[SPEC] = confirmed("bills");
+    await pollAgain(client, keys.genSpec("billing-api", "v1", 7));
 
     expect(await screen.findByRole("heading", { name: "billing_api.bills" })).toBeInTheDocument();
-    expect(calls.calls(SPEC)).toBe(2);
+    expect(api.calls(SPEC)).toBe(2);
   });
 
   it("shows a spec that failed to load as a failure with Retry, and Retry asks again", async () => {
-    const answers: Record<string, unknown> = { [LAYOUT]: laidOut(), [SPEC]: FAILED };
+    const answers: Record<string, unknown> = { [SPEC]: FAILED };
     serverSpecPage(answers);
 
     expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
 
-    answers[SPEC] = EMPTY_SPEC;
+    answers[SPEC] = confirmed();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
   });
 
   it("shows a refresh that failed as a failure with Retry, not the spec before it (ADR-0081)", async () => {
-    const answers: Record<string, unknown> = { [LAYOUT]: laidOut(), [SPEC]: EMPTY_SPEC };
+    const answers: Record<string, unknown> = { [SPEC]: confirmed() };
     const { client } = serverSpecPage(answers);
     expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
 
     answers[SPEC] = FAILED;
-    await pollAgain(client, keys.genSpec("billing-api", 7));
+    await pollAgain(client, keys.genSpec("billing-api", "v1", 7));
 
     expect(await screen.findByText("Failed to load service")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "billing_api.invoices" })).toBeNull();
   });
 
-  it("does not open a resource the server does not have", async () => {
-    serverSpecPage({ [LAYOUT]: laidOut(), [SPEC]: NOT_FOUND });
+  it("does not open a resource the server does not have in this version", async () => {
+    serverSpecPage({ [SPEC]: NOT_FOUND });
 
     expect(await screen.findByText("Page not found.")).toBeInTheDocument();
   });
 
-  it("does not open a resource of another version than the layout's", async () => {
-    serverSpecPage(
-      { [LAYOUT]: laidOut(), "/api/generation/services/billing-api/spec/v2/7": EMPTY_SPEC },
-      "/generation/billing-api/spec/v2/7",
-    );
+  it("asks the server again when the address moves to another version of the same id", async () => {
+    const V2 = "/api/generation/services/billing-api/spec/v2/7";
+    const { api } = serverSpecPage({ [SPEC]: confirmed(), [V2]: NOT_FOUND }, PATH, <GoTo to="/generation/billing-api/spec/v2/7" />);
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "go" }));
 
     expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+    expect(api.calls(V2)).toBe(1);
   });
 
   it("does not ask the server for an address that names no numeric id", async () => {
-    const { calls } = serverSpecPage({ [LAYOUT]: laidOut() }, "/generation/billing-api/spec/v1/v1_invoices");
+    const { api } = serverSpecPage({}, "/generation/billing-api/spec/v1/v1_invoices");
 
     expect(await screen.findByText("Page not found.")).toBeInTheDocument();
-    expect(calls.calls(LAYOUT)).toBe(0);
+    expect(api.calls("/api/generation/services/billing-api/spec/v1/v1_invoices")).toBe(0);
+  });
+
+  it("says an unconfirmed resource is not confirmed, and leads to the layout editor (ADR-0087)", async () => {
+    serverSpecPage({ [SPEC]: unconfirmed });
+
+    expect(await screen.findByText("Resource not confirmed")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit layout" })).toHaveAttribute("href", "/generation/billing-api/layout");
+    expect(screen.queryByRole("region", { name: "Operations" })).toBeNull();
+  });
+
+  it("says Ansible modules is not connected, and leads back to the service page (ADR-0107)", async () => {
+    serverSpecPage({ [SPEC]: confirmed() }, `${PATH}?target=ansible`);
+
+    expect(await screen.findByText("Ansible modules not connected yet")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open the service page" })).toHaveAttribute(
+      "href",
+      "/generation/billing-api?target=ansible",
+    );
+    expect(screen.queryByRole("region", { name: "Operations" })).toBeNull();
+  });
+
+  it("puts a missing resource before an unconfirmed one, and that before a target not connected", async () => {
+    const answers: Record<string, unknown> = { [SPEC]: unconfirmed };
+    const { client } = serverSpecPage(answers, `${PATH}?target=ansible`);
+    expect(await screen.findByText("Resource not confirmed")).toBeInTheDocument();
+
+    answers[SPEC] = NOT_FOUND;
+    await pollAgain(client, keys.genSpec("billing-api", "v1", 7));
+
+    expect(await screen.findByText("Page not found.")).toBeInTheDocument();
+  });
+
+  it("turns into the screen a direct address shows once a refresh finds the confirmation gone", async () => {
+    const answers: Record<string, unknown> = { [SPEC]: confirmed() };
+    const { client } = serverSpecPage(answers);
+    expect(await screen.findByRole("heading", { name: "billing_api.invoices" })).toBeInTheDocument();
+
+    answers[SPEC] = unconfirmed;
+    await pollAgain(client, keys.genSpec("billing-api", "v1", 7));
+
+    expect(await screen.findByText("Resource not confirmed")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "billing_api.invoices" })).toBeNull();
   });
 });

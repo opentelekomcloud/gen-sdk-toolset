@@ -82,7 +82,7 @@ export function useGenerationResources(name: string, { enabled = true }: { enabl
 /** A resource's spec, built by the server on every request (ADR-0115). */
 export function useGenerationSpec(name: string, version: string, id: number, { enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
-    queryKey: keys.genSpec(name, id),
+    queryKey: keys.genSpec(name, version, id),
     queryFn: () =>
       apiFetch<ResourceSpec>(
         `/generation/services/${encodeURIComponent(name)}/spec/${encodeURIComponent(version)}/${id}`,
@@ -93,7 +93,7 @@ export function useGenerationSpec(name: string, version: string, id: number, { e
 
 /** TODO(#150): delete with the mock. */
 export function useMockGenerationSpec(name: string, resource: string) {
-  return useQuery({ queryKey: keys.genSpec(name, resource), queryFn: async () => generationSpec(name, resource) });
+  return useQuery({ queryKey: keys.genMockSpec(name, resource), queryFn: async () => generationSpec(name, resource) });
 }
 
 /** Generation's rules for the shared attention band - same shape as the scan rules. */

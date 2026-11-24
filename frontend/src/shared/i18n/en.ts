@@ -335,6 +335,7 @@ export const en = {
   "gen.layout.toCard": "Open the service page",
   "gen.layout.footer": "Confirmed resources are ready for every edition.",
   "gen.spec.back": "{name} layout",
+  "gen.spec.notConfirmed": "Resource not confirmed",
   "gen.spec.heading": "Generation spec · {target}",
   "gen.spec.operations": "{n} operation|{n} operations",
   "gen.spec.base": "{n} base",

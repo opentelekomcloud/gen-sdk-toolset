@@ -180,8 +180,7 @@ export interface paths {
          *
          *     Built on every request, so it follows the current layout and the active
          *     Snapshot (ADR-0115). A repository off that list, or a resource its layout
-         *     lacks, answers 404. TODO(ISS-0081): ``version`` is not checked yet, nor is
-         *     whether the resource is confirmed.
+         *     lacks in ``version``, answers 404 (ADR-0087).
          */
         get: operations["get_resource_spec_api_generation_services__repo__spec__version___resource_id__get"];
         put?: never;
@@ -986,13 +985,18 @@ export interface components {
          * @description The specification of one resource: its Operations and Entities sections.
          *
          *     Built on every request (ADR-0115); there is no separate list of problem
-         *     fields - they are shown at the fields of ``classes`` (ADR-0088).
+         *     fields - they are shown at the fields of ``classes`` (ADR-0088). Both
+         *     sections are null while the resource is not confirmed (ADR-0087).
          */
         ResourceSpecResponse: {
             /** Classes */
-            classes: components["schemas"]["SpecClassItem"][];
+            classes: components["schemas"]["SpecClassItem"][] | null;
+            /** Confirmed */
+            confirmed: boolean;
+            /** Name */
+            name: string;
             /** Operations */
-            operations: components["schemas"]["SpecOperationItem"][];
+            operations: components["schemas"]["SpecOperationItem"][] | null;
         };
         /**
          * ScanRequest

@@ -338,6 +338,7 @@ export const de: Record<keyof typeof en, string> = {
   "gen.layout.toCard": "Service-Seite öffnen",
   "gen.layout.footer": "Bestätigte Ressourcen sind für jede Ausgabe bereit.",
   "gen.spec.back": "Layout von {name}",
+  "gen.spec.notConfirmed": "Ressource nicht bestätigt",
   "gen.spec.heading": "Generierungsspezifikation · {target}",
   "gen.spec.operations": "{n} Operation|{n} Operationen",
   "gen.spec.base": "{n} Basis",

@@ -653,17 +653,24 @@ class ResourceSpecResponse(BaseModel):
     """The specification of one resource: its Operations and Entities sections.
 
     Built on every request (ADR-0115); there is no separate list of problem
-    fields - they are shown at the fields of ``classes`` (ADR-0088).
+    fields - they are shown at the fields of ``classes`` (ADR-0088). Both
+    sections are null while the resource is not confirmed (ADR-0087).
     """
 
-    operations: list[SpecOperationItem]
-    classes: list[SpecClassItem]
+    name: str
+    confirmed: bool
+    operations: list[SpecOperationItem] | None
+    classes: list[SpecClassItem] | None
 
     @classmethod
     def from_spec(cls, spec: ResourceSpec) -> ResourceSpecResponse:
         return cls(
-            operations=[SpecOperationItem() for _ in spec.operations],
-            classes=[SpecClassItem() for _ in spec.classes],
+            name=spec.name,
+            confirmed=spec.confirmed,
+            operations=[SpecOperationItem() for _ in spec.operations]
+            if spec.confirmed
+            else None,
+            classes=[SpecClassItem() for _ in spec.classes] if spec.confirmed else None,
         )
 
 
