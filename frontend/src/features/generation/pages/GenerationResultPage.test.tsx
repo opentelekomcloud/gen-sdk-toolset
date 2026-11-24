@@ -32,6 +32,7 @@ const flags = vi.hoisted(() => ({ showGenResult: true }));
 
 vi.mock("../flags", () => ({
   SHOW_GEN_STATE: true,
+  SHOW_LAYOUT_ORIGIN: false,
   SHOW_GEN_JOBS: true,
   get SHOW_GEN_RESULT() {
     return flags.showGenResult;

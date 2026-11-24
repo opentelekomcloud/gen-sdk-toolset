@@ -75,3 +75,55 @@ export function mergedEverywhere(jobs: Jobs, targets: GenTarget[]): boolean {
   const live = targets.filter((t) => t.live);
   return live.length > 0 && live.every((t) => jobs[t.id]?.status === "merged");
 }
+
+/**
+ * A resource name (ADR-0065): it becomes the package
+ * `services/<service>/<version>/<name>/` of the Python SDK, so it is a
+ * snake_case package name - the pattern the server checks a name against
+ * (`RESOURCE_NAME_PATTERN`), held here to say so before the request goes out.
+ */
+export const RESOURCE_NAME = /^[a-z][a-z0-9_]*$/;
+
+/** What is wrong with a resource name, given the names its version already has; null for nothing. */
+export function nameProblem(name: string, taken: readonly string[]): "invalid" | "taken" | null {
+  if (!RESOURCE_NAME.test(name)) return "invalid";
+  if (taken.includes(name)) return "taken";
+  return null;
+}
+
+/**
+ * Where a dragged endpoint comes from: the resource it is in, or `null` for a
+ * list - "unassigned" of its `version`, or "no version", where `version` is
+ * `null` too.
+ */
+export interface EndpointSource {
+  resource: number | null;
+  version: string | null;
+}
+
+/**
+ * Whether an endpoint may be dropped into a resource (ADR-0064). An endpoint
+ * never leaves its version: from a resource or from "unassigned" only into a
+ * resource of the same version, from "no version" into one of any version.
+ * Dropping it where it is moves nothing. The lists are never a target: nothing
+ * goes back into them.
+ */
+export function movable(from: EndpointSource, to: { id: number; version: string }): boolean {
+  if (from.resource === to.id) return false;
+  return from.version === null || from.version === to.version;
+}
+
+/**
+ * Why a resource cannot be confirmed (ADR-0067), the server's own rule held
+ * here to say so before the request goes out: it has no endpoint, or `notOk`
+ * of its endpoints are not `ok`. Null for a resource that can be. The layout
+ * read shows only the endpoints of the active snapshot, the ones the server
+ * checks; the server checks again, and its `409` says so in a banner.
+ */
+export type ConfirmBlock = { reason: "empty" } | { reason: "notOk"; notOk: number };
+
+export function confirmBlock(endpoints: readonly { overall_status: string }[]): ConfirmBlock | null {
+  if (endpoints.length === 0) return { reason: "empty" };
+  const notOk = endpoints.filter((e) => e.overall_status !== "ok").length;
+  return notOk > 0 ? { reason: "notOk", notOk } : null;
+}

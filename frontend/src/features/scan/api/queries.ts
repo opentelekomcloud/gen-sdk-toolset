@@ -7,6 +7,7 @@ import type {
   DocumentsResponse,
   ExcludedService,
   Ineligible,
+  Layout,
   SnapshotsResponse,
   ServiceDetail,
   ServicesResponse,
@@ -48,7 +49,7 @@ export const keys = {
   genSpec: (name: string, version: string, id: number) => ["generation", "spec", name, version, id] as const,
   /** TODO(#150): delete with the mock. */
   genMockSpec: (name: string, resource: string) => ["generation", "spec", name, resource] as const,
-  /** Mutation key of a service's layout edits; the edits that went through say it was edited. */
+  /** Mutation key of a service's layout edits and confirmations; those that went through say changes were saved. */
   genLayoutEdit: (name: string) => ["generation", "layout-edit", name] as const,
   /** The OTC tenant the panel's live calls go to - served from the Generation mock too. */
   otcSettings: ["settings", "otc"] as const,
@@ -88,11 +89,22 @@ export function invalidateGenLayout(qc: QueryClient, name: string): Promise<unkn
 }
 
 /**
- * What a service's layout feeds, without the layout itself - for a caller that
- * already holds the new layout, as the start of the grouping does with its
- * answer, and so has no reason to read it again.
+ * The stored layout as the server answered with it - the start of the grouping
+ * or an edit: shown as it is, and what it feeds read again. A read of the
+ * layout still under way may hold an answer from before; it is dropped, so it
+ * cannot land on top. It settles once what it feeds is read again.
  */
-export function invalidateFromGenLayout(qc: QueryClient, name: string): Promise<unknown> {
+export async function showGenLayout(qc: QueryClient, name: string, stored: Layout): Promise<void> {
+  await qc.cancelQueries({ queryKey: keys.genLayout(name) });
+  qc.setQueryData(keys.genLayout(name), stored);
+  await invalidateFromGenLayout(qc, name);
+}
+
+/**
+ * What a service's layout feeds, without the layout itself - for `showGenLayout`,
+ * which already holds the new layout and so has no reason to read it again.
+ */
+function invalidateFromGenLayout(qc: QueryClient, name: string): Promise<unknown> {
   return Promise.all([
     qc.invalidateQueries({ queryKey: keys.genResources(name) }),
     qc.invalidateQueries({ queryKey: keys.genServices }),

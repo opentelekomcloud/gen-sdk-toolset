@@ -31,6 +31,7 @@ const session = vi.hoisted(() => ({ token: "" }));
 const flags = vi.hoisted(() => ({ showGenResult: true, showGenJobs: true }));
 vi.mock("../flags", () => ({
   SHOW_GEN_STATE: true,
+  SHOW_LAYOUT_ORIGIN: false,
   get SHOW_GEN_JOBS() {
     return flags.showGenJobs;
   },
@@ -847,13 +848,12 @@ describe("the way in and out", () => {
     );
   }
 
-  it("confirms payments, opens its spec from the card, decides its field and starts the generation", async () => {
-    panel("/generation/billing-api/layout");
+  /* The editor confirms on the server, while the card and the spec still read the mock (TODO(#150)): each resource is confirmed on the mock, where the card reads it. */
 
-    const v1 = await screen.findByRole("region", { name: "v1" });
-    fireEvent.click(within(within(v1).getByRole("group", { name: "payments" })).getByRole("button", { name: "Confirm layout" }));
-    await within(within(v1).getByRole("group", { name: "payments" })).findByText("confirmed");
-    fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
+  it("opens confirmed payments from the card, decides its field and starts the generation", async () => {
+    confirmResource("billing-api", "v1_payments", "valeriia");
+    panel("/generation/billing-api");
+
     fireEvent.click(await screen.findByRole("link", { name: "Generate" }));
 
     expect(location()).toBe("/generation/billing-api/spec/v1/v1_payments");
@@ -874,13 +874,10 @@ describe("the way in and out", () => {
     expectJustNow("billing-api", "v1_payments");
   });
 
-  it("confirms invoices v2, opens its spec from the card and starts the generation with nothing to decide", async () => {
-    panel("/generation/billing-api/layout");
+  it("opens confirmed invoices v2 from the card and starts the generation with nothing to decide", async () => {
+    confirmResource("billing-api", "v2_invoices", "valeriia");
+    panel("/generation/billing-api");
 
-    const v2 = await screen.findByRole("region", { name: "v2" });
-    fireEvent.click(within(within(v2).getByRole("group", { name: "invoices" })).getByRole("button", { name: "Confirm layout" }));
-    await within(within(v2).getByRole("group", { name: "invoices" })).findByText("confirmed");
-    fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
     fireEvent.click(await screen.findByRole("link", { name: "Generate" }));
 
     expect(location()).toBe("/generation/billing-api/spec/v2/v2_invoices");
@@ -894,13 +891,10 @@ describe("the way in and out", () => {
     expect(generationResources("billing-api").find((r) => r.id === "v2_invoices")?.jobs.python).toEqual(startedJob);
   });
 
-  it("confirms addresses in customer-core, opens its spec from the card and starts the generation", async () => {
-    panel("/generation/customer-core/layout");
+  it("opens confirmed addresses in customer-core from the card and starts the generation", async () => {
+    confirmResource("customer-core", "c_addresses", "valeriia");
+    panel("/generation/customer-core");
 
-    const v1 = await screen.findByRole("region", { name: "v1" });
-    fireEvent.click(within(within(v1).getByRole("group", { name: "addresses" })).getByRole("button", { name: "Confirm layout" }));
-    await within(within(v1).getByRole("group", { name: "addresses" })).findByText("confirmed");
-    fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
     // the only Generate on the card: customers is merged and contacts failed
     fireEvent.click(await screen.findByRole("link", { name: "Generate" }));
 
@@ -916,16 +910,10 @@ describe("the way in and out", () => {
     expect(generationResources("customer-core").find((r) => r.id === "c_addresses")?.jobs.python).toEqual(startedJob);
   });
 
-  it("confirms subscriptions in notifications-hub, opens its spec from the card and starts the generation", async () => {
-    panel("/generation/notifications-hub/layout");
+  it("opens confirmed subscriptions in notifications-hub from the card and starts the generation", async () => {
+    confirmResource("notifications-hub", "n_subscriptions", "valeriia");
+    panel("/generation/notifications-hub");
 
-    // topics is merged and left out of the editor: subscriptions is the only resource there
-    const v1 = await screen.findByRole("region", { name: "v1" });
-    fireEvent.click(
-      within(within(v1).getByRole("group", { name: "subscriptions" })).getByRole("button", { name: "Confirm layout" }),
-    );
-    await within(within(v1).getByRole("group", { name: "subscriptions" })).findByText("confirmed");
-    fireEvent.click(screen.getAllByRole("link", { name: "Back to generation" })[0]);
     // the only Generate on the card: topics shows its merged job
     fireEvent.click(await screen.findByRole("link", { name: "Generate" }));
 

@@ -22,15 +22,14 @@ function mockListedSeed(): [readonly unknown[], GenerationServiceItem[]] {
   return listedSeed(...withEndpoints.map((s) => s.name));
 }
 
-/** A stored layout that exists and holds nothing: the editor draws the mock's. */
+/** A stored layout that exists and holds nothing. */
 const STORED = layout({ versions: [], no_version: [] });
 
 /**
  * The seeds a page of a mock service opens on: the /generation list above, and
- * a stored layout for each of its services, so the layout page shows its editor
- * rather than the empty state. The editor still draws the mock's resources
- * (ISS-0042), so the stored layout says only that there is one, and holds
- * nothing that could disagree with what the editor shows.
+ * a stored layout for each of its services that exists and holds nothing. The
+ * pages on the mock - the card with generation switched on, the spec, the
+ * result - draw the mock's resources, so nothing stored can disagree with them.
  * TODO(#150): delete with the mock once the pages read real generation data.
  */
 export function mockSeeds(): [readonly unknown[], unknown][] {
@@ -40,11 +39,11 @@ export function mockSeeds(): [readonly unknown[], unknown][] {
 }
 
 /**
- * The backend as the layout editor reaches it: every edit asks for the stored
- * layout again, and it answers the one `mockSeeds` holds. Any other request is
- * one these suites do not expect: it fails, and `others` names it, so a test
- * can say which request it was rather than only that a page failed. A test that
- * stubs `fetch` itself replaces this.
+ * The backend as the pages on the mock reach it: a read of the stored layout
+ * answers the one `mockSeeds` holds. Any other request is one these suites do
+ * not expect: it fails, and `others` names it, so a test can say which request
+ * it was rather than only that a page failed. A test that stubs `fetch` itself
+ * replaces this.
  */
 export function answerStoredLayouts() {
   const others: string[] = [];
