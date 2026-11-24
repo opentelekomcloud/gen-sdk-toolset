@@ -330,7 +330,7 @@ it in the layout tables above is a separate step.
 | `unassigned` | The rule's share of **Unassigned**: endpoints of a version whose URI has no constant segment after the version, or that have no URI. They get no invented name; the user places them (ADR-0064). |
 | `no_version` | **No version** as the rule fills it: endpoints the scanner found no API version for, or an empty one. Never put into a resource by the rule (ADR-0059). |
 | `has_api_version` | Whether an endpoint names an API version: a missing and an empty `api_version` both name none (ADR-0059). The one rule the grouping, **Layout read**, `listed_versions` and a move share, so an endpoint is in "no version" for all of them or for none. |
-| `RESOURCE_NAME_PATTERN` | `^[a-z][a-z0-9_]*$` (ADR-0065), the same pattern the `resource` table's `name_is_package_name` CHECK enforces: a resource becomes the Python package `services/<service>/<version>/<resource>/`. A segment becomes a name by lower case, every other character to `_`, and `RESOURCE_NAME_PREFIX` (`r_`) before a name that does not start with a letter - nothing else, so repeated `_` stay. |
+| `RESOURCE_NAME_PATTERN` | `^[a-z][a-z0-9_]*$` (ADR-0065), the same pattern the `resource` table's `name_is_package_name` CHECK enforces: a resource becomes the Python package `services/<service>/<version>/<resource>/`. A segment becomes a name by lower case, every other character to `_`, and `RESOURCE_NAME_PREFIX` (`r_`) before a name that does not start with a letter - nothing else, so repeated `_` stay. The frontend cannot import it, so it holds a copy, `RESOURCE_NAME` in `frontend/src/features/generation/lib/layout.ts`, to refuse a malformed name before the request goes out; a change here changes it there too. |
 
 ## Versions
 

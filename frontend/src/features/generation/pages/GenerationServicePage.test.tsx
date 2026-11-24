@@ -39,6 +39,8 @@ const location = () => screen.getByTestId("location").textContent;
    unless they say otherwise. */
 const flags = vi.hoisted(() => ({ showGenState: true, showGenResult: true, showGenJobs: true }));
 vi.mock("../flags", () => ({
+  /* the layout editor as it ships: no origin badge */
+  SHOW_LAYOUT_ORIGIN: false,
   get SHOW_GEN_STATE() {
     return flags.showGenState;
   },
