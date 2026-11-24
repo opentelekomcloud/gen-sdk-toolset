@@ -275,6 +275,7 @@ export const de: Record<keyof typeof en, string> = {
   "gen.card.resources": "Ressourcen",
   "gen.card.targets": "Ziel",
   "gen.card.generateLayout": "Layout generieren",
+  "gen.card.noLayoutYet": "Das Layout dieses Service wurde noch nicht generiert.",
   "gen.card.grouping": "Endpunkte werden gruppiert…",
   "gen.card.groupFailed": "Endpunkte konnten nicht gruppiert werden",
   "gen.card.groupRefused": "Endpunkte konnten nicht gruppiert werden: Ihre Rolle erlaubt das nicht",

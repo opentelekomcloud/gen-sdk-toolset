@@ -52,10 +52,11 @@ vi.mock("../flags", () => ({
   },
 }));
 
-/* The layout page, reached from the card, reads the signed-in user. */
+/* The session the mocked provider hands back: a worker's, unless a test signs in as a viewer. */
+const session = vi.hoisted(() => ({ token: "" }));
 vi.mock("react-oidc-context", () => ({
   useAuth: () => ({
-    user: { access_token: tokenWithRoles("viewer"), profile: { preferred_username: "ada@otc.test" } },
+    user: { access_token: session.token, profile: { preferred_username: "ada@otc.test" } },
     isAuthenticated: true,
     isLoading: false,
     signinRedirect: vi.fn(),
@@ -67,6 +68,10 @@ vi.mock("react-oidc-context", () => ({
 vi.mock("../data/mock", async (importOriginal) =>
   (await import("../../../test/mockFails")).withMockFails(await importOriginal<typeof import("../data/mock")>()),
 );
+
+beforeEach(() => {
+  session.token = tokenWithRoles("worker");
+});
 
 afterEach(() => {
   flags.showGenState = true;
@@ -446,6 +451,18 @@ describe("states the mock does not hold today", () => {
     // one reason at a time: an unconfirmed layout is named before anything else
     expect(screen.getAllByText("confirm the layout first")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute("href", "/generation/svc/layout");
+  });
+
+  it("offers a viewer no Generate, but the same reasons why the rest waits (ADR-0070)", async () => {
+    session.token = tokenWithRoles("viewer");
+    cardPage("/generation/svc", SEED);
+
+    expect(await screen.findByText("empty resource")).toBeInTheDocument();
+    // the resource Generate would be offered for is still there, with nothing to start
+    expect(screen.getByText("ready")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+    expect(screen.getByText("1 endpoint not recognized in full")).toBeInTheDocument();
+    expect(screen.getAllByText("confirm the layout first")).toHaveLength(1);
   });
 
   it("shows each job on the target, leading to its result", async () => {
@@ -1024,7 +1041,7 @@ describe("the preliminary grouping of a service without a layout (ISS-0039)", ()
   });
 
   it("says why a refused start was refused: the role, not a failed grouping", async () => {
-    // the session of this suite is a viewer's; until ISS-0044 hides the button, the server refuses it
+    // a worker's token, but the server refuses: the role was taken away since the token was issued
     const answers: Record<string, unknown> = { [LIST]: generationList(ECS), [LAYOUT]: NO_LAYOUT };
     await ecsCard(answers);
     answers[LAYOUT] = FORBIDDEN;
@@ -1093,6 +1110,107 @@ describe("the preliminary grouping of a service without a layout (ISS-0039)", ()
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(await screen.findByRole("button", { name: "Generate layout" })).toBeInTheDocument();
+  });
+});
+
+describe("a viewer (ADR-0070)", () => {
+  const LIST = "/api/generation/services";
+  const LAYOUT = "/api/generation/services/opentelekomcloud-docs%2Fecs/layout";
+  const PATH = "/generation/opentelekomcloud-docs%2Fecs";
+
+  /* The card as it ships, for a user with the viewer role only. */
+  beforeEach(() => {
+    flags.showGenJobs = false;
+    session.token = tokenWithRoles("viewer");
+  });
+
+  const unconfirmed = { confirmed_by: null, confirmed_at: null };
+  const byValeriia = { confirmed_by: "valeriia", confirmed_at: "2026-11-02T10:00:00Z" };
+  /** ecs laid out: two resources of v1, an endpoint in no resource, and one with no version. */
+  const laidOut = (first: object) =>
+    layout({
+      versions: [
+        {
+          api_version: "v1",
+          resources: [
+            { id: 1, name: "servers", ...unconfirmed, ...first, endpoints: [endpoint({ id: 1, path: "servers/list.rst" })] },
+            { id: 2, name: "flavors", ...unconfirmed, endpoints: [endpoint({ id: 2, path: "flavors/list.rst" })] },
+          ],
+          unassigned: [endpoint({ id: 3, path: "quotas/show.rst" })],
+        },
+      ],
+      no_version: [endpoint({ id: 4, path: "versions/list.rst" })],
+    });
+
+  /** The card and the layout page of ecs on a backend that stores `stored`. */
+  function panel(stored: unknown) {
+    const api = backend({ [LIST]: generationList(ECS), [LAYOUT]: stored });
+    renderPage(
+      <>
+        <Routes>
+          <Route path="generation/:name" element={<GenerationServicePage />} />
+          <Route path="generation/:name/layout" element={<GenerationLayoutPage />} />
+        </Routes>
+        <Location />
+      </>,
+      { path: PATH, route: "*" },
+    );
+    return api;
+  }
+
+  it("is told a service has no layout yet, in place of Generate layout, and can still open the layout page", async () => {
+    const api = panel(NO_LAYOUT);
+
+    const centre = await screen.findByRole("region", { name: "Resources" });
+    expect(centre).toHaveTextContent(/^The layout of this service has not been generated yet\.$/);
+    expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Edit layout" })).toHaveAttribute("href", `${PATH}/layout`);
+    // nothing was started on the viewer's behalf: the layout was only read, once
+    expect(api.calls(LAYOUT)).toBe(1);
+
+    fireEvent.click(screen.getByRole("link", { name: "Edit layout" }));
+
+    expect(await screen.findByText("No layout yet. Its resources appear here once the service is grouped.")).toBeInTheDocument();
+    expect(location()).toBe(`${PATH}/layout`);
+  });
+
+  it("sees the summary of an unconfirmed layout and the way into it", async () => {
+    panel(laidOut(unconfirmed));
+
+    expect(await screen.findByText("2 resources in 1 version, confirmation needed")).toBeInTheDocument();
+    const centre = screen.getByRole("region", { name: "Resources" });
+    expect(within(centre).getByRole("link", { name: "Edit layout" })).toHaveAttribute("href", `${PATH}/layout`);
+    expect(screen.getAllByRole("link", { name: "Edit layout" })).toHaveLength(2);
+  });
+
+  it("sees each resource with its confirmation once one is confirmed", async () => {
+    panel(laidOut(byValeriia));
+
+    const servers = await screen.findByRole("group", { name: "servers" });
+    expect(within(servers).getByText(/layout confirmed by valeriia/)).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "flavors" })).getByText(/layout not confirmed yet/)).toBeInTheDocument();
+    // the resources only lead on, for every role: a control here would need hiding from a viewer
+    expect(within(screen.getByRole("region", { name: "Resources" })).queryAllByRole("button")).toEqual([]);
+  });
+
+  it("opens the layout read-only: the resources, both lists and the confirmations, and nothing to change them with", async () => {
+    panel(laidOut(byValeriia));
+    fireEvent.click(await screen.findByRole("link", { name: "Edit layout" }));
+
+    const v1 = await screen.findByRole("region", { name: "v1" });
+    expect(location()).toBe(`${PATH}/layout`);
+    const servers = within(v1).getByRole("group", { name: "servers" });
+    expect(within(servers).getByText(/^confirmed by valeriia · /)).toBeInTheDocument();
+    expect(within(within(v1).getByRole("group", { name: "flavors" })).getByText("layout not confirmed yet")).toBeInTheDocument();
+    expect(within(v1).getByRole("group", { name: "Unassigned" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "No version" })).toBeInTheDocument();
+
+    for (const name of ["Rename resource", "New resource", "Confirm layout"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(document.querySelectorAll('[draggable="true"]')).toHaveLength(0);
+    expect(document.querySelectorAll('[draggable="false"]')).toHaveLength(4);
   });
 });
 

@@ -273,6 +273,7 @@ export const en = {
   "gen.card.resources": "Resources",
   "gen.card.targets": "Target",
   "gen.card.generateLayout": "Generate layout",
+  "gen.card.noLayoutYet": "The layout of this service has not been generated yet.",
   "gen.card.grouping": "Grouping endpoints…",
   "gen.card.groupFailed": "Failed to group endpoints",
   "gen.card.groupRefused": "Failed to group endpoints — your role does not allow that",

@@ -953,15 +953,20 @@ describe("confirming a resource (ADR-0066, ADR-0067)", () => {
   });
 });
 
-describe("a viewer", () => {
-  it("reads the layout, but is offered no way to change it", async () => {
+describe("a viewer (ADR-0070)", () => {
+  it("reads the layout with its lists and confirmations, but is offered no way to change it", async () => {
     session.token = tokenWithRoles("viewer");
     const { api } = editor();
 
     expect(await screen.findByText(/^Shared layout · 2 versions/)).toBeInTheDocument();
-    expect(resource("v1", "payments")).toBeInTheDocument();
+    expect(screen.getByText(/· 1 of 4 resources confirmed$/)).toBeInTheDocument();
+    expect(within(resource("v1", "invoices")).getByText(/^confirmed by valeriia · /)).toBeInTheDocument();
+    expect(within(resource("v1", "payments")).getByText("layout not confirmed yet")).toBeInTheDocument();
     expect(screen.getByText("partial")).toBeInTheDocument();
+    expect(within(version("v1")).getByRole("group", { name: "Unassigned" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "No version" })).toBeInTheDocument();
+    // why misc cannot be confirmed is a worker's concern: no hint without the control
+    expect(screen.queryByText(/before confirming/)).toBeNull();
     for (const name of ["Rename resource", "New resource", "Confirm layout"]) {
       expect(screen.queryByRole("button", { name })).toBeNull();
     }
