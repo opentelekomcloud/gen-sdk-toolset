@@ -25,12 +25,15 @@ class SpecClass:
 
 @dataclass(frozen=True)
 class ResourceSpec:
-    """A resource and the two sections of its specification (ADR-0088)."""
+    """A resource and the two sections of its specification (ADR-0088).
+
+    An unconfirmed resource has no specification (ADR-0087): both sections are None.
+    """
 
     name: str
     confirmed: bool
-    operations: list[SpecOperation]
-    classes: list[SpecClass]
+    operations: list[SpecOperation] | None
+    classes: list[SpecClass] | None
 
 
 def resource_spec(
@@ -49,11 +52,15 @@ def resource_spec(
     )
     if resource is None:
         return None
+    if resource.confirmed_by is None:
+        return ResourceSpec(
+            name=resource.name, confirmed=False, operations=None, classes=None
+        )
     endpoints = resource_endpoints(db, service, resource)
     proposed = {op.path: op for op in propose_operations(endpoints)}
     return ResourceSpec(
         name=resource.name,
-        confirmed=resource.confirmed_by is not None,
+        confirmed=True,
         operations=[proposed[e.path] for e in endpoints],
         classes=[],
     )

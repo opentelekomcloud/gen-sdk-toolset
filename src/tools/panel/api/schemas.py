@@ -696,15 +696,17 @@ class ResourceSpecResponse(BaseModel):
         return cls(
             name=spec.name,
             confirmed=spec.confirmed,
-            operations=[
+            operations=None
+            if spec.operations is None
+            else [
                 SpecOperationItem.from_operation(
                     operation, repo=repo, commit_hash=commit_hash
                 )
                 for operation in spec.operations
-            ]
-            if spec.confirmed
-            else None,
-            classes=[SpecClassItem() for _ in spec.classes] if spec.confirmed else None,
+            ],
+            classes=None
+            if spec.classes is None
+            else [SpecClassItem() for _ in spec.classes],
         )
 
 

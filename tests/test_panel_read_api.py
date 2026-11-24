@@ -1750,13 +1750,18 @@ def _active_snapshot_id(session_factory) -> int:
 
 
 def _start_behind(first, client, session_factory):
-    """Start the grouping while ``first`` holds a lock it needs.
+    """Start the grouping while ``first`` holds a lock it needs."""
+    return _behind(first, lambda: client.post(LAYOUT), session_factory)
 
-    ``first`` commits once the start waits for it - or if it never does, so a
-    failed probe is reported instead of leaving the start waiting forever.
+
+def _behind(first, request, session_factory):
+    """Send ``request`` while ``first`` holds a lock it needs.
+
+    ``first`` commits once the request waits for it - or if it never does, so a
+    failed probe is reported instead of leaving the request waiting forever.
     """
     with ThreadPoolExecutor(max_workers=1) as pool:
-        second = pool.submit(client.post, LAYOUT)
+        second = pool.submit(request)
         try:
             _wait_for_a_blocked_query(session_factory)
         finally:
@@ -1779,7 +1784,7 @@ def _wait_for_a_blocked_query(session_factory, timeout: float = 10) -> None:
             # pg_stat_activity is read once per transaction
             probe.rollback()
             time.sleep(0.05)
-    raise AssertionError("the second start never waited for the first")
+    raise AssertionError("the request never waited for the lock held before it")
 
 
 def test_a_failed_start_leaves_no_layout_and_can_be_retried(laid_out, monkeypatch):
@@ -1887,6 +1892,25 @@ def test_spec_lists_an_operation_without_a_name_with_its_reason(
     assert operations == [_operation(PROJECT_INFO, None, missing_name="no_segment")]
 
 
+def test_spec_waits_for_a_layout_edit_in_flight_and_shows_all_of_it(
+    laid_out, session_factory
+):
+    """The confirmation and the endpoints are read as one edit left them."""
+    servers = _place(session_factory, "servers", [CREATE_SERVER], confirmed_by="val")
+    with session_factory() as first:
+        first.execute(select(Service).where(Service.repo == REPO).with_for_update())
+        resource = first.get(Resource, servers)
+        resource.endpoints.append(
+            ResourceEndpoint(service_id=resource.service_id, path=LIST_SERVERS.path)
+        )
+        resource.confirmed_by = resource.confirmed_at = None
+        first.flush()
+        response = _behind(first, lambda: laid_out.get(_spec(servers)), session_factory)
+
+    assert response.json()["confirmed"] is False
+    assert response.json()["operations"] is None
+
+
 def test_spec_leaves_out_an_endpoint_the_active_snapshot_lacks(
     laid_out, session_factory
 ):
@@ -1928,6 +1952,18 @@ def test_spec_is_built_by_a_function_callable_outside_the_route(
         confirmed=True,
         operations=propose_operations([CREATE_SERVER]),
         classes=[],
+    )
+
+
+def test_spec_of_an_unconfirmed_resource_is_not_built(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+
+    with session_factory() as session:
+        service = session.scalars(select(Service).where(Service.repo == REPO)).one()
+        spec = resource_spec(session, service, "v1", servers)
+
+    assert spec == ResourceSpec(
+        name="servers", confirmed=False, operations=None, classes=None
     )
 
 
