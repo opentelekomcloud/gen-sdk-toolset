@@ -22,6 +22,7 @@ import {
   ServiceLoadFailed,
   ServiceLoading,
 } from "../../scan/components/ServicePageStates";
+import { useSession } from "../../../shared/auth/useSession";
 import { useI18n } from "../../../shared/i18n";
 
 function ResourceRow({
@@ -36,6 +37,7 @@ function ResourceRow({
   pathTo: (rest: string[]) => string;
 }) {
   const { t } = useI18n();
+  const { canWrite } = useSession();
   /* the list's state rides on into the layout and the spec, and back */
   const { state: fromList } = useLocation();
   const job = resource.jobs[target.id];
@@ -63,13 +65,17 @@ function ResourceRow({
       {job ? (
         <JobTag job={job} to={pathTo(["result", resource.version, resource.id])} state={fromList} />
       ) : hold === null ? (
-        <Link
-          to={pathTo(["spec", resource.version, resource.id])}
-          state={fromList}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded border border-pink-300 bg-pink-50 px-3.5 py-[5px] text-xs font-semibold text-brand transition hover:border-brand"
-        >
-          <Play size={12} /> {t("gen.card.generate")}
-        </Link>
+        /* Generate leads to starting a job, which a viewer may not (ADR-0070);
+           the jobs and the reasons a resource waits stay for every role. */
+        canWrite && (
+          <Link
+            to={pathTo(["spec", resource.version, resource.id])}
+            state={fromList}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded border border-pink-300 bg-pink-50 px-3.5 py-[5px] text-xs font-semibold text-brand transition hover:border-brand"
+          >
+            <Play size={12} /> {t("gen.card.generate")}
+          </Link>
+        )
       ) : (
         <HoldReason hold={hold} layoutTo={pathTo(["layout"])} state={fromList} />
       )}
@@ -77,9 +83,13 @@ function ResourceRow({
   );
 }
 
-/** The repo as the title, and the way to its layout (ADR-0063). */
+/**
+ * The repo as the title, and the way to its layout (ADR-0063): to edit it for a
+ * worker, to view it for a viewer, who may not change it (ADR-0070).
+ */
 function CardHeader({ name, sub, layoutTo }: { name: string; sub?: string; layoutTo: string }) {
   const { t } = useI18n();
+  const { canWrite } = useSession();
   /* the list's state rides on into the layout, and back */
   const { state: fromList } = useLocation();
   return (
@@ -93,7 +103,7 @@ function CardHeader({ name, sub, layoutTo }: { name: string; sub?: string; layou
         state={fromList}
         className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-gray-500"
       >
-        <Folder size={14} className="text-gray-400" /> {t("gen.card.editLayout")}
+        <Folder size={14} className="text-gray-400" /> {t(canWrite ? "gen.card.editLayout" : "gen.card.viewLayout")}
       </Link>
     </div>
   );
@@ -107,10 +117,12 @@ function CardHeader({ name, sub, layoutTo }: { name: string; sub?: string; layou
  * PageNotFound (ADR-0081).
  *
  * Its centre follows the stored layout. A service without one gets the one
- * way to make it: "Generate layout" (ADR-0056). With one, its resources
- * (`LayoutResources`), each with why it waits on the chosen target. Above it,
- * the choice of target (ADR-0055). The server has no generation data yet, so
- * jobs, coverage and Generate stay switched off (`SHOW_GEN_JOBS`).
+ * way to make it: "Generate layout" (ADR-0056) - for a worker; a viewer, who
+ * may not start it, is told there is none yet (ADR-0070). With one, its
+ * resources (`LayoutResources`), each with why it waits on the chosen target,
+ * and the way into the layout page for every role. Above it, the choice of
+ * target (ADR-0055). The server has no generation data yet, so jobs, coverage
+ * and Generate stay switched off (`SHOW_GEN_JOBS`).
  */
 export function GenerationServicePage() {
   const { name = "" } = useParams();
@@ -118,6 +130,7 @@ export function GenerationServicePage() {
   /* Opened from the list, the card knows the list's query and search text and leads back to both. */
   const { state: fromList } = useLocation();
   const { t } = useI18n();
+  const { canWrite } = useSession();
   const access = useInGeneration(name);
   /* The two targets, Python SDK first as the default (ADR-0055). */
   const targets = useGenerationTargets();
@@ -178,7 +191,13 @@ export function GenerationServicePage() {
           <LayoutResources layout={layoutBlock.data} target={target} layoutTo={layoutTo} />
         ) : (
           <div className="flex justify-center px-4 py-10">
-            <StartGrouping name={name} start={start} />
+            {/* The server refuses a viewer the start (ADR-0070): no button - and
+                so no spinner or Retry of a start - but a note that there is no layout yet. */}
+            {canWrite ? (
+              <StartGrouping name={name} start={start} />
+            ) : (
+              <span className="text-sm text-gray-500">{t("gen.card.noLayoutYet")}</span>
+            )}
           </div>
         )}
       </section>
@@ -188,6 +207,7 @@ export function GenerationServicePage() {
 
 function ToLayout({ layoutTo }: { layoutTo: string }) {
   const { t } = useI18n();
+  const { canWrite } = useSession();
   const { state: fromList } = useLocation();
   return (
     <Link
@@ -195,7 +215,7 @@ function ToLayout({ layoutTo }: { layoutTo: string }) {
       state={fromList}
       className="inline-flex items-center gap-1.5 rounded border border-pink-300 bg-pink-50 px-3.5 py-2 text-sm font-semibold text-brand transition hover:border-brand"
     >
-      <Folder size={14} /> {t("gen.card.editLayout")}
+      <Folder size={14} /> {t(canWrite ? "gen.card.editLayout" : "gen.card.viewLayout")}
     </Link>
   );
 }
@@ -404,10 +424,11 @@ function TargetSwitcher({
 
 /**
  * The card on generation data, one target at a time - coverage of every
- * target, the resources with their state there, and Generate or the reason it
- * is not offered. It reads the in-memory mock, so it is switched off
- * (`SHOW_GEN_JOBS`). The layout is shared by every target and only read here;
- * it is edited on its own page. The target round-trips through the address.
+ * target, the resources with their state there, and the reason Generate is not
+ * offered - or, for a worker, Generate itself (ADR-0070). It reads the
+ * in-memory mock, so it is switched off (`SHOW_GEN_JOBS`). The layout is
+ * shared by every target and only read here; it is edited on its own page.
+ * The target round-trips through the address.
  */
 function TargetCard({ name, back }: { name: string; back: ReactNode }) {
   const [searchParams] = useSearchParams();

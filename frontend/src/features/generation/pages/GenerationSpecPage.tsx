@@ -445,6 +445,7 @@ function ServerSpecPage() {
   const [searchParams] = useSearchParams();
   const { state: fromList } = useLocation();
   const { t } = useI18n();
+  const { canWrite } = useSession();
   /* the route takes a number only, and answers anything else 422 */
   const valid = /^[1-9][0-9]*$/.test(resource);
   const targets = useGenerationTargets();
@@ -478,11 +479,13 @@ function ServerSpecPage() {
 
   const { confirmed, operations, classes } = specBlock.data;
   if (!confirmed || !operations || !classes) {
+    /* The way to the layout, where a worker confirms it; a viewer, who may not, only views it (ADR-0070). */
+    const label = t(canWrite ? "gen.card.editLayout" : "gen.card.viewLayout");
     return (
       <PageMessage
         back={back}
         note={t("gen.spec.notConfirmed")}
-        link={{ to: servicePath(name, target, defaultTarget, ["layout"]), label: t("gen.card.editLayout") }}
+        link={{ to: servicePath(name, target, defaultTarget, ["layout"]), label }}
       />
     );
   }
