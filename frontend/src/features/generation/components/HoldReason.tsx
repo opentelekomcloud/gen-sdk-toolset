@@ -1,12 +1,14 @@
 import { Link } from "react-router";
 import type { Hold } from "../lib/layout";
+import { useSession } from "../../../shared/auth/useSession";
 import { useI18n } from "../../../shared/i18n";
 
 /**
  * Why a resource cannot be generated on a target, in the card's words; an
- * unconfirmed layout also offers the way to the layout editor. Where the spec
- * is at hand, fields left to decide come after that (owner decision); away
- * from it, they come with the way to the spec, where they are highlighted
+ * unconfirmed layout also offers the way to the layout editor - to edit it for
+ * a worker, to view it for a viewer, who may not change it (ADR-0070). Where
+ * the spec is at hand, fields left to decide come after that (owner decision);
+ * away from it, they come with the way to the spec, where they are highlighted
  * (owner decision). Nothing is said when nothing holds it.
  */
 export function HoldReason({
@@ -25,6 +27,7 @@ export function HoldReason({
   state?: unknown;
 }) {
   const { t } = useI18n();
+  const { canWrite } = useSession();
   if (!hold) {
     if (open === 0) return null;
     const decide = t("gen.spec.decideFirst", { n: open });
@@ -58,7 +61,7 @@ export function HoldReason({
       {text}
       {hold.reason === "confirm" && (
         <Link to={layoutTo} state={state} className="font-semibold text-brand underline">
-          {t("gen.card.fixLayout")}
+          {t(canWrite ? "gen.card.fixLayout" : "gen.card.viewLayoutInline")}
         </Link>
       )}
     </span>

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation, useNavigate } from "react-router";
 import { backend, FAILED, NOT_FOUND, pollAgain, renderPage } from "../../../test/render";
+import { endpoint, generationList, layout } from "../../../test/fixtures";
 import { keys } from "../../scan/api/queries";
 import { answerStoredLayouts, expectRetryJoinsResources, mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
@@ -1087,6 +1088,41 @@ describe("the spec of a resource of the stored layout (ISS-0074, ISS-0081)", () 
     expect(await screen.findByText("Resource not confirmed")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Edit layout" })).toHaveAttribute("href", "/generation/billing-api/layout");
     expect(screen.queryByRole("region", { name: "Operations" })).toBeNull();
+  });
+
+  it("leads a viewer to the layout to view it, and the layout opens read-only (ADR-0070)", async () => {
+    session.token = tokenWithRoles("viewer");
+    const invoices = { id: 7, name: "invoices", confirmed_by: null, confirmed_at: null, endpoints: [endpoint({ id: 1 })] };
+    backend({
+      [SPEC]: unconfirmed,
+      "/api/generation/services": generationList("billing-api"),
+      "/api/generation/services/billing-api/layout": layout({
+        versions: [{ api_version: "v1", resources: [invoices], unassigned: [] }],
+      }),
+    });
+    renderPage(
+      <>
+        <Routes>
+          <Route path="generation/:name/spec/:version/:resource" element={<GenerationSpecPage />} />
+          <Route path="generation/:name/layout" element={<GenerationLayoutPage />} />
+        </Routes>
+        <Location />
+      </>,
+      { path: PATH, route: "*" },
+    );
+
+    expect(await screen.findByText("Resource not confirmed")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Edit layout" })).toBeNull();
+    fireEvent.click(screen.getByRole("link", { name: "View layout" }));
+
+    const v1 = await screen.findByRole("region", { name: "v1" });
+    expect(location()).toBe("/generation/billing-api/layout");
+    expect(within(within(v1).getByRole("group", { name: "invoices" })).getByText("layout not confirmed yet")).toBeInTheDocument();
+    for (const name of ["Rename resource", "New resource", "Confirm layout"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+    expect(document.querySelectorAll('[draggable="true"]')).toHaveLength(0);
+    expect(document.querySelectorAll('[draggable="false"]')).toHaveLength(1);
   });
 
   it("says Ansible modules is not connected, and leads back to the service page (ADR-0107)", async () => {

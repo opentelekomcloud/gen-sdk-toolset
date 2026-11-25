@@ -83,9 +83,13 @@ function ResourceRow({
   );
 }
 
-/** The repo as the title, and the way to its layout (ADR-0063). */
+/**
+ * The repo as the title, and the way to its layout (ADR-0063): to edit it for a
+ * worker, to view it for a viewer, who may not change it (ADR-0070).
+ */
 function CardHeader({ name, sub, layoutTo }: { name: string; sub?: string; layoutTo: string }) {
   const { t } = useI18n();
+  const { canWrite } = useSession();
   /* the list's state rides on into the layout, and back */
   const { state: fromList } = useLocation();
   return (
@@ -99,7 +103,7 @@ function CardHeader({ name, sub, layoutTo }: { name: string; sub?: string; layou
         state={fromList}
         className="inline-flex items-center gap-1.5 rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-gray-500"
       >
-        <Folder size={14} className="text-gray-400" /> {t("gen.card.editLayout")}
+        <Folder size={14} className="text-gray-400" /> {t(canWrite ? "gen.card.editLayout" : "gen.card.viewLayout")}
       </Link>
     </div>
   );
@@ -203,6 +207,7 @@ export function GenerationServicePage() {
 
 function ToLayout({ layoutTo }: { layoutTo: string }) {
   const { t } = useI18n();
+  const { canWrite } = useSession();
   const { state: fromList } = useLocation();
   return (
     <Link
@@ -210,7 +215,7 @@ function ToLayout({ layoutTo }: { layoutTo: string }) {
       state={fromList}
       className="inline-flex items-center gap-1.5 rounded border border-pink-300 bg-pink-50 px-3.5 py-2 text-sm font-semibold text-brand transition hover:border-brand"
     >
-      <Folder size={14} /> {t("gen.card.editLayout")}
+      <Folder size={14} /> {t(canWrite ? "gen.card.editLayout" : "gen.card.viewLayout")}
     </Link>
   );
 }

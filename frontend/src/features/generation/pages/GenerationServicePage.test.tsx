@@ -463,6 +463,9 @@ describe("states the mock does not hold today", () => {
     expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
     expect(screen.getByText("1 endpoint not recognized in full")).toBeInTheDocument();
     expect(screen.getAllByText("confirm the layout first")).toHaveLength(1);
+    // the way to the layout next to it, named for what a viewer may do there
+    expect(screen.getByRole("link", { name: "view layout" })).toHaveAttribute("href", "/generation/svc/layout");
+    expect(screen.queryByRole("link", { name: "edit layout" })).toBeNull();
   });
 
   it("shows each job on the target, leading to its result", async () => {
@@ -1158,17 +1161,35 @@ describe("a viewer (ADR-0070)", () => {
     return api;
   }
 
+  /** The layout page as a viewer gets it from the card: all of ecs's layout, and nothing to change it with. */
+  async function expectReadOnlyLayout() {
+    const v1 = await screen.findByRole("region", { name: "v1" });
+    expect(location()).toBe(`${PATH}/layout`);
+    expect(within(v1).getByRole("group", { name: "servers" })).toBeInTheDocument();
+    expect(within(v1).getByRole("group", { name: "flavors" })).toBeInTheDocument();
+    expect(within(v1).getByRole("group", { name: "Unassigned" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "No version" })).toBeInTheDocument();
+    for (const name of ["Rename resource", "New resource", "Confirm layout"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(document.querySelectorAll('[draggable="true"]')).toHaveLength(0);
+    expect(document.querySelectorAll('[draggable="false"]')).toHaveLength(4);
+  }
+
   it("is told a service has no layout yet, in place of Generate layout, and can still open the layout page", async () => {
     const api = panel(NO_LAYOUT);
 
     const centre = await screen.findByRole("region", { name: "Resources" });
     expect(centre).toHaveTextContent(/^The layout of this service has not been generated yet\.$/);
     expect(screen.queryByRole("button", { name: "Generate layout" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Edit layout" })).toHaveAttribute("href", `${PATH}/layout`);
+    // the way to the layout stays, named for what a viewer may do there
+    expect(screen.getByRole("link", { name: "View layout" })).toHaveAttribute("href", `${PATH}/layout`);
+    expect(screen.queryByRole("link", { name: "Edit layout" })).toBeNull();
     // nothing was started on the viewer's behalf: the layout was only read, once
     expect(api.calls(LAYOUT)).toBe(1);
 
-    fireEvent.click(screen.getByRole("link", { name: "Edit layout" }));
+    fireEvent.click(screen.getByRole("link", { name: "View layout" }));
 
     expect(await screen.findByText("No layout yet. Its resources appear here once the service is grouped.")).toBeInTheDocument();
     expect(location()).toBe(`${PATH}/layout`);
@@ -1179,8 +1200,14 @@ describe("a viewer (ADR-0070)", () => {
 
     expect(await screen.findByText("2 resources in 1 version, confirmation needed")).toBeInTheDocument();
     const centre = screen.getByRole("region", { name: "Resources" });
-    expect(within(centre).getByRole("link", { name: "Edit layout" })).toHaveAttribute("href", `${PATH}/layout`);
-    expect(screen.getAllByRole("link", { name: "Edit layout" })).toHaveLength(2);
+    expect(within(centre).getByRole("link", { name: "View layout" })).toHaveAttribute("href", `${PATH}/layout`);
+    // the header's and the summary's, both named for a viewer
+    expect(screen.getAllByRole("link", { name: "View layout" })).toHaveLength(2);
+    expect(screen.queryByRole("link", { name: "Edit layout" })).toBeNull();
+
+    fireEvent.click(within(centre).getByRole("link", { name: "View layout" }));
+
+    await expectReadOnlyLayout();
   });
 
   it("sees each resource with its confirmation once one is confirmed", async () => {
@@ -1193,24 +1220,26 @@ describe("a viewer (ADR-0070)", () => {
     expect(within(screen.getByRole("region", { name: "Resources" })).queryAllByRole("button")).toEqual([]);
   });
 
+  it("opens the layout read-only from the way next to \"confirm the layout first\"", async () => {
+    panel(laidOut(byValeriia));
+
+    const flavors = await screen.findByRole("group", { name: "flavors" });
+    expect(within(flavors).getByText("confirm the layout first")).toBeInTheDocument();
+    expect(within(flavors).queryByRole("link", { name: "edit layout" })).toBeNull();
+    fireEvent.click(within(flavors).getByRole("link", { name: "view layout" }));
+
+    await expectReadOnlyLayout();
+  });
+
   it("opens the layout read-only: the resources, both lists and the confirmations, and nothing to change them with", async () => {
     panel(laidOut(byValeriia));
-    fireEvent.click(await screen.findByRole("link", { name: "Edit layout" }));
+    // the header's way to the layout
+    fireEvent.click(await screen.findByRole("link", { name: "View layout" }));
 
-    const v1 = await screen.findByRole("region", { name: "v1" });
-    expect(location()).toBe(`${PATH}/layout`);
-    const servers = within(v1).getByRole("group", { name: "servers" });
-    expect(within(servers).getByText(/^confirmed by valeriia · /)).toBeInTheDocument();
+    await expectReadOnlyLayout();
+    const v1 = screen.getByRole("region", { name: "v1" });
+    expect(within(within(v1).getByRole("group", { name: "servers" })).getByText(/^confirmed by valeriia · /)).toBeInTheDocument();
     expect(within(within(v1).getByRole("group", { name: "flavors" })).getByText("layout not confirmed yet")).toBeInTheDocument();
-    expect(within(v1).getByRole("group", { name: "Unassigned" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "No version" })).toBeInTheDocument();
-
-    for (const name of ["Rename resource", "New resource", "Confirm layout"]) {
-      expect(screen.queryByRole("button", { name })).toBeNull();
-    }
-    expect(screen.queryByRole("textbox")).toBeNull();
-    expect(document.querySelectorAll('[draggable="true"]')).toHaveLength(0);
-    expect(document.querySelectorAll('[draggable="false"]')).toHaveLength(4);
   });
 });
 
