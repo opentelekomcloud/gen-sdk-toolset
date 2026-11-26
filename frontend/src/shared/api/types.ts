@@ -44,6 +44,7 @@ export type Layout = Schemas["LayoutResponse"];
 export type LayoutVersion = Schemas["LayoutVersionItem"];
 export type LayoutResource = Schemas["LayoutResourceItem"];
 export type ResourceSpec = Schemas["ResourceSpecResponse"];
+export type OperationKind = Schemas["OperationKind"];
 export type AddResourceRequest = Schemas["AddResourceRequest"];
 export type RenameResourceRequest = Schemas["RenameResourceRequest"];
 export type MoveEndpointRequest = Schemas["MoveEndpointRequest"];

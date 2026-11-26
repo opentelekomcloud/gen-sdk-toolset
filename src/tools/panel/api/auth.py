@@ -29,6 +29,7 @@ import enum
 import logging
 import time
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Annotated, Any
 
 import jwt
@@ -49,6 +50,10 @@ PROJECT_ROLES_CLAIM = "urn:zitadel:iam:org:project:roles"
 #: Zitadel signs with RS256. Naming it here is what stops a token from choosing
 #: its own algorithm - `alg: none` is an attack, not a configuration.
 _ALGORITHMS = ["RS256"]
+
+#: How far Zitadel's clock may run ahead of ours. It applies to ``exp`` too, so
+#: it stays small: a stolen token outlives its expiry by no more than this.
+_CLOCK_SKEW = timedelta(seconds=10)
 
 #: Claims to read the operator's name from, best first. Checked on the token as
 #: well as on the userinfo response: a Zitadel action can put one of them in the
@@ -199,6 +204,7 @@ def _claims(token: str, auth: AuthSection, jwks: PyJWKClient) -> dict[str, Any]:
             token,
             signing_key.key,
             algorithms=_ALGORITHMS,
+            leeway=_CLOCK_SKEW,
             audience=auth.audience,
             issuer=auth.issuer,
             options={"require": ["exp", "sub"]},

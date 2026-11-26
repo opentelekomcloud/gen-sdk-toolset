@@ -10,11 +10,13 @@ import {
 } from "../data/queries";
 import { useChooseType, useStartGeneration } from "../data/mutations";
 import type { GenField, GenOperationKind } from "../data/types";
+import type { OperationKind } from "../../../shared/api/types";
 import { blockOf, retryJoining } from "../../scan/api/queries";
 import { HoldReason } from "../components/HoldReason";
 import { JobTag } from "../components/JobTag";
 import { LayoutBadge } from "../components/LayoutBadge";
 import { NoTargets } from "../components/NoTargets";
+import { OperationRow } from "../components/OperationRow";
 import { PageMessage } from "../components/PageMessage";
 import { PageNotFound } from "../components/PageNotFound";
 import { SHOW_GEN_JOBS, SHOW_GEN_RESULT } from "../flags";
@@ -29,14 +31,8 @@ import {
 import { isNotFound } from "../../scan/api/client";
 import { mutationErrorKey } from "../../scan/lib/errors";
 import { fmtSnapshotAt } from "../../scan/lib/snapshot";
-import { methodCls } from "../../scan/styles";
 import { useSession } from "../../../shared/auth/useSession";
 import { useI18n, type MessageKey } from "../../../shared/i18n";
-
-const KIND_CLS: Record<GenOperationKind, string> = {
-  base: "border-blue-200 bg-blue-50 text-blue-700",
-  custom: "border-purple-200 bg-purple-50 text-purple-700",
-};
 
 function SectionTitle({ label, hint }: { label: string; hint: string }) {
   return (
@@ -348,47 +344,15 @@ function PrototypeSpecPage() {
       <div className="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <OperationColumns />
         {operations.map(({ endpoint, kind, sdkMethod }) => (
-          <div
+          <OperationRow
             key={endpoint.id}
-            role="group"
-            aria-label={endpoint.title}
-            className="grid grid-cols-12 items-center gap-3 border-b border-gray-100 px-4 py-2 last:border-0"
-          >
-            <div className="col-span-3 truncate text-xs text-gray-600" title={endpoint.title}>
-              {endpoint.title}
-            </div>
-            <div className="col-span-2">
-              <span
-                className={`rounded-full border px-2 py-px text-[10px] font-semibold uppercase tracking-wide ${KIND_CLS[kind]}`}
-              >
-                {t(`gen.spec.kind.${kind}` as MessageKey)}
-              </span>
-            </div>
-            <div className="col-span-4 flex min-w-0 items-center gap-2">
-              <span
-                className={`inline-block w-14 shrink-0 rounded px-1.5 py-0.5 text-center font-mono text-[11px] font-semibold ${methodCls(endpoint.method)}`}
-              >
-                {endpoint.method}
-              </span>
-              <span className="truncate font-mono text-[11px] text-gray-500" title={endpoint.uri}>
-                {endpoint.uri}
-              </span>
-            </div>
-            <div className="col-span-3 flex min-w-0 items-center gap-2">
-              <span className="truncate font-mono text-[11px] text-gray-800">
-                {resource.name}.{sdkMethod}()
-              </span>
-              <a
-                href={endpoint.src}
-                target="_blank"
-                rel="noreferrer"
-                title={t("doc.openSourceHint")}
-                className="ml-auto flex items-center text-gray-400 transition hover:text-gray-700"
-              >
-                <ExternalLink size={13} />
-              </a>
-            </div>
-          </div>
+            title={endpoint.title}
+            kind={kind}
+            method={endpoint.method}
+            uri={endpoint.uri}
+            call={`${resource.name}.${sdkMethod}()`}
+            href={endpoint.src}
+          />
         ))}
       </div>
 
@@ -439,6 +403,8 @@ function PrototypeSpecPage() {
 export function GenerationSpecPage() {
   return SHOW_GEN_JOBS ? <PrototypeSpecPage /> : <ServerSpecPage />;
 }
+
+const shownKind = (kind: OperationKind): GenOperationKind => (kind === "custom" ? "custom" : "base");
 
 function ServerSpecPage() {
   const { name = "", version = "", resource = "" } = useParams();
@@ -503,9 +469,8 @@ function ServerSpecPage() {
     target: target.label,
     version,
     operations: operations.length,
-    /* TODO(ISS-0091): count the operations by their kind. */
-    base: 0,
-    custom: 0,
+    base: operations.filter((o) => shownKind(o.kind) === "base").length,
+    custom: operations.filter((o) => shownKind(o.kind) === "custom").length,
     classes: classes.length,
   });
 
@@ -524,7 +489,18 @@ function ServerSpecPage() {
         <SectionTitle label={t("gen.spec.ops")} hint={t("gen.spec.ops.hint")} />
         <div className="mb-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           <OperationColumns />
-          {/* TODO(ISS-0091): a row for each operation. */}
+          {operations.map((o) => (
+            <OperationRow
+              key={o.path}
+              title={o.title ?? o.path}
+              kind={shownKind(o.kind)}
+              method={o.method}
+              uri={o.uri}
+              call={o.name === null ? null : `${specBlock.data.name}.${o.name}()`}
+              missing={o.missing_name ? t(`gen.spec.missing.${o.missing_name}`) : undefined}
+              href={o.source_url}
+            />
+          ))}
         </div>
       </section>
 

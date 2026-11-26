@@ -9,6 +9,7 @@ these only read what is persisted - they never rescan and never call GitHub.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from tools.panel.api.deps import get_db
@@ -82,7 +83,15 @@ def get_resource_spec(
     Snapshot (ADR-0115). A repository off that list, or a resource its layout
     lacks in ``version``, answers 404 (ADR-0087).
     """
-    spec = resource_spec(db, generation_service(db, repo), version, resource_id)
+    # Shared with the other reads, held off by a layout edit, an activation or an
+    # ingest until it commits: the spec is read from one state of the layout.
+    db.execute(
+        select(Service.id).where(Service.repo == repo).with_for_update(read=True)
+    )
+    service = generation_service(db, repo)
+    spec = resource_spec(db, service, version, resource_id)
     if spec is None:
         raise HTTPException(status_code=404, detail="Resource not found")
-    return ResourceSpecResponse.from_spec(spec)
+    return ResourceSpecResponse.from_spec(
+        spec, repo=service.repo, commit_hash=service.active_snapshot.commit_hash
+    )

@@ -288,6 +288,25 @@ def test_an_expired_token_is_401(client, signing_key):
     assert "expired" in resp.json()["error"]["message"].lower()
 
 
+def test_a_token_issued_a_few_seconds_ahead_of_our_clock_is_accepted(
+    client, signing_key
+):
+    ahead = datetime.now(tz=UTC) + timedelta(seconds=5)
+    token = _token(signing_key, iat=ahead)
+
+    assert client.get("/api/scan/summary", headers=_auth(token)).status_code == 200
+
+
+def test_a_token_issued_beyond_the_tolerated_skew_is_401(client, signing_key):
+    ahead = datetime.now(tz=UTC) + timedelta(seconds=30)
+    token = _token(signing_key, iat=ahead)
+
+    resp = client.get("/api/scan/summary", headers=_auth(token))
+
+    assert resp.status_code == 401
+    assert "not yet valid" in resp.json()["error"]["message"]
+
+
 def test_a_token_for_another_audience_is_401(client, signing_key):
     """A token minted for a different application of the same Zitadel project
     verifies against the same keys, so the audience is the only thing standing

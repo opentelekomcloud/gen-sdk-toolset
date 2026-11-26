@@ -62,6 +62,7 @@ from tools.panel.core.db.models import (  # noqa: E402
 from tools.panel.core.grouping import group_endpoints  # noqa: E402
 from tools.panel.core.ingest import ingest_service_result  # noqa: E402
 from tools.panel.core.layout import listed_versions  # noqa: E402
+from tools.panel.core.operations import propose_operations  # noqa: E402
 from tools.panel.core.spec import ResourceSpec, resource_spec  # noqa: E402
 from tools.shared.ir import Document, HttpMethod  # noqa: E402
 from tools.shared.ir import Service as IrService  # noqa: E402
@@ -1749,13 +1750,18 @@ def _active_snapshot_id(session_factory) -> int:
 
 
 def _start_behind(first, client, session_factory):
-    """Start the grouping while ``first`` holds a lock it needs.
+    """Start the grouping while ``first`` holds a lock it needs."""
+    return _behind(first, lambda: client.post(LAYOUT), session_factory)
 
-    ``first`` commits once the start waits for it - or if it never does, so a
-    failed probe is reported instead of leaving the start waiting forever.
+
+def _behind(first, request, session_factory):
+    """Send ``request`` while ``first`` holds a lock it needs.
+
+    ``first`` commits once the request waits for it - or if it never does, so a
+    failed probe is reported instead of leaving the request waiting forever.
     """
     with ThreadPoolExecutor(max_workers=1) as pool:
-        second = pool.submit(client.post, LAYOUT)
+        second = pool.submit(request)
         try:
             _wait_for_a_blocked_query(session_factory)
         finally:
@@ -1778,7 +1784,7 @@ def _wait_for_a_blocked_query(session_factory, timeout: float = 10) -> None:
             # pg_stat_activity is read once per transaction
             probe.rollback()
             time.sleep(0.05)
-    raise AssertionError("the second start never waited for the first")
+    raise AssertionError("the request never waited for the lock held before it")
 
 
 def test_a_failed_start_leaves_no_layout_and_can_be_retried(laid_out, monkeypatch):
@@ -1851,12 +1857,70 @@ def test_spec_of_a_confirmed_resource_has_its_name_and_both_sections(
     response = laid_out.get(_spec(servers))
 
     assert response.status_code == 200
+    # in the layout's order, not the rule's
     assert response.json() == {
         "name": "servers",
         "confirmed": True,
-        "operations": [],
+        "operations": [
+            _operation(LIST_SERVERS, "get_servers"),
+            _operation(CREATE_SERVER, "post_servers"),
+        ],
         "classes": [],
     }
+
+
+def _operation(endpoint, name, *, kind="custom", missing_name=None) -> dict:
+    return {
+        "path": endpoint.path,
+        "kind": kind,
+        "name": name,
+        "missing_name": missing_name,
+        "method": endpoint.method.value,
+        "uri": endpoint.uri,
+        "title": endpoint.title,
+        "source_url": f"https://github.com/{REPO}/blob/{COMMIT}/{endpoint.path}",
+    }
+
+
+def test_spec_lists_an_operation_without_a_name_with_its_reason(
+    laid_out, session_factory
+):
+    project = _place(session_factory, "project", [PROJECT_INFO], confirmed_by="val")
+
+    operations = laid_out.get(_spec(project)).json()["operations"]
+
+    assert operations == [_operation(PROJECT_INFO, None, missing_name="no_segment")]
+
+
+def test_spec_waits_for_a_layout_edit_in_flight_and_shows_all_of_it(
+    laid_out, session_factory
+):
+    """The confirmation and the endpoints are read as one edit left them."""
+    servers = _place(session_factory, "servers", [CREATE_SERVER], confirmed_by="val")
+    with session_factory() as first:
+        first.execute(select(Service).where(Service.repo == REPO).with_for_update())
+        resource = first.get(Resource, servers)
+        resource.endpoints.append(
+            ResourceEndpoint(service_id=resource.service_id, path=LIST_SERVERS.path)
+        )
+        resource.confirmed_by = resource.confirmed_at = None
+        first.flush()
+        response = _behind(first, lambda: laid_out.get(_spec(servers)), session_factory)
+
+    assert response.json()["confirmed"] is False
+    assert response.json()["operations"] is None
+
+
+def test_spec_leaves_out_an_endpoint_the_active_snapshot_lacks(
+    laid_out, session_factory
+):
+    servers = _place(
+        session_factory, "servers", [CREATE_SERVER, VPC_ONLY], confirmed_by="val"
+    )
+
+    operations = laid_out.get(_spec(servers)).json()["operations"]
+
+    assert [operation["path"] for operation in operations] == [CREATE_SERVER.path]
 
 
 def test_spec_of_an_unconfirmed_resource_has_no_sections(laid_out, session_factory):
@@ -1884,7 +1948,22 @@ def test_spec_is_built_by_a_function_callable_outside_the_route(
         spec = resource_spec(session, service, "v1", servers)
 
     assert spec == ResourceSpec(
-        name="servers", confirmed=True, operations=[], classes=[]
+        name="servers",
+        confirmed=True,
+        operations=propose_operations([CREATE_SERVER]),
+        classes=[],
+    )
+
+
+def test_spec_of_an_unconfirmed_resource_is_not_built(laid_out, session_factory):
+    servers = _place(session_factory, "servers", [CREATE_SERVER])
+
+    with session_factory() as session:
+        service = session.scalars(select(Service).where(Service.repo == REPO)).one()
+        spec = resource_spec(session, service, "v1", servers)
+
+    assert spec == ResourceSpec(
+        name="servers", confirmed=False, operations=None, classes=None
     )
 
 
