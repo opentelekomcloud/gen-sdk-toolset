@@ -1090,7 +1090,7 @@ describe("the spec of a resource of the stored layout (ISS-0074, ISS-0081)", () 
     expect(screen.queryByRole("region", { name: "Operations" })).toBeNull();
   });
 
-  it("leads a viewer to the layout to view it, and the layout opens read-only (ADR-0070)", async () => {
+  it("leads a viewer to the layout to view it, and the layout opens read-only (ADR-0133)", async () => {
     session.token = tokenWithRoles("viewer");
     const invoices = { id: 7, name: "invoices", confirmed_by: null, confirmed_at: null, endpoints: [endpoint({ id: 1 })] };
     backend({

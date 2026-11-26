@@ -268,6 +268,7 @@ export const de: Record<keyof typeof en, string> = {
   "gen.card.notConfirmed": "Layout noch nicht bestätigt",
   "gen.card.mergedIn": "bereits gemergt in {targets}",
   "gen.card.generate": "Generieren",
+  "gen.card.viewSpec": "Spezifikation ansehen",
   "gen.card.fixLayout": "Layout bearbeiten",
   "gen.card.viewLayoutInline": "Layout ansehen",
   "gen.card.empty": "Für diesen Service ist noch nichts angelegt.",

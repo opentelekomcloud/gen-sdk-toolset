@@ -479,7 +479,7 @@ function ServerSpecPage() {
 
   const { confirmed, operations, classes } = specBlock.data;
   if (!confirmed || !operations || !classes) {
-    /* The way to the layout, where a worker confirms it; a viewer, who may not, only views it (ADR-0070). */
+    /* The way to the layout, where a worker confirms it; a viewer, who may not, only views it (ADR-0133). */
     const label = t(canWrite ? "gen.card.editLayout" : "gen.card.viewLayout");
     return (
       <PageMessage

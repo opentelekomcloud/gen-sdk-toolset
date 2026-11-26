@@ -953,7 +953,7 @@ describe("confirming a resource (ADR-0066, ADR-0067)", () => {
   });
 });
 
-describe("a viewer (ADR-0070)", () => {
+describe("a viewer (ADR-0133)", () => {
   it("reads the layout with its lists and confirmations, but is offered no way to change it", async () => {
     session.token = tokenWithRoles("viewer");
     const { api } = editor();

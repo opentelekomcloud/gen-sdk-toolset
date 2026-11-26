@@ -6,7 +6,7 @@ import { useI18n } from "../../../shared/i18n";
 /**
  * Why a resource cannot be generated on a target, in the card's words; an
  * unconfirmed layout also offers the way to the layout editor - to edit it for
- * a worker, to view it for a viewer, who may not change it (ADR-0070). Where
+ * a worker, to view it for a viewer, who may not change it (ADR-0133). Where
  * the spec is at hand, fields left to decide come after that (owner decision);
  * away from it, they come with the way to the spec, where they are highlighted
  * (owner decision). Nothing is said when nothing holds it.
