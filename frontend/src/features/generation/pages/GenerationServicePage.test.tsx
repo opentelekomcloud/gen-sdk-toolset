@@ -7,11 +7,12 @@ import { endpoint, generationList, layout, listedSeed } from "../../../test/fixt
 import { expectRetryJoinsResources, mockSeeds } from "../../../test/generationMock";
 import { tokenWithRoles } from "../../../test/token";
 import { keys } from "../../scan/api/queries";
-import { generationResources } from "../data/mock";
+import { generationResources, generationTargets } from "../data/mock";
 import type { GenEndpoint, GenJob, GenJobStatus, GenResource, GenTarget } from "../data/types";
 import { GenerationLayoutPage } from "./GenerationLayoutPage";
 import { GenerationListPage } from "./GenerationListPage";
 import { GenerationServicePage } from "./GenerationServicePage";
+import { GenerationSpecPage } from "./GenerationSpecPage";
 
 /* Every service of the mock with endpoints is in the server's list, with a stored layout. */
 const MOCK = mockSeeds();
@@ -453,7 +454,7 @@ describe("states the mock does not hold today", () => {
     expect(screen.getByRole("link", { name: "edit layout" })).toHaveAttribute("href", "/generation/svc/layout");
   });
 
-  it("offers a viewer no Generate, but the same reasons why the rest waits (ADR-0070)", async () => {
+  it("offers a viewer no Generate, but the same reasons why the rest waits (ADR-0133)", async () => {
     session.token = tokenWithRoles("viewer");
     cardPage("/generation/svc", SEED);
 
@@ -461,6 +462,8 @@ describe("states the mock does not hold today", () => {
     // the resource Generate would be offered for is still there, with nothing to start
     expect(screen.getByText("ready")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+    // the prototype offers a viewer no way into the spec either: only the server card does
+    expect(screen.queryByRole("link", { name: "View spec" })).toBeNull();
     expect(screen.getByText("1 endpoint not recognized in full")).toBeInTheDocument();
     expect(screen.getAllByText("confirm the layout first")).toHaveLength(1);
     // the way to the layout next to it, named for what a viewer may do there
@@ -794,7 +797,7 @@ describe("the resources of a stored layout on the card (ISS-0040)", () => {
     expect(screen.queryByText(/confirmation needed/)).toBeNull();
   });
 
-  it("says why each row is held back by its layout, and offers no Generate and no job", async () => {
+  it("says why each row is held back by its layout, offers Generate only where nothing holds it, and no job", async () => {
     card({
       [LAYOUT]: layout({
         versions: [
@@ -817,15 +820,88 @@ describe("the resources of a stored layout on the card (ISS-0040)", () => {
     });
 
     const row = async (name: string) => screen.findByRole("group", { name });
-    // nothing holds it
-    expect(within(await row("invoices")).queryByText(/first|empty|not recognized/)).toBeNull();
+    // nothing holds it: Generate in place of a reason
+    const invoices = await row("invoices");
+    expect(within(invoices).queryByText(/first|empty|not recognized/)).toBeNull();
+    expect(within(invoices).getByRole("link", { name: "Generate" })).toHaveAttribute("href", "/generation/billing-api/spec/v1/1");
     const payments = await row("payments");
     expect(within(payments).getByText("confirm the layout first")).toBeInTheDocument();
     expect(within(payments).getByRole("link", { name: "edit layout" })).toHaveAttribute("href", "/generation/billing-api/layout");
     expect(within(await row("refunds")).getByText("empty resource")).toBeInTheDocument();
     expect(within(await row("credits")).getByText("2 endpoints not recognized in full")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+    // a reason in place of Generate on every other row
+    expect(screen.getAllByRole("link", { name: "Generate" })).toHaveLength(1);
     expect(screen.queryByText(/in review|merged|running/)).toBeNull();
+  });
+
+  it("offers Generate on the confirmed resource only: confirming one opens no other (ADR-0066)", async () => {
+    // payments and refunds have every endpoint ok too, but are not confirmed
+    card({ [LAYOUT]: laidOut(confirmedBy("ada@otc.test")) });
+
+    const invoices = await screen.findByRole("group", { name: "invoices" });
+    expect(within(invoices).getByRole("link", { name: "Generate" })).toHaveAttribute("href", "/generation/billing-api/spec/v1/1");
+    expect(screen.getAllByRole("link", { name: "Generate" })).toHaveLength(1);
+    expect(within(screen.getByRole("group", { name: "payments" })).getByText("confirm the layout first")).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "refunds" })).getByText("confirm the layout first")).toBeInTheDocument();
+  });
+
+  it("opens the spec of exactly that resource in its version, and starts nothing (ADR-0086)", async () => {
+    // refunds is in v2, the second version: its spec is v2's, by its own id
+    backend({
+      [LIST]: generationList("billing-api"),
+      [LAYOUT]: layout({
+        versions: [
+          { api_version: "v1", resources: [resource(1, "invoices", unconfirmed)], unassigned: [] },
+          { api_version: "v2", resources: [resource(3, "refunds", confirmedBy("ada@otc.test"))], unassigned: [] },
+        ],
+      }),
+      "/api/generation/services/billing-api/spec/v2/3": { name: "refunds", confirmed: true, operations: [], classes: [] },
+    });
+    renderPage(
+      <>
+        <Routes>
+          <Route path="generation/:name" element={<GenerationServicePage />} />
+          <Route path="generation/:name/spec/:version/:resource" element={<GenerationSpecPage />} />
+        </Routes>
+        <Location />
+      </>,
+      { path: PATH, route: "*" },
+    );
+
+    fireEvent.click(within(await screen.findByRole("group", { name: "refunds" })).getByRole("link", { name: "Generate" }));
+
+    expect(await screen.findByRole("heading", { name: "billing_api.refunds" })).toBeInTheDocument();
+    expect(location()).toBe("/generation/billing-api/spec/v2/3");
+    // only reads went out: Generate opens the spec, it does not start a generation
+    const methods = vi.mocked(fetch).mock.calls.map(([, init]) => init?.method ?? "GET");
+    expect(new Set(methods)).toEqual(new Set(["GET"]));
+  });
+
+  it("keeps the chosen target in the address of Generate", async () => {
+    // Ansible modules connected, so a row is not held back on it
+    const live = generationTargets().map((x) => ({ ...x, live: true }));
+    backend({ [LIST]: generationList("billing-api"), [LAYOUT]: laidOut(confirmedBy("ada@otc.test")) });
+    renderPage(<GenerationServicePage />, {
+      path: `${PATH}?target=ansible`,
+      route: "/generation/:name",
+      seed: [[keys.genTargets, live]],
+    });
+
+    const invoices = await screen.findByRole("group", { name: "invoices" });
+    expect(within(invoices).getByRole("link", { name: "Generate" })).toHaveAttribute(
+      "href",
+      "/generation/billing-api/spec/v1/1?target=ansible",
+    );
+  });
+
+  it("offers a viewer the same way into the spec, named for reading it (ADR-0133)", async () => {
+    session.token = tokenWithRoles("viewer");
+    card({ [LAYOUT]: laidOut(confirmedBy("ada@otc.test")) });
+
+    const invoices = await screen.findByRole("group", { name: "invoices" });
+    expect(within(invoices).getByRole("link", { name: "View spec" })).toHaveAttribute("href", "/generation/billing-api/spec/v1/1");
+    expect(screen.queryByRole("link", { name: "Generate" })).toBeNull();
+    expect(screen.getAllByRole("link", { name: "View spec" })).toHaveLength(1);
   });
 
   /** One resource for each reason its layout holds it back by, and one it does not hold back. */
@@ -1116,7 +1192,7 @@ describe("the preliminary grouping of a service without a layout (ISS-0039)", ()
   });
 });
 
-describe("a viewer (ADR-0070)", () => {
+describe("a viewer (ADR-0133)", () => {
   const LIST = "/api/generation/services";
   const LAYOUT = "/api/generation/services/opentelekomcloud-docs%2Fecs/layout";
   const PATH = "/generation/opentelekomcloud-docs%2Fecs";

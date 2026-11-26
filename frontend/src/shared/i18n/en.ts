@@ -266,6 +266,7 @@ export const en = {
   "gen.card.notConfirmed": "layout not confirmed yet",
   "gen.card.mergedIn": "already merged in {targets}",
   "gen.card.generate": "Generate",
+  "gen.card.viewSpec": "View spec",
   "gen.card.fixLayout": "edit layout",
   "gen.card.viewLayoutInline": "view layout",
   "gen.card.empty": "Nothing laid out for this service yet.",
