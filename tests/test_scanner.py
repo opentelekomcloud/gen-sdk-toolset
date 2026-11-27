@@ -1105,11 +1105,21 @@ def test_example_pages_are_excluded_as_guides(
     assert not any(call.endswith(path) for call in fake.calls for path in guides)
 
 
-def test_an_unclear_notice_keeps_the_operation_and_lists_it_for_review() -> None:
+@pytest.mark.parametrize(
+    "notice",
+    [
+        "The v1 response format is deprecated; use the v2 fields.",
+        "This API will be unavailable in certain regions.",
+        "This API will be unavailable during maintenance.",
+    ],
+    ids=["field-deprecated", "unavailable-in-regions", "unavailable-maintenance"],
+)
+def test_an_unclear_notice_keeps_the_operation_and_lists_it_for_review(
+    notice: str,
+) -> None:
     """Ambiguous evidence must not remove an operation: it stays counted, with
     its own diagnostics, and is listed with the line that raised the doubt."""
     path = "api-ref/source/apis/querying_disks.rst"
-    notice = "The v1 response format is deprecated; use the v2 fields."
     content = load_fixture(_ANY_OPERATION).replace("\nURI\n", f"\n{notice}\n\nURI\n", 1)
     assert notice in content
 

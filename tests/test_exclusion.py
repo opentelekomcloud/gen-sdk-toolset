@@ -161,11 +161,21 @@ def test_an_unclear_notice_keeps_the_page_as_a_review_candidate() -> None:
     )
 
 
-def test_an_operation_unavailable_somewhere_is_kept_for_review() -> None:
-    """ "Unavailable" in the present limits an operation - to a region, a
-    state - rather than withdrawing it, so it must not drop out of coverage."""
-    line = "This API is unavailable in the eu-nl region."
-
+@pytest.mark.parametrize(
+    "line",
+    [
+        "This API is unavailable in the eu-nl region.",
+        "This API will be unavailable in certain regions.",
+        "This API will be unavailable during maintenance.",
+        "This API will be unavailable for frozen instances.",
+        "This API will soon be unavailable in eu-de, use the v2 API there.",
+        "This API is going to be unavailable when the instance is stopped.",
+        "This API will be unavailable soon in region eu-nl.",
+    ],
+)
+def test_conditionally_unavailable_operation_is_kept_for_review(line: str) -> None:
+    """Unavailability limited to a region, a time or a state restricts the
+    operation rather than retiring it: it stays counted, listed for review."""
     entry = page_exclusion("p.rst", _page(line))
 
     assert entry == ReviewCandidate(

@@ -71,16 +71,20 @@ _COMPATIBILITY = r"(?:backward )?compatibility(?: reasons)?"
 #: for compatibility ("This API call exists for compatibility reasons only and
 #: is not meant to be used"). The subject must be the operation: "This
 #: parameter is to be discarded" is about a field, and the operation stays.
-#: "Unavailable" retires only when it is about the future ("will be
-#: unavailable", "unavailable soon"); "This API is unavailable in region X"
-#: limits the operation rather than withdrawing it.
+#: "Unavailable" retires only when it is about the future and unqualified:
+#: the sentence ends at "unavailable" or "unavailable soon". "This API is
+#: unavailable in region X" or "will be unavailable during maintenance"
+#: limits the operation rather than withdrawing it, and stays for review.
+_SENTENCE_END = r"(?=\s*(?:[.;!]|$))"
 _NOTICE_RE = re.compile(
     "|".join(
         [
             _SUBJECT + r" (?:has been|is|was|will be|will soon be|is to be|"
             r"is going to be) (?:deprecated|discarded|taken offline)\b",
-            _SUBJECT + r" (?:will be|will soon be|is going to be) unavailable\b",
-            _SUBJECT + r" (?:is|will be) unavailable soon\b",
+            _SUBJECT
+            + r" (?:will be|will soon be|is going to be) unavailable(?: soon)?"
+            + _SENTENCE_END,
+            _SUBJECT + r" is unavailable soon" + _SENTENCE_END,
             _SUBJECT + r" is no longer (?:available|supported|maintained)\b",
             _SUBJECT + r" is not meant to be used\b",
             _SUBJECT
@@ -103,7 +107,7 @@ _AMBIGUOUS_RE = re.compile(
     + _COMPATIBILITY
     + r" only)\b|"
     + _SUBJECT
-    + r" (?:is|has been|was) unavailable\b",
+    + r" (?:is|has been|was|will be|will soon be|is going to be) unavailable\b",
     re.IGNORECASE,
 )
 
