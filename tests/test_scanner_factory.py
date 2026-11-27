@@ -35,7 +35,10 @@ def test_build_scanner_wires_service_from_settings():
     assert scanner.style_classifier is classify_doc_style
     assert scanner.max_workers == settings.scanner.max_workers
     assert scanner.api_ref_path == settings.scanner.api_ref_path.rstrip("/")
-    assert scanner.excluded_segments == frozenset(settings.scanner.excluded_segments)
+    assert scanner.excluded_segments == settings.scanner.excluded_segments
+    assert scanner.sample_repositories == frozenset(
+        settings.scanner.sample_repositories
+    )
 
 
 def test_build_scanner_requires_github_token():

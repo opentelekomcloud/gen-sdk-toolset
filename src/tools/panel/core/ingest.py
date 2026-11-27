@@ -165,7 +165,8 @@ def _persist(
         commit_hash=result.commit_hash,
         scanner_version=result.scanner_version,
         document_schema_version=DOCUMENT_SCHEMA_VERSION,
-        excluded_documents=list(result.excluded_documents),
+        excluded_documents=_excluded_payloads(result),
+        review_candidates=_candidate_payloads(result),
         documents_total=analytics.documents_total,
         endpoints_total=analytics.endpoints_total,
         non_endpoint_documents=analytics.non_endpoint_documents,
@@ -212,11 +213,14 @@ def _unchanged_from_latest(
 ) -> Snapshot | None:
     """Return the latest Snapshot when this result is identical to it.
 
-    Three fields decide it. ``commit_hash`` and ``scanner_version`` say the
+    Five fields decide it. ``commit_hash`` and ``scanner_version`` say the
     same code read the same source; ``analytics`` is the whole reading of that
     source, so anything the panel reports moving - a count, a completeness, a
     per-version breakdown - is a difference. The denormalized counter columns
     are projections of that same value and would only ever repeat the answer.
+    ``excluded_documents`` and ``review_candidates`` record what the scan left
+    out and why, which ``analytics`` does not see: a new reason for the same
+    path is a new result, not a repeat of the stored one.
 
     Document payloads are deliberately not compared. At an identical commit
     and scanner version they cannot differ, and comparing them would mean
@@ -232,9 +236,19 @@ def _unchanged_from_latest(
         latest.commit_hash == result.commit_hash
         and latest.scanner_version == result.scanner_version
         and latest.analytics == analytics.model_dump(mode="json")
+        and latest.excluded_documents == _excluded_payloads(result)
+        and latest.review_candidates == _candidate_payloads(result)
     ):
         return latest
     return None
+
+
+def _excluded_payloads(result: RepositoryScanResult) -> list[dict]:
+    return [entry.model_dump(mode="json") for entry in result.excluded_documents]
+
+
+def _candidate_payloads(result: RepositoryScanResult) -> list[dict]:
+    return [entry.model_dump(mode="json") for entry in result.review_candidates]
 
 
 def _complete_reusing(

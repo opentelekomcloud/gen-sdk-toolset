@@ -1,8 +1,9 @@
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from tools.scanner.exclusion import page_exclusion, path_exclusion
 from tools.scanner.interfaces import DocProvider, RepositoryContextParser, RstParser
 from tools.scanner.parsers import (
     extract_document_title,
@@ -11,7 +12,16 @@ from tools.scanner.parsers.docutils.types import DocStyle
 from tools.scanner.repositories import check_repository_eligibility
 from tools.shared.exceptions import ParseFailure, ProviderError
 from tools.shared.ir import Document, Repository, Service
-from tools.shared.scan import DocumentScanResult, Issue, IssueCode, RepositoryScanResult
+from tools.shared.scan import (
+    DocumentScanResult,
+    ExcludedDocument,
+    ExclusionEvidence,
+    ExclusionReason,
+    Issue,
+    IssueCode,
+    RepositoryScanResult,
+    ReviewCandidate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +35,13 @@ class _FetchedDocument:
     def __post_init__(self) -> None:
         if (self.content is None) == (self.error is None):
             raise ValueError("Exactly one of 'content' or 'error' must be provided")
+
+
+@dataclass
+class _ScannedDocuments:
+    documents: list[Document] = field(default_factory=list)
+    excluded: list[ExcludedDocument] = field(default_factory=list)
+    candidates: list[ReviewCandidate] = field(default_factory=list)
 
 
 class ScannerService:
@@ -42,14 +59,16 @@ class ScannerService:
         style_classifier: Callable[[str], DocStyle],
         max_workers: int,
         api_ref_path: str,
-        excluded_segments: Iterable[str] = (),
+        excluded_segments: Mapping[str, ExclusionReason] | None = None,
+        sample_repositories: Iterable[str] = (),
     ) -> None:
         self.doc_provider = doc_provider
         self.parser = parser
         self.style_classifier = style_classifier
         self.max_workers = max_workers
         self.api_ref_path = api_ref_path.rstrip("/")
-        self.excluded_segments = frozenset(excluded_segments)
+        self.excluded_segments = dict(excluded_segments or {})
+        self.sample_repositories = frozenset(sample_repositories)
 
     def scan_repository(self, repo: str, branch: str = "main") -> RepositoryScanResult:
         """Scan one repository and return per-document parse results.
@@ -120,7 +139,7 @@ class ScannerService:
         )
         logger.debug("%s: %d candidate RST files", repo, len(included_paths))
 
-        doc_outcomes, error = self._scan_documents(repo, commit_hash, included_paths)
+        scanned, error = self._scan_documents(repo, commit_hash, included_paths)
         if error:
             return self._failed_service_result(
                 repo,
@@ -130,11 +149,19 @@ class ScannerService:
                 excluded_documents=excluded_documents,
             )
 
+        # Listing order, whichever pass decided: the same repository at the
+        # same commit always records its exclusions the same way.
+        order = {path: index for index, path in enumerate(listing.paths)}
+        excluded_documents = sorted(
+            excluded_documents + scanned.excluded,
+            key=lambda entry: order[entry.path],
+        )
         return RepositoryScanResult(
-            repository=Service(repo=repo, documents=doc_outcomes),
+            repository=Service(repo=repo, documents=scanned.documents),
             branch=branch,
             commit_hash=commit_hash,
             excluded_documents=excluded_documents,
+            review_candidates=scanned.candidates,
         )
 
     def _unresolved_commit_result(
@@ -162,7 +189,7 @@ class ScannerService:
         commit_hash: str,
         error: str,
         *,
-        excluded_documents: list[str] | None = None,
+        excluded_documents: list[ExcludedDocument] | None = None,
     ) -> RepositoryScanResult:
         """Build the error result for a repo confirmed eligible but not fully read.
 
@@ -181,12 +208,13 @@ class ScannerService:
 
     def _list_and_filter_paths(
         self, repo: str, paths: list[str]
-    ) -> tuple[list[str], list[str]]:
+    ) -> tuple[list[str], list[ExcludedDocument]]:
         """Deduplicate a file listing and split it into included/excluded paths.
 
         Takes an already-fetched path list rather than calling `list_files`
         itself, so the caller can reject a truncated listing before any path
-        here is treated as the complete set.
+        here is treated as the complete set. Only what the path alone decides
+        is excluded here, so an excluded page is never fetched.
         """
         unique_paths = list(dict.fromkeys(paths))
         if len(unique_paths) != len(paths):
@@ -197,23 +225,37 @@ class ScannerService:
             )
 
         included_paths: list[str] = []
-        excluded_documents: list[str] = []
+        excluded_documents: list[ExcludedDocument] = []
         for path in unique_paths:
-            target = excluded_documents if self._is_excluded(path) else included_paths
-            target.append(path)
+            excluded = path_exclusion(
+                repo,
+                path,
+                segments=self.excluded_segments,
+                sample_repositories=self.sample_repositories,
+            )
+            if excluded is None:
+                included_paths.append(path)
+            else:
+                excluded_documents.append(excluded)
         if excluded_documents:
             logger.info(
-                "Skipped %d excluded doc(s) in %s (segments=%s)",
+                "Skipped %d excluded doc(s) in %s by path",
                 len(excluded_documents),
                 repo,
-                sorted(self.excluded_segments),
             )
 
         return included_paths, excluded_documents
 
     def _scan_documents(
         self, repo: str, commit_hash: str, included_paths: list[str]
-    ) -> tuple[list[Document], str | None]:
+    ) -> tuple[_ScannedDocuments, str | None]:
+        """Fetch, then decide on each page's own lifecycle notice, then parse.
+
+        A page excluded by its content was fetched, but it is not parsed and
+        does not become a document. It still feeds the parser context: a kept
+        operation may reference a table defined there, and dropping it would
+        change that operation's own diagnostics.
+        """
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             try:
                 fetched_documents = list(
@@ -228,24 +270,65 @@ class ScannerService:
                 # actually trip one, since it fetches concurrently per file.
                 error = f"Failed to fetch document content for {repo}: {e}"
                 logger.error(error)
-                return [], error
+                return _ScannedDocuments(), error
             try:
                 parser_context = self._build_parser_context(fetched_documents)
             except Exception as e:
                 error = f"Failed to build parser context: {e}"
                 logger.exception("%s for %s", error, repo)
-                return [], error
-            doc_outcomes = list(
+                return _ScannedDocuments(), error
+
+            scanned = _ScannedDocuments()
+            kept: list[_FetchedDocument] = []
+            for document in fetched_documents:
+                decision = self._page_decision(repo, document)
+                if isinstance(decision, ExcludedDocument):
+                    scanned.excluded.append(decision)
+                    continue
+                if isinstance(decision, ReviewCandidate):
+                    scanned.candidates.append(decision)
+                kept.append(document)
+            if scanned.excluded:
+                logger.info(
+                    "Skipped %d excluded doc(s) in %s by content",
+                    len(scanned.excluded),
+                    repo,
+                )
+
+            scanned.documents = list(
                 pool.map(
                     lambda document: self._process_document(
                         repo,
                         document,
                         parser_context,
                     ),
-                    fetched_documents,
+                    kept,
                 )
             )
-        return doc_outcomes, None
+        return scanned, None
+
+    def _page_decision(
+        self, repo: str, document: _FetchedDocument
+    ) -> ExcludedDocument | ReviewCandidate | None:
+        """What a fetched page says about its own lifecycle, never raising.
+
+        A page that could not be fetched says nothing about itself; it stays
+        and reports its fetch failure. A page the rules fail on stays counted
+        too, as a review candidate carrying the error - one odd page must
+        neither drop out of coverage nor fail the whole repository scan.
+        """
+        if document.content is None:
+            return None
+        try:
+            return page_exclusion(document.path, document.content)
+        except Exception as e:
+            logger.exception("Lifecycle check failed for %s/%s", repo, document.path)
+            return ReviewCandidate(
+                path=document.path,
+                evidence=ExclusionEvidence(
+                    source=document.path, text=f"lifecycle check failed: {e}"
+                ),
+            )
 
     def _fetch_document(
         self, repo: str, path: str, commit_hash: str
@@ -337,6 +420,3 @@ class ScannerService:
             title=title,
             scan_result=DocumentScanResult(failure_reason=failure_reason),
         )
-
-    def _is_excluded(self, path: str) -> bool:
-        return any(seg in self.excluded_segments for seg in path.split("/"))

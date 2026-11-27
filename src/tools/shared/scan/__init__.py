@@ -5,6 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from .document import DocumentScanResult
+from .exclusion import (
+    ExcludedDocument,
+    ExclusionEvidence,
+    ExclusionReason,
+    ReviewCandidate,
+)
 from .issue import Issue, IssueCode
 from .section import SectionScanResult, SectionStatus
 
@@ -17,11 +23,15 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DocumentScanResult",
+    "ExcludedDocument",
+    "ExclusionEvidence",
+    "ExclusionReason",
     "Issue",
     "IssueCode",
     "RepositoryInterruption",
     "RepositoryInterruptionKind",
     "RepositoryScanResult",
+    "ReviewCandidate",
     "SectionScanResult",
     "SectionStatus",
 ]

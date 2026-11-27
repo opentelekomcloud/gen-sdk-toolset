@@ -369,7 +369,8 @@ def export_snapshot(repo: str, db: Session = Depends(get_db)) -> Response:
         branch=snapshot.branch,
         commit_hash=snapshot.commit_hash,
         scanner_version=snapshot.scanner_version,
-        excluded_documents=list(snapshot.excluded_documents),
+        excluded_documents=snapshot.excluded_documents,
+        review_candidates=snapshot.review_candidates,
     )
     filename = f"{service.name}-{snapshot.commit_hash[:7]}.json"
     return Response(

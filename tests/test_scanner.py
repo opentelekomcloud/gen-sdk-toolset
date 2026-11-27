@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import tomllib
 
+import pytest
+
 from tools.config import ScannerSection
+from tools.scanner.exclusion import SAMPLE_REPOSITORIES_SETTING, SEGMENTS_SETTING
 from tools.scanner.interfaces import FileListing
 from tools.scanner.parsers import DocutilsParser, classify_doc_style
 from tools.scanner.service import ScannerService
 from tools.shared.exceptions import ProviderError, ProviderErrorKind
 from tools.shared.ir import Endpoint, SectionName, Service
 from tools.shared.scan import (
+    ExcludedDocument,
+    ExclusionEvidence,
+    ExclusionReason,
     IssueCode,
     RepositoryInterruptionKind,
     RepositoryScanResult,
@@ -628,7 +634,9 @@ def test_excluded_segments_drop_paths() -> None:
             }
         }
     )
-    scanner = make_scanner(fake, excluded_segments=["out-of-date_apis"])
+    scanner = make_scanner(
+        fake, excluded_segments={"out-of-date_apis": ExclusionReason.retired}
+    )
     result = scanner.scan_repository("o/svc")
     assert isinstance(result.repository, Service)
     # Excluded file is not parsed, not counted as a non_endpoint doc...
@@ -636,7 +644,15 @@ def test_excluded_segments_drop_paths() -> None:
         "out-of-date_apis" not in document.path
         for document in result.repository.documents
     )
-    assert result.excluded_documents == ["api-ref/source/out-of-date_apis/old.rst"]
+    assert result.excluded_documents == [
+        ExcludedDocument(
+            path="api-ref/source/out-of-date_apis/old.rst",
+            reason=ExclusionReason.retired,
+            evidence=ExclusionEvidence(
+                source=SEGMENTS_SETTING, text="out-of-date_apis"
+            ),
+        )
+    ]
 
 
 def test_calling_apis_guide_is_excluded_by_the_configured_default() -> None:
@@ -664,7 +680,13 @@ def test_calling_apis_guide_is_excluded_by_the_configured_default() -> None:
     assert isinstance(result.repository, Service)
     assert [document.path for document in result.repository.documents] == [real]
     assert [endpoint.path for endpoint in result.repository.endpoints] == [real]
-    assert result.excluded_documents == [guide]
+    assert result.excluded_documents == [
+        ExcludedDocument(
+            path=guide,
+            reason=ExclusionReason.guide,
+            evidence=ExclusionEvidence(source=SEGMENTS_SETTING, text="calling_apis"),
+        )
+    ]
     assert not any(guide in call for call in fake.calls if call.startswith("fetch"))
 
 
@@ -685,29 +707,462 @@ def test_calling_apis_guide_is_scanned_when_not_excluded() -> None:
 
 def test_scan_config_toml_excludes_what_the_default_excludes() -> None:
     """The CLI scans with scan-config.toml, while the panel image ships without
-    it and scans with the code default - a segment in one list only would make
+    it and scans with the code default - a rule in one copy only would make
     the two count different endpoints. Read with tomllib, not load_settings, so
     an env override cannot mask the file."""
     toml = REPO_ROOT / "scan-config.toml"
     with toml.open("rb") as f:
         scanner_section = tomllib.load(f).get("scanner", {})
-    assert scanner_section.get("excluded_segments") == (
-        ScannerSection().excluded_segments
-    )
+    default = ScannerSection()
+    assert scanner_section.get("excluded_segments") == default.excluded_segments
+    assert scanner_section.get("sample_repositories") == default.sample_repositories
+
+
+def test_a_segment_cannot_be_configured_as_unrecorded() -> None:
+    """``unrecorded`` describes an old snapshot, not a rule; configured, it
+    would label fresh exclusions as if nobody knew why they were made."""
+    with pytest.raises(ValueError, match="unrecorded"):
+        ScannerSection(excluded_segments={"faqs": ExclusionReason.unrecorded})
 
 
 def test_excluded_default_empty() -> None:
     """A scanner constructed with no excluded_segments scans everything."""
     scanner = make_scanner(FakeDocProvider(repos={}))
-    assert scanner.excluded_segments == frozenset()
+    assert scanner.excluded_segments == {}
+    assert scanner.sample_repositories == frozenset()
 
 
 def test_excluded_segments_not_shared() -> None:
-    """Two instances built with the same default get distinct frozensets."""
-    a = make_scanner(FakeDocProvider(repos={}), excluded_segments=["x"])
-    b = make_scanner(FakeDocProvider(repos={}), excluded_segments=["x"])
+    """Two instances built from the same mapping get distinct copies."""
+    segments = {"x": ExclusionReason.guide}
+    a = make_scanner(FakeDocProvider(repos={}), excluded_segments=segments)
+    b = make_scanner(FakeDocProvider(repos={}), excluded_segments=segments)
     assert a.excluded_segments == b.excluded_segments
     assert a.excluded_segments is not b.excluded_segments
+
+
+# --------------------------------------------------------------------------- #
+# Production coverage: retired, sample and guide pages
+# --------------------------------------------------------------------------- #
+#: A real operation page used as the body of pages whose own content does not
+#: matter to the rule under test - a section label decides by path alone.
+_ANY_OPERATION = "style_a_cce_grid.rst"
+
+
+def _scan_with_defaults(repo: str, files: dict[str, str]) -> RepositoryScanResult:
+    """Scan with the configured rules a deployed panel uses."""
+    settings = ScannerSection()
+    fake = FakeDocProvider(repos={repo: files})
+    return make_scanner(
+        fake,
+        excluded_segments=settings.excluded_segments,
+        sample_repositories=settings.sample_repositories,
+    ).scan_repository(repo)
+
+
+def _excluded(result: RepositoryScanResult, path: str) -> ExcludedDocument:
+    [entry] = [e for e in result.excluded_documents if e.path == path]
+    return entry
+
+
+def _document_paths(result: RepositoryScanResult) -> list[str]:
+    assert isinstance(result.repository, Service)
+    return [document.path for document in result.repository.documents]
+
+
+@pytest.mark.parametrize(
+    ("index", "fixture", "section", "label"),
+    [
+        (
+            "api-ref/source/api_v1_to_be_discarded",
+            "rds_api_v1_to_be_discarded_index.rst",
+            "api-ref/source/api_v1_to_be_discarded",
+            "To Be Discarded",
+        ),
+        (
+            "api-ref/source/outdated_apis_v1",
+            "dcs_outdated_apis_v1_index.rst",
+            "api-ref/source/outdated_apis_v1",
+            "Outdated",
+        ),
+        (
+            "api-ref/source/dataarts_factory_apis/"
+            "connection_management_apis_to_be_taken_offline",
+            "dataarts_connection_management_apis_to_be_taken_offline_index.rst",
+            "api-ref/source/dataarts_factory_apis/"
+            "connection_management_apis_to_be_taken_offline",
+            "To Be Taken Offline",
+        ),
+        (
+            "api-ref/source/historical_apis/data_management_old_version",
+            "modelarts_historical_apis_index.rst",
+            "api-ref/source/historical_apis",
+            "Historical APIs",
+        ),
+        (
+            "api-ref/source/apis/job_object_apis_v1_not_recommended",
+            "mrs_job_object_apis_v1_not_recommended_index.rst",
+            "api-ref/source/apis/job_object_apis_v1_not_recommended",
+            "Not Recommended",
+        ),
+    ],
+    ids=["rds-discarded", "dcs-outdated", "dataarts-offline", "modelarts", "mrs"],
+)
+def test_a_labelled_section_excludes_every_page_under_it(
+    index: str, fixture: str, section: str, label: str
+) -> None:
+    """The label sits in the section's directory name, so the section and every
+    operation in it are retired by path, and none of them is fetched."""
+    page = f"{index}/operation.rst"
+    files = {
+        f"{index}/index.rst": load_fixture(fixture),
+        page: load_fixture(_ANY_OPERATION),
+    }
+
+    result = _scan_with_defaults("o/svc", files)
+
+    assert _document_paths(result) == []
+    for path in files:
+        entry = _excluded(result, path)
+        assert entry.reason is ExclusionReason.retired
+        assert entry.evidence == ExclusionEvidence(source=section, text=label)
+
+
+@pytest.mark.parametrize(
+    ("path", "fixture", "line", "text"),
+    [
+        (
+            "api-ref/source/apis_recommended/disk_management/querying_evs_disks.rst",
+            "evs_querying_evs_disks_deprecated_notice.rst",
+            15,
+            "This API has been deprecated.",
+        ),
+        (
+            "api-ref/source/sfs_capacity-oriented_apis/file_systems/"
+            "creating_a_shared_file_system.rst",
+            "sfs_creating_a_shared_file_system_deprecated.rst",
+            8,
+            "This API is no longer available.",
+        ),
+    ],
+    ids=["evs", "sfs"],
+)
+def test_an_operation_wide_notice_excludes_the_operation(
+    path: str, fixture: str, line: int, text: str
+) -> None:
+    """Nothing in the path says so - the EVS page even sits under
+    apis_recommended - so the notice inside the page is the evidence."""
+    result = _scan_with_defaults("o/svc", {path: load_fixture(fixture)})
+
+    assert _document_paths(result) == []
+    entry = _excluded(result, path)
+    assert entry.reason is ExclusionReason.retired
+    assert entry.evidence is not None
+    assert (entry.evidence.source, entry.evidence.line) == (path, line)
+    assert entry.evidence.text.startswith(text)
+
+
+def test_the_evs_operation_is_excluded_inside_a_recommended_section() -> None:
+    section = "api-ref/source/apis_recommended"
+    retired = f"{section}/disk_management/querying_evs_disks.rst"
+    files = {
+        f"{section}/index.rst": load_fixture("evs_apis_recommended_index.rst"),
+        retired: load_fixture("evs_querying_evs_disks_deprecated_notice.rst"),
+    }
+
+    result = _scan_with_defaults("o/evs", files)
+
+    # The section itself is not retired: only the operation that says so.
+    assert _document_paths(result) == [f"{section}/index.rst"]
+    assert [entry.path for entry in result.excluded_documents] == [retired]
+
+
+def test_identically_titled_backup_pages_are_decided_by_their_section() -> None:
+    """Both copies are titled "Creating a Manual Backup"; only the one under
+    apis_unavailable_soon is retired, and the recommended copy keeps its own
+    diagnostics exactly as it would scanned alone."""
+    soon = "api-ref/source/apis_unavailable_soon"
+    recommended = "api-ref/source/apis_recommended"
+    page = "backup_management/creating_a_manual_backup.rst"
+    files = {
+        f"{soon}/index.rst": load_fixture(
+            "gaussdb_mysql_apis_unavailable_soon_index.rst"
+        ),
+        f"{soon}/{page}": load_fixture(
+            "gaussdb_mysql_creating_a_manual_backup_unavailable_soon.rst"
+        ),
+        f"{recommended}/index.rst": load_fixture(
+            "gaussdb_mysql_apis_recommended_index.rst"
+        ),
+        f"{recommended}/{page}": load_fixture(
+            "gaussdb_mysql_creating_a_manual_backup_recommended.rst"
+        ),
+    }
+
+    result = _scan_with_defaults("o/gaussdb", files)
+
+    assert [entry.path for entry in result.excluded_documents] == [
+        f"{soon}/index.rst",
+        f"{soon}/{page}",
+    ]
+    assert _excluded(result, f"{soon}/{page}").evidence == ExclusionEvidence(
+        source=soon, text="Unavailable Soon"
+    )
+    assert isinstance(result.repository, Service)
+    [kept] = result.repository.endpoints
+    assert kept.path == f"{recommended}/{page}"
+    alone = _scan_with_defaults(
+        "o/gaussdb", {f"{recommended}/{page}": files[f"{recommended}/{page}"]}
+    )
+    assert isinstance(alone.repository, Service)
+    assert kept == alone.repository.endpoints[0]
+
+
+def test_a_sample_repository_is_excluded_as_sample_material() -> None:
+    path = "api-ref/source/classic/cert.rst"
+    fake = FakeDocProvider(
+        repos={
+            "opentelekomcloud-docs/sandbox": {
+                path: load_fixture("sandbox_certificate_sample.rst")
+            }
+        }
+    )
+    settings = ScannerSection()
+
+    result = make_scanner(
+        fake,
+        excluded_segments=settings.excluded_segments,
+        sample_repositories=settings.sample_repositories,
+    ).scan_repository("opentelekomcloud-docs/sandbox")
+
+    assert _document_paths(result) == []
+    assert result.excluded_documents == [
+        ExcludedDocument(
+            path=path,
+            reason=ExclusionReason.sample,
+            evidence=ExclusionEvidence(
+                source=SAMPLE_REPOSITORIES_SETTING,
+                text="opentelekomcloud-docs/sandbox",
+            ),
+        )
+    ]
+    assert not any(call.startswith("fetch") for call in fake.calls)
+
+
+def test_a_faq_page_is_excluded_as_a_guide() -> None:
+    path = (
+        "api-ref/source/faqs/"
+        "what_are_the_relationships_among_firewall_groups_policies_and_rules.rst"
+    )
+    result = _scan_with_defaults(
+        "o/vpc", {path: load_fixture("vpc_faq_firewall_groups_policies_rules.rst")}
+    )
+
+    assert _document_paths(result) == []
+    assert _excluded(result, path).reason is ExclusionReason.guide
+    assert _excluded(result, path).evidence == ExclusionEvidence(
+        source=SEGMENTS_SETTING, text="faqs"
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "fixture"),
+    [
+        (
+            "api-ref/source/obtaining_an_api_version/"
+            "querying_a_specified_api_version_information_compatible_with_openstack.rst",
+            "rds_querying_api_version_compatible_with_openstack.rst",
+        ),
+        (
+            "api-ref/source/api_reference_classic_vpn/api/tag_management/"
+            "querying_vpn_tags.rst",
+            "vpn_classic_querying_vpn_tags.rst",
+        ),
+        (
+            "api-ref/source/apis/access_key_management/obtaining_a_temporary_ak_sk.rst",
+            "iam_obtaining_a_temporary_ak_sk.rst",
+        ),
+        (
+            "api-ref/source/apis/federated_identity_authentication_management/"
+            "project/querying_the_list_of_projects_accessible_to_federated_users.rst",
+            "iam_querying_projects_accessible_to_federated_users.rst",
+        ),
+    ],
+    ids=["rds-version-v1.0", "vpn-classic", "iam-field-discarded", "iam-alternative"],
+)
+def test_insufficient_lifecycle_evidence_keeps_the_operation(
+    path: str, fixture: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A version number, OpenStack compatibility, the edition name "Classic", a
+    field's discard notice or a recommended alternative says nothing about the
+    operation's own lifecycle: it stays counted with its own diagnostics."""
+    content = load_fixture(fixture)
+
+    result = _scan_with_defaults("o/svc", {path: content})
+
+    assert _document_paths(result) == [path]
+    assert result.excluded_documents == []
+    assert result.review_candidates == []
+    # The page rules are built in, so the baseline switches them off: the kept
+    # document must equal the one a scan without any lifecycle rule produces.
+    monkeypatch.setattr("tools.scanner.service.page_exclusion", lambda *_: None)
+    unruled = make_scanner(FakeDocProvider(repos={"o/svc": {path: content}}))
+    assert result.repository == unruled.scan_repository("o/svc").repository
+
+
+def test_a_page_the_rules_fail_on_stays_counted_for_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One odd page must neither drop out of coverage nor fail the scan: it is
+    kept, and the failure is recorded where a person will see it."""
+    path = "api-ref/source/real.rst"
+
+    def failing(_path: str, _content: str):
+        raise ValueError("unreadable title")
+
+    monkeypatch.setattr("tools.scanner.service.page_exclusion", failing)
+
+    result = _scan_with_defaults("o/svc", {path: load_fixture(_ANY_OPERATION)})
+
+    assert result.error is None
+    assert _document_paths(result) == [path]
+    [candidate] = result.review_candidates
+    assert candidate.path == path
+    assert candidate.evidence.text == "lifecycle check failed: unreadable title"
+
+
+@pytest.mark.parametrize(
+    ("repo", "files", "examples", "endpoints"),
+    [
+        (
+            "opentelekomcloud-docs/function-graph",
+            {
+                "api-ref/source/examples/example_1_using_a_timer_trigger_to_"
+                "periodically_download_files_from_an_obs_bucket.rst": (
+                    "functiongraph_example_1_timer_trigger.rst"
+                ),
+                "api-ref/source/examples/example_2_creating_a_function_by_"
+                "uploading_code_to_an_obs_bucket.rst": (
+                    "functiongraph_example_2_function_from_obs.rst"
+                ),
+                "api-ref/source/api/function_lifecycle_management/"
+                "creating_a_function.rst": "functiongraph_creating_a_function.rst",
+            },
+            2,
+            [
+                "api-ref/source/api/function_lifecycle_management/creating_a_function.rst"
+            ],
+        ),
+        (
+            "opentelekomcloud-docs/application-operations-management-2",
+            {
+                "api-ref/source/examples/querying_details_about_a_specified_alarm_"
+                "action_rule.rst": "aom_example_alarm_action_rule.rst",
+            },
+            1,
+            [],
+        ),
+        (
+            "opentelekomcloud-docs/cloud-search-service",
+            {
+                "api-ref/source/examples/creating_a_pay-per-use_elasticsearch_"
+                "cluster.rst": "css_example_pay_per_use_cluster.rst",
+            },
+            1,
+            [],
+        ),
+    ],
+    ids=["functiongraph", "aom", "css"],
+)
+def test_example_pages_are_excluded_as_guides(
+    repo: str, files: dict[str, str], examples: int, endpoints: list[str]
+) -> None:
+    """The tutorials under examples/ are made of sample requests - the Cloud
+    Search one even with a concrete project ID in its URI - and none of them
+    is fetched. The FunctionGraph reference page still counts once."""
+    contents = {path: load_fixture(fixture) for path, fixture in files.items()}
+    settings = ScannerSection()
+    fake = FakeDocProvider(repos={repo: contents})
+
+    result = make_scanner(
+        fake,
+        excluded_segments=settings.excluded_segments,
+        sample_repositories=settings.sample_repositories,
+    ).scan_repository(repo)
+
+    guides = [path for path in files if "/examples/" in path]
+    assert len(guides) == examples
+    assert result.excluded_documents == [
+        ExcludedDocument(
+            path=path,
+            reason=ExclusionReason.guide,
+            evidence=ExclusionEvidence(source=SEGMENTS_SETTING, text="examples"),
+        )
+        for path in guides
+    ]
+    assert isinstance(result.repository, Service)
+    assert [endpoint.path for endpoint in result.repository.endpoints] == endpoints
+    assert not any(call.endswith(path) for call in fake.calls for path in guides)
+
+
+@pytest.mark.parametrize(
+    "notice",
+    [
+        "The v1 response format is deprecated; use the v2 fields.",
+        "This API will be unavailable in certain regions.",
+        "This API will be unavailable during maintenance.",
+    ],
+    ids=["field-deprecated", "unavailable-in-regions", "unavailable-maintenance"],
+)
+def test_an_unclear_notice_keeps_the_operation_and_lists_it_for_review(
+    notice: str,
+) -> None:
+    """Ambiguous evidence must not remove an operation: it stays counted, with
+    its own diagnostics, and is listed with the line that raised the doubt."""
+    path = "api-ref/source/apis/querying_disks.rst"
+    content = load_fixture(_ANY_OPERATION).replace("\nURI\n", f"\n{notice}\n\nURI\n", 1)
+    assert notice in content
+
+    result = _scan_with_defaults("o/svc", {path: content})
+
+    assert _document_paths(result) == [path]
+    assert result.excluded_documents == []
+    [candidate] = result.review_candidates
+    assert candidate.path == path
+    assert candidate.evidence.text == notice
+    assert content.splitlines()[candidate.evidence.line - 1] == notice
+
+
+def test_a_page_excluded_by_its_notice_still_feeds_the_parser_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A kept operation may reference a table defined on a retired page; the
+    reference must resolve as it did before the page was excluded."""
+    retired = "api-ref/source/apis_recommended/disk_management/querying_evs_disks.rst"
+    kept = "api-ref/source/real.rst"
+    files = {
+        retired: load_fixture("evs_querying_evs_disks_deprecated_notice.rst"),
+        kept: load_fixture(_ANY_OPERATION),
+    }
+    parser = DocutilsParser()
+    contexts: list[dict[str, str]] = []
+    original = parser.build_repository_context
+
+    def recording(contents: dict[str, str]):
+        contexts.append(contents)
+        return original(contents)
+
+    monkeypatch.setattr(parser, "build_repository_context", recording)
+    settings = ScannerSection()
+
+    result = make_scanner(
+        FakeDocProvider(repos={"o/svc": files}),
+        parser=parser,
+        excluded_segments=settings.excluded_segments,
+    ).scan_repository("o/svc")
+
+    assert _document_paths(result) == [kept]
+    assert set(contexts[0]) == {retired, kept}
 
 
 # --------------------------------------------------------------------------- #

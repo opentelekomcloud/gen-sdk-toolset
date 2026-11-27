@@ -54,4 +54,5 @@ def _build_service(settings: Settings, doc_provider: DocProvider) -> ScannerServ
         max_workers=settings.scanner.max_workers,
         api_ref_path=settings.scanner.api_ref_path,
         excluded_segments=settings.scanner.excluded_segments,
+        sample_repositories=settings.scanner.sample_repositories,
     )
